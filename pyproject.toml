@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "qml-essentials"
+version = "0.1.0"
+description = ""
+authors = ["Melvin Strobl <lc3267@kit.edu>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pennylane = "^0.36.0"
+
+
+[tool.poetry.group.dev.dependencies]
+devpi-client = "^7.0.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
