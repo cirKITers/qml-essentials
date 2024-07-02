@@ -24,6 +24,7 @@ class Model:
         data_reupload: bool = True,
         initialization: str = "random",
         output_qubit: int = 0,
+        shots: Optional[int] = None,
     ) -> None:
         """
         Initialize the quantum circuit model.
@@ -52,6 +53,9 @@ class Model:
         )()
 
         log.info(f"Using {circuit_type} circuit.")
+
+        # Only reasonable number of shots
+        self.shots = None if shots <= 0 else shots
 
         if data_reupload:
             impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
@@ -97,12 +101,10 @@ class Model:
         else:
             raise Exception("Invalid initialization method")
 
-        # Initialize default parameters needed for circuit evaluation
-        self.noise_params: Optional[Dict[str, float]] = None
-        self.state_vector: bool = False
-        self.exp_val: bool = True
 
-        self.dev: qml.Device = qml.device("default.mixed", wires=n_qubits)
+        device = "default.mixed" if self.shots is None else "default.qubit"
+        self.dev: qml.Device = qml.device(device, shots=self.shots, wires=self.n_qubits)
+
 
         self.circuit: qml.QNode = qml.QNode(self._circuit, self.dev)
 
