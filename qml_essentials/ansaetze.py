@@ -38,7 +38,9 @@ class Circuit(ABC):
         """
         return
 
-    def get_control_angles(self, w: np.ndarray, n_qubits: int) -> Optional[np.ndarray]:
+    def get_control_angles(
+        self, w: np.ndarray, n_qubits: int
+    ) -> Optional[np.ndarray]:
         """
         Returns the angles for the controlled rotation gates from the list of
         all parameters for one layer.
@@ -157,7 +159,8 @@ class Ansaetze:
             if n_qubits > 1:
                 for q in range(n_qubits):
                     qml.CRX(
-                        w[w_idx], wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits]
+                        w[w_idx],
+                        wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits],
                     )
                     w_idx += 1
 
@@ -199,7 +202,8 @@ class Ansaetze:
             if n_qubits > 1:
                 for q in range(n_qubits):
                     qml.CRZ(
-                        w[w_idx], wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits]
+                        w[w_idx],
+                        wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits],
                     )
                     w_idx += 1
 
@@ -237,7 +241,9 @@ class Ansaetze:
 
             if n_qubits > 1:
                 for q in range(n_qubits):
-                    qml.CNOT(wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits])
+                    qml.CNOT(
+                        wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits]
+                    )
 
             for q in range(n_qubits):
                 qml.RZ(w[w_idx], wires=q)

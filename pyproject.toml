@@ -12,7 +12,11 @@ pennylane = "^0.36.0"
 
 [tool.poetry.group.dev.dependencies]
 devpi-client = "^7.0.3"
+black = "^24.4.2"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 79

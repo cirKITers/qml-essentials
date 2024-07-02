@@ -66,7 +66,9 @@ class Model:
         self.shots = None if shots <= 0 else shots
 
         if data_reupload:
-            impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
+            impl_n_layers: int = (
+                n_layers + 1
+            )  # we need L+1 according to Schuld et al.
             self.degree = n_layers * n_qubits
         else:
             impl_n_layers: int = n_layers
@@ -87,7 +89,9 @@ class Model:
                 )
             else:
                 params[:, indices[0] : indices[1] : indices[2]] = (
-                    np.ones_like(params[:, indices[0] : indices[1] : indices[2]])
+                    np.ones_like(
+                        params[:, indices[0] : indices[1] : indices[2]]
+                    )
                     * value
                 )
             return params
@@ -97,7 +101,9 @@ class Model:
                 0, 2 * np.pi, params_shape, requires_grad=True
             )
         elif initialization == "zeros":
-            self.params: np.ndarray = np.zeros(params_shape, requires_grad=True)
+            self.params: np.ndarray = np.zeros(
+                params_shape, requires_grad=True
+            )
         elif initialization == "zero-controlled":
             self.params: np.ndarray = np.random.uniform(
                 0, 2 * np.pi, params_shape, requires_grad=True
@@ -112,11 +118,14 @@ class Model:
             raise Exception("Invalid initialization method")
 
         log.info(
-            f"Initialized parameters with shape {self.params.shape} using strategy {initialization}."
+            f"Initialized parameters with shape {self.params.shape}\
+            using strategy {initialization}."
         )
 
         device = "default.mixed" if self.shots is None else "default.qubit"
-        self.dev: qml.Device = qml.device(device, shots=self.shots, wires=self.n_qubits)
+        self.dev: qml.Device = qml.device(
+            device, shots=self.shots, wires=self.n_qubits
+        )
 
         log.info(f"Using device {device}.")
 
@@ -134,8 +143,8 @@ class Model:
 
         Args:
             inputs (np.ndarray): length of vector must be 1, shape (1,)
-            data_reupload (bool, optional): Whether to reupload the data for the IEC
-                or not, default is True.
+            data_reupload (bool, optional): Whether to reupload the data
+                for the IEC or not, default is True.
 
         Returns:
             None
@@ -174,16 +183,18 @@ class Model:
         Creates a circuit with noise.
 
         Args:
-            params (np.ndarray): weight vector of shape [n_layers, n_qubits*n_params_per_layer]
+            params (np.ndarray): weight vector of shape
+                [n_layers, n_qubits*n_params_per_layer]
             inputs (np.ndarray): input vector of size 1
         Returns:
-            Union[float, np.ndarray]: Expectation value of PauliZ(0) of the circuit if
-                state_vector is False and exp_val is True, otherwise the density matrix
-                of all qubits.
+            Union[float, np.ndarray]: Expectation value of PauliZ(0)
+                of the circuit if state_vector is False and exp_val is True,
+                otherwise the density matrix of all qubits.
 
         Raises:
-            ValueError: If a) state_vector and exp_val are set, b) if either state_vector or
-            exp_val is true and shots is not none, c) if state_vector and exp_val are both false
+            ValueError: If a) state_vector and exp_val are set,
+            b) if either state_vector or exp_val is true and shots is not none,
+            c) if state_vector and exp_val are both false
             but shots_is none
         """
 
@@ -196,7 +207,9 @@ class Model:
             if self.noise_params is not None:
                 for q in range(self.n_qubits):
                     qml.BitFlip(self.noise_params.get("BitFlip", 0.0), wires=q)
-                    qml.PhaseFlip(self.noise_params.get("PhaseFlip", 0.0), wires=q)
+                    qml.PhaseFlip(
+                        self.noise_params.get("PhaseFlip", 0.0), wires=q
+                    )
                     qml.AmplitudeDamping(
                         self.noise_params.get("AmplitudeDamping", 0.0), wires=q
                     )
@@ -204,7 +217,8 @@ class Model:
                         self.noise_params.get("PhaseDamping", 0.0), wires=q
                     )
                     qml.DepolarizingChannel(
-                        self.noise_params.get("DepolarizingChannel", 0.0), wires=q
+                        self.noise_params.get("DepolarizingChannel", 0.0),
+                        wires=q,
                     )
 
         if self.data_reupload:
@@ -221,7 +235,7 @@ class Model:
                 return 2 * qml.probs(wires=self.output_qubit) - 1
         else:
             raise ValueError(
-                f"Invalid combination of parameters state_vector:{self.state_vector}, 
+                f"Invalid combination of parameters state_vector:{self.state_vector},\
                 exp_val:{self.exp_val} and shots:{self.shots}"
             )
 
@@ -248,16 +262,21 @@ class Model:
         Args:
             params (np.ndarray): Weight vector of size n_layers*(n_qubits*3-1).
             inputs (np.ndarray): Input vector of size 1.
-            noise_params (Optional[Dict[str, float]], optional): Dictionary with noise parameters. Defaults to None.
+            noise_params (Optional[Dict[str, float]], optional):
+                Dictionary with noise parameters. Defaults to None.
             cache (Optional[bool], optional): Cache the circuit. Defaults to False.
-            state_vector (bool, optional): Measure the state vector instead of the wave function. Defaults to False.
-            exp_val (bool, optional): Compute the expectation value of PauliZ(0). Defaults to True.
+            state_vector (bool, optional): Measure the state vector
+                instead of the wave function. Defaults to False.
+            exp_val (bool, optional): Compute the expectation value of PauliZ(0).
+                Defaults to True.
 
         Returns:
             np.ndarray: Expectation value of PauliZ(0) of the circuit.
         """
         # Call forward method which handles the actual caching etc.
-        return self._forward(params, inputs, noise_params, cache, state_vector, exp_val)
+        return self._forward(
+            params, inputs, noise_params, cache, state_vector, exp_val
+        )
 
     def _forward(
         self,
@@ -274,12 +293,14 @@ class Model:
         Args:
             params (np.ndarray): Weight vector of size n_layers*(n_qubits*3-1).
             inputs (np.ndarray): Input vector of size 1.
-            noise_params (Optional[Dict[str, float]], optional): The noise parameters.
-                Defaults to None.
-            cache (Optional[bool], optional): Whether to cache the results. Defaults to False.
-            state_vector (bool, optional): Whether to return the state vector instead of the
-                expectation value. Defaults to False.
-            exp_val (bool, optional): Whether to compute the expectation value. Defaults to True.
+            noise_params (Optional[Dict[str, float]], optional):
+                The noise parameters. Defaults to None.
+            cache (Optional[bool], optional): Whether to cache the results.
+                Defaults to False.
+            state_vector (bool, optional): Whether to return the state vector
+                instead of the expectation value. Defaults to False.
+            exp_val (bool, optional): Whether to compute the expectation value.
+                Defaults to True.
 
         Returns:
             np.ndarray: The output of the quantum circuit.
