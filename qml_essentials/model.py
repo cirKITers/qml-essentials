@@ -125,11 +125,27 @@ class Model:
             None
         """
         if inputs is None:
-            inputs = [0]
+            # initialize to zero
+            inputs = np.array([[0]])
+        elif len(inputs.shape) == 1:
+            # add a batch dimension
+            inputs = np.array([inputs])
 
         if data_reupload:
-            for q in range(self.n_qubits):
-                qml.RX(inputs, wires=q)
+            if inputs.shape[1] == 1:
+                for q in range(self.n_qubits):
+                    qml.RX(inputs[:, 0], wires=q)
+            elif inputs.shape[1] == 2:
+                for q in range(self.n_qubits):
+                    qml.RX(inputs[:, 0], wires=q)
+                    qml.RY(inputs[:, 1], wires=q)
+            elif inputs.shape[1] == 3:
+                for q in range(self.n_qubits):
+                    qml.Rot(inputs[:, 0], inputs[:, 1], inputs[:, 2], wires=q)
+            else:
+                raise ValueError(
+                    "The number of parameters for this IEC cannot be greater than 3"
+                )
         else:
             qml.RX(inputs, wires=0)
 
