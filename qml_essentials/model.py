@@ -306,8 +306,8 @@ class Model:
             np.ndarray: The output of the quantum circuit.
 
         Raises:
-            NotImplementedError: If the number of shots is not None or if the expectation
-                value is True.
+            NotImplementedError: If the number of shots is not None or if the
+                expectation value is True.
         """
         # set the parameters as object attributes
         self.noise_params = noise_params
