@@ -44,10 +44,18 @@ class Model:
         Returns:
             None
         """
+        # Initialize default parameters needed for circuit evaluation
+        self.noise_params: Optional[Dict[str, float]] = None
+        self.state_vector: bool = False
+        self.exp_val: bool = True
+
+        # Copy the parameters
         self.n_qubits: int = n_qubits
         self.n_layers: int = n_layers
         self.data_reupload: bool = data_reupload
         self.output_qubit: int = output_qubit
+
+        # Initialize ansatz
         self.pqc: Callable[[Optional[np.ndarray], int], int] = getattr(
             Ansaetze, circuit_type or "no_ansatz"
         )()
@@ -62,7 +70,9 @@ class Model:
             self.degree = n_layers * n_qubits
         else:
             impl_n_layers: int = n_layers
-            self.degree = 0
+            self.degree = 1
+
+        log.info(f"Number of implicit layers set to {impl_n_layers}.")
 
         params_shape: Tuple[int, int] = (
             impl_n_layers,
@@ -101,10 +111,14 @@ class Model:
         else:
             raise Exception("Invalid initialization method")
 
+        log.info(
+            f"Initialized parameters with shape {self.params.shape} using strategy {initialization}."
+        )
 
         device = "default.mixed" if self.shots is None else "default.qubit"
         self.dev: qml.Device = qml.device(device, shots=self.shots, wires=self.n_qubits)
 
+        log.info(f"Using device {device}.")
 
         self.circuit: qml.QNode = qml.QNode(self._circuit, self.dev)
 
@@ -206,15 +220,20 @@ class Model:
         if self.data_reupload:
             self.pqc(params[-1], self.n_qubits)
 
-        if self.state_vector:
+        if self.state_vector and not self.exp_val and self.shots is None:
             return qml.density_matrix(wires=list(range(self.n_qubits)))
-        elif self.exp_val:
+        elif self.exp_val and self.shots is None:
             return qml.expval(qml.PauliZ(self.output_qubit))
-        else:
+        elif self.shots is not None:
             if self.output_qubit == -1:
                 return 2 * qml.probs(wires=list(range(self.n_qubits))) - 1
             else:
                 return 2 * qml.probs(wires=self.output_qubit) - 1
+        else:
+            raise ValueError(
+                f"Invalid combination of parameters state_vector:{self.state_vector}, 
+                exp_val:{self.exp_val} and shots:{self.shots}"
+            )
 
     def _draw(self) -> None:
         return qml.draw(self.circuit)(params=self.params, inputs=None)
@@ -227,7 +246,7 @@ class Model:
 
     def __call__(
         self,
-        params: Optional[np.ndarray],
+        params: np.ndarray,
         inputs: np.ndarray,
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
@@ -237,11 +256,12 @@ class Model:
         """Perform a forward pass of the quantum circuit.
 
         Args:
-            inputs (np.ndarray): input vector of size 1
-            params (Optional[np.ndarray], optional): weight vector of size n_layers*(n_qubits*3-1). Defaults to None.
-            noise_params (Optional[Dict[str, float]], optional): dictionary with noise parameters. Defaults to None.
-            cache (Optional[bool], optional): cache the circuit. Defaults to False.
-            state_vector (bool, optional): measure the state vector instead of the wave function. Defaults to False.
+            params (np.ndarray): Weight vector of size n_layers*(n_qubits*3-1).
+            inputs (np.ndarray): Input vector of size 1.
+            noise_params (Optional[Dict[str, float]], optional): Dictionary with noise parameters. Defaults to None.
+            cache (Optional[bool], optional): Cache the circuit. Defaults to False.
+            state_vector (bool, optional): Measure the state vector instead of the wave function. Defaults to False.
+            exp_val (bool, optional): Compute the expectation value of PauliZ(0). Defaults to True.
 
         Returns:
             np.ndarray: Expectation value of PauliZ(0) of the circuit.
@@ -251,7 +271,7 @@ class Model:
 
     def _forward(
         self,
-        params: Optional[np.ndarray],
+        params: np.ndarray,
         inputs: np.ndarray,
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
@@ -261,10 +281,8 @@ class Model:
         """Perform a forward pass of the quantum circuit.
 
         Args:
-            inputs (np.ndarray): The input data.
-            params (Optional[np.ndarray], optional): The weights of the quantum
-                circuit. If None, uses the current weights of the Instructor instance.
-                Defaults to None.
+            params (np.ndarray): Weight vector of size n_layers*(n_qubits*3-1).
+            inputs (np.ndarray): Input vector of size 1.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None.
             cache (Optional[bool], optional): Whether to cache the results. Defaults to False.
@@ -274,6 +292,7 @@ class Model:
         Returns:
             np.ndarray: The output of the quantum circuit.
         """
+        # set the parameters as object attributes
         self.noise_params = noise_params
         self.state_vector = state_vector
         self.exp_val = exp_val
@@ -294,6 +313,10 @@ class Model:
 
         result = None
         if cache:
+            if self.shots is not None or self.exp_val:
+                raise NotImplementedError(
+                    "Caching with shots or exp_val not yet implemented."
+                )
             name = f"pqc_{hs}.npy"
 
             cache_folder = ".cache"
