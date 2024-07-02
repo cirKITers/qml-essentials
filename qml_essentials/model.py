@@ -172,29 +172,19 @@ class Model:
     ) -> Union[float, np.ndarray]:
         """
         Creates a circuit with noise.
-        This involves, Bit Flip, Phase Flip, Amplitude Damping,
-        Phase Damping and Depolarization.
-        The Circuit consists of a PQC and IEC in each layer
-        with the PQC as specified in the construction of the model.
 
         Args:
             params (np.ndarray): weight vector of shape [n_layers, n_qubits*n_params_per_layer]
             inputs (np.ndarray): input vector of size 1
-            noise_params (Optional[Dict[str, float]]): dictionary with noise parameters
-                - "BitFlip": float, default = 0.0
-                - "PhaseFlip": float, default = 0.0
-                - "AmplitudeDamping": float, default = 0.0
-                - "PhaseDamping": float, default = 0.0
-                - "DepolarizingChannel": float, default = 0.0
-            state_vector (bool, optional): Whether to measure the state vector
-                instead of the wave function. Defaults to False.
-            exp_val (bool, optional): Whether to measure the expectation value
-                of PauliZ(0) of the circuit. Defaults to True.
-
         Returns:
             Union[float, np.ndarray]: Expectation value of PauliZ(0) of the circuit if
                 state_vector is False and exp_val is True, otherwise the density matrix
                 of all qubits.
+
+        Raises:
+            ValueError: If a) state_vector and exp_val are set, b) if either state_vector or
+            exp_val is true and shots is not none, c) if state_vector and exp_val are both false
+            but shots_is none
         """
 
         for l in range(0, self.n_layers):
@@ -278,7 +268,8 @@ class Model:
         state_vector: bool = False,
         exp_val: bool = True,
     ) -> np.ndarray:
-        """Perform a forward pass of the quantum circuit.
+        """
+        Perform a forward pass of the quantum circuit.
 
         Args:
             params (np.ndarray): Weight vector of size n_layers*(n_qubits*3-1).
@@ -288,9 +279,14 @@ class Model:
             cache (Optional[bool], optional): Whether to cache the results. Defaults to False.
             state_vector (bool, optional): Whether to return the state vector instead of the
                 expectation value. Defaults to False.
+            exp_val (bool, optional): Whether to compute the expectation value. Defaults to True.
 
         Returns:
             np.ndarray: The output of the quantum circuit.
+
+        Raises:
+            NotImplementedError: If the number of shots is not None or if the expectation
+                value is True.
         """
         # set the parameters as object attributes
         self.noise_params = noise_params
@@ -311,19 +307,19 @@ class Model:
             ).encode("utf-8")
         ).hexdigest()
 
-        result = None
+        result: Optional[np.ndarray] = None
         if cache:
             if self.shots is not None or self.exp_val:
                 raise NotImplementedError(
                     "Caching with shots or exp_val not yet implemented."
                 )
-            name = f"pqc_{hs}.npy"
+            name: str = f"pqc_{hs}.npy"
 
-            cache_folder = ".cache"
+            cache_folder: str = ".cache"
             if not os.path.exists(cache_folder):
                 os.mkdir(cache_folder)
 
-            file_path = os.path.join(cache_folder, name)
+            file_path: str = os.path.join(cache_folder, name)
 
             if os.path.isfile(file_path):
                 result = np.load(file_path)
