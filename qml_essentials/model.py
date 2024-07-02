@@ -97,6 +97,11 @@ class Model:
         else:
             raise Exception("Invalid initialization method")
 
+        # Initialize default parameters needed for circuit evaluation
+        self.noise_params: Optional[Dict[str, float]] = None
+        self.state_vector: bool = False
+        self.exp_val: bool = True
+
         self.dev: qml.Device = qml.device("default.mixed", wires=n_qubits)
 
         self.circuit: qml.QNode = qml.QNode(self._circuit, self.dev)
@@ -119,6 +124,9 @@ class Model:
         Returns:
             None
         """
+        if inputs is None:
+            inputs = [0]
+
         if data_reupload:
             for q in range(self.n_qubits):
                 qml.RX(inputs, wires=q)
@@ -129,9 +137,6 @@ class Model:
         self,
         params: np.ndarray,
         inputs: np.ndarray,
-        noise_params: Optional[Dict[str, float]] = None,
-        state_vector: Optional[bool] = False,
-        exp_val: Optional[bool] = True,
     ) -> Union[float, np.ndarray]:
         """
         Creates a circuit with noise.
@@ -141,7 +146,7 @@ class Model:
         with the PQC as specified in the construction of the model.
 
         Args:
-            params (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
+            params (np.ndarray): weight vector of shape [n_layers, n_qubits*n_params_per_layer]
             inputs (np.ndarray): input vector of size 1
             noise_params (Optional[Dict[str, float]]): dictionary with noise parameters
                 - "BitFlip": float, default = 0.0
@@ -166,33 +171,35 @@ class Model:
             if self.data_reupload or l == 0:
                 self._iec(inputs, data_reupload=self.data_reupload)
 
-            if noise_params is not None:
+            if self.noise_params is not None:
                 for q in range(self.n_qubits):
-                    qml.BitFlip(noise_params.get("BitFlip", 0.0), wires=q)
-                    qml.PhaseFlip(noise_params.get("PhaseFlip", 0.0), wires=q)
+                    qml.BitFlip(self.noise_params.get("BitFlip", 0.0), wires=q)
+                    qml.PhaseFlip(self.noise_params.get("PhaseFlip", 0.0), wires=q)
                     qml.AmplitudeDamping(
-                        noise_params.get("AmplitudeDamping", 0.0), wires=q
+                        self.noise_params.get("AmplitudeDamping", 0.0), wires=q
                     )
-                    qml.PhaseDamping(noise_params.get("PhaseDamping", 0.0), wires=q)
+                    qml.PhaseDamping(
+                        self.noise_params.get("PhaseDamping", 0.0), wires=q
+                    )
                     qml.DepolarizingChannel(
-                        noise_params.get("DepolarizingChannel", 0.0), wires=q
+                        self.noise_params.get("DepolarizingChannel", 0.0), wires=q
                     )
 
         if self.data_reupload:
             self.pqc(params[-1], self.n_qubits)
 
-        if state_vector:
+        if self.state_vector:
             return qml.density_matrix(wires=list(range(self.n_qubits)))
-        elif exp_val:
+        elif self.exp_val:
             return qml.expval(qml.PauliZ(self.output_qubit))
         else:
             if self.output_qubit == -1:
-                return qml.probs(wires=list(range(self.n_qubits)))
+                return 2 * qml.probs(wires=list(range(self.n_qubits))) - 1
             else:
-                return qml.probs(wires=self.output_qubit)
+                return 2 * qml.probs(wires=self.output_qubit) - 1
 
     def _draw(self) -> None:
-        return qml.draw(self.circuit)(params=self.params, inputs=[0])
+        return qml.draw(self.circuit)(params=self.params, inputs=None)
 
     def __repr__(self) -> str:
         return self._draw()
@@ -249,6 +256,10 @@ class Model:
         Returns:
             np.ndarray: The output of the quantum circuit.
         """
+        self.noise_params = noise_params
+        self.state_vector = state_vector
+        self.exp_val = exp_val
+
         # the qasm representation contains the bound parameters, thus it is ok to hash that
         hs = hashlib.md5(
             repr(
