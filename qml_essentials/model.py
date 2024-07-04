@@ -150,7 +150,7 @@ class Model:
             inputs = np.array([[0]])
         elif len(inputs.shape) == 1:
             # add a batch dimension
-            inputs = np.array([inputs])
+            inputs = inputs.reshape(-1, 1)
 
         if data_reupload:
             if inputs.shape[1] == 1:
