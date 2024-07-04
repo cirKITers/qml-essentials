@@ -57,7 +57,7 @@ class Model:
         self.output_qubit: int = output_qubit
 
         # Initialize ansatz
-        self._pqc: Callable[[Optional[np.ndarray], int], int] = getattr(
+        self.pqc: Callable[[Optional[np.ndarray], int], int] = getattr(
             Ansaetze, circuit_type or "no_ansatz"
         )()
 
@@ -74,11 +74,11 @@ class Model:
 
         params_shape: Tuple[int, int] = (
             impl_n_layers,
-            self._pqc.n_params_per_layer(self.n_qubits),
+            self.pqc.n_params_per_layer(self.n_qubits),
         )
 
         def set_control_params(params, value):
-            indices = self._pqc.get_control_indices(self.n_qubits)
+            indices = self.pqc.get_control_indices(self.n_qubits)
             if indices is None:
                 warnings.warn(
                     f"Specified {initialization} but circuit\
@@ -237,7 +237,7 @@ class Model:
         """
 
         for l in range(0, self.n_layers):
-            self._pqc(params[l], self.n_qubits)
+            self.pqc(params[l], self.n_qubits)
 
             if self.data_reupload or l == 0:
                 self._iec(inputs, data_reupload=self.data_reupload)
@@ -258,7 +258,7 @@ class Model:
                     )
 
         if self.data_reupload:
-            self._pqc(params[-1], self.n_qubits)
+            self.pqc(params[-1], self.n_qubits)
 
         # run mixed simualtion and get density matrix
         if self.execution_type == "density":
@@ -349,7 +349,7 @@ class Model:
                 {
                     "n_qubits": self.n_qubits,
                     "n_layers": self.n_layers,
-                    "pqc": self._pqc.__class__.__name__,
+                    "pqc": self.pqc.__class__.__name__,
                     "dru": self.data_reupload,
                     "params": params,
                     "noise_params": self.noise_params,
