@@ -66,9 +66,7 @@ class Model:
         self.shots = None if shots <= 0 else shots
 
         if data_reupload:
-            impl_n_layers: int = (
-                n_layers + 1
-            )  # we need L+1 according to Schuld et al.
+            impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
             self.degree = n_layers * n_qubits
         else:
             impl_n_layers: int = n_layers
@@ -89,9 +87,7 @@ class Model:
                 )
             else:
                 params[:, indices[0] : indices[1] : indices[2]] = (
-                    np.ones_like(
-                        params[:, indices[0] : indices[1] : indices[2]]
-                    )
+                    np.ones_like(params[:, indices[0] : indices[1] : indices[2]])
                     * value
                 )
             return params
@@ -101,9 +97,7 @@ class Model:
                 0, 2 * np.pi, params_shape, requires_grad=True
             )
         elif initialization == "zeros":
-            self.params: np.ndarray = np.zeros(
-                params_shape, requires_grad=True
-            )
+            self.params: np.ndarray = np.zeros(params_shape, requires_grad=True)
         elif initialization == "zero-controlled":
             self.params: np.ndarray = np.random.uniform(
                 0, 2 * np.pi, params_shape, requires_grad=True
@@ -122,14 +116,16 @@ class Model:
             using strategy {initialization}."
         )
 
-        device = "default.mixed" if self.shots is None else "default.qubit"
-        self.dev: qml.Device = qml.device(
-            device, shots=self.shots, wires=self.n_qubits
+        # Initialize two circuits, one with the default device and one with the mixed device
+        # which allows us to later route depending on the state_vector flag
+        self.circuit: qml.QNode = qml.QNode(
+            self._circuit,
+            qml.device("default.qubit", shots=self.shots, wires=self.n_qubits),
         )
-
-        log.info(f"Using device {device}.")
-
-        self.circuit: qml.QNode = qml.QNode(self._circuit, self.dev)
+        self.circuit_mixed: qml.QNode = qml.QNode(
+            self._circuit,
+            qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
+        )
 
         log.debug(self._draw())
 
@@ -192,7 +188,7 @@ class Model:
                 otherwise the density matrix of all qubits.
 
         Raises:
-            ValueError: If a) state_vector and exp_val are set,
+            ValueError: If a) state_vector and exp_val are set (mutually exclusive),
             b) if either state_vector or exp_val is true and shots is not none,
             c) if state_vector and exp_val are both false
             but shots_is none
@@ -207,9 +203,7 @@ class Model:
             if self.noise_params is not None:
                 for q in range(self.n_qubits):
                     qml.BitFlip(self.noise_params.get("BitFlip", 0.0), wires=q)
-                    qml.PhaseFlip(
-                        self.noise_params.get("PhaseFlip", 0.0), wires=q
-                    )
+                    qml.PhaseFlip(self.noise_params.get("PhaseFlip", 0.0), wires=q)
                     qml.AmplitudeDamping(
                         self.noise_params.get("AmplitudeDamping", 0.0), wires=q
                     )
@@ -224,15 +218,23 @@ class Model:
         if self.data_reupload:
             self.pqc(params[-1], self.n_qubits)
 
-        if self.state_vector and not self.exp_val and self.shots is None:
+        # run mixed simualtion and get density matrix
+        if self.state_vector and not self.exp_val:
+            if self.shots is not None:
+                log.warning("Shots is ignored when state_vector is true")
+
             return qml.density_matrix(wires=list(range(self.n_qubits)))
-        elif self.exp_val and self.shots is None:
+        # run default simulation and get expectation value
+        elif (
+            not self.state_vector and self.exp_val
+        ):  # for expval, shots can be none or a number
             return qml.expval(qml.PauliZ(self.output_qubit))
+        # run default simulation and get probs
         elif self.shots is not None:
             if self.output_qubit == -1:
-                return 2 * qml.probs(wires=list(range(self.n_qubits))) - 1
+                return qml.probs(wires=list(range(self.n_qubits)))
             else:
-                return 2 * qml.probs(wires=self.output_qubit) - 1
+                return qml.probs(wires=self.output_qubit)
         else:
             raise ValueError(
                 f"Invalid combination of parameters state_vector:{self.state_vector},\
@@ -274,9 +276,7 @@ class Model:
             np.ndarray: Expectation value of PauliZ(0) of the circuit.
         """
         # Call forward method which handles the actual caching etc.
-        return self._forward(
-            params, inputs, noise_params, cache, state_vector, exp_val
-        )
+        return self._forward(params, inputs, noise_params, cache, state_vector, exp_val)
 
     def _forward(
         self,
@@ -346,14 +346,21 @@ class Model:
                 result = np.load(file_path)
 
         if result is None:
-            # execute the PQC circuit with the current set of parameters
-            result = self.circuit(
-                params=params,
-                inputs=inputs,
-                noise_params=noise_params,
-                state_vector=state_vector,
-                exp_val=exp_val,
-            )
+            # if state_vector flag set, use the default.mixed device
+            if self.state_vector:
+                result = self.circuit_mixed(
+                    params=params,
+                    inputs=inputs,
+                )
+            else:
+                result = self.circuit(
+                    params=params,
+                    inputs=inputs,
+                )
+
+            # probabilities were used -> convert to expectation values
+            if not self.state_vector and not self.exp_val and self.shots is not None:
+                result = 2 * result - 1
 
         if cache:
             np.save(file_path, result)
