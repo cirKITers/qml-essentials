@@ -270,6 +270,7 @@ class Model:
                     "dru": self.data_reupload,
                     "params": params,
                     "noise_params": noise_params,
+                    "inputs": inputs,
                 }
             ).encode("utf-8")
         ).hexdigest()
