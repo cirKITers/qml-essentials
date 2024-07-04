@@ -102,3 +102,39 @@ def test_cache() -> None:
         )
 
         assert result.shape == test_case["shape"], f"Test case: {test_case} failed"
+
+
+def test_initialization() -> None:
+    test_cases = [
+        {
+            "initialization": "random",
+        },
+        {
+            "initialization": "zeros",
+        },
+        {
+            "initialization": "zero-controlled",
+        },
+        {
+            "initialization": "pi-controlled",
+        },
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            data_reupload=True,
+            initialization=test_case["initialization"],
+            output_qubit=0,
+            shots=1024,
+        )
+
+        _ = model(
+            model.params,
+            inputs=None,
+            noise_params=None,
+            cache=False,
+            execution_type="expval",
+        )
