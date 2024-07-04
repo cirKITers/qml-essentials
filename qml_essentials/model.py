@@ -386,10 +386,6 @@ class Model:
                     inputs=inputs,
                 )
 
-            # probabilities were used -> convert to expectation values
-            if self.execution_type == "probs":
-                result = 2 * result - 1
-
         if cache:
             np.save(file_path, result)
 
