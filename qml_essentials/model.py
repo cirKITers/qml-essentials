@@ -3,6 +3,7 @@ import pennylane as qml
 import pennylane.numpy as np
 import hashlib
 import os
+import warnings
 
 from qml_essentials.ansaetze import Ansaetze
 
@@ -46,8 +47,8 @@ class Model:
         """
         # Initialize default parameters needed for circuit evaluation
         self.noise_params: Optional[Dict[str, float]] = None
-        self.state_vector: bool = False
-        self.exp_val: bool = True
+        self.execution_type: Optional[str] = "expval"
+        self.shots = shots
 
         # Copy the parameters
         self.n_qubits: int = n_qubits
@@ -56,14 +57,11 @@ class Model:
         self.output_qubit: int = output_qubit
 
         # Initialize ansatz
-        self.pqc: Callable[[Optional[np.ndarray], int], int] = getattr(
+        self._pqc: Callable[[Optional[np.ndarray], int], int] = getattr(
             Ansaetze, circuit_type or "no_ansatz"
         )()
 
         log.info(f"Using {circuit_type} circuit.")
-
-        # Only reasonable number of shots
-        self.shots = None if shots <= 0 else shots
 
         if data_reupload:
             impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
@@ -76,14 +74,17 @@ class Model:
 
         params_shape: Tuple[int, int] = (
             impl_n_layers,
-            self.pqc.n_params_per_layer(self.n_qubits),
+            self._pqc.n_params_per_layer(self.n_qubits),
         )
 
         def set_control_params(params, value):
-            indices = self.pqc.get_control_indices(self.n_qubits)
+            indices = self._pqc.get_control_indices(self.n_qubits)
             if indices is None:
-                log.warning(
-                    f"Specified {initialization} but circuit does not contain controlled rotation gates. Parameters are intialized randomly."
+                warnings.warn(
+                    f"Specified {initialization} but circuit\
+                    does not contain controlled rotation gates.
+                    Parameters are intialized randomly.",
+                    UserWarning,
                 )
             else:
                 params[:, indices[0] : indices[1] : indices[2]] = (
@@ -128,6 +129,47 @@ class Model:
         )
 
         log.debug(self._draw())
+
+    @property
+    def noise_params(self) -> Optional[Dict[str, float]]:
+        return self._noise_params
+
+    @noise_params.setter
+    def noise_params(self, value: Optional[Dict[str, float]]) -> None:
+        if value is not None and all(np == 0.0 for np in value.values()):
+            value = None
+        self._noise_params = value
+
+    @property
+    def execution_type(self) -> str:
+        return self._execution_type
+
+    @execution_type.setter
+    def execution_type(self, value: str) -> None:
+        if value not in ["density", "expval", "probs"]:
+            raise ValueError("Invalid execution type.")
+
+        if value == "probs" and self.shots is None:
+            warnings.warn(
+                "Setting execution_type to probs without specifying shots.", UserWarning
+            )
+
+        if value == "density" and self.shots is not None:
+            warnings.warn(
+                "Setting execution_type to density with specified shots.", UserWarning
+            )
+
+        self._execution_type = value
+
+    @property
+    def shots(self) -> Optional[int]:
+        return self._shots
+
+    @shots.setter
+    def shots(self, value: Optional[int]) -> None:
+        if type(value) is int and value <= 0:
+            value = None
+        self._shots = value
 
     def _iec(
         self,
@@ -195,7 +237,7 @@ class Model:
         """
 
         for l in range(0, self.n_layers):
-            self.pqc(params[l], self.n_qubits)
+            self._pqc(params[l], self.n_qubits)
 
             if self.data_reupload or l == 0:
                 self._iec(inputs, data_reupload=self.data_reupload)
@@ -216,39 +258,25 @@ class Model:
                     )
 
         if self.data_reupload:
-            self.pqc(params[-1], self.n_qubits)
+            self._pqc(params[-1], self.n_qubits)
 
         # run mixed simualtion and get density matrix
-        if self.state_vector and not self.exp_val:
-            if self.shots is not None:
-                log.warning("Shots is ignored when state_vector is true")
-
+        if self.execution_type == "density":
             return qml.density_matrix(wires=list(range(self.n_qubits)))
         # run default simulation and get expectation value
-        elif (
-            not self.state_vector and self.exp_val
-        ):  # for expval, shots can be none or a number
+        elif self.execution_type == "expval":
             return qml.expval(qml.PauliZ(self.output_qubit))
         # run default simulation and get probs
-        elif self.shots is not None:
+        elif self.execution_type == "probs":
             if self.output_qubit == -1:
                 return qml.probs(wires=list(range(self.n_qubits)))
             else:
                 return qml.probs(wires=self.output_qubit)
         else:
-            raise ValueError(
-                f"Invalid combination of parameters state_vector:{self.state_vector},\
-                exp_val:{self.exp_val} and shots:{self.shots}"
-            )
+            raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
     def _draw(self) -> None:
-        tmp_state_vector = self.state_vector
-        tmp_exp_val = self.exp_val
-        self.state_vector = False
-        self.exp_val = True
         result = qml.draw(self.circuit)(params=self.params, inputs=None)
-        self.state_vector = tmp_state_vector
-        self.exp_val = tmp_exp_val
         return result
 
     def __repr__(self) -> str:
@@ -259,12 +287,8 @@ class Model:
 
     def __call__(
         self,
-        params: np.ndarray,
-        inputs: np.ndarray,
-        noise_params: Optional[Dict[str, float]] = None,
-        cache: Optional[bool] = False,
-        state_vector: bool = False,
-        exp_val: bool = True,
+        *args,
+        **kwargs,
     ) -> np.ndarray:
         """Perform a forward pass of the quantum circuit.
 
@@ -283,7 +307,7 @@ class Model:
             np.ndarray: Expectation value of PauliZ(0) of the circuit.
         """
         # Call forward method which handles the actual caching etc.
-        return self._forward(params, inputs, noise_params, cache, state_vector, exp_val)
+        return self._forward(*args, **kwargs)
 
     def _forward(
         self,
@@ -291,8 +315,7 @@ class Model:
         inputs: np.ndarray,
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
-        state_vector: bool = False,
-        exp_val: bool = True,
+        execution_type: str = "expval",
     ) -> np.ndarray:
         """
         Perform a forward pass of the quantum circuit.
@@ -318,8 +341,7 @@ class Model:
         """
         # set the parameters as object attributes
         self.noise_params = noise_params
-        self.state_vector = state_vector
-        self.exp_val = exp_val
+        self.execution_type = execution_type
 
         # the qasm representation contains the bound parameters, thus it is ok to hash that
         hs = hashlib.md5(
@@ -327,10 +349,11 @@ class Model:
                 {
                     "n_qubits": self.n_qubits,
                     "n_layers": self.n_layers,
-                    "pqc": self.pqc.__class__.__name__,
+                    "pqc": self._pqc.__class__.__name__,
                     "dru": self.data_reupload,
                     "params": params,
-                    "noise_params": noise_params,
+                    "noise_params": self.noise_params,
+                    "execution_type": self.execution_type,
                 }
             ).encode("utf-8")
         ).hexdigest()
@@ -353,8 +376,10 @@ class Model:
                 result = np.load(file_path)
 
         if result is None:
-            # if state_vector flag set, use the default.mixed device
-            if self.state_vector:
+            # if density matrix requested or noise params used
+            if self.execution_type == "density" or (
+                self.execution_type == "expval" and self.noise_params is not None
+            ):
                 result = self.circuit_mixed(
                     params=params,
                     inputs=inputs,
@@ -366,7 +391,7 @@ class Model:
                 )
 
             # probabilities were used -> convert to expectation values
-            if not self.state_vector and not self.exp_val and self.shots is not None:
+            if self.execution_type == "probs":
                 result = 2 * result - 1
 
         if cache:
