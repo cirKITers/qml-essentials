@@ -67,3 +67,6 @@ def test_parameters() -> None:
                 "exception"
             ], f"Got exception with configuration {test_case}: {e}"
             print(f"Exception as intended for {test_case}: {e}")
+
+            # In case of an exception, the model should still print
+            str(model)

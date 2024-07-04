@@ -242,7 +242,14 @@ class Model:
             )
 
     def _draw(self) -> None:
-        return qml.draw(self.circuit)(params=self.params, inputs=None)
+        tmp_state_vector = self.state_vector
+        tmp_exp_val = self.exp_val
+        self.state_vector = False
+        self.exp_val = True
+        result = qml.draw(self.circuit)(params=self.params, inputs=None)
+        self.state_vector = tmp_state_vector
+        self.exp_val = tmp_exp_val
+        return result
 
     def __repr__(self) -> str:
         return self._draw()
