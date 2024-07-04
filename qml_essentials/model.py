@@ -45,8 +45,8 @@ class Model:
                 Can be "random", "zeros", "zero-controlled", or "pi-controlled".
                 Defaults to "random".
             output_qubit (int, optional): The index of the output qubit.
-            shots (Optional[int], optional): The number of shots to use for the quantum device.
-                Defaults to None.
+            shots (Optional[int], optional): The number of shots to use for
+                the quantum device. Defaults to None.
 
         Returns:
             None
@@ -123,7 +123,8 @@ class Model:
             using strategy {initialization}."
         )
 
-        # Initialize two circuits, one with the default device and one with the mixed device
+        # Initialize two circuits, one with the default device and
+        # one with the mixed device
         # which allows us to later route depending on the state_vector flag
         self.circuit: qml.QNode = qml.QNode(
             self._circuit,
@@ -293,21 +294,26 @@ class Model:
         cache: Optional[bool] = False,
         execution_type: str = "expval",
     ) -> np.ndarray:
-        """Perform a forward pass of the quantum circuit.
+        """
+        Perform a forward pass of the quantum circuit.
 
         Args:
-            params (np.ndarray): Weight vector of size n_layers*(n_qubits*3-1).
-            inputs (np.ndarray): Input vector of size 1.
-            noise_params (Optional[Dict[str, float]], optional):
-                Dictionary with noise parameters. Defaults to None.
-            cache (Optional[bool], optional): Cache the circuit. Defaults to False.
-            execution_type (str, optional): The type of execution. Must be one of 'expval', 'density', or 'probs'.
-                Defaults to 'expval'.
+            params (np.ndarray): Weight vector of shape
+                [n_layers, n_qubits*n_params_per_layer].
+            inputs (np.ndarray): Input vector of shape [1].
+            noise_params (Optional[Dict[str, float]], optional): The noise parameters.
+                Defaults to None.
+            cache (Optional[bool], optional): Whether to cache the results.
+                Defaults to False.
+            execution_type (str, optional): The type of execution.
+                Must be one of 'expval', 'density', or 'probs'. Defaults to 'expval'.
 
         Returns:
-            np.ndarray: The output of the quantum circuit. The shape depends on the execution_type.
+            np.ndarray: The output of the quantum circuit.
+                The shape depends on the execution_type.
                 - If execution_type is 'expval', returns an ndarray of shape (1,).
-                - If execution_type is 'density', returns an ndarray of shape (2**n_qubits, 2**n_qubits).
+                - If execution_type is 'density', returns an ndarray
+                    of shape (2**n_qubits, 2**n_qubits).
                 - If execution_type is 'probs', returns an ndarray of shape (2**n_qubits,).
         """
         # Call forward method which handles the actual caching etc.
@@ -325,16 +331,22 @@ class Model:
         Perform a forward pass of the quantum circuit.
 
         Args:
-            params (np.ndarray): Weight vector of shape [n_layers, n_qubits*n_params_per_layer].
+            params (np.ndarray): Weight vector of shape
+                [n_layers, n_qubits*n_params_per_layer].
             inputs (np.ndarray): Input vector of shape [1].
-            noise_params (Optional[Dict[str, float]], optional): The noise parameters. Defaults to None.
-            cache (Optional[bool], optional): Whether to cache the results. Defaults to False.
-            execution_type (str, optional): The type of execution. Must be one of 'expval', 'density', or 'probs'. Defaults to 'expval'.
+            noise_params (Optional[Dict[str, float]], optional): The noise parameters.
+                Defaults to None.
+            cache (Optional[bool], optional): Whether to cache the results.
+                Defaults to False.
+            execution_type (str, optional): The type of execution.
+                Must be one of 'expval', 'density', or 'probs'. Defaults to 'expval'.
 
         Returns:
-            np.ndarray: The output of the quantum circuit. The shape depends on the execution_type.
+            np.ndarray: The output of the quantum circuit.
+                The shape depends on the execution_type.
                 - If execution_type is 'expval', returns an ndarray of shape (1,).
-                - If execution_type is 'density', returns an ndarray of shape (2**n_qubits, 2**n_qubits).
+                - If execution_type is 'density', returns an ndarray
+                    of shape (2**n_qubits, 2**n_qubits).
                 - If execution_type is 'probs', returns an ndarray of shape (2**n_qubits,).
 
         Raises:
