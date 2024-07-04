@@ -1,42 +1,32 @@
 from qml_essentials.model import Model
+import pytest
 
 
 def test_parameters() -> None:
     test_cases = [
         {
             "shots": -1,
-            "state_vector": False,
-            "exp_val": True,
+            "execution_type": "expval",
             "exception": False,
         },
         {
             "shots": -1,
-            "state_vector": True,
-            "exp_val": False,
+            "execution_type": "density",
             "exception": False,
         },
         {
             "shots": 1024,
-            "state_vector": False,
-            "exp_val": False,
+            "execution_type": "probs",
             "exception": False,
         },
         {
             "shots": 1024,
-            "state_vector": False,
-            "exp_val": True,
+            "execution_type": "expval",
             "exception": False,
         },
         {
-            "shots": -1,
-            "state_vector": True,
-            "exp_val": True,
-            "exception": True,
-        },
-        {
             "shots": 1024,
-            "state_vector": True,
-            "exp_val": False,
+            "execution_type": "density",
             "exception": True,
         },
     ]
@@ -52,21 +42,22 @@ def test_parameters() -> None:
             shots=test_case["shots"],
         )
 
-        try:
-            result = model(
-                model.params,
-                inputs=None,
-                noise_params=None,
-                cache=False,
-                state_vector=test_case["state_vector"],
-                exp_val=test_case["exp_val"],
-            )
+        result = model(
+            model.params,
+            inputs=None,
+            noise_params=None,
+            cache=False,
+            execution_type=test_case["execution_type"],
+        )
+        if test_case["exception"]:
+            with pytest.warns(UserWarning):
+                result = model(
+                    model.params,
+                    inputs=None,
+                    noise_params=None,
+                    cache=False,
+                    execution_type=test_case["execution_type"],
+                )
+        else:
             print(f"Test case {test_case}: {result}")
-        except Exception as e:
-            assert test_case[
-                "exception"
-            ], f"Got exception with configuration {test_case}: {e}"
-            print(f"Exception as intended for {test_case}: {e}")
-
-            # In case of an exception, the model should still print
             str(model)
