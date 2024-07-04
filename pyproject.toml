@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "qml-essentials"
-version = "0.1.0"
+version = "0.1.1"
 description = ""
 authors = ["Melvin Strobl <lc3267@kit.edu>"]
 readme = "README.md"
