@@ -41,7 +41,13 @@ class Model:
                 If None, defaults to "no_ansatz".
             data_reupload (bool, optional): Whether to reupload data to the
                 quantum device on each measurement. Defaults to True.
+            initialization (str, optional): The strategy to initialize the parameters.
+                Can be "random", "zeros", "zero-controlled", or "pi-controlled".
+                Defaults to "random".
             output_qubit (int, optional): The index of the output qubit.
+            shots (Optional[int], optional): The number of shots to use for the quantum device.
+                Defaults to None.
+
         Returns:
             None
         """
@@ -77,7 +83,7 @@ class Model:
             self.pqc.n_params_per_layer(self.n_qubits),
         )
 
-        def set_control_params(params, value):
+        def set_control_params(params: np.ndarray, value: float) -> np.ndarray:
             indices = self.pqc.get_control_indices(self.n_qubits)
             if indices is None:
                 warnings.warn(
@@ -228,12 +234,6 @@ class Model:
             Union[float, np.ndarray]: Expectation value of PauliZ(0)
                 of the circuit if state_vector is False and exp_val is True,
                 otherwise the density matrix of all qubits.
-
-        Raises:
-            ValueError: If a) state_vector and exp_val are set (mutually exclusive),
-            b) if either state_vector or exp_val is true and shots is not none,
-            c) if state_vector and exp_val are both false
-            but shots_is none
         """
 
         for l in range(0, self.n_layers):
@@ -287,8 +287,11 @@ class Model:
 
     def __call__(
         self,
-        *args,
-        **kwargs,
+        params: np.ndarray,
+        inputs: np.ndarray,
+        noise_params: Optional[Dict[str, float]] = None,
+        cache: Optional[bool] = False,
+        execution_type: str = "expval",
     ) -> np.ndarray:
         """Perform a forward pass of the quantum circuit.
 
@@ -298,16 +301,17 @@ class Model:
             noise_params (Optional[Dict[str, float]], optional):
                 Dictionary with noise parameters. Defaults to None.
             cache (Optional[bool], optional): Cache the circuit. Defaults to False.
-            state_vector (bool, optional): Measure the state vector
-                instead of the wave function. Defaults to False.
-            exp_val (bool, optional): Compute the expectation value of PauliZ(0).
-                Defaults to True.
+            execution_type (str, optional): The type of execution. Must be one of 'expval', 'density', or 'probs'.
+                Defaults to 'expval'.
 
         Returns:
-            np.ndarray: Expectation value of PauliZ(0) of the circuit.
+            np.ndarray: The output of the quantum circuit. The shape depends on the execution_type.
+                - If execution_type is 'expval', returns an ndarray of shape (1,).
+                - If execution_type is 'density', returns an ndarray of shape (2**n_qubits, 2**n_qubits).
+                - If execution_type is 'probs', returns an ndarray of shape (2**n_qubits,).
         """
         # Call forward method which handles the actual caching etc.
-        return self._forward(*args, **kwargs)
+        return self._forward(params, inputs, noise_params, cache, execution_type)
 
     def _forward(
         self,
@@ -321,19 +325,17 @@ class Model:
         Perform a forward pass of the quantum circuit.
 
         Args:
-            params (np.ndarray): Weight vector of size n_layers*(n_qubits*3-1).
-            inputs (np.ndarray): Input vector of size 1.
-            noise_params (Optional[Dict[str, float]], optional):
-                The noise parameters. Defaults to None.
-            cache (Optional[bool], optional): Whether to cache the results.
-                Defaults to False.
-            state_vector (bool, optional): Whether to return the state vector
-                instead of the expectation value. Defaults to False.
-            exp_val (bool, optional): Whether to compute the expectation value.
-                Defaults to True.
+            params (np.ndarray): Weight vector of shape [n_layers, n_qubits*n_params_per_layer].
+            inputs (np.ndarray): Input vector of shape [1].
+            noise_params (Optional[Dict[str, float]], optional): The noise parameters. Defaults to None.
+            cache (Optional[bool], optional): Whether to cache the results. Defaults to False.
+            execution_type (str, optional): The type of execution. Must be one of 'expval', 'density', or 'probs'. Defaults to 'expval'.
 
         Returns:
-            np.ndarray: The output of the quantum circuit.
+            np.ndarray: The output of the quantum circuit. The shape depends on the execution_type.
+                - If execution_type is 'expval', returns an ndarray of shape (1,).
+                - If execution_type is 'density', returns an ndarray of shape (2**n_qubits, 2**n_qubits).
+                - If execution_type is 'probs', returns an ndarray of shape (2**n_qubits,).
 
         Raises:
             NotImplementedError: If the number of shots is not None or if the
@@ -354,6 +356,7 @@ class Model:
                     "params": params,
                     "noise_params": self.noise_params,
                     "execution_type": self.execution_type,
+                    "inputs": inputs,
                 }
             ).encode("utf-8")
         ).hexdigest()
