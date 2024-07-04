@@ -314,7 +314,8 @@ class Model:
                 - If execution_type is 'expval', returns an ndarray of shape (1,).
                 - If execution_type is 'density', returns an ndarray
                     of shape (2**n_qubits, 2**n_qubits).
-                - If execution_type is 'probs', returns an ndarray of shape (2**n_qubits,).
+                - If execution_type is 'probs', returns an ndarray
+                    of shape (2**n_qubits,).
         """
         # Call forward method which handles the actual caching etc.
         return self._forward(params, inputs, noise_params, cache, execution_type)
@@ -347,7 +348,8 @@ class Model:
                 - If execution_type is 'expval', returns an ndarray of shape (1,).
                 - If execution_type is 'density', returns an ndarray
                     of shape (2**n_qubits, 2**n_qubits).
-                - If execution_type is 'probs', returns an ndarray of shape (2**n_qubits,).
+                - If execution_type is 'probs', returns an ndarray
+                    of shape (2**n_qubits,).
 
         Raises:
             NotImplementedError: If the number of shots is not None or if the
