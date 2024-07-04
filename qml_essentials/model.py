@@ -82,7 +82,7 @@ class Model:
             if indices is None:
                 warnings.warn(
                     f"Specified {initialization} but circuit\
-                    does not contain controlled rotation gates.
+                    does not contain controlled rotation gates.\
                     Parameters are intialized randomly.",
                     UserWarning,
                 )
@@ -360,10 +360,6 @@ class Model:
 
         result: Optional[np.ndarray] = None
         if cache:
-            if self.shots is not None or self.exp_val:
-                raise NotImplementedError(
-                    "Caching with shots or exp_val not yet implemented."
-                )
             name: str = f"pqc_{hs}.npy"
 
             cache_folder: str = ".cache"
