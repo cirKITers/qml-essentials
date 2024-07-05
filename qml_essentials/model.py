@@ -217,7 +217,17 @@ class Model:
                     "The number of parameters for this IEC cannot be greater than 3"
                 )
         else:
-            qml.RX(inputs, wires=0)
+            if inputs.shape[1] == 1:
+                qml.RX(inputs[:, 0], wires=0)
+            elif inputs.shape[1] == 2:
+                qml.RX(inputs[:, 0], wires=0)
+                qml.RY(inputs[:, 1], wires=0)
+            elif inputs.shape[1] == 3:
+                qml.Rot(inputs[:, 0], inputs[:, 1], inputs[:, 2], wires=0)
+            else:
+                raise ValueError(
+                    "The number of parameters for this IEC cannot be greater than 3"
+                )
 
     def _circuit(
         self,
@@ -276,8 +286,8 @@ class Model:
         else:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
-    def _draw(self) -> None:
-        result = qml.draw(self.circuit)(params=self.params, inputs=None)
+    def _draw(self, inputs=None) -> None:
+        result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
         return result
 
     def __repr__(self) -> str:
