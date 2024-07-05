@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "qml-essentials"
-version = "0.1.0"
+version = "0.1.8"
 description = ""
 authors = ["Melvin Strobl <lc3267@kit.edu>"]
 readme = "README.md"
@@ -12,6 +12,8 @@ pennylane = "^0.36.0"
 
 [tool.poetry.group.dev.dependencies]
 devpi-client = "^7.0.3"
+black = "^24.4.2"
+pytest = "^8.2.2"
 
 [build-system]
 requires = ["poetry-core"]
