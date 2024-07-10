@@ -34,6 +34,11 @@ class Model:
         depending if data_reupload is True and parameters_per_layer is given by
         the chosen ansatz.
 
+        The model is initialized with the following parameters as defaults:
+        - noise_params: None
+        - execution_type: "expval"
+        - shots: None
+
         Args:
             n_qubits (int): The number of qubits in the circuit.
             n_layers (int): The number of layers in the circuit.
