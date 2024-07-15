@@ -34,6 +34,11 @@ class Model:
         depending if data_reupload is True and parameters_per_layer is given by
         the chosen ansatz.
 
+        The model is initialized with the following parameters as defaults:
+        - noise_params: None
+        - execution_type: "expval"
+        - shots: None
+
         Args:
             n_qubits (int): The number of qubits in the circuit.
             n_layers (int): The number of layers in the circuit.
@@ -302,7 +307,7 @@ class Model:
         inputs: np.ndarray,
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
-        execution_type: str = "expval",
+        execution_type: Optional[str] = None,
     ) -> np.ndarray:
         """
         Perform a forward pass of the quantum circuit.
@@ -312,11 +317,13 @@ class Model:
                 [n_layers, n_qubits*n_params_per_layer].
             inputs (np.ndarray): Input vector of shape [1].
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
-                Defaults to None.
+                Defaults to None which results in the last
+                set noise parameters being used.
             cache (Optional[bool], optional): Whether to cache the results.
                 Defaults to False.
             execution_type (str, optional): The type of execution.
-                Must be one of 'expval', 'density', or 'probs'. Defaults to 'expval'.
+                Must be one of 'expval', 'density', or 'probs'. Defaults to None
+                which results in the last set execution type being used.
 
         Returns:
             np.ndarray: The output of the quantum circuit.
@@ -336,7 +343,7 @@ class Model:
         inputs: np.ndarray,
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
-        execution_type: str = "expval",
+        execution_type: Optional[str] = None,
     ) -> np.ndarray:
         """
         Perform a forward pass of the quantum circuit.
@@ -346,11 +353,13 @@ class Model:
                 [n_layers, n_qubits*n_params_per_layer].
             inputs (np.ndarray): Input vector of shape [1].
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
-                Defaults to None.
+                Defaults to None which results in the last
+                set noise parameters being used.
             cache (Optional[bool], optional): Whether to cache the results.
                 Defaults to False.
             execution_type (str, optional): The type of execution.
-                Must be one of 'expval', 'density', or 'probs'. Defaults to 'expval'.
+                Must be one of 'expval', 'density', or 'probs'. Defaults to None
+                which results in the last set execution type being used.
 
         Returns:
             np.ndarray: The output of the quantum circuit.
@@ -366,8 +375,10 @@ class Model:
                 expectation value is True.
         """
         # set the parameters as object attributes
-        self.noise_params = noise_params
-        self.execution_type = execution_type
+        if noise_params is not None:
+            self.noise_params = noise_params
+        if execution_type is not None:
+            self.execution_type = execution_type
 
         # the qasm representation contains the bound parameters, thus it is ok to hash that
         hs = hashlib.md5(
