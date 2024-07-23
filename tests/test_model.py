@@ -144,6 +144,7 @@ def test_initialization() -> None:
             execution_type="expval",
         )
 
+
 def test_ansaetze() -> None:
     ansatz_cases = Ansaetze.get_available()
 
@@ -181,12 +182,14 @@ def test_multi_input() -> None:
         np.random.rand(2, 1),
         np.random.rand(20, 1),
     ]
-    input_cases = [ 2 * np.pi * i for i in input_cases ]
+    input_cases = [2 * np.pi * i for i in input_cases]
     input_cases.append(None)
 
     for inputs in input_cases:
-        logger.info(f"Testing input with shape: "\
-                f"{inputs.shape if inputs is not None else 'None'}")
+        logger.info(
+            f"Testing input with shape: "
+            f"{inputs.shape if inputs is not None else 'None'}"
+        )
         model = Model(
             n_qubits=2,
             n_layers=1,
@@ -207,15 +210,16 @@ def test_multi_input() -> None:
 
         if inputs is not None:
             if len(out.shape) > 0:
-                assert out.shape[0] == inputs.shape[0], \
-                        f"batch dimension mismatch, expected {inputs.shape[0]} " \
-                        f"as an output dimension, but got {out.shape[0]}"
+                assert out.shape[0] == inputs.shape[0], (
+                    f"batch dimension mismatch, expected {inputs.shape[0]} "
+                    f"as an output dimension, but got {out.shape[0]}"
+                )
             else:
-                assert inputs.shape[0] == 1, \
-                        f"expected one elemental input for zero dimensional output"
+                assert (
+                    inputs.shape[0] == 1
+                ), f"expected one elemental input for zero dimensional output"
         else:
-            assert len(out.shape) == 0, \
-                        f"expected one elemental output for empty input"
+            assert len(out.shape) == 0, f"expected one elemental output for empty input"
 
 
 def test_dru() -> None:
@@ -240,3 +244,83 @@ def test_dru() -> None:
             execution_type="expval",
         )
 
+
+def test_local_state() -> None:
+    test_cases = [
+        {
+            "noise_params": None,
+            "execution_type": "density",
+        },
+        {
+            "noise_params": {
+                "BitFlip": 0.1,
+                "PhaseFlip": 0.2,
+                "AmplitudeDamping": 0.3,
+                "PhaseDamping": 0.4,
+                "DepolarizingChannel": 0.5,
+            },
+            "execution_type": "density",
+        },
+        {
+            "noise_params": None,
+            "execution_type": "expval",
+        },
+    ]
+
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        data_reupload=True,
+        initialization="random",
+        output_qubit=0,
+    )
+
+    # Check default values
+    assert model.noise_params is None
+    assert model.execution_type is "expval"
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            data_reupload=True,
+            initialization="random",
+            output_qubit=0,
+        )
+
+        model.noise_params = test_case["noise_params"]
+        model.execution_type = test_case["execution_type"]
+
+        _ = model(
+            model.params,
+            inputs=None,
+            noise_params=None,
+            cache=False,
+        )
+
+        # check if setting "externally" is working
+        assert model.noise_params == test_case["noise_params"]
+        assert model.execution_type == test_case["execution_type"]
+
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            data_reupload=True,
+            initialization="random",
+            output_qubit=0,
+        )
+
+        _ = model(
+            model.params,
+            inputs=None,
+            cache=False,
+            noise_params=test_case["noise_params"],
+            execution_type=test_case["execution_type"],
+        )
+
+        # check if setting in the forward call is working
+        assert model.noise_params == test_case["noise_params"]
+        assert model.execution_type == test_case["execution_type"]
