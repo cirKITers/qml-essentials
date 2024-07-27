@@ -49,7 +49,8 @@ class Model:
             initialization (str, optional): The strategy to initialize the parameters.
                 Can be "random", "zeros", "zero-controlled", or "pi-controlled".
                 Defaults to "random".
-            output_qubit (int, optional): The index of the output qubit.
+            output_qubit (int, optional): The index of the output qubit. When
+                set to -1 a global measurement is conducted.
             shots (Optional[int], optional): The number of shots to use for
                 the quantum device. Defaults to None.
 
@@ -158,8 +159,14 @@ class Model:
 
     @execution_type.setter
     def execution_type(self, value: str) -> None:
-        if value not in ["density", "expval", "probs"]:
-            raise ValueError("Invalid execution type.")
+        if value not in ["density", "expval", "probs", "global_mean"]:
+            raise ValueError(f"Invalid execution type: {value}.")
+
+        if value in ["global_mean", "density"] and self.output_qubit != -1:
+            warnings.warn(
+                f"{value} measurement does ignore output_qubit, which is "
+                f"{self.output_qubit}."
+            )
 
         if value == "probs" and self.shots is None:
             warnings.warn(
@@ -261,7 +268,9 @@ class Model:
             if self.noise_params is not None:
                 for q in range(self.n_qubits):
                     qml.BitFlip(self.noise_params.get("BitFlip", 0.0), wires=q)
-                    qml.PhaseFlip(self.noise_params.get("PhaseFlip", 0.0), wires=q)
+                    qml.PhaseFlip(
+                        self.noise_params.get("PhaseFlip", 0.0), wires=q
+                    )
                     qml.AmplitudeDamping(
                         self.noise_params.get("AmplitudeDamping", 0.0), wires=q
                     )
@@ -281,13 +290,27 @@ class Model:
             return qml.density_matrix(wires=list(range(self.n_qubits)))
         # run default simulation and get expectation value
         elif self.execution_type == "expval":
-            return qml.expval(qml.PauliZ(self.output_qubit))
+            # global measurement (tensored Pauli Z, i.e. parity)
+            if self.output_qubit == -1:
+                obs = qml.Hamiltonian(
+                    [1.0] * self.n_qubits,
+                    [qml.PauliZ(q) for q in range(self.n_qubits)],
+                    simplify=True,
+                )
+                return qml.expval(obs)
+            # local measurement
+            else:
+                return qml.expval(qml.PauliZ(self.output_qubit))
         # run default simulation and get probs
         elif self.execution_type == "probs":
             if self.output_qubit == -1:
                 return qml.probs(wires=list(range(self.n_qubits)))
             else:
                 return qml.probs(wires=self.output_qubit)
+        # run default simulation and get expectation value of each qubit
+        # mean is computed outside of circuit call
+        elif self.execution_type == "global_mean":
+            return [qml.expval(qml.PauliZ(q)) for q in range(self.n_qubits)]
         else:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
@@ -322,20 +345,24 @@ class Model:
             cache (Optional[bool], optional): Whether to cache the results.
                 Defaults to False.
             execution_type (str, optional): The type of execution.
-                Must be one of 'expval', 'density', or 'probs'. Defaults to None
-                which results in the last set execution type being used.
+                Must be one of 'expval', 'density', 'probs', or 'global_mean'.
+                Defaults to None which results in the last set execution type
+                being used.
 
         Returns:
             np.ndarray: The output of the quantum circuit.
                 The shape depends on the execution_type.
-                - If execution_type is 'expval', returns an ndarray of shape (1,).
+                - If execution_type is 'expval' or 'global_mean', returns an
+                    ndarray of shape (1,).
                 - If execution_type is 'density', returns an ndarray
                     of shape (2**n_qubits, 2**n_qubits).
                 - If execution_type is 'probs', returns an ndarray
                     of shape (2**n_qubits,).
         """
         # Call forward method which handles the actual caching etc.
-        return self._forward(params, inputs, noise_params, cache, execution_type)
+        return self._forward(
+            params, inputs, noise_params, cache, execution_type
+        )
 
     def _forward(
         self,
@@ -358,13 +385,15 @@ class Model:
             cache (Optional[bool], optional): Whether to cache the results.
                 Defaults to False.
             execution_type (str, optional): The type of execution.
-                Must be one of 'expval', 'density', or 'probs'. Defaults to None
-                which results in the last set execution type being used.
+                Must be one of 'expval', 'density', 'probs', or 'global_mean'.
+                Defaults to None which results in the last set execution type
+                being used.
 
         Returns:
             np.ndarray: The output of the quantum circuit.
                 The shape depends on the execution_type.
-                - If execution_type is 'expval', returns an ndarray of shape (1,).
+                - If execution_type is 'expval' or 'global_mean', returns an
+                    ndarray of shape (1,).
                 - If execution_type is 'density', returns an ndarray
                     of shape (2**n_qubits, 2**n_qubits).
                 - If execution_type is 'probs', returns an ndarray
@@ -392,6 +421,7 @@ class Model:
                     "noise_params": self.noise_params,
                     "execution_type": self.execution_type,
                     "inputs": inputs,
+                    "output_qubit": self.output_qubit,
                 }
             ).encode("utf-8")
         ).hexdigest()
@@ -411,8 +441,9 @@ class Model:
 
         if result is None:
             # if density matrix requested or noise params used
-            if self.execution_type == "density" or (
-                self.execution_type == "expval" and self.noise_params is not None
+            if (
+                self.execution_type == "density"
+                or self.noise_params is not None
             ):
                 result = self.circuit_mixed(
                     params=params,
@@ -423,6 +454,9 @@ class Model:
                     params=params,
                     inputs=inputs,
                 )
+
+        if self.execution_type == "global_mean":
+            result = np.mean(result, axis=0)
 
         if cache:
             np.save(file_path, result)
