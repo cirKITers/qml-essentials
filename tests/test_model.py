@@ -389,7 +389,6 @@ def test_local_and_global_meas() -> None:
         },
     ]
 
-
     for test_case in test_cases:
         model = Model(
             n_qubits=2,
