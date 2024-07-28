@@ -20,11 +20,6 @@ def test_parameters() -> None:
             "exception": False,
         },
         {
-            "shots": -1,
-            "execution_type": "global_mean",
-            "exception": False,
-        },
-        {
             "shots": 1024,
             "execution_type": "probs",
             "exception": False,
@@ -38,11 +33,6 @@ def test_parameters() -> None:
             "shots": 1024,
             "execution_type": "density",
             "exception": True,
-        },
-        {
-            "shots": 1024,
-            "execution_type": "global_mean",
-            "exception": False,
         },
     ]
 
@@ -352,16 +342,10 @@ def test_local_and_global_meas() -> None:
             "out_shape": (3,)
         },
         {
-            "execution_type": "global_mean",
-            "output_qubit": -1,
+            "execution_type": "expval",
+            "output_qubit": [0, 1],
             "shots": -1,
-            "out_shape": (3,)
-        },
-        {
-            "execution_type": "global_mean",
-            "output_qubit": 0,
-            "shots": -1,
-            "out_shape": (3,)
+            "out_shape": (2, 3)
         },
         {
             "execution_type": "density",
@@ -386,6 +370,12 @@ def test_local_and_global_meas() -> None:
             "output_qubit": 0,
             "shots": 1024,
             "out_shape": (3, 2)
+        },
+        {
+            "execution_type": "probs",
+            "output_qubit": [0, 1],
+            "shots": 1024,
+            "out_shape": (3, 4)
         },
     ]
 

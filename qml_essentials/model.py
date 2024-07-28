@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Callable, Union
+from typing import Dict, Optional, Tuple, Callable, Union, List
 import pennylane as qml
 import pennylane.numpy as np
 import hashlib
@@ -24,7 +24,7 @@ class Model:
         circuit_type: str,
         data_reupload: bool = True,
         initialization: str = "random",
-        output_qubit: int = 0,
+        output_qubit: Union[List[int], int] = 0,
         shots: Optional[int] = None,
     ) -> None:
         """
@@ -49,8 +49,10 @@ class Model:
             initialization (str, optional): The strategy to initialize the parameters.
                 Can be "random", "zeros", "zero-controlled", or "pi-controlled".
                 Defaults to "random".
-            output_qubit (int, optional): The index of the output qubit. When
-                set to -1 a global measurement is conducted.
+            output_qubit (List[int], int, optional): The index of the output
+                qubit (or qubits). When set to -1 all qubits are measured, or a
+                global measurement is conducted, depending on the execution
+                type.
             shots (Optional[int], optional): The number of shots to use for
                 the quantum device. Defaults to None.
 
@@ -61,12 +63,12 @@ class Model:
         self.noise_params: Optional[Dict[str, float]] = None
         self.execution_type: Optional[str] = "expval"
         self.shots = shots
+        self.output_qubit: Union[List[int], int] = output_qubit
 
         # Copy the parameters
         self.n_qubits: int = n_qubits
         self.n_layers: int = n_layers
         self.data_reupload: bool = data_reupload
-        self.output_qubit: int = output_qubit
 
         # Initialize ansatz
         self.pqc: Callable[[Optional[np.ndarray], int], int] = getattr(
@@ -159,10 +161,10 @@ class Model:
 
     @execution_type.setter
     def execution_type(self, value: str) -> None:
-        if value not in ["density", "expval", "probs", "global_mean"]:
+        if value not in ["density", "expval", "probs"]:
             raise ValueError(f"Invalid execution type: {value}.")
 
-        if value in ["global_mean", "density"] and self.output_qubit != -1:
+        if value == "density" and self.output_qubit != -1:
             warnings.warn(
                 f"{value} measurement does ignore output_qubit, which is "
                 f"{self.output_qubit}."
@@ -298,19 +300,17 @@ class Model:
                     simplify=True,
                 )
                 return qml.expval(obs)
-            # local measurement
-            else:
+            # local measurement(s)
+            elif isinstance(self.output_qubit, int):
                 return qml.expval(qml.PauliZ(self.output_qubit))
+            else:
+                return [qml.expval(qml.PauliZ(q)) for q in self.output_qubit]
         # run default simulation and get probs
         elif self.execution_type == "probs":
             if self.output_qubit == -1:
                 return qml.probs(wires=list(range(self.n_qubits)))
             else:
                 return qml.probs(wires=self.output_qubit)
-        # run default simulation and get expectation value of each qubit
-        # mean is computed outside of circuit call
-        elif self.execution_type == "global_mean":
-            return [qml.expval(qml.PauliZ(q)) for q in range(self.n_qubits)]
         else:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
@@ -345,19 +345,20 @@ class Model:
             cache (Optional[bool], optional): Whether to cache the results.
                 Defaults to False.
             execution_type (str, optional): The type of execution.
-                Must be one of 'expval', 'density', 'probs', or 'global_mean'.
+                Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
 
         Returns:
             np.ndarray: The output of the quantum circuit.
                 The shape depends on the execution_type.
-                - If execution_type is 'expval' or 'global_mean', returns an
-                    ndarray of shape (1,).
+                - If execution_type is 'expval', returns an ndarray of shape
+                    (1,) if output_qubit is -1, else (len(output_qubit),).
                 - If execution_type is 'density', returns an ndarray
                     of shape (2**n_qubits, 2**n_qubits).
                 - If execution_type is 'probs', returns an ndarray
-                    of shape (2**n_qubits,).
+                    of shape (2**n_qubits,) if output_qubit is -1, else
+                    (2**len(output_qubit),).
         """
         # Call forward method which handles the actual caching etc.
         return self._forward(
@@ -385,19 +386,20 @@ class Model:
             cache (Optional[bool], optional): Whether to cache the results.
                 Defaults to False.
             execution_type (str, optional): The type of execution.
-                Must be one of 'expval', 'density', 'probs', or 'global_mean'.
+                Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
 
         Returns:
             np.ndarray: The output of the quantum circuit.
                 The shape depends on the execution_type.
-                - If execution_type is 'expval' or 'global_mean', returns an
-                    ndarray of shape (1,).
+                - If execution_type is 'expval', returns an ndarray of shape
+                    (1,) if output_qubit is -1, else (len(output_qubit),).
                 - If execution_type is 'density', returns an ndarray
                     of shape (2**n_qubits, 2**n_qubits).
                 - If execution_type is 'probs', returns an ndarray
-                    of shape (2**n_qubits,).
+                    of shape (2**n_qubits,) if output_qubit is -1, else
+                    (2**len(output_qubit),).
 
         Raises:
             NotImplementedError: If the number of shots is not None or if the
@@ -455,8 +457,10 @@ class Model:
                     inputs=inputs,
                 )
 
-        if self.execution_type == "global_mean":
-            result = np.mean(result, axis=0)
+        if self.execution_type == "expval" and isinstance(
+            self.output_qubit, list
+        ):
+            result = np.stack(result)
 
         if cache:
             np.save(file_path, result)
