@@ -123,6 +123,9 @@ def test_initialization() -> None:
         {
             "initialization": "pi-controlled",
         },
+        {
+            "initialization": "pi",
+        },
     ]
 
     for test_case in test_cases:

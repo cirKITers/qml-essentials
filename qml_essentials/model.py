@@ -47,7 +47,7 @@ class Model:
             data_reupload (bool, optional): Whether to reupload data to the
                 quantum device on each measurement. Defaults to True.
             initialization (str, optional): The strategy to initialize the parameters.
-                Can be "random", "zeros", "zero-controlled", or "pi-controlled".
+                Can be "random", "zeros", "zero-controlled", "pi", or "pi-controlled".
                 Defaults to "random".
             output_qubit (List[int], int, optional): The index of the output
                 qubit (or qubits). When set to -1 all qubits are measured, or a
@@ -113,6 +113,10 @@ class Model:
             )
         elif initialization == "zeros":
             self.params: np.ndarray = np.zeros(params_shape, requires_grad=True)
+        elif initialization == "pi":
+            self.params: np.ndarray = (
+                np.ones(params_shape, requires_grad=True) * np.pi
+            )
         elif initialization == "zero-controlled":
             self.params: np.ndarray = np.random.uniform(
                 0, 2 * np.pi, params_shape, requires_grad=True
