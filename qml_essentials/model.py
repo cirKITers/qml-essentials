@@ -26,6 +26,7 @@ class Model:
         initialization: str = "random",
         output_qubit: Union[List[int], int] = 0,
         shots: Optional[int] = None,
+        random_seed: int = 1000,
     ) -> None:
         """
         Initialize the quantum circuit model.
@@ -55,6 +56,8 @@ class Model:
                 type.
             shots (Optional[int], optional): The number of shots to use for
                 the quantum device. Defaults to None.
+            random_seed (int, optional): seed for the random number generator
+                in initialization is "random", Defaults to 1000.
 
         Returns:
             None
@@ -107,8 +110,9 @@ class Model:
                 )
             return params
 
+        rng = np.random.default_rng(random_seed)
         if initialization == "random":
-            self.params: np.ndarray = np.random.uniform(
+            self.params: np.ndarray = rng.uniform(
                 0, 2 * np.pi, params_shape, requires_grad=True
             )
         elif initialization == "zeros":
@@ -118,12 +122,12 @@ class Model:
                 np.ones(params_shape, requires_grad=True) * np.pi
             )
         elif initialization == "zero-controlled":
-            self.params: np.ndarray = np.random.uniform(
+            self.params: np.ndarray = rng.uniform(
                 0, 2 * np.pi, params_shape, requires_grad=True
             )
             self.params = set_control_params(self.params, 0)
         elif initialization == "pi-controlled":
-            self.params: np.ndarray = np.random.uniform(
+            self.params: np.ndarray = rng.uniform(
                 0, 2 * np.pi, params_shape, requires_grad=True
             )
             self.params = set_control_params(self.params, np.pi)
