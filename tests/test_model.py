@@ -123,6 +123,9 @@ def test_initialization() -> None:
         {
             "initialization": "pi-controlled",
         },
+        {
+            "initialization": "pi",
+        },
     ]
 
     for test_case in test_cases:
@@ -324,3 +327,97 @@ def test_local_state() -> None:
         # check if setting in the forward call is working
         assert model.noise_params == test_case["noise_params"]
         assert model.execution_type == test_case["execution_type"]
+
+
+def test_local_and_global_meas() -> None:
+    inputs = np.array([0.1, 0.2, 0.3])
+    test_cases = [
+        {
+            "execution_type": "expval",
+            "output_qubit": -1,
+            "shots": -1,
+            "out_shape": (3,),
+            "warning": False,
+        },
+        {
+            "execution_type": "expval",
+            "output_qubit": 0,
+            "shots": -1,
+            "out_shape": (3,),
+            "warning": False,
+        },
+        {
+            "execution_type": "expval",
+            "output_qubit": [0, 1],
+            "shots": -1,
+            "out_shape": (2, 3),
+            "warning": False,
+        },
+        {
+            "execution_type": "density",
+            "output_qubit": -1,
+            "shots": -1,
+            "out_shape": (3, 4, 4),
+            "warning": False,
+        },
+        {
+            "execution_type": "density",
+            "output_qubit": 0,
+            "shots": -1,
+            "out_shape": (3, 4, 4),
+            "warning": True,
+        },
+        {
+            "execution_type": "probs",
+            "output_qubit": -1,
+            "shots": 1024,
+            "out_shape": (3, 4),
+            "warning": False,
+        },
+        {
+            "execution_type": "probs",
+            "output_qubit": 0,
+            "shots": 1024,
+            "out_shape": (3, 2),
+            "warning": False,
+        },
+        {
+            "execution_type": "probs",
+            "output_qubit": [0, 1],
+            "shots": 1024,
+            "out_shape": (3, 4),
+            "warning": False,
+        },
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            data_reupload=True,
+            initialization="random",
+            output_qubit=test_case["output_qubit"],
+            shots=test_case["shots"],
+        )
+        if test_case["warning"]:
+            with pytest.warns(UserWarning):
+                out = model(
+                    model.params,
+                    inputs=inputs,
+                    noise_params=None,
+                    cache=False,
+                    execution_type=test_case["execution_type"],
+                )
+        else:
+            out = model(
+                model.params,
+                inputs=inputs,
+                noise_params=None,
+                cache=False,
+                execution_type=test_case["execution_type"],
+            )
+
+        assert (
+            out.shape == test_case["out_shape"]
+        ), f"{test_case['execution_type']}: {out}"
