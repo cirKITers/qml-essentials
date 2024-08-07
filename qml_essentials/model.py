@@ -175,7 +175,8 @@ class Model:
         if value == "density" and self.output_qubit != -1:
             warnings.warn(
                 f"{value} measurement does ignore output_qubit, which is "
-                f"{self.output_qubit}."
+                f"{self.output_qubit}.",
+                UserWarning,
             )
 
         if value == "probs" and self.shots is None:
