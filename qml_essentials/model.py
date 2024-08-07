@@ -118,9 +118,7 @@ class Model:
         elif initialization == "zeros":
             self.params: np.ndarray = np.zeros(params_shape, requires_grad=True)
         elif initialization == "pi":
-            self.params: np.ndarray = (
-                np.ones(params_shape, requires_grad=True) * np.pi
-            )
+            self.params: np.ndarray = np.ones(params_shape, requires_grad=True) * np.pi
         elif initialization == "zero-controlled":
             self.params: np.ndarray = rng.uniform(
                 0, 2 * np.pi, params_shape, requires_grad=True
@@ -279,9 +277,7 @@ class Model:
             if self.noise_params is not None:
                 for q in range(self.n_qubits):
                     qml.BitFlip(self.noise_params.get("BitFlip", 0.0), wires=q)
-                    qml.PhaseFlip(
-                        self.noise_params.get("PhaseFlip", 0.0), wires=q
-                    )
+                    qml.PhaseFlip(self.noise_params.get("PhaseFlip", 0.0), wires=q)
                     qml.AmplitudeDamping(
                         self.noise_params.get("AmplitudeDamping", 0.0), wires=q
                     )
@@ -370,9 +366,7 @@ class Model:
                     (2**len(output_qubit),).
         """
         # Call forward method which handles the actual caching etc.
-        return self._forward(
-            params, inputs, noise_params, cache, execution_type
-        )
+        return self._forward(params, inputs, noise_params, cache, execution_type)
 
     def _forward(
         self,
@@ -452,10 +446,7 @@ class Model:
 
         if result is None:
             # if density matrix requested or noise params used
-            if (
-                self.execution_type == "density"
-                or self.noise_params is not None
-            ):
+            if self.execution_type == "density" or self.noise_params is not None:
                 result = self.circuit_mixed(
                     params=params,
                     inputs=inputs,
@@ -466,9 +457,7 @@ class Model:
                     inputs=inputs,
                 )
 
-        if self.execution_type == "expval" and isinstance(
-            self.output_qubit, list
-        ):
+        if self.execution_type == "expval" and isinstance(self.output_qubit, list):
             result = np.stack(result)
 
         if cache:
