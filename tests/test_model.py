@@ -336,49 +336,57 @@ def test_local_and_global_meas() -> None:
             "execution_type": "expval",
             "output_qubit": -1,
             "shots": -1,
-            "out_shape": (3,)
+            "out_shape": (3,),
+            "warning": False,
         },
         {
             "execution_type": "expval",
             "output_qubit": 0,
             "shots": -1,
-            "out_shape": (3,)
+            "out_shape": (3,),
+            "warning": False,
         },
         {
             "execution_type": "expval",
             "output_qubit": [0, 1],
             "shots": -1,
-            "out_shape": (2, 3)
+            "out_shape": (2, 3),
+            "warning": False,
         },
         {
             "execution_type": "density",
             "output_qubit": -1,
             "shots": -1,
-            "out_shape": (3, 4, 4)
+            "out_shape": (3, 4, 4),
+            "warning": False,
         },
         {
             "execution_type": "density",
             "output_qubit": 0,
             "shots": -1,
-            "out_shape": (3, 4, 4)
+            "out_shape": (3, 4, 4),
+            "warning": True,
         },
         {
             "execution_type": "probs",
             "output_qubit": -1,
             "shots": 1024,
-            "out_shape": (3, 4)
+            "out_shape": (3, 4),
+            "warning": False,
         },
         {
             "execution_type": "probs",
             "output_qubit": 0,
             "shots": 1024,
-            "out_shape": (3, 2)
+            "out_shape": (3, 2),
+            "warning": False,
         },
         {
             "execution_type": "probs",
             "output_qubit": [0, 1],
             "shots": 1024,
-            "out_shape": (3, 4)
+            "out_shape": (3, 4),
+            "warning": False,
         },
     ]
 
@@ -392,14 +400,23 @@ def test_local_and_global_meas() -> None:
             output_qubit=test_case["output_qubit"],
             shots=test_case["shots"],
         )
-
-        out = model(
-            model.params,
-            inputs=inputs,
-            noise_params=None,
-            cache=False,
-            execution_type=test_case["execution_type"],
-        )
+        if test_case["warning"]:
+            with pytest.warns(UserWarning):
+                out = model(
+                    model.params,
+                    inputs=inputs,
+                    noise_params=None,
+                    cache=False,
+                    execution_type=test_case["execution_type"],
+                )
+        else:
+            out = model(
+                model.params,
+                inputs=inputs,
+                noise_params=None,
+                cache=False,
+                execution_type=test_case["execution_type"],
+            )
 
         assert (
             out.shape == test_case["out_shape"]
