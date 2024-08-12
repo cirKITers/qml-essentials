@@ -343,7 +343,7 @@ class Model:
         Args:
             params (np.ndarray): Weight vector of shape
                 [n_layers, n_qubits*n_params_per_layer].
-            inputs (Optional[np.ndarray]): Optional input vector of shape [1].
+            inputs (Optional[np.ndarray]): Optional input vector with length of batch.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
                 set noise parameters being used.
@@ -382,7 +382,7 @@ class Model:
         Args:
             params (np.ndarray): Weight vector of shape
                 [n_layers, n_qubits*n_params_per_layer].
-            inputs (Optional[np.ndarray]): Optional input vector of shape [1].
+            inputs (Optional[np.ndarray]): Optional input vector with length of batch.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
                 set noise parameters being used.
