@@ -13,6 +13,15 @@ Assuming you have Poetry installed
 With plain pip:
 - `pip install --index-url https://ea3a0fbb-599f-4d83-86f1-0e71abe27513.ka.bw-cloud-instance.org/lc3267/quantum/+simple/ qml-essentials`
 
+## Getting Started
+
+The following import
+```python
+from qml_essentials.model import Model
+```
+is sufficient for using the data-reuploading model.
+Ansaetze can be selected on model creation.
+
 ## Contributing
 
 Building and packaging requires some extra steps (assuming Poetry):
