@@ -7,7 +7,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-pennylane = "^0.36.0"
+pennylane = "^0.37.0"
 
 
 [tool.poetry.group.dev.dependencies]
