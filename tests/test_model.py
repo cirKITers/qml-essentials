@@ -3,6 +3,7 @@ from qml_essentials.ansaetze import Ansaetze
 import pytest
 import numpy as np
 import logging
+import inspect
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +175,16 @@ def test_ansaetze() -> None:
             cache=False,
             execution_type="expval",
         )
+
+
+def test_available_ansaetze() -> None:
+    ansatze = set(Ansaetze.get_available())
+
+    actual_ansaetze = set(
+        ansatz for ansatz in Ansaetze.__dict__.values() if inspect.isclass(ansatz)
+    )
+    # check that the classes are the ones returned by .__subclasses__
+    assert actual_ansaetze == ansatze
 
 
 def test_multi_input() -> None:
