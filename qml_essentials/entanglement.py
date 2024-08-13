@@ -58,11 +58,12 @@ class Entanglement:
             ----------
             evaluate : Callable[[np.ndarray], np.ndarray]
                 Callable that evaluates the quantum circuit
-                It must accept a `params` argument representing the parameters of the circuit.
+                It must accept a `params` argument representing the parameters of the circuit
+                and may accept additional keyword arguments.
             n_qubits : int
-                Number of qubits in the circuit.
+                Number of qubits in the circuit
             samples : int
-                Number of samples to be taken.
+                Number of samples to be taken
             params : np.ndarray
                 Parameters of the instructor
                 Shape: (samples, *model.params.shape)
@@ -70,8 +71,8 @@ class Entanglement:
             Returns
             -------
             float
-                Entangling capacity of the given circuit.
-                It is guaranteed to be between 0.0 and 1.0.
+                Entangling capacity of the given circuit
+                It is guaranteed to be between 0.0 and 1.0
             """
             assert (
                 params.shape[0] == samples

@@ -14,11 +14,24 @@ class Expressibility:
         seed: int = 100,
         **kwargs: Any,
     ) -> None:
+        """
+        Initialize the Expressibility class.
 
+        Args:
+            model (Callable[[np.ndarray], np.ndarray]): A function that models a quantum circuit.
+                It takes an input array of shape (n_input_samples,) and returns an array of shape
+                (n_samples,).
+            n_samples (int, optional): The number of samples to use. Defaults to 1000.
+            n_input_samples (int, optional): The number of input samples to use. Defaults to 10.
+            seed (int, optional): The seed for the random number generator. Defaults to 100.
+            **kwargs (Any): Additional keyword arguments to pass to the model.
+
+        Returns:
+            None
+        """
         self.model = model
         self.n_samples = n_samples
         self.rng = np.random.default_rng(seed)
-
         self.epsilon = 1e-5
 
         x_domain = [-1 * np.pi, 1 * np.pi]
@@ -29,10 +42,19 @@ class Expressibility:
         self.kwargs = kwargs
 
     def _sample_state_fidelities(self) -> np.ndarray:
+        """
+        Compute the fidelities for each pair of input samples and parameter sets.
+
+        Returns:
+            np.ndarray: Array of shape (n_input_samples, n_samples) containing the fidelities.
+        """
+        # Number of input samples
         n_x_samples = len(self.x_samples)
 
+        # Initialize array to store fidelities
         fidelities = np.zeros((n_x_samples, self.n_samples))
 
+        # Generate random parameter sets
         w = (
             2
             * np.pi
@@ -43,20 +65,20 @@ class Expressibility:
             )
         )
 
-        # TODO: Maybe we could vectorize this for loop as follows ?
-        # x_samples_batched = self.x_samples.repeat(self.n_samples * 2)
-        # w_batched = w.repeat(n_x_samples, axis=2)
-        # self.model(inputs=x_samples_batched, params=w_batched, **self.kwargs)
-
+        # Batch input samples and parameter sets for efficient computation
+        # This prevents the need to repeat the computation for each pair of samples and parameters
         x_samples_batched = self.x_samples.reshape(1, -1).repeat(
             self.n_samples * 2, axis=0
         )
 
+        # Compute the fidelity for each pair of input samples and parameter sets
         for idx in range(n_x_samples):
 
+            # Evaluate the model for the current pair of input samples and parameter sets
             sv = self.model(inputs=x_samples_batched[:, idx], params=w, **self.kwargs)
             sqrt_sv1 = np.sqrt(sv[: self.n_samples])
 
+            # Compute the fidelity using the partial trace of the statevector
             fidelity = (
                 np.trace(
                     np.sqrt(sqrt_sv1 * sv[self.n_samples :] * sqrt_sv1),
@@ -72,13 +94,26 @@ class Expressibility:
     def sample_hist_state_fidelities(
         self, n_bins: int
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        fidelities = self._sample_state_fidelities()
-        z_component = np.zeros((len(self.x_samples), n_bins))
+        """
+        Sample the state fidelities and histogram them into a 2D array.
 
+        Parameters
+        ----------
+        n_bins : int
+            Number of histogram bins.
+
+        Returns
+        -------
+        Tuple[np.ndarray, np.ndarray, np.ndarray]
+            Tuple containing the input samples, bin edges, and histogram values.
+        """
+        fidelities = self._sample_state_fidelities()
+        z_component: np.ndarray = np.zeros((len(self.x_samples), n_bins))
+
+        b: np.ndarray = np.linspace(0, 1 + self.epsilon, n_bins + 1)
         # FIXME: somehow I get nan's in the histogram, when directly creating bins until n
         # workaround hack is to add a small epsilon
         # could it be related to sampling issues?
-        b = np.linspace(0, 1 + self.epsilon, n_bins + 1)
         for i, f in enumerate(fidelities):
             z_component[i], _ = np.histogram(f, bins=b)
         z_component = z_component / self.n_samples
