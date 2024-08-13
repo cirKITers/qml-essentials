@@ -18,12 +18,15 @@ class Expressibility:
         Initialize the Expressibility class.
 
         Args:
-            model (Callable[[np.ndarray], np.ndarray]): A function that models a quantum circuit.
-                It takes an input array of shape (n_input_samples,) and returns an array of shape
-                (n_samples,).
-            n_samples (int, optional): The number of samples to use. Defaults to 1000.
-            n_input_samples (int, optional): The number of input samples to use. Defaults to 10.
-            seed (int, optional): The seed for the random number generator. Defaults to 100.
+            model (Callable[[np.ndarray], np.ndarray]): A function that models
+                a quantum circuit. It takes an input array of shape (n_input_samples,)
+                and returns an array of (n_samples,).
+            n_samples (int, optional): The number of samples to use.
+            Defaults to 1000.
+            n_input_samples (int, optional): The number of input samples to use.
+            Defaults to 10.
+            seed (int, optional): The seed for the random number generator.
+            Defaults to 100.
             **kwargs (Any): Additional keyword arguments to pass to the model.
 
         Returns:
@@ -46,7 +49,8 @@ class Expressibility:
         Compute the fidelities for each pair of input samples and parameter sets.
 
         Returns:
-            np.ndarray: Array of shape (n_input_samples, n_samples) containing the fidelities.
+            np.ndarray: Array of shape (n_input_samples, n_samples)
+            containing the fidelities.
         """
         # Number of input samples
         n_x_samples = len(self.x_samples)
@@ -66,15 +70,16 @@ class Expressibility:
         )
 
         # Batch input samples and parameter sets for efficient computation
-        # This prevents the need to repeat the computation for each pair of samples and parameters
+        # This prevents the need to repeat the computation
+        # for each pair of samples and parameters
         x_samples_batched = self.x_samples.reshape(1, -1).repeat(
             self.n_samples * 2, axis=0
         )
 
-        # Compute the fidelity for each pair of input samples and parameter sets
+        # Compute the fidelity for each pair of input samples and parameters
         for idx in range(n_x_samples):
 
-            # Evaluate the model for the current pair of input samples and parameter sets
+            # Evaluate the model for the current pair of input samples and parameters
             sv = self.model(inputs=x_samples_batched[:, idx], params=w, **self.kwargs)
             sqrt_sv1 = np.sqrt(sv[: self.n_samples])
 
@@ -111,12 +116,15 @@ class Expressibility:
         z_component: np.ndarray = np.zeros((len(self.x_samples), n_bins))
 
         b: np.ndarray = np.linspace(0, 1 + self.epsilon, n_bins + 1)
-        # FIXME: somehow I get nan's in the histogram, when directly creating bins until n
+        # FIXME: somehow I get nan's in the histogram,
+        # when directly creating bins until n
         # workaround hack is to add a small epsilon
         # could it be related to sampling issues?
         for i, f in enumerate(fidelities):
             z_component[i], _ = np.histogram(f, bins=b)
+
         z_component = z_component / self.n_samples
+
         return self.x_samples, b, z_component
 
     @staticmethod
@@ -162,10 +170,10 @@ class Expressibility:
             probability distribution for all fidelities
         """
         dist = np.zeros(n_bins)
-        for i in range(n_bins):
-            l = (1 / n_bins) * i
+        for idx in range(n_bins):
+            l = (1 / n_bins) * idx
             u = l + (1 / n_bins)
-            dist[i], _ = integrate.quad(
+            dist[idx], _ = integrate.quad(
                 Expressibility.theoretical_haar_probability, l, u, args=(n_qubits,)
             )
 
