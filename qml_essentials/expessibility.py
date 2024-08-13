@@ -8,10 +8,10 @@ import os
 class Expressibility:
     @staticmethod
     def _sample_state_fidelities(
+        model: Callable[[np.ndarray, np.ndarray], np.ndarray],
         x_samples: np.ndarray,
         n_samples: int,
-        rng: np.random.Generator,
-        model: Callable[[np.ndarray, np.ndarray], np.ndarray],
+        seed: int,
         kwargs: Any,
     ) -> np.ndarray:
         """
@@ -32,6 +32,8 @@ class Expressibility:
             np.ndarray: Array of shape (n_input_samples, n_samples)
                 containing the fidelities.
         """
+        rng = np.random.default_rng(seed)
+
         # Number of input samples
         n_x_samples = len(x_samples)
 
@@ -50,7 +52,13 @@ class Expressibility:
         for idx in range(n_x_samples):
 
             # Evaluate the model for the current pair of input samples and parameters
-            sv = model(inputs=x_samples_batched[:, idx], params=w, **kwargs)
+            # Execution type is explicitly set to density
+            sv = model(
+                inputs=x_samples_batched[:, idx],
+                params=w,
+                execution_type="density",
+                **kwargs,
+            )
             sqrt_sv1 = np.sqrt(sv[:n_samples])
 
             # Compute the fidelity using the partial trace of the statevector
@@ -67,11 +75,11 @@ class Expressibility:
         return fidelities
 
     def state_fidelities(
-        model: Callable,  # type: ignore
         n_bins: int,
         n_samples: int,
         n_input_samples: int,
         seed: int,
+        model: Callable,  # type: ignore
         **kwargs: Any,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -87,34 +95,32 @@ class Expressibility:
         Tuple[np.ndarray, np.ndarray, np.ndarray]
             Tuple containing the input samples, bin edges, and histogram values.
         """
-        rng = np.random.default_rng(seed)
         epsilon = 1e-5
 
         x_domain = [-1 * np.pi, 1 * np.pi]
-        x_samples = np.linspace(
-            x_domain[0], x_domain[1], n_input_samples, requires_grad=False
-        )
+        x = np.linspace(x_domain[0], x_domain[1], n_input_samples, requires_grad=False)
 
         fidelities = Expressibility._sample_state_fidelities(
-            x_samples=x_samples,
+            x_samples=x,
             n_samples=n_samples,
-            rng=rng,
+            seed=seed,
             model=model,
             kwargs=kwargs,
         )
-        z_component: np.ndarray = np.zeros((len(x_samples), n_bins))
+        z: np.ndarray = np.zeros((len(x), n_bins))
 
-        b: np.ndarray = np.linspace(0, 1 + epsilon, n_bins + 1)
+        y: np.ndarray = np.linspace(0, 1 + epsilon, n_bins + 1)
         # FIXME: somehow I get nan's in the histogram,
         # when directly creating bins until n
         # workaround hack is to add a small epsilon
         # could it be related to sampling issues?
         for i, f in enumerate(fidelities):
-            z_component[i], _ = np.histogram(f, bins=b)
+            z[i], _ = np.histogram(f, bins=y)
 
-        z_component = z_component / n_samples
+        # Transpose because this allows a direct comparison with the haar integral
+        z = z / n_samples
 
-        return x_samples, b, z_component
+        return x, y, z
 
     @staticmethod
     def _haar_probability(fidelity: float, n_qubits: int) -> float:
@@ -242,11 +248,13 @@ class Expressibility:
         np.ndarray
             Array of KL-Divergence values for all values in axis 1
         """
-        assert all([haar_dist.shape == p.shape for p in vqc_prob_dist]), (
-            "All "
-            "probabilities for inputs should have the same shape as Haar. "
-            f"Got {haar_dist.shape} for Haar and {vqc_prob_dist.shape} for VQC"
-        )
+        if len(vqc_prob_dist.shape) > 1:
+            assert all([haar_dist.shape == p.shape for p in vqc_prob_dist]), (
+                "All probabilities for inputs should have the same shape as Haar. "
+                f"Got {haar_dist.shape} for Haar and {vqc_prob_dist.shape} for VQC"
+            )
+        else:
+            vqc_prob_dist = vqc_prob_dist.reshape((1, -1))
 
         kl_divergence = np.zeros(vqc_prob_dist.shape[0])
         for idx, p in enumerate(vqc_prob_dist):
