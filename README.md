@@ -4,7 +4,7 @@ This repo contains some of the commonly used Ansaetze and coding stuff required 
 
 ## Installation
 
-![Pipx Status](https://servers.stroblme.de/api/badge/3/status) [![Lint and Pytest](https://github.com/cirKITers/qml-essentials/actions/workflows/python-app.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/python-app.yml)
+![Pipx Status](https://servers.stroblme.de/api/badge/3/uptime/72?color=%2331c754&labelColor=%233f4850) [![Lint and Pytest](https://github.com/cirKITers/qml-essentials/actions/workflows/python-app.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/python-app.yml)
 
 The package is available at [this index](https://ea3a0fbb-599f-4d83-86f1-0e71abe27513.ka.bw-cloud-instance.org/lc3267/quantum).
 
