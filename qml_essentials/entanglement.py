@@ -12,7 +12,7 @@ class Entanglement:
     @staticmethod
     def meyer_wallach(
         model: Callable,  # type: ignore
-        samples: int,
+        n_samples: int,
         seed: Optional[int],
         **kwargs: Any
     ) -> float:
@@ -98,21 +98,21 @@ class Entanglement:
             # catch floating point errors
             return min(max(mw, 0.0), 1.0)
 
-        if samples > 0:
+        if n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             # TODO: maybe switch to JAX rng
             rng = np.random.default_rng(seed)
-            params = rng.uniform(0, 2 * np.pi, size=(samples, *model.params.shape))
+            params = rng.uniform(0, 2 * np.pi, size=(n_samples, *model.params.shape))
         else:
             if seed is not None:
                 log.warning("Seed is ignored when samples is 0")
-            samples = 1
+            n_samples = 1
             params = model.params.reshape(1, *model.params.shape)
 
         entangling_capability = _meyer_wallach(
             evaluate=model,
             n_qubits=model.n_qubits,
-            samples=samples,
+            samples=n_samples,
             params=params,
         )
 
