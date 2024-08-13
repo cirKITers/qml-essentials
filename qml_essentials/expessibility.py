@@ -10,7 +10,7 @@ class Expressibility:
     def _sample_state_fidelities(
         x_samples: np.ndarray,
         n_samples: int,
-        rng: np.random.RandomState,
+        rng: np.random.Generator,
         model: Callable[[np.ndarray, np.ndarray], np.ndarray],
         kwargs: Any,
     ) -> np.ndarray:
@@ -21,7 +21,7 @@ class Expressibility:
             x_samples (np.ndarray): Array of shape (n_input_samples, n_features)
                 containing the input samples.
             n_samples (int): Number of parameter sets to generate.
-            rng (np.random.RandomState): Random number generator.
+            rng (np.random.Generator): Random number generator.
             model (Callable[[np.ndarray, np.ndarray], np.ndarray]):
             Function that evaluates the model.
                 It must accept inputs and params as arguments and
