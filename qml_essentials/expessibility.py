@@ -171,10 +171,10 @@ class Expressibility:
         """
         dist = np.zeros(n_bins)
         for idx in range(n_bins):
-            l = (1 / n_bins) * idx
-            u = l + (1 / n_bins)
+            v = (1 / n_bins) * idx
+            u = v + (1 / n_bins)
             dist[idx], _ = integrate.quad(
-                Expressibility.theoretical_haar_probability, l, u, args=(n_qubits,)
+                Expressibility.theoretical_haar_probability, v, u, args=(n_qubits,)
             )
 
         return dist
