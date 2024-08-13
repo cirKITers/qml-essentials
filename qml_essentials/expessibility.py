@@ -6,87 +6,57 @@ import os
 
 
 class Expressibility:
-    def __init__(
-        self,
-        model: Callable,  # type: ignore
-        n_samples: int = 1000,
-        n_input_samples: int = 10,
-        seed: int = 100,
-        **kwargs: Any,
-    ) -> None:
-        """
-        Initialize the Expressibility class.
-
-        Args:
-            model (Callable[[np.ndarray], np.ndarray]): A function that models
-                a quantum circuit. It takes an input array of shape (n_input_samples,)
-                and returns an array of (n_samples,).
-            n_samples (int, optional): The number of samples to use.
-            Defaults to 1000.
-            n_input_samples (int, optional): The number of input samples to use.
-            Defaults to 10.
-            seed (int, optional): The seed for the random number generator.
-            Defaults to 100.
-            **kwargs (Any): Additional keyword arguments to pass to the model.
-
-        Returns:
-            None
-        """
-        self.model = model
-        self.n_samples = n_samples
-        self.rng = np.random.default_rng(seed)
-        self.epsilon = 1e-5
-
-        x_domain = [-1 * np.pi, 1 * np.pi]
-        self.x_samples = np.linspace(
-            x_domain[0], x_domain[1], n_input_samples, requires_grad=False
-        )
-
-        self.kwargs = kwargs
-
-    def _sample_state_fidelities(self) -> np.ndarray:
+    @staticmethod
+    def _sample_state_fidelities(
+        x_samples: np.ndarray,
+        n_samples: int,
+        rng: np.random.RandomState,
+        model: Callable[[np.ndarray, np.ndarray], np.ndarray],
+        kwargs: Any,
+    ) -> np.ndarray:
         """
         Compute the fidelities for each pair of input samples and parameter sets.
 
+        Args:
+            x_samples (np.ndarray): Array of shape (n_input_samples, n_features)
+                containing the input samples.
+            n_samples (int): Number of parameter sets to generate.
+            rng (np.random.RandomState): Random number generator.
+            model (Callable[[np.ndarray, np.ndarray], np.ndarray]):
+            Function that evaluates the model.
+                It must accept inputs and params as arguments and
+                return an array of shape (n_samples, n_features).
+            kwargs (Any): Additional keyword arguments for the model function.
+
         Returns:
             np.ndarray: Array of shape (n_input_samples, n_samples)
-            containing the fidelities.
+                containing the fidelities.
         """
         # Number of input samples
-        n_x_samples = len(self.x_samples)
+        n_x_samples = len(x_samples)
 
         # Initialize array to store fidelities
-        fidelities = np.zeros((n_x_samples, self.n_samples))
+        fidelities = np.zeros((n_x_samples, n_samples))
 
         # Generate random parameter sets
-        w = (
-            2
-            * np.pi
-            * (
-                1
-                - 2
-                * self.rng.random(size=[*self.model.params.shape, self.n_samples * 2])
-            )
-        )
+        w = 2 * np.pi * (1 - 2 * rng.random(size=[*model.params.shape, n_samples * 2]))
 
         # Batch input samples and parameter sets for efficient computation
         # This prevents the need to repeat the computation
         # for each pair of samples and parameters
-        x_samples_batched = self.x_samples.reshape(1, -1).repeat(
-            self.n_samples * 2, axis=0
-        )
+        x_samples_batched = x_samples.reshape(1, -1).repeat(n_samples * 2, axis=0)
 
         # Compute the fidelity for each pair of input samples and parameters
         for idx in range(n_x_samples):
 
             # Evaluate the model for the current pair of input samples and parameters
-            sv = self.model(inputs=x_samples_batched[:, idx], params=w, **self.kwargs)
-            sqrt_sv1 = np.sqrt(sv[: self.n_samples])
+            sv = model(inputs=x_samples_batched[:, idx], params=w, **kwargs)
+            sqrt_sv1 = np.sqrt(sv[:n_samples])
 
             # Compute the fidelity using the partial trace of the statevector
             fidelity = (
                 np.trace(
-                    np.sqrt(sqrt_sv1 * sv[self.n_samples :] * sqrt_sv1),
+                    np.sqrt(sqrt_sv1 * sv[n_samples:] * sqrt_sv1),
                     axis1=1,
                     axis2=2,
                 )
@@ -96,8 +66,13 @@ class Expressibility:
 
         return fidelities
 
-    def sample_hist_state_fidelities(
-        self, n_bins: int
+    def state_fidelities(
+        model: Callable,  # type: ignore
+        n_bins: int,
+        n_samples: int,
+        n_input_samples: int,
+        seed: int,
+        **kwargs: Any,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Sample the state fidelities and histogram them into a 2D array.
@@ -112,10 +87,24 @@ class Expressibility:
         Tuple[np.ndarray, np.ndarray, np.ndarray]
             Tuple containing the input samples, bin edges, and histogram values.
         """
-        fidelities = self._sample_state_fidelities()
-        z_component: np.ndarray = np.zeros((len(self.x_samples), n_bins))
+        rng = np.random.default_rng(seed)
+        epsilon = 1e-5
 
-        b: np.ndarray = np.linspace(0, 1 + self.epsilon, n_bins + 1)
+        x_domain = [-1 * np.pi, 1 * np.pi]
+        x_samples = np.linspace(
+            x_domain[0], x_domain[1], n_input_samples, requires_grad=False
+        )
+
+        fidelities = Expressibility._sample_state_fidelities(
+            x_samples=x_samples,
+            n_samples=n_samples,
+            rng=rng,
+            model=model,
+            kwargs=kwargs,
+        )
+        z_component: np.ndarray = np.zeros((len(x_samples), n_bins))
+
+        b: np.ndarray = np.linspace(0, 1 + epsilon, n_bins + 1)
         # FIXME: somehow I get nan's in the histogram,
         # when directly creating bins until n
         # workaround hack is to add a small epsilon
@@ -123,12 +112,12 @@ class Expressibility:
         for i, f in enumerate(fidelities):
             z_component[i], _ = np.histogram(f, bins=b)
 
-        z_component = z_component / self.n_samples
+        z_component = z_component / n_samples
 
-        return self.x_samples, b, z_component
+        return x_samples, b, z_component
 
     @staticmethod
-    def theoretical_haar_probability(fidelity: float, n_qubits: int) -> float:
+    def _haar_probability(fidelity: float, n_qubits: int) -> float:
         """
         Calculates theoretical probability density function for random Haar states
         as proposed by Sim et al. (https://arxiv.org/abs/1905.10876).
@@ -151,7 +140,7 @@ class Expressibility:
         return prob
 
     @staticmethod
-    def sampled_haar_probability(n_qubits: int, n_bins: int) -> np.ndarray:
+    def _sample_haar_integral(n_qubits: int, n_bins: int) -> np.ndarray:
         """
         Calculates theoretical probability density function for random Haar states
         as proposed by Sim et al. (https://arxiv.org/abs/1905.10876) and bins it
@@ -174,13 +163,13 @@ class Expressibility:
             v = (1 / n_bins) * idx
             u = v + (1 / n_bins)
             dist[idx], _ = integrate.quad(
-                Expressibility.theoretical_haar_probability, v, u, args=(n_qubits,)
+                Expressibility._haar_probability, v, u, args=(n_qubits,)
             )
 
         return dist
 
     @staticmethod
-    def get_sampled_haar_probability_histogram(
+    def haar_integral(
         n_qubits: int,
         n_bins: int,
         cache: bool = True,
@@ -224,7 +213,7 @@ class Expressibility:
 
         # Note that this is a jax rng, so it does not matter if we
         # call that multiple times
-        y = Expressibility.sampled_haar_probability(n_qubits, n_bins)
+        y = Expressibility._sample_haar_integral(n_qubits, n_bins)
 
         if cache:
             np.save(file_path, y)
@@ -232,7 +221,7 @@ class Expressibility:
         return x, y
 
     @staticmethod
-    def get_kl_divergence_expr(
+    def kullback_leibler_divergence(
         vqc_prob_dist: np.ndarray,
         haar_dist: np.ndarray,
     ) -> np.ndarray:
