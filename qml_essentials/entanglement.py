@@ -13,7 +13,7 @@ class Entanglement:
     def meyer_wallach(
         model: Callable,  # type: ignore
         samples: int,
-        seed: Optional[int] = None,
+        seed: Optional[int],
         **kwargs: Any
     ) -> float:
         """
@@ -96,6 +96,7 @@ class Entanglement:
             return min(max(mw, 0.0), 1.0)
 
         if samples > 0:
+            assert seed is not None, "Seed must be provided when samples > 0"
             # TODO: maybe switch to JAX rng
             rng = np.random.default_rng(seed)
             params = rng.uniform(0, 2 * np.pi, size=(samples, *model.params.shape))
