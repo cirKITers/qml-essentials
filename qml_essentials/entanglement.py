@@ -80,7 +80,10 @@ class Entanglement:
             qb = list(range(n_qubits))
 
             for i in range(samples):
-                U = evaluate(params=params[i], **kwargs)
+                # implicitly set input to none in case it's not needed
+                kwargs.setdefault("inputs", None)
+                # explicitly set execution type because everything else won't work
+                U = evaluate(params=params[i], execution_type="density", **kwargs)
 
                 entropy = 0
 
