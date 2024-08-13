@@ -8,7 +8,9 @@ import os
 class Expressibility:
     @staticmethod
     def _sample_state_fidelities(
-        model: Callable[[np.ndarray, np.ndarray], np.ndarray],
+        model: Callable[
+            [np.ndarray, np.ndarray], np.ndarray
+        ],  # type: ignore[name-defined]
         x_samples: np.ndarray,
         n_samples: int,
         seed: int,
@@ -18,19 +20,19 @@ class Expressibility:
         Compute the fidelities for each pair of input samples and parameter sets.
 
         Args:
-            x_samples (np.ndarray): Array of shape (n_input_samples, n_features)
-                containing the input samples.
-            n_samples (int): Number of parameter sets to generate.
-            rng (np.random.Generator): Random number generator.
             model (Callable[[np.ndarray, np.ndarray], np.ndarray]):
-            Function that evaluates the model.
-                It must accept inputs and params as arguments and
-                return an array of shape (n_samples, n_features).
+                Function that evaluates the model. It must accept inputs
+                and params as arguments
+                and return an array of shape (n_samples, n_features).
+            x_samples (np.ndarray): Array of shape (n_input_samples, n_features)
+            containing the input samples.
+            n_samples (int): Number of parameter sets to generate.
+            seed (int): Random number generator seed.
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
             np.ndarray: Array of shape (n_input_samples, n_samples)
-                containing the fidelities.
+            containing the fidelities.
         """
         rng = np.random.default_rng(seed)
 
@@ -38,31 +40,33 @@ class Expressibility:
         n_x_samples = len(x_samples)
 
         # Initialize array to store fidelities
-        fidelities = np.zeros((n_x_samples, n_samples))
+        fidelities: np.ndarray = np.zeros((n_x_samples, n_samples))
 
         # Generate random parameter sets
-        w = 2 * np.pi * (1 - 2 * rng.random(size=[*model.params.shape, n_samples * 2]))
+        w: np.ndarray = (
+            2 * np.pi * (1 - 2 * rng.random(size=[*model.params.shape, n_samples * 2]))
+        )
 
         # Batch input samples and parameter sets for efficient computation
-        # This prevents the need to repeat the computation
-        # for each pair of samples and parameters
-        x_samples_batched = x_samples.reshape(1, -1).repeat(n_samples * 2, axis=0)
+        x_samples_batched: np.ndarray = x_samples.reshape(1, -1).repeat(
+            n_samples * 2, axis=0
+        )
 
         # Compute the fidelity for each pair of input samples and parameters
         for idx in range(n_x_samples):
 
             # Evaluate the model for the current pair of input samples and parameters
             # Execution type is explicitly set to density
-            sv = model(
+            sv: np.ndarray = model(
                 inputs=x_samples_batched[:, idx],
                 params=w,
                 execution_type="density",
                 **kwargs,
             )
-            sqrt_sv1 = np.sqrt(sv[:n_samples])
+            sqrt_sv1: np.ndarray = np.sqrt(sv[:n_samples])
 
             # Compute the fidelity using the partial trace of the statevector
-            fidelity = (
+            fidelity: np.ndarray = (
                 np.trace(
                     np.sqrt(sqrt_sv1 * sv[n_samples:] * sqrt_sv1),
                     axis1=1,
