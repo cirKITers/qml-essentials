@@ -281,7 +281,7 @@ def test_local_state() -> None:
 
     # Check default values
     assert model.noise_params is None
-    assert model.execution_type is "expval"
+    assert model.execution_type == "expval"
 
     for test_case in test_cases:
         model = Model(
