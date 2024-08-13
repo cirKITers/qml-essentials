@@ -260,7 +260,7 @@ class Expressibility:
         )
 
         kl_divergence = np.zeros(vqc_prob_dist.shape[0])
-        for i, p in enumerate(vqc_prob_dist):
-            kl_divergence[i] = np.sum(rel_entr(p, haar_dist))
+        for idx, p in enumerate(vqc_prob_dist):
+            kl_divergence[idx] = np.sum(rel_entr(p, haar_dist))
 
         return kl_divergence
