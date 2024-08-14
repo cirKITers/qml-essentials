@@ -1,0 +1,39 @@
+site_name: QML Essentials
+theme:
+  name: material
+  highlightjs: true
+  palette:
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+plugins:
+  - search
+  - mkdocstrings
+markdown_extensions:
+  - markdown_include.include:
+      base_path: .
+  - toc:
+        permalink: "#"
+        baselevel: 1
+        separator: "_"
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji 
+      emoji_generator: !!python/name:materialx.emoji.to_svg
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/cirKITers/qml-essentials
+      name: Github
