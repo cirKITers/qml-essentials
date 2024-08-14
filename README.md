@@ -10,6 +10,7 @@ You can find installation instructions and documentation on the corresponding [G
 
 ## :construction: Contributing
 
+Contributions are very welcome!
 Building and packaging requires some extra steps (assuming Poetry):
 - `poetry run devpi use https://ea3a0fbb-599f-4d83-86f1-0e71abe27513.ka.bw-cloud-instance.org`
 - `poetry run devpi login alice --password=456`
