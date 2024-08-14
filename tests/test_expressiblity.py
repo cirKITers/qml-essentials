@@ -1,7 +1,7 @@
 from qml_essentials.model import Model
 from qml_essentials.coefficients import Coefficients
 from qml_essentials.entanglement import Entanglement
-from qml_essentials.expessibility import Expressibility
+from qml_essentials.expressibility import Expressibility
 
 import pytest
 import numpy as np
