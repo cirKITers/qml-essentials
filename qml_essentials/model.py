@@ -153,16 +153,38 @@ class Model:
 
     @property
     def noise_params(self) -> Optional[Dict[str, float]]:
+        """
+        Gets the noise parameters of the model.
+
+        Returns:
+            Optional[Dict[str, float]]: A dictionary of noise parameters or None if not set.
+        """
         return self._noise_params
 
     @noise_params.setter
     def noise_params(self, value: Optional[Dict[str, float]]) -> None:
+        """
+        Sets the noise parameters of the model.
+
+        Args:
+            value (Optional[Dict[str, float]]): A dictionary of noise parameters.
+                If all values are 0.0, the noise parameters are set to None.
+
+        Returns:
+            None
+        """
         if value is not None and all(np == 0.0 for np in value.values()):
             value = None
         self._noise_params = value
 
     @property
     def execution_type(self) -> str:
+        """
+        Gets the execution type of the model.
+
+        Returns:
+            str: The execution type, one of 'density', 'expval', or 'probs'.
+        """
         return self._execution_type
 
     @execution_type.setter
@@ -191,10 +213,25 @@ class Model:
 
     @property
     def shots(self) -> Optional[int]:
+        """
+        Gets the number of shots to use for the quantum device.
+
+        Returns:
+            Optional[int]: The number of shots.
+        """
         return self._shots
 
     @shots.setter
     def shots(self, value: Optional[int]) -> None:
+        """
+        Sets the number of shots to use for the quantum device.
+
+        Args:
+            value (Optional[int]): The number of shots. If an integer less than or equal to 0 is provided, it is set to None.
+
+        Returns:
+            None
+        """
         if type(value) is int and value <= 0:
             value = None
         self._shots = value

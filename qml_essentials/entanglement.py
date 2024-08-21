@@ -20,27 +20,19 @@ class Entanglement:
         Calculates the entangling capacity of a given quantum circuit
         using Meyer-Wallach measure.
 
-        Parameters
-        ----------
-        model : Callable
-            Function that models the quantum circuit.
-            It must have a `n_qubits` attribute representing the number of qubits.
-            It must accept a `params` argument representing the
-            parameters of the circuit.
-        samples : int
-            Number of samples per qubit.
-        seed : Optional[int], optional
-            Seed for the random number generator.
-        **kwargs : Any
-            Additional keyword arguments for the model function.
+        Args:
+            model (Callable): Function that models the quantum circuit. It must
+                have a `n_qubits` attribute representing the number of qubits.
+                It must accept a `params` argument representing the parameters
+                of the circuit.
+            n_samples (int): Number of samples per qubit.
+            seed (Optional[int]): Seed for the random number generator.
+            kwargs (Any): Additional keyword arguments for the model function.
 
-        Returns
-        -------
-        float
-            Entangling capacity of the given circuit.
-            It is guaranteed to be between 0.0 and 1.0.
+        Returns:
+            float: Entangling capacity of the given circuit. It is guaranteed
+                to be between 0.0 and 1.0.
         """
-
         def _meyer_wallach(
             evaluate: Callable[[np.ndarray], np.ndarray],
             n_qubits: int,
@@ -51,26 +43,19 @@ class Entanglement:
             Calculates the Meyer-Wallach sampling of the entangling capacity
             of a quantum circuit.
 
-            Parameters
-            ----------
-            evaluate : Callable[[np.ndarray], np.ndarray]
-                Callable that evaluates the quantum circuit
-                It must accept a `params` argument representing the
-                parameters of the circuit
-                and may accept additional keyword arguments.
-            n_qubits : int
-                Number of qubits in the circuit
-            samples : int
-                Number of samples to be taken
-            params : np.ndarray
-                Parameters of the instructor
-                Shape: (samples, *model.params.shape)
+            Args:
+                evaluate (Callable[[np.ndarray], np.ndarray]): Callable that
+                    evaluates the quantum circuit It must accept a `params`
+                    argument representing the parameters of the circuit and may
+                    accept additional keyword arguments.
+                n_qubits (int): Number of qubits in the circuit
+                samples (int): Number of samples to be taken
+                params (np.ndarray): Parameters of the instructor. Shape:
+                    (samples, *model.params.shape)
 
-            Returns
-            -------
-            float
-                Entangling capacity of the given circuit
-                It is guaranteed to be between 0.0 and 1.0
+            Returns:
+                float: Entangling capacity of the given circuit. It is
+                    guaranteed to be between 0.0 and 1.0
             """
             assert (
                 params.shape[0] == samples
