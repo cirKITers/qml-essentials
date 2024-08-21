@@ -38,9 +38,7 @@ class Circuit(ABC):
         """
         return
 
-    def get_control_angles(
-        self, w: np.ndarray, n_qubits: int
-    ) -> Optional[np.ndarray]:
+    def get_control_angles(self, w: np.ndarray, n_qubits: int) -> Optional[np.ndarray]:
         """
         Returns the angles for the controlled rotation gates from the list of
         all parameters for one layer.
@@ -75,6 +73,7 @@ class Circuit(ABC):
 class Ansaetze:
     def get_available():
         return [
+            Ansaetze.No_Ansatz,
             Ansaetze.Circuit_1,
             Ansaetze.Circuit_9,
             Ansaetze.Circuit_15,
@@ -84,6 +83,19 @@ class Ansaetze:
             Ansaetze.Strongly_Entangling,
             Ansaetze.Hardware_Efficient,
         ]
+
+    class No_Ansatz(Circuit):
+        @staticmethod
+        def n_params_per_layer(n_qubits: int) -> int:
+            return 0
+
+        @staticmethod
+        def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
+            return None
+
+        @staticmethod
+        def build(w: np.ndarray, n_qubits: int):
+            pass
 
     class Hardware_Efficient(Circuit):
         @staticmethod
@@ -241,9 +253,7 @@ class Ansaetze:
 
             if n_qubits > 1:
                 for q in range(n_qubits):
-                    qml.CNOT(
-                        wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits]
-                    )
+                    qml.CNOT(wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits])
 
             for q in range(n_qubits):
                 qml.RZ(w[w_idx], wires=q)
