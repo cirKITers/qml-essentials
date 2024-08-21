@@ -25,7 +25,7 @@ class Expressibility:
                 and params as arguments
                 and return an array of shape (n_samples, n_features).
             x_samples (np.ndarray): Array of shape (n_input_samples, n_features)
-            containing the input samples.
+                containing the input samples.
             n_samples (int): Number of parameter sets to generate.
             seed (int): Random number generator seed.
             kwargs (Any): Additional keyword arguments for the model function.
@@ -78,6 +78,7 @@ class Expressibility:
 
         return fidelities
 
+    @staticmethod
     def state_fidelities(
         n_bins: int,
         n_samples: int,
@@ -89,15 +90,17 @@ class Expressibility:
         """
         Sample the state fidelities and histogram them into a 2D array.
 
-        Parameters
-        ----------
-        n_bins : int
-            Number of histogram bins.
+        Args:
+            n_bins (int): Number of histogram bins.
+            n_samples (int): Number of parameter sets to generate.
+            n_input_samples (int): Number of samples for the input domain in [-pi, pi]
+            seed (int): Random number generator seed.
+            model (Callable): 
+            kwargs (Any): Additional keyword arguments for the model function.
 
-        Returns
-        -------
-        Tuple[np.ndarray, np.ndarray, np.ndarray]
-            Tuple containing the input samples, bin edges, and histogram values.
+        Returns:
+            Tuple[np.ndarray, np.ndarray, np.ndarray]: Tuple containing the
+                input samples, bin edges, and histogram values.
         """
         epsilon = 1e-5
 
@@ -132,17 +135,12 @@ class Expressibility:
         Calculates theoretical probability density function for random Haar states
         as proposed by Sim et al. (https://arxiv.org/abs/1905.10876).
 
-        Parameters
-        ----------
-        fidelity : float
-            fidelity of two parameter assignments in [0, 1]
-        n_qubits : int
-            number of qubits in the quantum system
+        Args:
+            fidelity (float): fidelity of two parameter assignments in [0, 1]
+            n_qubits (int): number of qubits in the quantum system
 
-        Returns
-        -------
-        float
-            probability for a given fidelity
+        Returns:
+            float: probability for a given fidelity
         """
         N = 2**n_qubits
 
@@ -156,17 +154,12 @@ class Expressibility:
         as proposed by Sim et al. (https://arxiv.org/abs/1905.10876) and bins it
         into a 2D-histogram.
 
-        Parameters
-        ----------
-        n_qubits : int
-            number of qubits in the quantum system
-        n_bins : int
-            number of histogram bins
+        Args:
+            n_qubits (int): number of qubits in the quantum system
+            n_bins (int): number of histogram bins
 
-        Returns
-        -------
-        np.ndarray
-            probability distribution for all fidelities
+        Returns:
+            np.ndarray: probability distribution for all fidelities
         """
         dist = np.zeros(n_bins)
         for idx in range(n_bins):
@@ -189,23 +182,17 @@ class Expressibility:
         as proposed by Sim et al. (https://arxiv.org/abs/1905.10876) and bins it
         into a 3D-histogram.
 
-        Parameters
-        ----------
-        n_qubits : int
-            number of qubits in the quantum system
-        n_bins : int
-            number of histogram bins
-        cache : bool
-            [TODO:description]
+        Args:
+            n_qubits (int): number of qubits in the quantum system
+            n_bins (int): number of histogram bins
+            cache (bool): whether to cache the haar integral
 
-        Returns
-        -------
-        Tuple[np.ndarray, np.ndarray]
-            [TODO:description]
-            - x component (bins)
-            - y component (probabilities)
+        Returns:
+            Tuple[np.ndarray, np.ndarray]:
+                - x component (bins): the input domain
+                - y component (probabilities): the haar probability density
+                  funtion for random Haar states
         """
-
         x = np.linspace(0, 1, n_bins)
 
         if cache:
@@ -237,18 +224,14 @@ class Expressibility:
         Calculates the KL divergence between two probability distributions (Haar
         probability distribution and the fidelity distribution sampled from a VQC).
 
-        Parameters
-        ----------
-        vqc_prob_dist : np.ndarray
-            VQC fidelity probability distribution. Should have shape
-            (n_inputs_samples, n_bins)
-        haar_dist : np.ndarray
-            Haar probability distribution with shape. Should have shape (n_bins, )
+        Args:
+            vqc_prob_dist (np.ndarray): VQC fidelity probability distribution.
+                Should have shape (n_inputs_samples, n_bins)
+            haar_dist (np.ndarray): Haar probability distribution with shape.
+                Should have shape (n_bins, )
 
-        Returns
-        -------
-        np.ndarray
-            Array of KL-Divergence values for all values in axis 1
+        Returns:
+            np.ndarray: Array of KL-Divergence values for all values in axis 1
         """
         if len(vqc_prob_dist.shape) > 1:
             assert all([haar_dist.shape == p.shape for p in vqc_prob_dist]), (
