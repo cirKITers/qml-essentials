@@ -221,8 +221,6 @@ class Expressibility:
                 y = np.load(file_path)
                 return x, y
 
-        # Note that this is a jax rng, so it does not matter if we
-        # call that multiple times
         y = Expressibility._sample_haar_integral(n_qubits, n_bins)
 
         if cache:
