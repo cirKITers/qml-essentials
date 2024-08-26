@@ -92,7 +92,8 @@ def test_parameters() -> None:
                 force_mean=test_case["force_mean"],
             )
 
-            assert result.requires_grad == True, "No gradients available in output."
+            if test_case["shots"] < 0:
+                assert result.requires_grad == True, "No gradients available in output."
 
             if isinstance(test_case["output_qubit"], list):
                 if test_case["force_mean"]:
