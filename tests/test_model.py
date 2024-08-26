@@ -92,6 +92,8 @@ def test_parameters() -> None:
                 force_mean=test_case["force_mean"],
             )
 
+            assert result.requires_grad == True, "No gradients available in output."
+
             if isinstance(test_case["output_qubit"], list):
                 if test_case["force_mean"]:
                     assert (
@@ -467,3 +469,7 @@ def test_local_and_global_meas() -> None:
         assert (
             out.shape == test_case["out_shape"]
         ), f"{test_case['execution_type']}: {out}"
+
+
+if __name__ == "__main__":
+    test_parameters()
