@@ -27,7 +27,8 @@ class Coefficients:
 
         if not np.isclose(np.sum(coeffs).imag, 0.0, rtol=1.0e-5):
             raise ValueError(
-                f"Spectrum is not real. Imaginary part of coefficients is: {np.sum(coeffs).imag}"
+                f"Spectrum is not real. Imaginary part of coefficients is:\
+                {np.sum(coeffs).imag}"
             )
 
         return coeffs
