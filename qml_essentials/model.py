@@ -373,6 +373,7 @@ class Model:
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
+        force_mean: Optional[bool] = False,
     ) -> np.ndarray:
         """
         Perform a forward pass of the quantum circuit.
@@ -403,7 +404,14 @@ class Model:
                     (2**len(output_qubit),).
         """
         # Call forward method which handles the actual caching etc.
-        return self._forward(params, inputs, noise_params, cache, execution_type)
+        return self._forward(
+            params=params,
+            inputs=inputs,
+            noise_params=noise_params,
+            cache=cache,
+            execution_type=execution_type,
+            force_mean=force_mean,
+        )
 
     def _forward(
         self,
@@ -412,6 +420,7 @@ class Model:
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
+        force_mean: Optional[bool] = False,
     ) -> np.ndarray:
         """
         Perform a forward pass of the quantum circuit.
@@ -496,6 +505,11 @@ class Model:
 
         if self.execution_type == "expval" and isinstance(self.output_qubit, list):
             result = np.stack(result)
+
+            # Calculating mean value after stacking, to not
+            # discard gradient information
+            if force_mean:
+                result = np.mean(result, axis=0)
 
         if cache:
             np.save(file_path, result)
