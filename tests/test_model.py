@@ -13,26 +13,50 @@ def test_parameters() -> None:
         {
             "shots": -1,
             "execution_type": "expval",
+            "output_qubit": 0,
+            "force_mean": False,
+            "exception": False,
+        },
+        {
+            "shots": -1,
+            "execution_type": "expval",
+            "output_qubit": [0, 1],
+            "force_mean": False,
+            "exception": False,
+        },
+        {
+            "shots": -1,
+            "execution_type": "expval",
+            "output_qubit": [0, 1],
+            "force_mean": True,
             "exception": False,
         },
         {
             "shots": -1,
             "execution_type": "density",
+            "output_qubit": 0,
+            "force_mean": False,
             "exception": False,
         },
         {
             "shots": 1024,
             "execution_type": "probs",
+            "output_qubit": 0,
+            "force_mean": False,
             "exception": False,
         },
         {
             "shots": 1024,
             "execution_type": "expval",
+            "output_qubit": 0,
+            "force_mean": False,
             "exception": False,
         },
         {
             "shots": 1024,
             "execution_type": "density",
+            "output_qubit": 0,
+            "force_mean": False,
             "exception": True,
         },
     ]
@@ -44,28 +68,39 @@ def test_parameters() -> None:
             circuit_type="Circuit_19",
             data_reupload=True,
             initialization="random",
-            output_qubit=0,
+            output_qubit=test_case["output_qubit"],
             shots=test_case["shots"],
         )
 
         if test_case["exception"]:
             with pytest.warns(UserWarning):
-                result = model(
+                _ = model(
                     model.params,
                     inputs=None,
                     noise_params=None,
                     cache=False,
                     execution_type=test_case["execution_type"],
+                    force_mean=test_case["force_mean"],
                 )
         else:
-            _ = model(
+            result = model.__call__(
                 model.params,
                 inputs=None,
                 noise_params=None,
                 cache=False,
                 execution_type=test_case["execution_type"],
+                force_mean=test_case["force_mean"],
             )
 
+            if isinstance(test_case["output_qubit"], list):
+                if test_case["force_mean"]:
+                    assert (
+                        result.shape[0] == 1
+                    ), f"Shape of {test_case['output_qubit']} is not correct."
+                else:
+                    assert result.shape[0] == len(
+                        test_case["output_qubit"]
+                    ), f"Shape of {test_case['output_qubit']} is not correct."
             str(model)
 
 
