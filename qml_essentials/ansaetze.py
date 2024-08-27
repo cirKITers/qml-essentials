@@ -137,6 +137,22 @@ class Ansaetze:
                 for q in range((n_qubits - 1) // 2):
                     qml.CZ(wires=[(2 * q + 1), (2 * q + 2)])
 
+    class Bansatz(Circuit):
+        @staticmethod
+        def n_params_per_layer(n_qubits: int) -> int:
+            if n_qubits > 1:
+                return n_qubits * 3
+            else:
+                log.warning("Number of Qubits < 2, no entanglement available")
+                return 3
+
+        @staticmethod
+        def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
+            if n_qubits > 1:
+                return [-n_qubits, None, None]
+            else:
+                return None
+
         @staticmethod
         def build(w: np.ndarray, n_qubits: int):
             """
@@ -157,8 +173,13 @@ class Ansaetze:
                 w_idx += 1
 
             if n_qubits > 1:
-                for q in range(n_qubits - 1):
-                    qml.CZ(wires=[q, q + 1])
+                for q in range(n_qubits // 2):
+                    qml.CRX(w[w_idx], wires=[(2 * q), (2 * q + 1)])
+                    w_idx += 1
+
+                for q in range((n_qubits - 1) // 2):
+                    qml.CRX(w[w_idx], wires=[(2 * q + 1), (2 * q + 2)])
+                    w_idx += 1
 
     class Circuit_19(Circuit):
         @staticmethod
