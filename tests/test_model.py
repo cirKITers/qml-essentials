@@ -432,6 +432,3 @@ def test_local_and_global_meas() -> None:
         assert (
             out.shape == test_case["out_shape"]
         ), f"{test_case['execution_type']}: {out}"
-
-
-test_ansaetze()
