@@ -472,6 +472,28 @@ def test_local_and_global_meas() -> None:
         ), f"{test_case['execution_type']}: {out}"
 
 
+def test_parity() -> None:
+    model_a = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_1",
+        output_qubit=[0, 1],
+    )
+    model_b = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_1",
+        output_qubit=-1,
+    )
+
+    result_a = model_a(model_a.params, inputs=None, cache=False, force_mean=True)
+    result_b = model_b(model_a.params, inputs=None, cache=False)  # use same params!
+
+    assert not np.allclose(
+        result_a, result_b
+    ), f"Models should be different! Got {result_a} and {result_b}"
+
+
 if __name__ == "__main__":
     test_parameters()
     test_cache()
@@ -482,3 +504,4 @@ if __name__ == "__main__":
     test_dru()
     test_local_state()
     test_local_and_global_meas()
+    test_parity()
