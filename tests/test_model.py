@@ -474,3 +474,11 @@ def test_local_and_global_meas() -> None:
 
 if __name__ == "__main__":
     test_parameters()
+    test_cache()
+    test_initialization()
+    test_ansaetze()
+    test_available_ansaetze()
+    test_multi_input()
+    test_dru()
+    test_local_state()
+    test_local_and_global_meas()

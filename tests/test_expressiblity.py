@@ -1,6 +1,4 @@
 from qml_essentials.model import Model
-from qml_essentials.coefficients import Coefficients
-from qml_essentials.entanglement import Entanglement
 from qml_essentials.expressibility import Expressibility
 
 import pytest
@@ -97,3 +95,8 @@ def test_expressibility() -> None:
         ), f"Expressibility is not {test_case['result']}\
             for circuit ansatz {test_case['circuit_type']}.\
             Was {kl_dist} instead"
+
+
+if __name__ == "__main__":
+    test_divergence()
+    test_expressibility()
