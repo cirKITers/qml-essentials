@@ -104,11 +104,38 @@ class Ansaetze:
                 return n_qubits * 3
             else:
                 log.warning("Number of Qubits < 2, no entanglement available")
-                return 2
+                return 3
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
             return None
+
+        @staticmethod
+        def build(w: np.ndarray, n_qubits: int):
+            """
+            Creates a Circuit19 ansatz.
+
+            Length of flattened vector must be n_qubits*3-1
+            because for >1 qubits there are three gates
+
+            Args:
+                w (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
+                n_qubits (int): number of qubits
+            """
+            w_idx = 0
+            for q in range(n_qubits):
+                qml.RY(w[w_idx], wires=q)
+                w_idx += 1
+                qml.RZ(w[w_idx], wires=q)
+                w_idx += 1
+                qml.RY(w[w_idx], wires=q)
+                w_idx += 1
+
+            if n_qubits > 1:
+                for q in range(n_qubits // 2):
+                    qml.CZ(wires=[(2 * q), (2 * q + 1)])
+                for q in range((n_qubits - 1) // 2):
+                    qml.CZ(wires=[(2 * q + 1), (2 * q + 2)])
 
         @staticmethod
         def build(w: np.ndarray, n_qubits: int):
