@@ -66,8 +66,6 @@ def test_parameters() -> None:
                 execution_type=test_case["execution_type"],
             )
 
-            str(model)
-
 
 def test_cache() -> None:
     test_cases = [
@@ -159,7 +157,7 @@ def test_ansaetze() -> None:
 
         logger.info(f"Testing Ansatz: {ansatz.__name__}")
         model = Model(
-            n_qubits=2,
+            n_qubits=4,
             n_layers=1,
             circuit_type=ansatz.__name__,
             data_reupload=True,
@@ -175,6 +173,8 @@ def test_ansaetze() -> None:
             cache=False,
             execution_type="expval",
         )
+
+        logger.info(f"{str(model)}")
 
 
 def test_available_ansaetze() -> None:
@@ -432,3 +432,6 @@ def test_local_and_global_meas() -> None:
         assert (
             out.shape == test_case["out_shape"]
         ), f"{test_case['execution_type']}: {out}"
+
+
+test_ansaetze()
