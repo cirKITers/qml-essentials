@@ -7,7 +7,7 @@ import numpy as np
 class Coefficients:
 
     @staticmethod
-    def sample_coefficients(model: Model) -> np.ndarray:
+    def sample_coefficients(model: Model, **kwargs) -> np.ndarray:
         """
         Sample the Fourier coefficients of a given model
         using Pennylane fourier.coefficients function.
@@ -22,7 +22,10 @@ class Coefficients:
         Returns:
             np.ndarray: The sampled Fourier coefficients.
         """
-        partial_circuit = partial(model, model.params)
+        kwargs.setdefault("force_mean", True)
+        kwargs.setdefault("execution_type", "expval")
+
+        partial_circuit = partial(model, model.params, **kwargs)
         coeffs = coefficients(partial_circuit, 1, model.degree)
 
         if not np.isclose(np.sum(coeffs).imag, 0.0, rtol=1.0e-5):
