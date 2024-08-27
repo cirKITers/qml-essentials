@@ -336,15 +336,17 @@ class Model:
         elif self.execution_type == "expval":
             # global measurement (tensored Pauli Z, i.e. parity)
             if self.output_qubit == -1:
-                obs = qml.Hamiltonian(
-                    [1.0] * self.n_qubits,
-                    [qml.PauliZ(q) for q in range(self.n_qubits)],
-                    simplify=True,
+                obs = qml.simplify(
+                    qml.Hamiltonian(
+                        [1.0] * self.n_qubits,
+                        [qml.PauliZ(q) for q in range(self.n_qubits)],
+                    )
                 )
                 return qml.expval(obs)
             # local measurement(s)
             elif isinstance(self.output_qubit, int):
                 return qml.expval(qml.PauliZ(self.output_qubit))
+            # n-local measurenment
             else:
                 return [qml.expval(qml.PauliZ(q)) for q in self.output_qubit]
         # run default simulation and get probs
