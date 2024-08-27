@@ -75,6 +75,7 @@ class Ansaetze:
         return [
             Ansaetze.No_Ansatz,
             Ansaetze.Circuit_1,
+            Ansaetze.Circuit_6,
             Ansaetze.Circuit_9,
             Ansaetze.Circuit_15,
             Ansaetze.Circuit_18,
@@ -82,6 +83,7 @@ class Ansaetze:
             Ansaetze.No_Entangling,
             Ansaetze.Strongly_Entangling,
             Ansaetze.Hardware_Efficient,
+            Ansaetze.Bansatz,
         ]
 
     class No_Ansatz(Circuit):
@@ -338,6 +340,57 @@ class Ansaetze:
 
             for q in range(n_qubits):
                 qml.RX(w[w_idx], wires=q)
+                w_idx += 1
+
+    class Circuit_6(Circuit):
+        @staticmethod
+        def n_params_per_layer(n_qubits: int) -> int:
+            if n_qubits > 1:
+                return n_qubits * 7
+            else:
+                log.warning("Number of Qubits < 2, no entanglement available")
+                return 4
+
+        @staticmethod
+        def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
+            if n_qubits > 1:
+                return [-n_qubits, None, None]
+            else:
+                return None
+
+        @staticmethod
+        def build(w: np.ndarray, n_qubits: int):
+            """
+            Creates a Circuit1 ansatz.
+
+            Length of flattened vector must be n_qubits*2
+
+            Args:
+                w (np.ndarray): weight vector of size n_layers*(n_qubits*2)
+                n_qubits (int): number of qubits
+            """
+            w_idx = 0
+            for q in range(n_qubits):
+                qml.RX(w[w_idx], wires=q)
+                w_idx += 1
+                qml.RZ(w[w_idx], wires=q)
+                w_idx += 1
+
+            if n_qubits > 1:
+                for ql in range(n_qubits):
+                    for q in range(n_qubits):
+                        if q == ql:
+                            continue
+                        qml.CRX(
+                            w[w_idx],
+                            wires=[n_qubits - ql - 1, (n_qubits - q - 1) % n_qubits],
+                        )
+                        w_idx += 1
+
+            for q in range(n_qubits):
+                qml.RX(w[w_idx], wires=q)
+                w_idx += 1
+                qml.RZ(w[w_idx], wires=q)
                 w_idx += 1
 
     class Circuit_1(Circuit):
