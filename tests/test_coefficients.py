@@ -18,7 +18,7 @@ def test_coefficients() -> None:
             "n_bins": 10,
             "n_samples": 200,
             "n_input_samples": 2,
-            "result": 1.858,
+            "output_qubit": 0,
         },
         {
             "circuit_type": "Circuit_9",
@@ -27,7 +27,16 @@ def test_coefficients() -> None:
             "n_bins": 10,
             "n_samples": 200,
             "n_input_samples": 2,
-            "result": 2.629,
+            "output_qubit": 0,
+        },
+        {
+            "circuit_type": "Circuit_9",
+            "n_qubits": 4,
+            "n_layers": 1,
+            "n_bins": 10,
+            "n_samples": 200,
+            "n_input_samples": 2,
+            "output_qubit": [0, 1, 2, 3],
         },
     ]
 
@@ -38,7 +47,7 @@ def test_coefficients() -> None:
             circuit_type=test_case["circuit_type"],
             data_reupload=True,
             initialization="random",
-            output_qubit=0,
+            output_qubit=test_case["output_qubit"],
         )
 
         coeffs = Coefficients.sample_coefficients(model)
