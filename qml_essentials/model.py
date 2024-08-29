@@ -359,6 +359,9 @@ class Model:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
     def _draw(self, inputs=None) -> None:
+        if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
+            # TODO: throws strange argument error if not catched
+            return None
         result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
         return result
 
