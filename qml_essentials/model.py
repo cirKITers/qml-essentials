@@ -506,12 +506,13 @@ class Model:
                 )
 
         if self.execution_type == "expval" and isinstance(self.output_qubit, list):
-            result = np.stack(result)
+            if isinstance(result, list):
+                result = np.stack(result)
 
             # Calculating mean value after stacking, to not
             # discard gradient information
             if force_mean:
-                result = np.mean(result, axis=0)
+                result = result.mean(axis=0)
 
         if cache:
             np.save(file_path, result)
