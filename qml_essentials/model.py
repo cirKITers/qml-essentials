@@ -517,7 +517,11 @@ class Model:
             # Calculating mean value after stacking, to not
             # discard gradient information
             if force_mean:
-                result = result.mean(axis=0)
+                # exception for torch layer because it swaps batch and output dimension
+                if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
+                    result = result.mean(axis=-1)
+                else:
+                    result = result.mean(axis=0)
 
         if cache:
             np.save(file_path, result)
