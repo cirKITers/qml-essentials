@@ -500,10 +500,15 @@ class Model:
                     inputs=inputs,
                 )
             else:
-                result = self.circuit(
-                    params=params,
-                    inputs=inputs,
-                )
+                if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
+                    result = self.circuit(
+                        inputs=inputs,
+                    )
+                else:
+                    result = self.circuit(
+                        params=params,
+                        inputs=inputs,
+                    )
 
         if self.execution_type == "expval" and isinstance(self.output_qubit, list):
             if isinstance(result, list):
