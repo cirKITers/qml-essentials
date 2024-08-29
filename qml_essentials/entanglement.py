@@ -33,6 +33,7 @@ class Entanglement:
             float: Entangling capacity of the given circuit. It is guaranteed
                 to be between 0.0 and 1.0.
         """
+
         def _meyer_wallach(
             evaluate: Callable[[np.ndarray], np.ndarray],
             n_qubits: int,
