@@ -346,7 +346,7 @@ class Ansaetze:
         @staticmethod
         def n_params_per_layer(n_qubits: int) -> int:
             if n_qubits > 1:
-                return n_qubits * 7
+                return n_qubits * 3 + n_qubits**2
             else:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 4
