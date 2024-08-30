@@ -24,7 +24,7 @@ class Model:
         circuit_type: str,
         data_reupload: bool = True,
         initialization: str = "random",
-        output_qubit: Union[List[int], int] = 0,
+        output_qubit: Union[List[int], int] = -1,
         shots: Optional[int] = None,
         random_seed: int = 1000,
     ) -> None:
