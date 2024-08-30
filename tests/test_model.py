@@ -20,14 +20,14 @@ def test_parameters() -> None:
         {
             "shots": -1,
             "execution_type": "expval",
-            "output_qubit": [0, 1],
+            "output_qubit": -1,
             "force_mean": False,
             "exception": False,
         },
         {
             "shots": -1,
             "execution_type": "expval",
-            "output_qubit": [0, 1],
+            "output_qubit": -1,
             "force_mean": True,
             "exception": False,
         },
@@ -95,14 +95,15 @@ def test_parameters() -> None:
             if test_case["shots"] < 0:
                 assert result.requires_grad, "No gradients available in output."
 
-            if isinstance(test_case["output_qubit"], list):
+            if test_case["output_qubit"] == -1:
                 if test_case["force_mean"]:
                     assert (
                         result.shape[0] == 1
                     ), f"Shape of {test_case['output_qubit']} is not correct."
                 else:
-                    assert result.shape[0] == len(
-                        test_case["output_qubit"]
+                    # check for 2 because of n qubits
+                    assert (
+                        result.shape[0] == 2
                     ), f"Shape of {test_case['output_qubit']} is not correct."
             str(model)
 
@@ -385,7 +386,7 @@ def test_local_and_global_meas() -> None:
             "execution_type": "expval",
             "output_qubit": -1,
             "shots": -1,
-            "out_shape": (3,),
+            "out_shape": (2, 3),
             "warning": False,
         },
         {
@@ -399,7 +400,7 @@ def test_local_and_global_meas() -> None:
             "execution_type": "expval",
             "output_qubit": [0, 1],
             "shots": -1,
-            "out_shape": (2, 3),
+            "out_shape": (3,),
             "warning": False,
         },
         {
@@ -469,7 +470,7 @@ def test_local_and_global_meas() -> None:
 
         assert (
             out.shape == test_case["out_shape"]
-        ), f"{test_case['execution_type']}: {out}"
+        ), f"Expected {test_case['out_shape']}, got shape {out.shape} for test case {test_case}"
 
 
 def test_parity() -> None:
