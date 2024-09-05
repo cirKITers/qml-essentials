@@ -361,7 +361,7 @@ class Model:
     def _draw(self, inputs=None) -> None:
         if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
             # TODO: throws strange argument error if not catched
-            return None
+            return ""
         result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
         return result
 
