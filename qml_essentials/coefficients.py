@@ -18,6 +18,7 @@ class Coefficients:
 
         Args:
             model (Model): The model to sample.
+            kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
             np.ndarray: The sampled Fourier coefficients.
