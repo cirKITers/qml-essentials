@@ -477,7 +477,8 @@ def test_local_and_global_meas() -> None:
 
         assert (
             out.shape == test_case["out_shape"]
-        ), f"Expected {test_case['out_shape']}, got shape {out.shape} for test case {test_case}"
+        ), f"Expected {test_case['out_shape']}, got shape {out.shape}\
+            for test case {test_case}"
 
 
 def test_parity() -> None:

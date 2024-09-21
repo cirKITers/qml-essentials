@@ -326,6 +326,8 @@ class Model:
                         wires=q,
                     )
 
+            qml.Barrier(wires=list(range(self.n_qubits)), only_visual=True)
+
         if self.data_reupload:
             self.pqc(params[-1], self.n_qubits)
 
@@ -367,10 +369,11 @@ class Model:
         if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
             # TODO: throws strange argument error if not catched
             return ""
-        if not figure:
-            result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
-        else:
+
+        if figure:
             result = qml.draw_mpl(self.circuit)(params=self.params, inputs=inputs)
+        else:
+            result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
         return result
 
     def draw(self, inputs=None, figure=False) -> None:
