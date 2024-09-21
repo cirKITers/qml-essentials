@@ -1,7 +1,5 @@
 from qml_essentials.model import Model
-from qml_essentials.coefficients import Coefficients
 from qml_essentials.entanglement import Entanglement
-from qml_essentials.expressibility import Expressibility
 
 import pytest
 import numpy as np
@@ -48,3 +46,7 @@ def test_entanglement() -> None:
         ), f"Entangling capacity is not {test_case['result']}\
             for circuit ansatz {test_case['circuit_type']}.\
             Was {ent_cap} instead"
+
+
+if __name__ == "__main__":
+    test_entanglement()
