@@ -336,15 +336,17 @@ class Model:
         elif self.execution_type == "expval":
             # global measurement (tensored Pauli Z, i.e. parity)
             if self.output_qubit == -1:
-                obs = qml.Hamiltonian(
-                    [1.0] * self.n_qubits,
-                    [qml.PauliZ(q) for q in range(self.n_qubits)],
-                    simplify=True,
+                obs = qml.simplify(
+                    qml.Hamiltonian(
+                        [1.0] * self.n_qubits,
+                        [qml.PauliZ(q) for q in range(self.n_qubits)],
+                    )
                 )
                 return qml.expval(obs)
             # local measurement(s)
             elif isinstance(self.output_qubit, int):
                 return qml.expval(qml.PauliZ(self.output_qubit))
+            # n-local measurenment
             else:
                 return [qml.expval(qml.PauliZ(q)) for q in self.output_qubit]
         # run default simulation and get probs
@@ -373,6 +375,7 @@ class Model:
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
+        force_mean: Optional[bool] = False,
     ) -> np.ndarray:
         """
         Perform a forward pass of the quantum circuit.
@@ -403,7 +406,14 @@ class Model:
                     (2**len(output_qubit),).
         """
         # Call forward method which handles the actual caching etc.
-        return self._forward(params, inputs, noise_params, cache, execution_type)
+        return self._forward(
+            params=params,
+            inputs=inputs,
+            noise_params=noise_params,
+            cache=cache,
+            execution_type=execution_type,
+            force_mean=force_mean,
+        )
 
     def _forward(
         self,
@@ -412,6 +422,7 @@ class Model:
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
+        force_mean: Optional[bool] = False,
     ) -> np.ndarray:
         """
         Perform a forward pass of the quantum circuit.
@@ -495,7 +506,13 @@ class Model:
                 )
 
         if self.execution_type == "expval" and isinstance(self.output_qubit, list):
-            result = np.stack(result)
+            if isinstance(result, list):
+                result = np.stack(result)
+
+            # Calculating mean value after stacking, to not
+            # discard gradient information
+            if force_mean:
+                result = result.mean(axis=0)
 
         if cache:
             np.save(file_path, result)

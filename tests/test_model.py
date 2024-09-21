@@ -13,26 +13,50 @@ def test_parameters() -> None:
         {
             "shots": -1,
             "execution_type": "expval",
+            "output_qubit": 0,
+            "force_mean": False,
+            "exception": False,
+        },
+        {
+            "shots": -1,
+            "execution_type": "expval",
+            "output_qubit": [0, 1],
+            "force_mean": False,
+            "exception": False,
+        },
+        {
+            "shots": -1,
+            "execution_type": "expval",
+            "output_qubit": [0, 1],
+            "force_mean": True,
             "exception": False,
         },
         {
             "shots": -1,
             "execution_type": "density",
+            "output_qubit": 0,
+            "force_mean": False,
             "exception": False,
         },
         {
             "shots": 1024,
             "execution_type": "probs",
+            "output_qubit": 0,
+            "force_mean": False,
             "exception": False,
         },
         {
             "shots": 1024,
             "execution_type": "expval",
+            "output_qubit": 0,
+            "force_mean": False,
             "exception": False,
         },
         {
             "shots": 1024,
             "execution_type": "density",
+            "output_qubit": 0,
+            "force_mean": False,
             "exception": True,
         },
     ]
@@ -44,28 +68,42 @@ def test_parameters() -> None:
             circuit_type="Circuit_19",
             data_reupload=True,
             initialization="random",
-            output_qubit=0,
+            output_qubit=test_case["output_qubit"],
             shots=test_case["shots"],
         )
 
         if test_case["exception"]:
             with pytest.warns(UserWarning):
-                result = model(
+                _ = model(
                     model.params,
                     inputs=None,
                     noise_params=None,
                     cache=False,
                     execution_type=test_case["execution_type"],
+                    force_mean=test_case["force_mean"],
                 )
         else:
-            _ = model(
+            result = model.__call__(
                 model.params,
                 inputs=None,
                 noise_params=None,
                 cache=False,
                 execution_type=test_case["execution_type"],
+                force_mean=test_case["force_mean"],
             )
 
+            if test_case["shots"] < 0:
+                assert result.requires_grad, "No gradients available in output."
+
+            if isinstance(test_case["output_qubit"], list):
+                if test_case["force_mean"]:
+                    assert (
+                        result.shape[0] == 1
+                    ), f"Shape of {test_case['output_qubit']} is not correct."
+                else:
+                    assert result.shape[0] == len(
+                        test_case["output_qubit"]
+                    ), f"Shape of {test_case['output_qubit']} is not correct."
             str(model)
 
 
@@ -434,6 +472,28 @@ def test_local_and_global_meas() -> None:
         ), f"{test_case['execution_type']}: {out}"
 
 
+def test_parity() -> None:
+    model_a = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_1",
+        output_qubit=[0, 1],
+    )
+    model_b = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_1",
+        output_qubit=-1,
+    )
+
+    result_a = model_a(model_a.params, inputs=None, cache=False, force_mean=True)
+    result_b = model_b(model_a.params, inputs=None, cache=False)  # use same params!
+
+    assert not np.allclose(
+        result_a, result_b
+    ), f"Models should be different! Got {result_a} and {result_b}"
+
+
 if __name__ == "__main__":
     test_parameters()
     test_cache()
@@ -444,3 +504,4 @@ if __name__ == "__main__":
     test_dru()
     test_local_state()
     test_local_and_global_meas()
+    test_parity()
