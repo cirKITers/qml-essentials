@@ -4,6 +4,7 @@ import pytest
 import numpy as np
 import logging
 import inspect
+import shutil
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,12 @@ def test_parameters() -> None:
 
 
 def test_cache() -> None:
+    # Stupid try removing caches
+    try:
+        shutil.rmtree(".cache")
+    except Exception as e:
+        logger.warning(e)
+
     test_cases = [
         {
             "shots": 1024,

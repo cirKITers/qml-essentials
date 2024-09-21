@@ -363,18 +363,24 @@ class Model:
         else:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
-    def _draw(self, inputs=None) -> None:
+    def _draw(self, inputs=None, figure=False) -> None:
         if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
             # TODO: throws strange argument error if not catched
-            return None
-        result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
+            return ""
+        if not figure:
+            result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
+        else:
+            result = qml.draw_mpl(self.circuit)(params=self.params, inputs=inputs)
         return result
 
+    def draw(self, inputs=None, figure=False) -> None:
+        return self._draw(inputs, figure)
+
     def __repr__(self) -> str:
-        return self._draw()
+        return self._draw(figure=False)
 
     def __str__(self) -> str:
-        return self._draw()
+        return self._draw(figure=False)
 
     def __call__(
         self,
