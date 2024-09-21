@@ -24,7 +24,7 @@ class Model:
         circuit_type: str,
         data_reupload: bool = True,
         initialization: str = "random",
-        output_qubit: Union[List[int], int] = 0,
+        output_qubit: Union[List[int], int] = -1,
         shots: Optional[int] = None,
         random_seed: int = 1000,
     ) -> None:
@@ -336,19 +336,24 @@ class Model:
         elif self.execution_type == "expval":
             # global measurement (tensored Pauli Z, i.e. parity)
             if self.output_qubit == -1:
-                obs = qml.simplify(
-                    qml.Hamiltonian(
-                        [1.0] * self.n_qubits,
-                        [qml.PauliZ(q) for q in range(self.n_qubits)],
-                    )
-                )
-                return qml.expval(obs)
+                return [qml.expval(qml.PauliZ(q)) for q in range(self.n_qubits)]
             # local measurement(s)
             elif isinstance(self.output_qubit, int):
                 return qml.expval(qml.PauliZ(self.output_qubit))
             # n-local measurenment
+            elif isinstance(self.output_qubit, list):
+                obs = qml.simplify(
+                    qml.Hamiltonian(
+                        [1.0] * self.n_qubits,
+                        [qml.PauliZ(q) for q in self.output_qubit],
+                    )
+                )
+                return qml.expval(obs)
             else:
-                return [qml.expval(qml.PauliZ(q)) for q in self.output_qubit]
+                raise ValueError(
+                    f"Invalid parameter 'output_qubit': {self.output_qubit}.\
+                        Must be int, list or -1."
+                )
         # run default simulation and get probs
         elif self.execution_type == "probs":
             if self.output_qubit == -1:
@@ -359,6 +364,9 @@ class Model:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
     def _draw(self, inputs=None) -> None:
+        if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
+            # TODO: throws strange argument error if not catched
+            return None
         result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
         return result
 
@@ -500,19 +508,28 @@ class Model:
                     inputs=inputs,
                 )
             else:
-                result = self.circuit(
-                    params=params,
-                    inputs=inputs,
-                )
+                if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
+                    result = self.circuit(
+                        inputs=inputs,
+                    )
+                else:
+                    result = self.circuit(
+                        params=params,
+                        inputs=inputs,
+                    )
 
-        if self.execution_type == "expval" and isinstance(self.output_qubit, list):
+        if self.execution_type == "expval" and self.output_qubit == -1:
             if isinstance(result, list):
                 result = np.stack(result)
 
             # Calculating mean value after stacking, to not
             # discard gradient information
             if force_mean:
-                result = result.mean(axis=0)
+                # exception for torch layer because it swaps batch and output dimension
+                if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
+                    result = result.mean(axis=-1)
+                else:
+                    result = result.mean(axis=0)
 
         if cache:
             np.save(file_path, result)
