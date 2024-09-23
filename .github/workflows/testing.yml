@@ -27,8 +27,6 @@ jobs:
         python-version: "3.11"
         cache: 'poetry' # caching pip dependencies
     - name: Install dependencies
-      run: |
-        run: poetry install
+      run: poetry install
     - name: Test with pytest
-      run: |
-        run: poetry run pytest
+      run: poetry run pytest
