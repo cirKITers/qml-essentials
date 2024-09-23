@@ -5,6 +5,9 @@ import numpy as np
 import logging
 import inspect
 import shutil
+import os
+import hashlib
+
 
 logger = logging.getLogger(__name__)
 
@@ -116,44 +119,47 @@ def test_cache() -> None:
     except Exception as e:
         logger.warning(e)
 
-    test_cases = [
-        {
-            "shots": 1024,
-            "execution_type": "expval",
-            "shape": (),
-        },
-        {
-            "shots": -1,
-            "execution_type": "density",
-            "shape": (4, 4),
-        },
-        {
-            "shots": 1024,
-            "execution_type": "probs",
-            "shape": (2,),
-        },
-    ]
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
 
-    for test_case in test_cases:
-        model = Model(
-            n_qubits=2,
-            n_layers=1,
-            circuit_type="Circuit_19",
-            data_reupload=True,
-            initialization="random",
-            output_qubit=0,
-            shots=test_case["shots"],
-        )
+    result = model(
+        model.params,
+        inputs=None,
+        cache=True,
+    )
 
-        result = model(
-            model.params,
-            inputs=None,
-            noise_params=None,
-            cache=True,
-            execution_type=test_case["execution_type"],
-        )
+    hs = hashlib.md5(
+        repr(
+            {
+                "n_qubits": model.n_qubits,
+                "n_layers": model.n_layers,
+                "pqc": model.pqc.__class__.__name__,
+                "dru": model.data_reupload,
+                "params": model.params,
+                "noise_params": model.noise_params,
+                "execution_type": model.execution_type,
+                "inputs": None,
+                "output_qubit": model.output_qubit,
+            }
+        ).encode("utf-8")
+    ).hexdigest()
 
-        assert result.shape == test_case["shape"], f"Test case: {test_case} failed"
+    cache_folder: str = ".cache"
+    if not os.path.exists(cache_folder):
+        raise Exception("Cache folder does not exist.")
+
+    name: str = f"pqc_{hs}.npy"
+    file_path: str = os.path.join(cache_folder, name)
+
+    if os.path.isfile(file_path):
+        cached_result = np.load(file_path)
+
+    assert np.array_equal(
+        result, cached_result
+    ), "Cached result and calcualted result is not equal."
 
 
 def test_initialization() -> None:
@@ -392,6 +398,15 @@ def test_local_and_global_meas() -> None:
     inputs = np.array([0.1, 0.2, 0.3])
     test_cases = [
         {
+            "inputs": None,
+            "execution_type": "expval",
+            "output_qubit": -1,
+            "shots": -1,
+            "out_shape": (2, 1),
+            "warning": False,
+        },
+        {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
             "output_qubit": -1,
             "shots": -1,
@@ -399,6 +414,7 @@ def test_local_and_global_meas() -> None:
             "warning": False,
         },
         {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
             "output_qubit": 0,
             "shots": -1,
@@ -406,6 +422,7 @@ def test_local_and_global_meas() -> None:
             "warning": False,
         },
         {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
             "output_qubit": [0, 1],
             "shots": -1,
@@ -413,6 +430,15 @@ def test_local_and_global_meas() -> None:
             "warning": False,
         },
         {
+            "inputs": None,
+            "execution_type": "density",
+            "output_qubit": -1,
+            "shots": -1,
+            "out_shape": (4, 4),
+            "warning": False,
+        },
+        {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "density",
             "output_qubit": -1,
             "shots": -1,
@@ -420,6 +446,7 @@ def test_local_and_global_meas() -> None:
             "warning": False,
         },
         {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "density",
             "output_qubit": 0,
             "shots": -1,
@@ -427,6 +454,7 @@ def test_local_and_global_meas() -> None:
             "warning": True,
         },
         {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
             "output_qubit": -1,
             "shots": 1024,
@@ -434,6 +462,7 @@ def test_local_and_global_meas() -> None:
             "warning": False,
         },
         {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
             "output_qubit": 0,
             "shots": 1024,
@@ -441,6 +470,7 @@ def test_local_and_global_meas() -> None:
             "warning": False,
         },
         {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
             "output_qubit": [0, 1],
             "shots": 1024,
@@ -463,7 +493,7 @@ def test_local_and_global_meas() -> None:
             with pytest.warns(UserWarning):
                 out = model(
                     model.params,
-                    inputs=inputs,
+                    inputs=test_case["inputs"],
                     noise_params=None,
                     cache=False,
                     execution_type=test_case["execution_type"],
@@ -471,7 +501,7 @@ def test_local_and_global_meas() -> None:
         else:
             out = model(
                 model.params,
-                inputs=inputs,
+                inputs=test_case["inputs"],
                 noise_params=None,
                 cache=False,
                 execution_type=test_case["execution_type"],
@@ -488,17 +518,19 @@ def test_parity() -> None:
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_1",
-        output_qubit=[0, 1],
+        output_qubit=[0, 1],  # parity
     )
     model_b = Model(
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_1",
-        output_qubit=-1,
+        output_qubit=-1,  # individual
     )
 
-    result_a = model_a(model_a.params, inputs=None, cache=False, force_mean=True)
-    result_b = model_b(model_a.params, inputs=None, cache=False)  # use same params!
+    result_a = model_a(params=model_a.params, inputs=None, force_mean=True)
+    result_b = model_b(
+        params=model_a.params, inputs=None, force_mean=True
+    )  # use same params!
 
     assert not np.allclose(
         result_a, result_b
