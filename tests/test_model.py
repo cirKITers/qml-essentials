@@ -492,17 +492,19 @@ def test_parity() -> None:
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_1",
-        output_qubit=[0, 1],
+        output_qubit=[0, 1],  # parity
     )
     model_b = Model(
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_1",
-        output_qubit=-1,
+        output_qubit=-1,  # individual
     )
 
-    result_a = model_a(model_a.params, inputs=None, cache=False, force_mean=True)
-    result_b = model_b(model_a.params, inputs=None, cache=False)  # use same params!
+    result_a = model_a(params=model_a.params, inputs=None, force_mean=True)
+    result_b = model_b(
+        params=model_a.params, inputs=None, force_mean=True
+    )  # use same params!
 
     assert not np.allclose(
         result_a, result_b
