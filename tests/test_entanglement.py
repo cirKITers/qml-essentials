@@ -34,7 +34,6 @@ def test_entanglement() -> None:
             circuit_type=test_case["circuit_type"],
             data_reupload=True,
             initialization="random",
-            output_qubit=0,
         )
 
         ent_cap = Entanglement.meyer_wallach(
