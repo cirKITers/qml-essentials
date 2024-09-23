@@ -24,7 +24,7 @@ class Model:
         circuit_type: str,
         data_reupload: bool = True,
         initialization: str = "random",
-        output_qubit: Union[List[int], int] = 0,
+        output_qubit: Union[List[int], int] = -1,
         shots: Optional[int] = None,
         random_seed: int = 1000,
     ) -> None:
@@ -326,6 +326,8 @@ class Model:
                         wires=q,
                     )
 
+            qml.Barrier(wires=list(range(self.n_qubits)), only_visual=True)
+
         if self.data_reupload:
             self.pqc(params[-1], self.n_qubits)
 
@@ -336,17 +338,24 @@ class Model:
         elif self.execution_type == "expval":
             # global measurement (tensored Pauli Z, i.e. parity)
             if self.output_qubit == -1:
-                obs = qml.Hamiltonian(
-                    [1.0] * self.n_qubits,
-                    [qml.PauliZ(q) for q in range(self.n_qubits)],
-                    simplify=True,
-                )
-                return qml.expval(obs)
+                return [qml.expval(qml.PauliZ(q)) for q in range(self.n_qubits)]
             # local measurement(s)
             elif isinstance(self.output_qubit, int):
                 return qml.expval(qml.PauliZ(self.output_qubit))
+            # n-local measurenment
+            elif isinstance(self.output_qubit, list):
+                obs = qml.simplify(
+                    qml.Hamiltonian(
+                        [1.0] * self.n_qubits,
+                        [qml.PauliZ(q) for q in self.output_qubit],
+                    )
+                )
+                return qml.expval(obs)
             else:
-                return [qml.expval(qml.PauliZ(q)) for q in self.output_qubit]
+                raise ValueError(
+                    f"Invalid parameter 'output_qubit': {self.output_qubit}.\
+                        Must be int, list or -1."
+                )
         # run default simulation and get probs
         elif self.execution_type == "probs":
             if self.output_qubit == -1:
@@ -356,15 +365,25 @@ class Model:
         else:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
-    def _draw(self, inputs=None) -> None:
-        result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
+    def _draw(self, inputs=None, figure=False) -> None:
+        if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
+            # TODO: throws strange argument error if not catched
+            return ""
+
+        if figure:
+            result = qml.draw_mpl(self.circuit)(params=self.params, inputs=inputs)
+        else:
+            result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
         return result
 
+    def draw(self, inputs=None, figure=False) -> None:
+        return self._draw(inputs, figure)
+
     def __repr__(self) -> str:
-        return self._draw()
+        return self._draw(figure=False)
 
     def __str__(self) -> str:
-        return self._draw()
+        return self._draw(figure=False)
 
     def __call__(
         self,
@@ -373,6 +392,7 @@ class Model:
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
+        force_mean: Optional[bool] = False,
     ) -> np.ndarray:
         """
         Perform a forward pass of the quantum circuit.
@@ -403,7 +423,14 @@ class Model:
                     (2**len(output_qubit),).
         """
         # Call forward method which handles the actual caching etc.
-        return self._forward(params, inputs, noise_params, cache, execution_type)
+        return self._forward(
+            params=params,
+            inputs=inputs,
+            noise_params=noise_params,
+            cache=cache,
+            execution_type=execution_type,
+            force_mean=force_mean,
+        )
 
     def _forward(
         self,
@@ -412,6 +439,7 @@ class Model:
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
+        force_mean: Optional[bool] = False,
     ) -> np.ndarray:
         """
         Perform a forward pass of the quantum circuit.
@@ -489,13 +517,28 @@ class Model:
                     inputs=inputs,
                 )
             else:
-                result = self.circuit(
-                    params=params,
-                    inputs=inputs,
-                )
+                if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
+                    result = self.circuit(
+                        inputs=inputs,
+                    )
+                else:
+                    result = self.circuit(
+                        params=params,
+                        inputs=inputs,
+                    )
 
-        if self.execution_type == "expval" and isinstance(self.output_qubit, list):
-            result = np.stack(result)
+        if self.execution_type == "expval" and self.output_qubit == -1:
+            if isinstance(result, list):
+                result = np.stack(result)
+
+            # Calculating mean value after stacking, to not
+            # discard gradient information
+            if force_mean:
+                # exception for torch layer because it swaps batch and output dimension
+                if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
+                    result = result.mean(axis=-1)
+                else:
+                    result = result.mean(axis=0)
 
         if cache:
             np.save(file_path, result)
