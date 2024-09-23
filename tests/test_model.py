@@ -5,6 +5,9 @@ import numpy as np
 import logging
 import inspect
 import shutil
+import os
+import hashlib
+
 
 logger = logging.getLogger(__name__)
 
@@ -116,44 +119,47 @@ def test_cache() -> None:
     except Exception as e:
         logger.warning(e)
 
-    test_cases = [
-        {
-            "shots": 1024,
-            "execution_type": "expval",
-            "shape": (),
-        },
-        {
-            "shots": -1,
-            "execution_type": "density",
-            "shape": (4, 4),
-        },
-        {
-            "shots": 1024,
-            "execution_type": "probs",
-            "shape": (2,),
-        },
-    ]
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
 
-    for test_case in test_cases:
-        model = Model(
-            n_qubits=2,
-            n_layers=1,
-            circuit_type="Circuit_19",
-            data_reupload=True,
-            initialization="random",
-            output_qubit=0,
-            shots=test_case["shots"],
-        )
+    result = model(
+        model.params,
+        inputs=None,
+        cache=True,
+    )
 
-        result = model(
-            model.params,
-            inputs=None,
-            noise_params=None,
-            cache=True,
-            execution_type=test_case["execution_type"],
-        )
+    hs = hashlib.md5(
+        repr(
+            {
+                "n_qubits": model.n_qubits,
+                "n_layers": model.n_layers,
+                "pqc": model.pqc.__class__.__name__,
+                "dru": model.data_reupload,
+                "params": model.params,
+                "noise_params": model.noise_params,
+                "execution_type": model.execution_type,
+                "inputs": None,
+                "output_qubit": model.output_qubit,
+            }
+        ).encode("utf-8")
+    ).hexdigest()
 
-        assert result.shape == test_case["shape"], f"Test case: {test_case} failed"
+    cache_folder: str = ".cache"
+    if not os.path.exists(cache_folder):
+        raise Exception("Cache folder does not exist.")
+
+    name: str = f"pqc_{hs}.npy"
+    file_path: str = os.path.join(cache_folder, name)
+
+    if os.path.isfile(file_path):
+        cached_result = np.load(file_path)
+
+    assert np.array_equal(
+        result, cached_result
+    ), "Cached result and calcualted result is not equal."
 
 
 def test_initialization() -> None:
