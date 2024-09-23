@@ -552,6 +552,9 @@ class Model:
                 else:
                     result = result.mean(axis=0)
 
+        if len(result.shape) == 3 and result.shape[0] == 1:
+            result = result[0]
+
         if cache:
             np.save(file_path, result)
 
