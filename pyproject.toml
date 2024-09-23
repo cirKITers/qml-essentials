@@ -9,12 +9,13 @@ readme = "README.md"
 python = "^3.11"
 pennylane = "^0.37.0"
 
-
 [tool.poetry.group.dev.dependencies]
 devpi-client = "^7.0.3"
 black = "^24.4.2"
 pytest = "^8.2.2"
 flake8 = "^7.1.1"
+
+[tool.poetry.group.docs.dependencies]
 mkdocs = "^1.6.0"
 mkdocs-material = "^9.5.31"
 mkdocstrings-python = "^1.10.7"
