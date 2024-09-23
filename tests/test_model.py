@@ -396,6 +396,15 @@ def test_local_and_global_meas() -> None:
     inputs = np.array([0.1, 0.2, 0.3])
     test_cases = [
         {
+            "inputs": None,
+            "execution_type": "expval",
+            "output_qubit": -1,
+            "shots": -1,
+            "out_shape": (2, 1),
+            "warning": False,
+        },
+        {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
             "output_qubit": -1,
             "shots": -1,
@@ -403,6 +412,7 @@ def test_local_and_global_meas() -> None:
             "warning": False,
         },
         {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
             "output_qubit": 0,
             "shots": -1,
@@ -410,6 +420,7 @@ def test_local_and_global_meas() -> None:
             "warning": False,
         },
         {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
             "output_qubit": [0, 1],
             "shots": -1,
@@ -417,6 +428,15 @@ def test_local_and_global_meas() -> None:
             "warning": False,
         },
         {
+            "inputs": None,
+            "execution_type": "density",
+            "output_qubit": -1,
+            "shots": -1,
+            "out_shape": (4, 4),
+            "warning": False,
+        },
+        {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "density",
             "output_qubit": -1,
             "shots": -1,
@@ -424,6 +444,7 @@ def test_local_and_global_meas() -> None:
             "warning": False,
         },
         {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "density",
             "output_qubit": 0,
             "shots": -1,
@@ -431,6 +452,7 @@ def test_local_and_global_meas() -> None:
             "warning": True,
         },
         {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
             "output_qubit": -1,
             "shots": 1024,
@@ -438,6 +460,7 @@ def test_local_and_global_meas() -> None:
             "warning": False,
         },
         {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
             "output_qubit": 0,
             "shots": 1024,
@@ -445,6 +468,7 @@ def test_local_and_global_meas() -> None:
             "warning": False,
         },
         {
+            "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
             "output_qubit": [0, 1],
             "shots": 1024,
@@ -467,7 +491,7 @@ def test_local_and_global_meas() -> None:
             with pytest.warns(UserWarning):
                 out = model(
                     model.params,
-                    inputs=inputs,
+                    inputs=test_case["inputs"],
                     noise_params=None,
                     cache=False,
                     execution_type=test_case["execution_type"],
@@ -475,7 +499,7 @@ def test_local_and_global_meas() -> None:
         else:
             out = model(
                 model.params,
-                inputs=inputs,
+                inputs=test_case["inputs"],
                 noise_params=None,
                 cache=False,
                 execution_type=test_case["execution_type"],
