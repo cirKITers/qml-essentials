@@ -1,4 +1,12 @@
 site_name: QML Essentials
+nav:
+  - index.md
+  - setup.md
+  - usage.md
+  - Advanced:
+    - coefficients.md
+    - entanglement.md
+    - expressibility.md
 theme:
   name: material
   highlightjs: true
