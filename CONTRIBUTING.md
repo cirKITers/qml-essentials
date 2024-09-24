@@ -1,4 +1,17 @@
-### Packaging
+# Contributing to QUAFEL
+
+:tada: Welcome! :tada:
+
+Contributions are highly welcome!
+Start of by..
+1. Creating an issue using one of the templates (Bug Report, Feature Request)
+   - let's discuss what's going wrong or what should be added
+   - can you contribute with code? Great! Go ahead! :rocket:
+2. Forking the repository and working on your stuff
+3. Creating a pull request to the main repository
+
+
+## Packaging
 
 Building and packaging requires some extra steps (assuming Poetry):
 - `poetry run devpi use https://ea3a0fbb-599f-4d83-86f1-0e71abe27513.ka.bw-cloud-instance.org`
@@ -9,7 +22,7 @@ Building and packaging requires some extra steps (assuming Poetry):
 - `poetry version (major|minor|patch|premajor|preminor|prepatch)` as explained [here](https://python-poetry.org/docs/cli/#version)
 - `poetry publish --build -r quantum`
 
-### Re-Installing Package
+## Re-Installing Package
 
 If you want to overwrite the latest build you can simply push to the package index with the recent changes.
 Updating from this index however is then a bit tricky, because poetry keeps a cache of package metadata.
@@ -20,7 +33,7 @@ To overwrite an already installed package with the same version (but different c
 
 Note that this will also re-evaluate parts of other dependencies, and thus may change the `poetry.lock` file significantly.
 
-### Documentation
+## Documentation
 
 For local testing:
 - `mkdocs serve`
