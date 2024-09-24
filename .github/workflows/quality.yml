@@ -19,7 +19,7 @@ jobs:
         python-version: "3.11"
         cache: 'poetry' # caching pip dependencies
     - name: Install dependencies
-      run: poetry install
+      run: poetry install --with dev
     - name: Lint with flake8
       run: |
         poetry run flake8 qml_essentials
