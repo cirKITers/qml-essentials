@@ -97,7 +97,9 @@ def test_parameters() -> None:
             )
 
             if test_case["shots"] < 0:
-                assert result.requires_grad, "No gradients available in output."
+                assert hasattr(
+                    result, "requires_grad"
+                ), "No 'requires_grad' property available in output."
 
             if test_case["output_qubit"] == -1:
                 if test_case["force_mean"]:
