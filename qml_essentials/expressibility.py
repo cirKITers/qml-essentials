@@ -95,7 +95,7 @@ class Expressibility:
             n_samples (int): Number of parameter sets to generate.
             n_input_samples (int): Number of samples for the input domain in [-pi, pi]
             seed (int): Random number generator seed.
-            model (Callable): 
+            model (Callable): Function that models the quantum circuit.
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:

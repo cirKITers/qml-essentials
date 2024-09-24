@@ -157,7 +157,8 @@ class Model:
         Gets the noise parameters of the model.
 
         Returns:
-            Optional[Dict[str, float]]: A dictionary of noise parameters or None if not set.
+            Optional[Dict[str, float]]: A dictionary of
+            noise parameters or None if not set.
         """
         return self._noise_params
 
@@ -227,7 +228,8 @@ class Model:
         Sets the number of shots to use for the quantum device.
 
         Args:
-            value (Optional[int]): The number of shots. If an integer less than or equal to 0 is provided, it is set to None.
+            value (Optional[int]): The number of shots.
+            If an integer less than or equal to 0 is provided, it is set to None.
 
         Returns:
             None
@@ -305,10 +307,10 @@ class Model:
                 otherwise the density matrix of all qubits.
         """
 
-        for l in range(0, self.n_layers):
-            self.pqc(params[l], self.n_qubits)
+        for layer in range(0, self.n_layers):
+            self.pqc(params[layer], self.n_qubits)
 
-            if self.data_reupload or l == 0:
+            if self.data_reupload or layer == 0:
                 self._iec(inputs, data_reupload=self.data_reupload)
 
             if self.noise_params is not None:
@@ -479,7 +481,8 @@ class Model:
         if execution_type is not None:
             self.execution_type = execution_type
 
-        # the qasm representation contains the bound parameters, thus it is ok to hash that
+        # the qasm representation contains the bound parameters,
+        # thus it is ok to hash that
         hs = hashlib.md5(
             repr(
                 {
