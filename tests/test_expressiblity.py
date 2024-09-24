@@ -35,7 +35,7 @@ def test_divergence() -> None:
 
         assert math.isclose(
             kl_dist.mean(), test_case["result"], abs_tol=1e-3
-        ), f"Distance between two identical haar measures not equal."
+        ), "Distance between two identical haar measures not equal."
 
 
 def test_expressibility() -> None:

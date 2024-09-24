@@ -1,10 +1,8 @@
 from qml_essentials.model import Model
 from qml_essentials.coefficients import Coefficients
 
-import pytest
 import numpy as np
 import logging
-import math
 
 logger = logging.getLogger(__name__)
 

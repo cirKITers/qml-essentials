@@ -283,9 +283,9 @@ def test_multi_input() -> None:
             else:
                 assert (
                     inputs.shape[0] == 1
-                ), f"expected one elemental input for zero dimensional output"
+                ), "expected one elemental input for zero dimensional output"
         else:
-            assert len(out.shape) == 0, f"expected one elemental output for empty input"
+            assert len(out.shape) == 0, "expected one elemental output for empty input"
 
 
 def test_dru() -> None:
@@ -393,7 +393,6 @@ def test_local_state() -> None:
 
 
 def test_local_and_global_meas() -> None:
-    inputs = np.array([0.1, 0.2, 0.3])
     test_cases = [
         {
             "inputs": None,
