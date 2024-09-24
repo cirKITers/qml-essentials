@@ -10,6 +10,26 @@ Start of by..
 2. Forking the repository and working on your stuff
 3. Creating a pull request to the main repository
 
+## Setup
+
+Contributing to this project requires some more dependencies besides the "standard" packages.
+Those are specified in the groups `dev` and `docs`.
+```
+poetry install --with dev,docs
+```
+
+Additionally, we have pre-commit hooks in place, which can be installed as follows: 
+```
+poetry run pre-commit autoupdate
+poetry run pre-commit install
+```
+
+## Testing
+
+We do our testing with Pytest. Corresponding tests can be triggered as follows:
+```
+poetry run pytest
+```
 
 ## Packaging
 
@@ -35,8 +55,17 @@ Note that this will also re-evaluate parts of other dependencies, and thus may c
 
 ## Documentation
 
-For local testing:
-- `mkdocs serve`
+We use MkDocs for our documentation. To run a server locally, run:
+```
+poetry run mkdocs serve
+```
+
+If you make changes to the documentation in the meantime, trigger a build by running
+```
+poetry run mkdocs build
+```
 
 For pushing to Github pages:
-- `mkdocs gh-deploy`
+```
+poetry run mkdocs gh-deploy
+```
