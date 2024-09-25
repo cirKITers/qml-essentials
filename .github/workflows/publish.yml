@@ -1,0 +1,38 @@
+name: Publish
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    name: Trigger Tests
+    uses: ./.github/workflows/test.yml
+  documentation:
+    needs: test
+    name: Trigger Documentation
+    uses: ./.github/workflows/docs.yml
+    with:
+      test-run-id: ${{ github.run_id }}
+  deploy:
+    needs: test
+    name: Deployment
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install poetry
+      run: pipx install poetry
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+        cache: 'poetry'
+    - name: Install dependencies
+      run: poetry install --with dev
+    - name: Publish with Poetry
+      run: |
+        poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
+        poetry build
+        poetry publish
+
