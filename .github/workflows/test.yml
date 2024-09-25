@@ -32,6 +32,7 @@ jobs:
         path: htmlcov/index.html
   trigger:
     needs: test
+    if: github.ref == 'refs/heads/main'
     name: Trigger Documentation
     uses: ./.github/workflows/docs.yml
     with:
