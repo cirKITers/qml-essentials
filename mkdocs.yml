@@ -4,6 +4,7 @@ nav:
   - setup.md
   - usage.md
   - Advanced:
+    - ansaetze.md
     - coefficients.md
     - entanglement.md
     - expressibility.md
