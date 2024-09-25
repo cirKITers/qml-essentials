@@ -17,10 +17,15 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: "3.11"
-        cache: 'poetry' # caching pip dependencies
+        cache: 'poetry'
     - name: Install dependencies
       run: poetry install --with dev
     - name: Test with pytest
       run: |
         poetry run coverage run -m pytest
         poetry run coverage report -m
+    - name: Share coverage report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: htmlcov/index.html
