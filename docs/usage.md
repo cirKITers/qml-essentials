@@ -21,10 +21,13 @@ print(model)
 
 Calling the model without any (`None`) values for the `params` and `inputs` argument, will implicitly call the model with the recently (or initial) parameters and `0`s as input.
 
+In the following we will describe some concepts of this class.
+For a more detailled reference on the methods and arguments that are available, please see the [references page](https://cirkiters.github.io/qml-essentials/references).
+
 ## Output Shape
 
 The output shape is determined by the `output_qubit` argument, provided in the instantiation of the model.
-When set to -1 all qubits are measured which will result in the shape being of size $n$ by default.
+When set to -1 all qubits are measured which will result in the shape being of size $n$ by default (depending on the execution type, see below).
 
 If `force_mean` flag is set when calling the model, the output is averaged to a single value (while keeping the batch dimension).
 
