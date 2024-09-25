@@ -3,7 +3,7 @@ on:
   workflow_run:
     workflows: ['Testing']
     types: [completed]
-    branches: ["main"]
+    # branches: ["main"]
 permissions:
   contents: write
 jobs:
