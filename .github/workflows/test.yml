@@ -29,10 +29,10 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report
-        path: htmlcov/index.html
+        path: htmlcov/
   trigger:
     needs: test
-    if: github.ref == 'refs/heads/main'
+    # if: github.ref == 'refs/heads/main'
     name: Trigger Documentation
     uses: ./.github/workflows/docs.yml
     with:
