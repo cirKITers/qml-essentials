@@ -2,3 +2,4 @@
 
 This repo contains some of the commonly used Ansaetze and coding stuff required for working with QML and Data-Reuploading models.
 There are also dedicated classes to calculate entanglement and expressiblity of a provided model as well as its Fourier coefficients.
+
