@@ -6,4 +6,5 @@ There are also dedicated classes to calculate entanglement and expressiblity of 
 
 Curious? :rocket: Get started by heading to the [setup page](https://cirkiters.github.io/qml-essentials/setup/).
 
-Checkout the [coverage report](coverage/index.html).
+If you want to contribute, please refer to our [contribution guidelines](https://github.com/cirKITers/qml-essentials/blob/main/CONTRIBUTING.md) on Github.
+Oh and if you want to know what's being tested, checkout our [coverage report](coverage/index.html).

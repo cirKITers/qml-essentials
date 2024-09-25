@@ -1,4 +1,4 @@
-# Contributing to QUAFEL
+# Contributing to QML-Essentials
 
 :tada: Welcome! :tada:
 
