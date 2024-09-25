@@ -59,11 +59,8 @@ We use MkDocs for our documentation. To run a server locally, run:
 ```
 poetry run mkdocs serve
 ```
-
-If you make changes to the documentation in the meantime, trigger a build by running
-```
-poetry run mkdocs build
-```
+This will automatically trigger a rebuild each time you make changes.
+See the [MkDocs Documentation](https://cirkiters.github.io/qml-essentials/usage/) for more details.
 
 For pushing to Github pages:
 ```
