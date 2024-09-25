@@ -24,6 +24,12 @@ Calling the model without any (`None`) values for the `params` and `inputs` argu
 In the following we will describe some concepts of this class.
 For a more detailled reference on the methods and arguments that are available, please see the [references page](https://cirkiters.github.io/qml-essentials/references/#model).
 
+## The essentials
+
+There is much more to this package, than just providing a Fourier model.
+You can calculate the [Expressibility](expressibility.md) or [Entangling Capability](entanglement.md) besides the [Coefficients](coefficients.md) which are unique to this kind of QML interpretation.
+Also checkout the available [Ansaetze](ansaetze.md) that we provide with this package.
+
 ## Output Shape
 
 The output shape is determined by the `output_qubit` argument, provided in the instantiation of the model.
