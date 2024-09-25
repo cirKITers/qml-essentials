@@ -31,6 +31,6 @@ jobs:
         name: coverage-report
         path: htmlcov/index.html
     - name: Trigger Documentation
-      uses: cirKITers/qml-essentials/.github/workflows/docs.yml@cx
+      uses: ./.github/workflows/docs.yml@cx
       with:
         run-id: ${{ github.run_id }}
