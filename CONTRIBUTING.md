@@ -7,7 +7,7 @@ Start of by..
 1. Creating an issue using one of the templates (Bug Report, Feature Request)
    - let's discuss what's going wrong or what should be added
    - can you contribute with code? Great! Go ahead! :rocket:
-2. Forking the repository and working on your stuff
+2. Forking the repository and working on your stuff. See the sections below for details on how to set things up.
 3. Creating a pull request to the main repository
 
 ## Setup
@@ -24,23 +24,22 @@ poetry run pre-commit autoupdate
 poetry run pre-commit install
 ```
 
+Currently the only purpose of the hook is to run Black on commit which will do some code formatting for you.
+However be aware, that this might reject your commit and you have to re-do the commit.
+
 ## Testing
 
 We do our testing with Pytest. Corresponding tests can be triggered as follows:
 ```
 poetry run pytest
 ```
+There are Github action pipelines in place, that will do linting and testing once you open a pull request.
+However, it's a good idea to run tests and linting (either Black or Flake8) locally before pushing.
 
 ## Packaging
 
-Building and packaging requires some extra steps (assuming Poetry):
-- `poetry run devpi use https://ea3a0fbb-599f-4d83-86f1-0e71abe27513.ka.bw-cloud-instance.org`
-- `poetry run devpi login alice --password=456`
-- `poetry run devpi use alice/quantum`
-- `poetry config repositories.quantum https://ea3a0fbb-599f-4d83-86f1-0e71abe27513.ka.bw-cloud-instance.org/lc3267/quantum`
-- `poetry config http-basic.quantum alice 456` (or remove password for interactive prompt)
-- `poetry version (major|minor|patch|premajor|preminor|prepatch)` as explained [here](https://python-poetry.org/docs/cli/#version)
-- `poetry publish --build -r quantum`
+Packaging is done automagically using Github actions.
+This action is triggered when a new release is made.
 
 ## Re-Installing Package
 
@@ -65,7 +64,5 @@ If you make changes to the documentation in the meantime, trigger a build by run
 poetry run mkdocs build
 ```
 
-For pushing to Github pages:
-```
-poetry run mkdocs gh-deploy
-```
+Publishing (and building) the documentation is done automagically using Github actions.
+This action is triggered when a new release is made.
