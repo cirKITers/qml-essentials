@@ -4,8 +4,6 @@ on:
     workflows: ['Testing']
     types: [completed]
     branches: ["cx", "main"]
-  pull_request:
-    branches: [ "main" ]
 permissions:
   contents: write
 jobs:
