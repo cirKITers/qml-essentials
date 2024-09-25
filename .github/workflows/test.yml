@@ -31,6 +31,7 @@ jobs:
         name: coverage-report
         path: htmlcov/index.html
   trigger:
+    needs: test
     name: Trigger Documentation
     uses: ./.github/workflows/docs.yml
     with:
