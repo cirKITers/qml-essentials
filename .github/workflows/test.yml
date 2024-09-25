@@ -4,6 +4,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_call:
 permissions:
   contents: write
 jobs:
@@ -30,10 +31,3 @@ jobs:
       with:
         name: coverage-report
         path: htmlcov/
-  trigger:
-    needs: test
-    # if: github.ref == 'refs/heads/main'
-    name: Trigger Documentation
-    uses: ./.github/workflows/docs.yml
-    with:
-      test-run-id: ${{ github.run_id }}
