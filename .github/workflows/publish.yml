@@ -11,6 +11,9 @@ jobs:
   test:
     name: Trigger Tests
     uses: ./.github/workflows/test.yml
+  quality:
+    name: Trigger Quality
+    uses: ./.github/workflows/quality.yml
   documentation:
     needs: test
     name: Trigger Documentation
@@ -18,7 +21,7 @@ jobs:
     with:
       test-run-id: ${{ github.run_id }}
   deploy:
-    needs: test
+    needs: [quality, test]
     name: Deployment
     runs-on: ubuntu-latest
     steps:
