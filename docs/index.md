@@ -4,7 +4,7 @@
 This repo contains some of the commonly used Ansaetze and coding stuff required for working with QML and Data-Reuploading models.
 There are also dedicated classes to calculate entanglement and expressiblity of a provided model as well as its Fourier coefficients.
 
-Curious? :rocket: Get started by heading to the [setup page](https://cirkiters.github.io/qml-essentials/setup/).
+Curious? :rocket: Get started by heading to the [setup page](setup.md).
 
 If you want to contribute, please refer to our [CONTRIBUTING guide](https://github.com/cirKITers/qml-essentials/blob/main/CONTRIBUTING.md) on Github.
 Oh and if you want to know what's being tested, checkout our [coverage report](coverage/index.html).
