@@ -4,6 +4,12 @@ on:
     workflows: ['Testing']
     types: [completed]
     branches: ["cx", "main"]
+  workflow_call:
+    inputs:
+      test-run-id:
+        required: true
+        type: string
+    
 permissions:
   contents: write
 jobs:
@@ -36,6 +42,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: coverage-report
+          run-id: ${{ inputs.test-run-id }}
           path: docs/coverage.html
       - name: Deploy
         run: poetry run mkdocs gh-deploy --force
