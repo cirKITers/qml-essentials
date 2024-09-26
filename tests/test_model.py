@@ -12,6 +12,7 @@ import hashlib
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.unittest
 def test_parameters() -> None:
     test_cases = [
         {
@@ -114,6 +115,7 @@ def test_parameters() -> None:
             str(model)
 
 
+@pytest.mark.unittest
 def test_cache() -> None:
     # Stupid try removing caches
     try:
@@ -164,6 +166,7 @@ def test_cache() -> None:
     ), "Cached result and calcualted result is not equal."
 
 
+@pytest.mark.smoketest
 def test_initialization() -> None:
     test_cases = [
         {
@@ -203,6 +206,7 @@ def test_initialization() -> None:
         )
 
 
+@pytest.mark.smoketest
 def test_ansaetze() -> None:
     ansatz_cases = Ansaetze.get_available()
 
@@ -231,6 +235,7 @@ def test_ansaetze() -> None:
         )
 
 
+@pytest.mark.unittest
 def test_available_ansaetze() -> None:
     ansatze = set(Ansaetze.get_available())
 
@@ -241,6 +246,7 @@ def test_available_ansaetze() -> None:
     assert actual_ansaetze == ansatze
 
 
+@pytest.mark.unittest
 def test_multi_input() -> None:
     input_cases = [
         np.random.rand(1),
@@ -290,6 +296,7 @@ def test_multi_input() -> None:
             assert len(out.shape) == 0, "expected one elemental output for empty input"
 
 
+@pytest.mark.smoketest
 def test_dru() -> None:
     dru_cases = [False, True]
 
@@ -313,6 +320,7 @@ def test_dru() -> None:
         )
 
 
+@pytest.mark.unittest
 def test_local_state() -> None:
     test_cases = [
         {
@@ -394,6 +402,7 @@ def test_local_state() -> None:
         assert model.execution_type == test_case["execution_type"]
 
 
+@pytest.mark.unittest
 def test_local_and_global_meas() -> None:
     test_cases = [
         {
@@ -512,6 +521,7 @@ def test_local_and_global_meas() -> None:
             for test case {test_case}"
 
 
+@pytest.mark.unittest
 def test_parity() -> None:
     model_a = Model(
         n_qubits=2,
@@ -534,16 +544,3 @@ def test_parity() -> None:
     assert not np.allclose(
         result_a, result_b
     ), f"Models should be different! Got {result_a} and {result_b}"
-
-
-if __name__ == "__main__":
-    test_parameters()
-    test_cache()
-    test_initialization()
-    test_ansaetze()
-    test_available_ansaetze()
-    test_multi_input()
-    test_dru()
-    test_local_state()
-    test_local_and_global_meas()
-    test_parity()
