@@ -39,7 +39,12 @@ However, it's a good idea to run tests and linting (either Black or Flake8) loca
 ## Packaging
 
 Packaging is done automagically using Github actions.
-This action is triggered when a new release is made.
+This action is triggered when a new version is being detected in the `pyprojec.toml` file.
+This works by comparing the output of `poetry version --short` against `git tag` and triggering the publishing process if those differ.
+Publishing includes
+- setting the git tag equal to the version specified in `pyproject.toml`
+- creating a release with the current git tag and automatically generated release notes
+- publishing the package to PyPI using the stored credentials
 
 ## Re-Installing Package
 
