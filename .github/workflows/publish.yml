@@ -1,8 +1,7 @@
 name: Publish
 on:
-  release:
-    types: [published]
-  workflow_dispatch:
+  push:
+    branches: [ "main" ]
 permissions:
   contents: write
 jobs:
@@ -18,9 +17,10 @@ jobs:
     uses: ./.github/workflows/docs.yml
     with:
       test-run-id: ${{ github.run_id }}
-  deploy:
-    needs: [quality, test]
-    name: Deployment
+  release:
+    needs: [test, quality, documentation]
+    name: Release
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -31,10 +31,29 @@ jobs:
       with:
         python-version: "3.11"
         cache: 'poetry'
-    - name: Install dependencies
-      run: poetry install --with dev
-    - name: Publish with Poetry
+    - name: Compare tag and version
       run: |
+        if [ "$(git tag)" = "$(poetry version --short)" ]; then
+          echo "The tag and the version are the same, nothing to do."
+          echo "DORELEASE=false" >> $GITHUB_ENV
+        else
+          echo "DORELEASE=true" >> $GITHUB_ENV
+        fi
+    - name: Create Release & Tag
+      if: env.DORELEASE == 'true'
+      run: |
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com";
+        git config --global user.name "github-actions[bot]";
+        git tag $(poetry version --short)
+        git push --tags
+        gh release create "$(git tag)" \
+        --repo="$GITHUB_REPOSITORY" \
+        --title="${GITHUB_REPOSITORY#*/} $(git tag)" \
+        --generate-notes
+    - name: Publish to PyPI
+      if: env.DORELEASE == 'true'
+      run: |
+        poetry install --with dev
         poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
         poetry build
         poetry publish
