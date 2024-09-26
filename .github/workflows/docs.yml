@@ -4,6 +4,8 @@ on:
   #   workflows: ['Testing']
   #   types: [completed]
   #   branches: ["cx", "main"]
+  pull_request:
+    branches: [ "main" ]
   workflow_call:
     inputs:
       test-run-id:
@@ -13,8 +15,33 @@ on:
 permissions:
   contents: write
 jobs:
+  test-deploy:
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install poetry
+        run: pipx install poetry
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'poetry'
+      - name: Install dependencies
+        run: poetry install --with docs
+      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
+      - name: Setting up Cache
+        uses: actions/cache@v4
+        with:
+          key: mkdocs-material-${{ env.cache_id }}
+          path: .ci-cache
+          restore-keys: |
+            mkdocs-material-
+      - name: Build Docs
+        run: poetry run mkdocs build
   deploy:
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - name: Configure Git Credentials
