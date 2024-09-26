@@ -19,3 +19,11 @@ ent_cap = Entanglement.meyer_wallach(
     model, n_samples=1000, seed=1000
 )
 ```
+
+Note, that every function in this class accepts keyword-arguments which are being passed to the model call, so you could e.g. enable caching by
+
+```python
+ent_cap = Entanglement.meyer_wallach(
+    model, n_samples=1000, seed=1000, cache=True
+)
+```
