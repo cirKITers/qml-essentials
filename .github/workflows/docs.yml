@@ -1,9 +1,5 @@
 name: Documentation
 on:
-  # workflow_run:
-  #   workflows: ['Testing']
-  #   types: [completed]
-  #   branches: ["cx", "main"]
   pull_request:
     branches: [ "main" ]
   workflow_call:
@@ -11,11 +7,10 @@ on:
       test-run-id:
         required: true
         type: string
-    
 permissions:
   contents: write
 jobs:
-  test-deploy:
+  build:
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/main'
     steps:
