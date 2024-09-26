@@ -25,3 +25,4 @@ jobs:
       run: |
         poetry run flake8 qml_essentials
         poetry run flake8 tests
+        poetry run licensecheck --zero --license mit
