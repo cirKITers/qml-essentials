@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Franz"
+  given-names: "Maja"
+  # orcid: "https://orcid.org/0000-0000-0000-0000"
+- family-names: "Strobl"
+  given-names: "Melvin"
+  orcid: "0000-0003-0229-9897"
+title: "QML Essentials"
+version: 0.1.13
+# doi: 10.5281/zenodo.1234
+date-released: 2024-09-27
+url: "https://github.com/cirKITers/qml-essentials"
