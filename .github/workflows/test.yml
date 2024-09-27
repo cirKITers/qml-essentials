@@ -9,6 +9,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+    # - name: Install Act dependencies
+    #   if: ${{ env.ACT }}
+    #   run: |
+    #     apt update -qq > /dev/null
+    #     apt install apt-utils -y -qq > /dev/null
+    #     apt remove python3
+    #     apt install python3.11 python3-venv pipx -y
     - uses: actions/checkout@v4
     - name: Install poetry
       run: pipx install poetry
