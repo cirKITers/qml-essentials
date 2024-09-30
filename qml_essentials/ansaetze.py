@@ -315,11 +315,13 @@ class Ansaetze:
             """
             Creates a Circuit6 ansatz.
 
-            Length of flattened vector must be n_qubits * 4 + n_qubits * (n_qubits - 1) =
-            n_qubits * 3 + n_qubits**2
+            Length of flattened vector must be
+                n_qubits * 4 + n_qubits * (n_qubits - 1) =
+                n_qubits * 3 + n_qubits**2
 
             Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits * 3 + n_qubits**2)
+                w (np.ndarray): weight vector of size
+                    n_layers * (n_qubits * 3 + n_qubits**2)
                 n_qubits (int): number of qubits
             """
             w_idx = 0
