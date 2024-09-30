@@ -1,14 +1,14 @@
 # Setup
 
-The package is available at [this index](https://ea3a0fbb-599f-4d83-86f1-0e71abe27513.ka.bw-cloud-instance.org/lc3267/quantum).
+This package is available via [PyPi](https://pypi.org/project/qml-essentials/).
+Installing this package is as simple as with any other package:
 
-There are two installation methods:
+`pip install qml-essentials`
 
-### [Poetry](https://python-poetry.org/)
+Or, if you prefer poetry:
 
-- `poetry source add --priority=supplemental quantum https://ea3a0fbb-599f-4d83-86f1-0e71abe27513.ka.bw-cloud-instance.org/lc3267/quantum/+simple/`
-- `poetry add --source quantum qml-essentials`
+`poetry add qml-essentials`
 
-### pip
+Once you set things up, go ahead and checkout [how to use qml-essentials](usage.md).
 
-- `pip install --index-url https://ea3a0fbb-599f-4d83-86f1-0e71abe27513.ka.bw-cloud-instance.org/lc3267/quantum/+simple/ qml-essentials`
+If you want to contribute to this project, a more detailled explaination is available in the [CONTRIBUTING guide](https://github.com/cirKITers/qml-essentials/blob/main/CONTRIBUTING.md). 

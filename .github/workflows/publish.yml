@@ -1,0 +1,57 @@
+name: Publish
+on:
+  push:
+    branches: [ "main" ]
+permissions:
+  contents: write
+jobs:
+  test:
+    name: Trigger Tests
+    uses: ./.github/workflows/test.yml
+  quality:
+    name: Trigger Quality
+    uses: ./.github/workflows/quality.yml
+  documentation:
+    needs: test
+    name: Trigger Documentation
+    uses: ./.github/workflows/docs.yml
+    with:
+      test-run-id: ${{ github.run_id }}
+  release:
+    needs: [test, quality, documentation]
+    name: Release
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install poetry
+      run: pipx install poetry
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+        cache: 'poetry'
+    - name: Compare tag and version
+      run: |
+        if [ "$(git tag)" = "$(poetry version --short)" ]; then
+          echo "The tag and the version are the same, nothing to do."
+          echo "DORELEASE=false" >> $GITHUB_ENV
+        else
+          echo "DORELEASE=true" >> $GITHUB_ENV
+        fi
+    - name: Create Release & Tag
+      if: env.DORELEASE == 'true'
+      run: |
+        gh release create "$(poetry version --short)" \
+        --repo="$GITHUB_REPOSITORY" \
+        --title="${GITHUB_REPOSITORY#*/} $(poetry version --short)" \
+        --generate-notes
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Publish to PyPI
+      if: env.DORELEASE == 'true'
+      run: |
+        poetry install --with dev
+        poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
+        poetry build
+        poetry publish
