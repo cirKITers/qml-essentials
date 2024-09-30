@@ -114,13 +114,12 @@ class Ansaetze:
         @staticmethod
         def build(w: np.ndarray, n_qubits: int):
             """
-            Creates a Circuit19 ansatz.
+            Creates a Hardware-Efficient ansatz.
 
-            Length of flattened vector must be n_qubits*3-1
-            because for >1 qubits there are three gates
+            Length of flattened vector must be n_qubits*3
 
             Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
+                w (np.ndarray): weight vector of size n_layers*(n_qubits*3)
                 n_qubits (int): number of qubits
             """
             w_idx = 0
@@ -202,11 +201,10 @@ class Ansaetze:
             """
             Creates a Circuit18 ansatz.
 
-            Length of flattened vector must be n_qubits*3-1
-            because for >1 qubits there are three gates
+            Length of flattened vector must be n_qubits*3
 
             Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
+                w (np.ndarray): weight vector of size n_layers*(n_qubits*3)
                 n_qubits (int): number of qubits
             """
             w_idx = 0
@@ -228,7 +226,7 @@ class Ansaetze:
         @staticmethod
         def n_params_per_layer(n_qubits: int) -> int:
             if n_qubits > 1:
-                return n_qubits * 3
+                return n_qubits * 2
             else:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 2
@@ -242,11 +240,11 @@ class Ansaetze:
             """
             Creates a Circuit15 ansatz.
 
-            Length of flattened vector must be n_qubits*3-1
+            Length of flattened vector must be n_qubits*2
             because for >1 qubits there are three gates
 
             Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
+                w (np.ndarray): weight vector of size n_layers*(n_qubits*2)
                 n_qubits (int): number of qubits
             """
             raise NotImplementedError  # Did not figured out the entangling sequence yet
@@ -276,13 +274,12 @@ class Ansaetze:
         @staticmethod
         def build(w: np.ndarray, n_qubits: int):
             """
-            Creates a Circuit19 ansatz.
+            Creates a Circuit9 ansatz.
 
-            Length of flattened vector must be n_qubits*3-1
-            because for >1 qubits there are three gates
+            Length of flattened vector must be n_qubits
 
             Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
+                w (np.ndarray): weight vector of size n_layers*n_qubits
                 n_qubits (int): number of qubits
             """
             w_idx = 0
@@ -316,12 +313,13 @@ class Ansaetze:
         @staticmethod
         def build(w: np.ndarray, n_qubits: int):
             """
-            Creates a Circuit1 ansatz.
+            Creates a Circuit6 ansatz.
 
-            Length of flattened vector must be n_qubits*2
+            Length of flattened vector must be n_qubits * 4 + n_qubits * (n_qubits - 1) =
+            n_qubits * 3 + n_qubits**2
 
             Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*2)
+                w (np.ndarray): weight vector of size n_layers*(n_qubits * 3 + n_qubits**2)
                 n_qubits (int): number of qubits
             """
             w_idx = 0
@@ -394,7 +392,7 @@ class Ansaetze:
             Creates a StronglyEntanglingLayers ansatz.
 
             Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3)
+                w (np.ndarray): weight vector of size n_layers*(n_qubits*6)
                 n_qubits (int): number of qubits
             """
             w_idx = 0
