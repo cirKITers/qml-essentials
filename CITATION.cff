@@ -6,7 +6,7 @@ authors:
   # orcid: "https://orcid.org/0000-0000-0000-0000"
 - family-names: "Strobl"
   given-names: "Melvin"
-  orcid: "0000-0003-0229-9897"
+  orcid: "https://orcid.org/0000-0003-0229-9897"
 title: "QML Essentials"
 version: 0.1.13
 # doi: 10.5281/zenodo.1234
