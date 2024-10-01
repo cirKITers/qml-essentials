@@ -113,7 +113,7 @@ class Expressibility:
             model=model,
             kwargs=kwargs,
         )
-        z: np.ndarray = np.zeros((len(x), n_bins))
+        z: np.ndarray = np.zeros((n_input_samples, n_bins))
 
         y: np.ndarray = np.linspace(0, 1, n_bins + 1)
 
