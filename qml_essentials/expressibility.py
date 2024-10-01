@@ -120,7 +120,6 @@ class Expressibility:
         for i, f in enumerate(fidelities):
             z[i], _ = np.histogram(f, bins=y)
 
-        # Transpose because this allows a direct comparison with the haar integral
         z = z / n_samples
 
         return x, y, z
