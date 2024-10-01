@@ -3,10 +3,12 @@ from qml_essentials.expressibility import Expressibility
 
 import logging
 import math
+import pytest
 
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.unittest
 def test_divergence() -> None:
     test_cases = [
         {
@@ -38,6 +40,8 @@ def test_divergence() -> None:
         ), "Distance between two identical haar measures not equal."
 
 
+@pytest.mark.unittest
+@pytest.mark.expensive
 def test_expressibility() -> None:
     test_cases = [
         {
@@ -93,8 +97,3 @@ def test_expressibility() -> None:
         ), f"Expressibility is not {test_case['result']}\
             for circuit ansatz {test_case['circuit_type']}.\
             Was {kl_dist} instead"
-
-
-if __name__ == "__main__":
-    test_divergence()
-    test_expressibility()

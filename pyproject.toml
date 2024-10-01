@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "qml-essentials"
-version = "0.1.13"
+version = "0.1.14"
 description = ""
 authors = ["Melvin Strobl <lc3267@kit.edu>"]
 readme = "README.md"
@@ -19,6 +19,7 @@ pytest = "^8.2.2"
 flake8 = "^7.1.1"
 pre-commit = "^3.8.0"
 coverage = "^7.6.1"
+licensecheck = "^2024.3"
 
 [tool.poetry.group.docs]
 optional = true
@@ -32,3 +33,10 @@ markdown-include = "^0.8.1"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+markers = [
+    "expensive: Tests that take a long time to run",
+    "unittest: Tests with an assertion to check the output of a particular uni",
+    "smoketest: Tests that just run a method and check if it not fails",
+]
