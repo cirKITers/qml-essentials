@@ -33,11 +33,12 @@ jobs:
         cache: 'poetry'
     - name: Compare tag and version
       run: |
+        git fetch --tags
         if [ "$(git tag | sort -g | tail -1)" = "$(poetry version --short)" ]; then
           echo "The tag and the version are the same, nothing to do."
           echo "DORELEASE=false" >> $GITHUB_ENV
         else
-          echo "The tag and the version differ, trigging a release."
+          echo "The tag ($(git tag | sort -g | tail -1)) and the version ($(poetry version --short)) differ, trigging a release."
           echo "DORELEASE=true" >> $GITHUB_ENV
         fi
     - name: Create Release & Tag
