@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Callable, Union, List, Type
+from typing import Dict, Optional, Tuple, Callable, Union, List
 import pennylane as qml
 import pennylane.numpy as np
 import hashlib
