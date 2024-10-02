@@ -20,6 +20,7 @@ ent_cap = Entanglement.meyer_wallach(
 )
 ```
 
+Here, `n_samples` is the number of samples for the input domain in $[0, 2\pi]$, and `seed` is the random number generator seed.
 Note, that every function in this class accepts keyword-arguments which are being passed to the model call, so you could e.g. enable caching by
 ```python
 ent_cap = Entanglement.meyer_wallach(
