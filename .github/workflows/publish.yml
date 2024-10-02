@@ -43,6 +43,17 @@ jobs:
           echo "The tag ($(git tag | sort -g | tail -1)) and the version ($(poetry version --short)) differ, trigging a release."
           echo "DORELEASE=true" >> $GITHUB_ENV
         fi
+    - name: Update Citation
+      if: env.DORELEASE == 'true'
+      run: |
+        sed -i "/^cff/! s/version:\s\S*/version: $(poetry version --short)/" CITATION.cff
+        sed -i "s/date-released:\s\S*/date-released: $(date +'%Y-%m-%d')/" CITATION.cff
+        git config user.name github-actions[bot]
+        git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+        git commit -am "Update Citation"
+        git push
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: Create Release & Tag
       if: env.DORELEASE == 'true'
       run: |
