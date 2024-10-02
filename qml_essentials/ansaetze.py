@@ -114,7 +114,8 @@ class Ansaetze:
         @staticmethod
         def build(w: np.ndarray, n_qubits: int):
             """
-            Creates a Hardware-Efficient ansatz.
+            Creates a Hardware-Efficient ansatz, as proposed in
+            https://arxiv.org/pdf/2309.03279
 
             Length of flattened vector must be n_qubits*3
 
@@ -124,11 +125,11 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                qml.RY(w[w_idx], wires=q)
-                w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
+                qml.RX(w[w_idx], wires=q)
                 w_idx += 1
                 qml.RY(w[w_idx], wires=q)
+                w_idx += 1
+                qml.RX(w[w_idx], wires=q)
                 w_idx += 1
 
             if n_qubits > 1:
