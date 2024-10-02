@@ -5,7 +5,7 @@ import hashlib
 import os
 import warnings
 
-from qml_essentials.ansaetze import Ansaetze
+from qml_essentials.ansaetze import Ansaetze, Circuit
 
 import logging
 
@@ -21,7 +21,7 @@ class Model:
         self,
         n_qubits: int,
         n_layers: int,
-        circuit_type: str,
+        circuit_type: Union[str, Circuit],
         data_reupload: bool = True,
         initialization: str = "random",
         output_qubit: Union[List[int], int] = -1,
@@ -43,7 +43,7 @@ class Model:
         Args:
             n_qubits (int): The number of qubits in the circuit.
             n_layers (int): The number of layers in the circuit.
-            circuit_type (str): The type of quantum circuit to use.
+            circuit_type (str, Circuit): The type of quantum circuit to use.
                 If None, defaults to "no_ansatz".
             data_reupload (bool, optional): Whether to reupload data to the
                 quantum device on each measurement. Defaults to True.
@@ -74,9 +74,13 @@ class Model:
         self.data_reupload: bool = data_reupload
 
         # Initialize ansatz
-        self.pqc: Callable[[Optional[np.ndarray], int], int] = getattr(
-            Ansaetze, circuit_type or "no_ansatz"
-        )()
+        # only weak check for str. We trust the user to provide sth useful
+        if isinstance(circuit_type, str):
+            self.pqc: Callable[[Optional[np.ndarray], int], int] = getattr(
+                Ansaetze, circuit_type or "No_Ansatz"
+            )()
+        else:
+            self.pqc = circuit_type()
 
         log.info(f"Using {circuit_type} circuit.")
 

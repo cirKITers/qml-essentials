@@ -1,5 +1,5 @@
 from qml_essentials.model import Model
-from qml_essentials.ansaetze import Ansaetze
+from qml_essentials.ansaetze import Ansaetze, Circuit
 import pytest
 import numpy as np
 import logging
@@ -7,7 +7,8 @@ import inspect
 import shutil
 import os
 import hashlib
-
+from typing import Optional
+import pennylane as qml
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +234,46 @@ def test_ansaetze() -> None:
             cache=False,
             execution_type="expval",
         )
+
+    class custom_ansatz(Circuit):
+        @staticmethod
+        def n_params_per_layer(n_qubits: int) -> int:
+            return n_qubits * 3
+
+        @staticmethod
+        def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
+            return None
+
+        @staticmethod
+        def build(w: np.ndarray, n_qubits: int):
+            w_idx = 0
+            for q in range(n_qubits):
+                qml.RY(w[w_idx], wires=q)
+                w_idx += 1
+                qml.RZ(w[w_idx], wires=q)
+                w_idx += 1
+
+            if n_qubits > 1:
+                for q in range(n_qubits - 1):
+                    qml.CZ(wires=[q, q + 1])
+
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type=custom_ansatz,
+        data_reupload=True,
+        initialization="random",
+        output_qubit=0,
+        shots=1024,
+    )
+
+    _ = model(
+        model.params,
+        inputs=None,
+        noise_params=None,
+        cache=False,
+        execution_type="expval",
+    )
 
 
 @pytest.mark.unittest

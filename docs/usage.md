@@ -19,6 +19,9 @@ You can take a look at your model, by simply calling
 print(model)
 ```
 
+You can also provide a custom circuit, by instantiating from the `Circuit` class in `qml_essentials.ansaetze.Circuit`.
+See page ["Ansaetze"](ansaetze.md) for more details.
+
 Calling the model without any (`None`) values for the `params` and `inputs` argument, will implicitly call the model with the recently (or initial) parameters and `0`s as input.
 
 In the following we will describe some concepts of this class.
