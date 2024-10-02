@@ -35,6 +35,7 @@ jobs:
         cache: 'poetry'
     - name: Compare tag and version
       run: |
+        git fetch --tags
         if [ "$(git tag | sort -g | tail -1)" = "$(poetry version --short)" ]; then
           echo "The tag and the version are the same, nothing to do."
           echo "DORELEASE=false" >> $GITHUB_ENV
