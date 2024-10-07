@@ -46,21 +46,21 @@ def test_expressibility() -> None:
     test_cases = [
         {
             "circuit_type": "Circuit_1",
-            "n_qubits": 2,
-            "n_layers": 3,
+            "n_qubits": 3,
+            "n_layers": 1,
             "n_bins": 10,
-            "n_samples": 200,
-            "n_input_samples": 2,
-            "result": 1.858,
+            "n_samples": 400,
+            "n_input_samples": 10,
+            "result": 2.905,
         },
         {
             "circuit_type": "Circuit_9",
-            "n_qubits": 2,
-            "n_layers": 3,
+            "n_qubits": 3,
+            "n_layers": 1,
             "n_bins": 10,
-            "n_samples": 200,
-            "n_input_samples": 2,
-            "result": 2.629,
+            "n_samples": 400,
+            "n_input_samples": 10,
+            "result": 6.641,
         },
     ]
 
@@ -69,9 +69,6 @@ def test_expressibility() -> None:
             n_qubits=test_case["n_qubits"],
             n_layers=test_case["n_layers"],
             circuit_type=test_case["circuit_type"],
-            data_reupload=True,
-            initialization="random",
-            output_qubit=0,
         )
 
         _, _, z = Expressibility.state_fidelities(
@@ -80,13 +77,11 @@ def test_expressibility() -> None:
             n_input_samples=test_case["n_input_samples"],
             seed=1000,
             model=model,
-            cache=False,
         )
 
         _, y_haar = Expressibility.haar_integral(
             n_qubits=test_case["n_qubits"],
             n_bins=test_case["n_bins"],
-            cache=False,
         )
 
         # Calculate the mean (over all inputs, if required)
