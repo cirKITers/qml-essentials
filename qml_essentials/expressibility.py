@@ -1,5 +1,5 @@
 import pennylane.numpy as np
-from typing import Tuple, Callable, Any
+from typing import Tuple, List, Any
 from scipy import integrate
 from scipy.special import rel_entr
 import os
@@ -10,7 +10,7 @@ from qml_essentials.model import Model
 class Expressibility:
     @staticmethod
     def _sample_state_fidelities(
-        model: Model,  # type: ignore[name-defined]
+        model: Model,
         x_samples: np.ndarray,
         n_samples: int,
         seed: int,
@@ -80,22 +80,23 @@ class Expressibility:
 
     @staticmethod
     def state_fidelities(
-        n_bins: int,
-        n_samples: int,
-        n_input_samples: int,
         seed: int,
-        model: Callable,  # type: ignore
+        n_samples: int,
+        n_bins: int,
+        n_input_samples: int,
+        input_domain: List[float],
+        model: Model,
         **kwargs: Any,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Sample the state fidelities and histogram them into a 2D array.
 
         Args:
-            n_bins (int): Number of histogram bins.
-            n_samples (int): Number of parameter sets to generate.
-            n_input_samples (int): Number of samples for the input domain
-                in [-pi, pi]
             seed (int): Random number generator seed.
+            n_samples (int): Number of parameter sets to generate.
+            n_bins (int): Number of histogram bins.
+            n_input_samples (int): Number of input samples.
+            input_domain (List[float]): Input domain.
             model (Callable): Function that models the quantum circuit.
             kwargs (Any): Additional keyword arguments for the model function.
 
@@ -104,8 +105,7 @@ class Expressibility:
                 input samples, bin edges, and histogram values.
         """
 
-        x_domain = [-1 * np.pi, 1 * np.pi]
-        x = np.linspace(x_domain[0], x_domain[1], n_input_samples, requires_grad=False)
+        x = np.linspace(*input_domain, n_input_samples, requires_grad=False)
 
         fidelities = Expressibility._sample_state_fidelities(
             x_samples=x,

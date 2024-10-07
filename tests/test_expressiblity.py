@@ -1,6 +1,7 @@
 from qml_essentials.model import Model
 from qml_essentials.expressibility import Expressibility
 
+import pennylane.numpy as np
 import logging
 import math
 import pytest
@@ -60,7 +61,7 @@ def test_expressibility() -> None:
             "n_bins": 10,
             "n_samples": 400,
             "n_input_samples": 10,
-            "result": 6.641,
+            "result": 6.670,
         },
     ]
 
@@ -72,10 +73,11 @@ def test_expressibility() -> None:
         )
 
         _, _, z = Expressibility.state_fidelities(
+            seed=1000,
             n_bins=test_case["n_bins"],
             n_samples=test_case["n_samples"],
             n_input_samples=test_case["n_input_samples"],
-            seed=1000,
+            input_domain=[0, 2 * np.pi],
             model=model,
         )
 
