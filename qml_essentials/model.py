@@ -214,6 +214,18 @@ class Model:
         initialization: str = None,
         initialization_domain: List[float] = None,
     ) -> None:
+        """
+        Initializes the parameters of the model.
+
+        Args:
+            rng: A random number generator to use for initialization.
+            repeat: The number of times to repeat the parameters. If None, the number of layers is used.
+            initialization: The strategy to use for parameter initialization. If None, the strategy specified in the constructor is used.
+            initialization_domain: The domain to use for parameter initialization. If None, the domain specified in the constructor is used.
+
+        Returns:
+            None
+        """
         params_shape = (
             self._params_shape if repeat is None else [*self._params_shape, repeat]
         )
@@ -262,8 +274,6 @@ class Model:
             f"Initialized parameters with shape {self.params.shape}\
             using strategy {initialization}."
         )
-
-        return self.params
 
     def _iec(
         self,
