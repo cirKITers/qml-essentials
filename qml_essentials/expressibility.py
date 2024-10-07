@@ -43,10 +43,11 @@ class Expressibility:
         fidelities: np.ndarray = np.zeros((n_x_samples, n_samples))
 
         # Generate random parameter sets
-        w: np.ndarray = (
-            2 * np.pi * (1 - 2 * rng.random(size=[*model.params.shape, n_samples * 2]))
-        )
-
+        # w: np.ndarray = (
+        #     2 * np.pi * (1 - 2 * rng.random(size=[*model.params.shape, n_samples * 2]))
+        # )
+        # TODO: why do we need *2? is there anything important regarding the shift abovce?
+        model.initialize_params(rng=rng, repeat=n_samples * 2)
         # Batch input samples and parameter sets for efficient computation
         x_samples_batched: np.ndarray = x_samples.reshape(1, -1).repeat(
             n_samples * 2, axis=0
@@ -59,7 +60,7 @@ class Expressibility:
             # Execution type is explicitly set to density
             sv: np.ndarray = model(
                 inputs=x_samples_batched[:, idx],
-                params=w,
+                params=model.params,
                 execution_type="density",
                 **kwargs,
             )

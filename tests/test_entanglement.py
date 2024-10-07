@@ -22,8 +22,8 @@ def test_entanglement() -> None:
             "circuit_type": "Strongly_Entangling",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 1000,
-            "result": 0.3985,
+            "n_samples": 2000,
+            "result": 0.3912,
         },
     ]
 
