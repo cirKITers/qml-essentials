@@ -1,14 +1,14 @@
 from qml_essentials.model import Model
 from qml_essentials.coefficients import Coefficients
 
-import pytest
 import numpy as np
 import logging
-import math
+import pytest
 
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.unittest
 def test_coefficients() -> None:
     test_cases = [
         {
@@ -56,7 +56,3 @@ def test_coefficients() -> None:
         assert np.isclose(
             np.sum(coeffs).imag, 0.0, rtol=1.0e-5
         ), "Imaginary part is not zero"
-
-
-if __name__ == "__main__":
-    test_coefficients()

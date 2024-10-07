@@ -1,22 +1,13 @@
-# This workflow will install Python dependencies, run tests and lint with a single version of Python
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
-
-name: Code Quality
-
+name: Quality
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
-
+  workflow_call:
 permissions:
   contents: read
-
 jobs:
-  build:
-
+  quality:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
     - name: Install poetry
@@ -25,12 +16,12 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: "3.11"
-        cache: 'poetry' # caching pip dependencies
+        cache: 'poetry'
     - name: Install dependencies
-      run: poetry install
+      run: poetry install --with dev
     - name: Lint with flake8
-      run:
-        # stop the build if there are Python syntax errors or undefined names
-        poetry run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        poetry run flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      run: |
+        poetry run flake8 qml_essentials
+        poetry run flake8 tests
+    - name: Running license check
+      run: poetry run licensecheck --zero --license mit

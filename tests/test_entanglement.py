@@ -3,10 +3,12 @@ from qml_essentials.entanglement import Entanglement
 
 import logging
 import math
+import pytest
 
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.unittest
 def test_entanglement() -> None:
     test_cases = [
         {
@@ -43,7 +45,3 @@ def test_entanglement() -> None:
         ), f"Entangling capacity is not {test_case['result']}\
             for circuit ansatz {test_case['circuit_type']}.\
             Was {ent_cap} instead"
-
-
-if __name__ == "__main__":
-    test_entanglement()

@@ -95,14 +95,13 @@ class Expressibility:
             n_samples (int): Number of parameter sets to generate.
             n_input_samples (int): Number of samples for the input domain in [-pi, pi]
             seed (int): Random number generator seed.
-            model (Callable): 
+            model (Callable): Function that models the quantum circuit.
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
             Tuple[np.ndarray, np.ndarray, np.ndarray]: Tuple containing the
                 input samples, bin edges, and histogram values.
         """
-        epsilon = 1e-5
 
         x_domain = [-1 * np.pi, 1 * np.pi]
         x = np.linspace(x_domain[0], x_domain[1], n_input_samples, requires_grad=False)
@@ -114,17 +113,13 @@ class Expressibility:
             model=model,
             kwargs=kwargs,
         )
-        z: np.ndarray = np.zeros((len(x), n_bins))
+        z: np.ndarray = np.zeros((n_input_samples, n_bins))
 
-        y: np.ndarray = np.linspace(0, 1 + epsilon, n_bins + 1)
-        # FIXME: somehow I get nan's in the histogram,
-        # when directly creating bins until n
-        # workaround hack is to add a small epsilon
-        # could it be related to sampling issues?
+        y: np.ndarray = np.linspace(0, 1, n_bins + 1)
+
         for i, f in enumerate(fidelities):
             z[i], _ = np.histogram(f, bins=y)
 
-        # Transpose because this allows a direct comparison with the haar integral
         z = z / n_samples
 
         return x, y, z

@@ -1,0 +1,72 @@
+name: Publish
+on:
+  push:
+    branches: [ "main" ]
+permissions:
+  contents: write
+jobs:
+  test:
+    name: Trigger Tests
+    uses: ./.github/workflows/test.yml
+  quality:
+    name: Trigger Quality
+    uses: ./.github/workflows/quality.yml
+  documentation:
+    needs: test
+    name: Trigger Documentation
+    uses: ./.github/workflows/docs.yml
+    with:
+      test-run-id: ${{ github.run_id }}
+  release:
+    needs: [test, quality, documentation]
+    name: Release
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-tags: true
+    - name: Install poetry
+      run: pipx install poetry
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+        cache: 'poetry'
+    - name: Compare tag and version
+      run: |
+        git fetch --tags
+        if [ "$(git tag | sort -g | tail -1)" = "$(poetry version --short)" ]; then
+          echo "The tag and the version are the same, nothing to do."
+          echo "DORELEASE=false" >> $GITHUB_ENV
+        else
+          echo "The tag ($(git tag | sort -g | tail -1)) and the version ($(poetry version --short)) differ, trigging a release."
+          echo "DORELEASE=true" >> $GITHUB_ENV
+        fi
+    - name: Update Citation
+      if: env.DORELEASE == 'true'
+      run: |
+        sed -i "/^cff/! s/version:\s\S*/version: $(poetry version --short)/" CITATION.cff
+        sed -i "s/date-released:\s\S*/date-released: $(date +'%Y-%m-%d')/" CITATION.cff
+        git config user.name github-actions[bot]
+        git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+        git commit -am "Update Citation"
+        git push
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Create Release & Tag
+      if: env.DORELEASE == 'true'
+      run: |
+        gh release create "$(poetry version --short)" \
+        --repo="$GITHUB_REPOSITORY" \
+        --title="${GITHUB_REPOSITORY#*/} $(poetry version --short)" \
+        --generate-notes
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Publish to PyPI
+      if: env.DORELEASE == 'true'
+      run: |
+        poetry install --with dev
+        poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
+        poetry build
+        poetry publish
