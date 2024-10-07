@@ -53,9 +53,23 @@ def test_parameters() -> None:
         },
         {
             "shots": 1024,
+            "execution_type": "probs",
+            "output_qubit": 0,
+            "force_mean": True,
+            "exception": False,
+        },
+        {
+            "shots": 1024,
             "execution_type": "expval",
             "output_qubit": 0,
             "force_mean": False,
+            "exception": False,
+        },
+        {
+            "shots": 1024,
+            "execution_type": "expval",
+            "output_qubit": 0,
+            "force_mean": True,
             "exception": False,
         },
         {
@@ -72,8 +86,6 @@ def test_parameters() -> None:
             n_qubits=2,
             n_layers=1,
             circuit_type="Circuit_19",
-            data_reupload=True,
-            initialization="random",
             output_qubit=test_case["output_qubit"],
             shots=test_case["shots"],
         )
@@ -83,17 +95,13 @@ def test_parameters() -> None:
                 _ = model(
                     model.params,
                     inputs=None,
-                    noise_params=None,
-                    cache=False,
                     execution_type=test_case["execution_type"],
                     force_mean=test_case["force_mean"],
                 )
         else:
-            result = model.__call__(
+            result = model(
                 model.params,
                 inputs=None,
-                noise_params=None,
-                cache=False,
                 execution_type=test_case["execution_type"],
                 force_mean=test_case["force_mean"],
             )
@@ -102,7 +110,9 @@ def test_parameters() -> None:
                 assert hasattr(
                     result, "requires_grad"
                 ), "No 'requires_grad' property available in output."
-
+            else:
+                # TODO: not supported by PennyLane yet
+                pass
             if test_case["output_qubit"] == -1:
                 if test_case["force_mean"]:
                     assert (
