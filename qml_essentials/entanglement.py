@@ -59,7 +59,7 @@ class Entanglement:
                     guaranteed to be between 0.0 and 1.0
             """
             assert (
-                params.shape[0] == samples
+                params.shape[-1] == samples
             ), "Number of samples does not match number of parameters"
 
             mw_measure = np.zeros(samples, dtype=complex)
@@ -69,7 +69,7 @@ class Entanglement:
                 # implicitly set input to none in case it's not needed
                 kwargs.setdefault("inputs", None)
                 # explicitly set execution type because everything else won't work
-                U = evaluate(params=params[i], execution_type="density", **kwargs)
+                U = evaluate(params=params[:, :, i], execution_type="density", **kwargs)
 
                 entropy = 0
 
@@ -88,7 +88,8 @@ class Entanglement:
             assert seed is not None, "Seed must be provided when samples > 0"
             # TODO: maybe switch to JAX rng
             rng = np.random.default_rng(seed)
-            params = rng.uniform(0, 2 * np.pi, size=(n_samples, *model.params.shape))
+            # params = rng.uniform(0, 2 * np.pi, size=(n_samples, *model.params.shape))
+            params = model.initialize_params(rng=rng, repeat=n_samples)
         else:
             if seed is not None:
                 log.warning("Seed is ignored when samples is 0")
