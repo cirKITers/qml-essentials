@@ -73,7 +73,7 @@ class Model:
         self.n_layers: int = n_layers
         self.data_reupload: bool = data_reupload
 
-        lightning_threshold = 14
+        lightning_threshold = 12
 
         # Initialize ansatz
         # only weak check for str. We trust the user to provide sth useful
