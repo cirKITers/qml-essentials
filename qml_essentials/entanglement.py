@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Any
+from typing import Optional, Any
 import pennylane as qml
 import pennylane.numpy as np
 
