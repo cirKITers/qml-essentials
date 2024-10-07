@@ -4,13 +4,13 @@ from scipy import integrate
 from scipy.special import rel_entr
 import os
 
+from qml_essentials.model import Model
+
 
 class Expressibility:
     @staticmethod
     def _sample_state_fidelities(
-        model: Callable[
-            [np.ndarray, np.ndarray], np.ndarray
-        ],  # type: ignore[name-defined]
+        model: Model,  # type: ignore[name-defined]
         x_samples: np.ndarray,
         n_samples: int,
         seed: int,
@@ -20,10 +20,7 @@ class Expressibility:
         Compute the fidelities for each pair of input samples and parameter sets.
 
         Args:
-            model (Callable[[np.ndarray, np.ndarray], np.ndarray]):
-                Function that evaluates the model. It must accept inputs
-                and params as arguments
-                and return an array of shape (n_samples, n_features).
+            model (Callable): Function that models the quantum circuit.
             x_samples (np.ndarray): Array of shape (n_input_samples, n_features)
                 containing the input samples.
             n_samples (int): Number of parameter sets to generate.
