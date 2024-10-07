@@ -75,6 +75,7 @@ class Ansaetze:
         return [
             Ansaetze.No_Ansatz,
             Ansaetze.Circuit_1,
+            Ansaetze.Circuit_6,
             Ansaetze.Circuit_9,
             Ansaetze.Circuit_15,
             Ansaetze.Circuit_18,
@@ -104,7 +105,7 @@ class Ansaetze:
                 return n_qubits * 3
             else:
                 log.warning("Number of Qubits < 2, no entanglement available")
-                return 2
+                return 3
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -113,25 +114,29 @@ class Ansaetze:
         @staticmethod
         def build(w: np.ndarray, n_qubits: int):
             """
-            Creates a Circuit19 ansatz.
+            Creates a Hardware-Efficient ansatz, as proposed in
+            https://arxiv.org/pdf/2309.03279
 
-            Length of flattened vector must be n_qubits*3-1
-            because for >1 qubits there are three gates
+            Length of flattened vector must be n_qubits*3
 
             Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
+                w (np.ndarray): weight vector of size n_layers*(n_qubits*3)
                 n_qubits (int): number of qubits
             """
             w_idx = 0
             for q in range(n_qubits):
+                qml.RX(w[w_idx], wires=q)
+                w_idx += 1
                 qml.RY(w[w_idx], wires=q)
                 w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
+                qml.RX(w[w_idx], wires=q)
                 w_idx += 1
 
             if n_qubits > 1:
-                for q in range(n_qubits - 1):
-                    qml.CZ(wires=[q, q + 1])
+                for q in range(n_qubits // 2):
+                    qml.CZ(wires=[(2 * q), (2 * q + 1)])
+                for q in range((n_qubits - 1) // 2):
+                    qml.CZ(wires=[(2 * q + 1), (2 * q + 2)])
 
     class Circuit_19(Circuit):
         @staticmethod
@@ -197,11 +202,10 @@ class Ansaetze:
             """
             Creates a Circuit18 ansatz.
 
-            Length of flattened vector must be n_qubits*3-1
-            because for >1 qubits there are three gates
+            Length of flattened vector must be n_qubits*3
 
             Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
+                w (np.ndarray): weight vector of size n_layers*(n_qubits*3)
                 n_qubits (int): number of qubits
             """
             w_idx = 0
@@ -223,7 +227,7 @@ class Ansaetze:
         @staticmethod
         def n_params_per_layer(n_qubits: int) -> int:
             if n_qubits > 1:
-                return n_qubits * 3
+                return n_qubits * 2
             else:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 2
@@ -237,11 +241,11 @@ class Ansaetze:
             """
             Creates a Circuit15 ansatz.
 
-            Length of flattened vector must be n_qubits*3-1
+            Length of flattened vector must be n_qubits*2
             because for >1 qubits there are three gates
 
             Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
+                w (np.ndarray): weight vector of size n_layers*(n_qubits*2)
                 n_qubits (int): number of qubits
             """
             raise NotImplementedError  # Did not figured out the entangling sequence yet
@@ -271,13 +275,12 @@ class Ansaetze:
         @staticmethod
         def build(w: np.ndarray, n_qubits: int):
             """
-            Creates a Circuit19 ansatz.
+            Creates a Circuit9 ansatz.
 
-            Length of flattened vector must be n_qubits*3-1
-            because for >1 qubits there are three gates
+            Length of flattened vector must be n_qubits
 
             Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
+                w (np.ndarray): weight vector of size n_layers*n_qubits
                 n_qubits (int): number of qubits
             """
             w_idx = 0
@@ -290,6 +293,60 @@ class Ansaetze:
 
             for q in range(n_qubits):
                 qml.RX(w[w_idx], wires=q)
+                w_idx += 1
+
+    class Circuit_6(Circuit):
+        @staticmethod
+        def n_params_per_layer(n_qubits: int) -> int:
+            if n_qubits > 1:
+                return n_qubits * 3 + n_qubits**2
+            else:
+                log.warning("Number of Qubits < 2, no entanglement available")
+                return 4
+
+        @staticmethod
+        def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
+            if n_qubits > 1:
+                return [-n_qubits, None, None]
+            else:
+                return None
+
+        @staticmethod
+        def build(w: np.ndarray, n_qubits: int):
+            """
+            Creates a Circuit6 ansatz.
+
+            Length of flattened vector must be
+                n_qubits * 4 + n_qubits * (n_qubits - 1) =
+                n_qubits * 3 + n_qubits**2
+
+            Args:
+                w (np.ndarray): weight vector of size
+                    n_layers * (n_qubits * 3 + n_qubits**2)
+                n_qubits (int): number of qubits
+            """
+            w_idx = 0
+            for q in range(n_qubits):
+                qml.RX(w[w_idx], wires=q)
+                w_idx += 1
+                qml.RZ(w[w_idx], wires=q)
+                w_idx += 1
+
+            if n_qubits > 1:
+                for ql in range(n_qubits):
+                    for q in range(n_qubits):
+                        if q == ql:
+                            continue
+                        qml.CRX(
+                            w[w_idx],
+                            wires=[n_qubits - ql - 1, (n_qubits - q - 1) % n_qubits],
+                        )
+                        w_idx += 1
+
+            for q in range(n_qubits):
+                qml.RX(w[w_idx], wires=q)
+                w_idx += 1
+                qml.RZ(w[w_idx], wires=q)
                 w_idx += 1
 
     class Circuit_1(Circuit):
@@ -338,7 +395,7 @@ class Ansaetze:
             Creates a StronglyEntanglingLayers ansatz.
 
             Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3)
+                w (np.ndarray): weight vector of size n_layers*(n_qubits*6)
                 n_qubits (int): number of qubits
             """
             w_idx = 0

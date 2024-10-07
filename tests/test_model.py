@@ -218,7 +218,7 @@ def test_ansaetze() -> None:
 
         logger.info(f"Testing Ansatz: {ansatz.__name__}")
         model = Model(
-            n_qubits=2,
+            n_qubits=4,
             n_layers=1,
             circuit_type=ansatz.__name__,
             data_reupload=True,
@@ -233,7 +233,7 @@ def test_ansaetze() -> None:
             noise_params=None,
             cache=False,
             execution_type="expval",
-        )
+        )  
 
     class custom_ansatz(Circuit):
         @staticmethod
@@ -266,7 +266,8 @@ def test_ansaetze() -> None:
         output_qubit=0,
         shots=1024,
     )
-
+    logger.info(f"{str(model)}")
+    
     _ = model(
         model.params,
         inputs=None,
