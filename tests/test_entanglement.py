@@ -8,6 +8,7 @@ import pytest
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.expensive
 @pytest.mark.unittest
 def test_entanglement() -> None:
     test_cases = [
