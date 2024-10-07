@@ -9,15 +9,16 @@ model = Model(
 )
 
 input_domain, bins, dist_circuit = Expressibility.state_fidelities(
-    n_bins=10,
-    n_samples=200,
-    n_input_samples=5,
     seed=1000,
+    n_samples=200,
+    n_bins=10,
+    n_input_samples=5,
+    input_domain=[0, 2*np.pi],
     model=model,
 )
 ```
 
-Here, `n_bins` is the number of bins that you want to use in the histogram, `n_samples` is the number of parameter sets to generate, `n_input_samples` is the number of samples for the input domain in $[-\pi, \pi]$, and `seed` is the random number generator seed.
+Here, `n_bins` is the number of bins that you want to use in the histogram, `n_samples` is the number of parameter sets to generate (using the default initialization strategy of the model), `n_input_samples` is the number of samples for the input domain in $[0, 2\pi]$, and `seed` is the random number generator seed.
 
 Note that `state_fidelities` accepts keyword arguments that are being passed to the model call.
 This allows you to utilize e.g. caching.
