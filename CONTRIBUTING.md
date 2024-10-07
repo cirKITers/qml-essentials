@@ -46,17 +46,6 @@ Publishing includes
 - creating a release with the current git tag and automatically generated release notes
 - publishing the package to PyPI using the stored credentials
 
-## Re-Installing Package
-
-If you want to overwrite the latest build you can simply push to the package index with the recent changes.
-Updating from this index however is then a bit tricky, because poetry keeps a cache of package metadata.
-To overwrite an already installed package with the same version (but different content) follow these steps:
-1. `poetry remove qml_essentials`
-2. `poetry cache clear quantum --all`
-3. `poetry add qml_essentials@latest` (or a specific version)
-
-Note that this will also re-evaluate parts of other dependencies, and thus may change the `poetry.lock` file significantly.
-
 ## Documentation
 
 We use MkDocs for our documentation. To run a server locally, run:
