@@ -41,7 +41,8 @@ class Expressibility:
 
         # Generate random parameter sets
         # w: np.ndarray = (
-        #     2 * np.pi * (1 - 2 * rng.random(size=[*model.params.shape, n_samples * 2]))
+        #     2 * np.pi * (1 - 2 * rng.random(size=[*model.params.shape, \
+        #       n_samples * 2]))
         # )
         # TODO: why do we need *2? is there anything important regarding the shift abovce?
         model.initialize_params(rng=rng, repeat=n_samples * 2)
@@ -91,7 +92,8 @@ class Expressibility:
         Args:
             n_bins (int): Number of histogram bins.
             n_samples (int): Number of parameter sets to generate.
-            n_input_samples (int): Number of samples for the input domain in [-pi, pi]
+            n_input_samples (int): Number of samples for the input domain
+                in [-pi, pi]
             seed (int): Random number generator seed.
             model (Callable): Function that models the quantum circuit.
             kwargs (Any): Additional keyword arguments for the model function.

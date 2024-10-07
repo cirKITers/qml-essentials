@@ -219,9 +219,12 @@ class Model:
 
         Args:
             rng: A random number generator to use for initialization.
-            repeat: The number of times to repeat the parameters. If None, the number of layers is used.
-            initialization: The strategy to use for parameter initialization. If None, the strategy specified in the constructor is used.
-            initialization_domain: The domain to use for parameter initialization. If None, the domain specified in the constructor is used.
+            repeat: The number of times to repeat the parameters.
+                If None, the number of layers is used.
+            initialization: The strategy to use for parameter initialization.
+                If None, the strategy specified in the constructor is used.
+            initialization_domain: The domain to use for parameter initialization.
+                If None, the domain specified in the constructor is used.
 
         Returns:
             None
