@@ -73,6 +73,8 @@ class Model:
         self.n_layers: int = n_layers
         self.data_reupload: bool = data_reupload
 
+        lightning_threshold = 14
+
         # Initialize ansatz
         # only weak check for str. We trust the user to provide sth useful
         if isinstance(circuit_type, str):
@@ -109,7 +111,15 @@ class Model:
         # which allows us to later route depending on the state_vector flag
         self.circuit: qml.QNode = qml.QNode(
             self._circuit,
-            qml.device("default.qubit", shots=self.shots, wires=self.n_qubits),
+            qml.device(
+                (
+                    "default.qubit"
+                    if self.n_qubits < lightning_threshold
+                    else "lightning.qubit"
+                ),
+                shots=self.shots,
+                wires=self.n_qubits,
+            ),
         )
         self.circuit_mixed: qml.QNode = qml.QNode(
             self._circuit,
