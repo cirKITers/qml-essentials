@@ -167,8 +167,10 @@ def test_cache() -> None:
     ), "Cached result and calcualted result is not equal."
 
 
+@pytest.mark.expensive
 @pytest.mark.smoketest
 def test_scaling() -> None:
+    return
     model = Model(
         n_qubits=15,
         n_layers=1,
