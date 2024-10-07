@@ -1,7 +1,6 @@
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Circuit
 import pytest
-import numpy as np
 import logging
 import inspect
 import shutil
@@ -9,6 +8,7 @@ import os
 import hashlib
 from typing import Optional
 import pennylane as qml
+import pennylane.numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +205,27 @@ def test_initialization() -> None:
             cache=False,
             execution_type="expval",
         )
+
+
+@pytest.mark.unittest
+def test_re_initialization() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        initialization_domain=[-2 * np.pi, 0],
+        random_seed=1000,
+    )
+
+    assert model.params.max() <= 0, "Parameters should be in [-2pi, 0]!"
+
+    temp_params = model.params.copy()
+
+    model.initialize_params(rng=np.random.default_rng(seed=1001))
+
+    assert not np.allclose(
+        model.params, temp_params, atol=1e-3
+    ), "Re-Initialization failed!"
 
 
 @pytest.mark.smoketest
