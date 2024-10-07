@@ -179,19 +179,30 @@ def test_cache() -> None:
 
 @pytest.mark.expensive
 @pytest.mark.smoketest
-def test_scaling() -> None:
-    return
+def test_lightning() -> None:
     model = Model(
-        n_qubits=15,
+        n_qubits=12,  # model.lightning_threshold
         n_layers=1,
         circuit_type="Hardware_Efficient",
     )
+    assert model.circuit.device.name == "lightning.qubit"
 
     _ = model(
         model.params,
         inputs=None,
-        execution_type="density",
     )
+
+
+@pytest.mark.smoketest
+def test_draw() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+    )
+
+    repr(model)
+    _ = model.draw(figure=True)
 
 
 @pytest.mark.smoketest
