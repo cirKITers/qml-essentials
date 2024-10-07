@@ -168,6 +168,21 @@ def test_cache() -> None:
 
 
 @pytest.mark.smoketest
+def test_scaling() -> None:
+    model = Model(
+        n_qubits=15,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+    )
+
+    _ = model(
+        model.params,
+        inputs=None,
+        execution_type="density",
+    )
+
+
+@pytest.mark.smoketest
 def test_initialization() -> None:
     test_cases = [
         {
