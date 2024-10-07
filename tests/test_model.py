@@ -233,7 +233,7 @@ def test_ansaetze() -> None:
             noise_params=None,
             cache=False,
             execution_type="expval",
-        )  
+        )
 
     class custom_ansatz(Circuit):
         @staticmethod
@@ -267,7 +267,7 @@ def test_ansaetze() -> None:
         shots=1024,
     )
     logger.info(f"{str(model)}")
-    
+
     _ = model(
         model.params,
         inputs=None,
