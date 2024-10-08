@@ -17,28 +17,28 @@ logger = logging.getLogger(__name__)
 def test_parameters() -> None:
     test_cases = [
         {
-            "shots": -1,
+            "shots": None,
             "execution_type": "expval",
             "output_qubit": 0,
             "force_mean": False,
             "exception": False,
         },
         {
-            "shots": -1,
+            "shots": None,
             "execution_type": "expval",
             "output_qubit": -1,
             "force_mean": False,
             "exception": False,
         },
         {
-            "shots": -1,
+            "shots": None,
             "execution_type": "expval",
             "output_qubit": -1,
             "force_mean": True,
             "exception": False,
         },
         {
-            "shots": -1,
+            "shots": None,
             "execution_type": "density",
             "output_qubit": 0,
             "force_mean": False,
@@ -106,7 +106,7 @@ def test_parameters() -> None:
                 force_mean=test_case["force_mean"],
             )
 
-            if test_case["shots"] < 0:
+            if test_case["shots"] is None:
                 assert hasattr(
                     result, "requires_grad"
                 ), "No 'requires_grad' property available in output."
@@ -489,7 +489,7 @@ def test_local_and_global_meas() -> None:
             "inputs": None,
             "execution_type": "expval",
             "output_qubit": -1,
-            "shots": -1,
+            "shots": None,
             "out_shape": (2, 1),
             "warning": False,
         },
@@ -497,7 +497,7 @@ def test_local_and_global_meas() -> None:
             "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
             "output_qubit": -1,
-            "shots": -1,
+            "shots": None,
             "out_shape": (2, 3),
             "warning": False,
         },
@@ -505,7 +505,7 @@ def test_local_and_global_meas() -> None:
             "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
             "output_qubit": 0,
-            "shots": -1,
+            "shots": None,
             "out_shape": (3,),
             "warning": False,
         },
@@ -513,7 +513,7 @@ def test_local_and_global_meas() -> None:
             "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
             "output_qubit": [0, 1],
-            "shots": -1,
+            "shots": None,
             "out_shape": (3,),
             "warning": False,
         },
@@ -521,7 +521,7 @@ def test_local_and_global_meas() -> None:
             "inputs": None,
             "execution_type": "density",
             "output_qubit": -1,
-            "shots": -1,
+            "shots": None,
             "out_shape": (4, 4),
             "warning": False,
         },
@@ -529,7 +529,7 @@ def test_local_and_global_meas() -> None:
             "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "density",
             "output_qubit": -1,
-            "shots": -1,
+            "shots": None,
             "out_shape": (3, 4, 4),
             "warning": False,
         },
@@ -537,7 +537,7 @@ def test_local_and_global_meas() -> None:
             "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "density",
             "output_qubit": 0,
-            "shots": -1,
+            "shots": None,
             "out_shape": (3, 4, 4),
             "warning": True,
         },
