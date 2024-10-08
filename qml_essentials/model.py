@@ -24,6 +24,7 @@ class Model:
         circuit_type: Union[str, Circuit],
         data_reupload: bool = True,
         initialization: str = "random",
+        initialization_domain: List[float] = [0, 2 * np.pi],
         output_qubit: Union[List[int], int] = -1,
         shots: Optional[int] = None,
         random_seed: int = 1000,
@@ -100,9 +101,10 @@ class Model:
         # this will also be re-used in the init method,
         # however, only if nothing is provided
         self._inialization_strategy = initialization
+        self._initialization_domain = initialization_domain
 
-        # ..here! where we only require a seed
-        self.initialize_params(random_seed)
+        # ..here! where we only require a rng
+        self.initialize_params(np.random.default_rng(random_seed))
 
         # Initialize two circuits, one with the default device and
         # one with the mixed device
@@ -205,9 +207,34 @@ class Model:
             value = None
         self._shots = value
 
-    def initialize_params(self, random_seed, initialization: str = None) -> None:
+    def initialize_params(
+        self,
+        rng,
+        repeat: int = None,
+        initialization: str = None,
+        initialization_domain: List[float] = None,
+    ) -> None:
+        """
+        Initializes the parameters of the model.
+
+        Args:
+            rng: A random number generator to use for initialization.
+            repeat: The number of times to repeat the parameters.
+                If None, the number of layers is used.
+            initialization: The strategy to use for parameter initialization.
+                If None, the strategy specified in the constructor is used.
+            initialization_domain: The domain to use for parameter initialization.
+                If None, the domain specified in the constructor is used.
+
+        Returns:
+            None
+        """
+        params_shape = (
+            self._params_shape if repeat is None else [*self._params_shape, repeat]
+        )
         # use existing strategy if not specified
         initialization = initialization or self._inialization_strategy
+        initialization_domain = initialization_domain or self._initialization_domain
 
         def set_control_params(params: np.ndarray, value: float) -> np.ndarray:
             indices = self.pqc.get_control_indices(self.n_qubits)
@@ -225,25 +252,22 @@ class Model:
                 )
             return params
 
-        rng = np.random.default_rng(random_seed)
         if initialization == "random":
             self.params: np.ndarray = rng.uniform(
-                0, 2 * np.pi, self._params_shape, requires_grad=True
+                *initialization_domain, params_shape, requires_grad=True
             )
         elif initialization == "zeros":
-            self.params: np.ndarray = np.zeros(self._params_shape, requires_grad=True)
+            self.params: np.ndarray = np.zeros(params_shape, requires_grad=True)
         elif initialization == "pi":
-            self.params: np.ndarray = (
-                np.ones(self._params_shape, requires_grad=True) * np.pi
-            )
+            self.params: np.ndarray = np.ones(params_shape, requires_grad=True) * np.pi
         elif initialization == "zero-controlled":
             self.params: np.ndarray = rng.uniform(
-                0, 2 * np.pi, self._params_shape, requires_grad=True
+                *initialization_domain, params_shape, requires_grad=True
             )
             self.params = set_control_params(self.params, 0)
         elif initialization == "pi-controlled":
             self.params: np.ndarray = rng.uniform(
-                0, 2 * np.pi, self._params_shape, requires_grad=True
+                *initialization_domain, params_shape, requires_grad=True
             )
             self.params = set_control_params(self.params, np.pi)
         else:

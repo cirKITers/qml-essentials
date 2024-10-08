@@ -22,8 +22,8 @@ def test_entanglement() -> None:
             "circuit_type": "Strongly_Entangling",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 1000,
-            "result": 0.3985,
+            "n_samples": 2000,
+            "result": 0.3912,
         },
     ]
 
@@ -45,3 +45,16 @@ def test_entanglement() -> None:
         ), f"Entangling capacity is not {test_case['result']}\
             for circuit ansatz {test_case['circuit_type']}.\
             Was {ent_cap} instead"
+
+
+@pytest.mark.smoketest
+def test_no_sampling() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+        data_reupload=True,
+        initialization="random",
+    )
+
+    _ = Entanglement.meyer_wallach(model, n_samples=-1, seed=1000, cache=False)

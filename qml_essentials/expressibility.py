@@ -1,16 +1,16 @@
 import pennylane.numpy as np
-from typing import Tuple, Callable, Any
+from typing import Tuple, List, Any
 from scipy import integrate
 from scipy.special import rel_entr
 import os
+
+from qml_essentials.model import Model
 
 
 class Expressibility:
     @staticmethod
     def _sample_state_fidelities(
-        model: Callable[
-            [np.ndarray, np.ndarray], np.ndarray
-        ],  # type: ignore[name-defined]
+        model: Model,
         x_samples: np.ndarray,
         n_samples: int,
         seed: int,
@@ -20,10 +20,7 @@ class Expressibility:
         Compute the fidelities for each pair of input samples and parameter sets.
 
         Args:
-            model (Callable[[np.ndarray, np.ndarray], np.ndarray]):
-                Function that evaluates the model. It must accept inputs
-                and params as arguments
-                and return an array of shape (n_samples, n_features).
+            model (Callable): Function that models the quantum circuit.
             x_samples (np.ndarray): Array of shape (n_input_samples, n_features)
                 containing the input samples.
             n_samples (int): Number of parameter sets to generate.
@@ -43,10 +40,9 @@ class Expressibility:
         fidelities: np.ndarray = np.zeros((n_x_samples, n_samples))
 
         # Generate random parameter sets
-        w: np.ndarray = (
-            2 * np.pi * (1 - 2 * rng.random(size=[*model.params.shape, n_samples * 2]))
-        )
-
+        # We need two sets of parameters, as we are computing fidelities for a
+        # pair of random state vectors
+        model.initialize_params(rng=rng, repeat=n_samples * 2)
         # Batch input samples and parameter sets for efficient computation
         x_samples_batched: np.ndarray = x_samples.reshape(1, -1).repeat(
             n_samples * 2, axis=0
@@ -59,7 +55,7 @@ class Expressibility:
             # Execution type is explicitly set to density
             sv: np.ndarray = model(
                 inputs=x_samples_batched[:, idx],
-                params=w,
+                params=model.params,
                 execution_type="density",
                 **kwargs,
             )
@@ -80,21 +76,23 @@ class Expressibility:
 
     @staticmethod
     def state_fidelities(
-        n_bins: int,
-        n_samples: int,
-        n_input_samples: int,
         seed: int,
-        model: Callable,  # type: ignore
+        n_samples: int,
+        n_bins: int,
+        n_input_samples: int,
+        input_domain: List[float],
+        model: Model,
         **kwargs: Any,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Sample the state fidelities and histogram them into a 2D array.
 
         Args:
-            n_bins (int): Number of histogram bins.
-            n_samples (int): Number of parameter sets to generate.
-            n_input_samples (int): Number of samples for the input domain in [-pi, pi]
             seed (int): Random number generator seed.
+            n_samples (int): Number of parameter sets to generate.
+            n_bins (int): Number of histogram bins.
+            n_input_samples (int): Number of input samples.
+            input_domain (List[float]): Input domain.
             model (Callable): Function that models the quantum circuit.
             kwargs (Any): Additional keyword arguments for the model function.
 
@@ -103,8 +101,7 @@ class Expressibility:
                 input samples, bin edges, and histogram values.
         """
 
-        x_domain = [-1 * np.pi, 1 * np.pi]
-        x = np.linspace(x_domain[0], x_domain[1], n_input_samples, requires_grad=False)
+        x = np.linspace(*input_domain, n_input_samples, requires_grad=False)
 
         fidelities = Expressibility._sample_state_fidelities(
             x_samples=x,

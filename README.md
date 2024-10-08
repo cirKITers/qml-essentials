@@ -1,6 +1,6 @@
 # QML Essentials
 
-[![version](https://img.shields.io/badge/version-0.1.12-green.svg)](https://ea3a0fbb-599f-4d83-86f1-0e71abe27513.ka.bw-cloud-instance.org/lc3267/quantum/) [![Quality](https://github.com/cirKITers/qml-essentials/actions/workflows/quality.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/quality.yml) [![Testing](https://github.com/cirKITers/qml-essentials/actions/workflows/test.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/test.yml) [![Documentation](https://github.com/cirKITers/qml-essentials/actions/workflows/docs.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/docs.yml)
+[![Quality](https://github.com/cirKITers/qml-essentials/actions/workflows/quality.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/quality.yml) [![Testing](https://github.com/cirKITers/qml-essentials/actions/workflows/test.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/test.yml) [![Documentation](https://github.com/cirKITers/qml-essentials/actions/workflows/docs.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/docs.yml)
 
 ## 📜 About
 
@@ -22,4 +22,4 @@ You can find details on how to use it and further documentation on the correspon
 
 ## 🚧 Contributing
 
-Contributions are very welcome! See [Contribution Guidelines](https://github.com/cirKITers/qml-essentials/blob/main/CONTRIBUTING.md).
+Contributions are highly welcome! Take a look at our [Contribution Guidelines](https://github.com/cirKITers/qml-essentials/blob/main/CONTRIBUTING.md).
