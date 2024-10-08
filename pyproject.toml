@@ -2,7 +2,7 @@
 name = "qml-essentials"
 version = "0.1.14"
 description = ""
-authors = ["Melvin Strobl <lc3267@kit.edu>"]
+authors = ["Melvin Strobl <melvin.strobl@kit.edu>", "Maja Franz <maja.franz@oth-regensburg.de>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
