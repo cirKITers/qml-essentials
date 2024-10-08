@@ -40,12 +40,8 @@ class Expressibility:
         fidelities: np.ndarray = np.zeros((n_x_samples, n_samples))
 
         # Generate random parameter sets
-        # w: np.ndarray = (
-        #     2 * np.pi * (1 - 2 * rng.random(size=[*model.params.shape, \
-        #       n_samples * 2]))
-        # )
-        # TODO: why do we need *2? is there anything important
-        # regarding the shift abovce?
+        # We need two sets of parameters, as we are computing fidelities for a
+        # pair of random state vectors
         model.initialize_params(rng=rng, repeat=n_samples * 2)
         # Batch input samples and parameter sets for efficient computation
         x_samples_batched: np.ndarray = x_samples.reshape(1, -1).repeat(

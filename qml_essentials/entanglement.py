@@ -32,7 +32,6 @@ class Entanglement:
         if n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             # TODO: maybe switch to JAX rng
-            # params = rng.uniform(0, 2 * np.pi, size=(n_samples, *model.params.shape))
             model.initialize_params(rng=rng, repeat=n_samples)
         else:
             if seed is not None:
