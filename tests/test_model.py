@@ -17,28 +17,28 @@ logger = logging.getLogger(__name__)
 def test_parameters() -> None:
     test_cases = [
         {
-            "shots": -1,
+            "shots": None,
             "execution_type": "expval",
             "output_qubit": 0,
             "force_mean": False,
             "exception": False,
         },
         {
-            "shots": -1,
+            "shots": None,
             "execution_type": "expval",
             "output_qubit": -1,
             "force_mean": False,
             "exception": False,
         },
         {
-            "shots": -1,
+            "shots": None,
             "execution_type": "expval",
             "output_qubit": -1,
             "force_mean": True,
             "exception": False,
         },
         {
-            "shots": -1,
+            "shots": None,
             "execution_type": "density",
             "output_qubit": 0,
             "force_mean": False,
@@ -53,9 +53,23 @@ def test_parameters() -> None:
         },
         {
             "shots": 1024,
+            "execution_type": "probs",
+            "output_qubit": 0,
+            "force_mean": True,
+            "exception": False,
+        },
+        {
+            "shots": 1024,
             "execution_type": "expval",
             "output_qubit": 0,
             "force_mean": False,
+            "exception": False,
+        },
+        {
+            "shots": 1024,
+            "execution_type": "expval",
+            "output_qubit": 0,
+            "force_mean": True,
             "exception": False,
         },
         {
@@ -72,8 +86,6 @@ def test_parameters() -> None:
             n_qubits=2,
             n_layers=1,
             circuit_type="Circuit_19",
-            data_reupload=True,
-            initialization="random",
             output_qubit=test_case["output_qubit"],
             shots=test_case["shots"],
         )
@@ -83,26 +95,24 @@ def test_parameters() -> None:
                 _ = model(
                     model.params,
                     inputs=None,
-                    noise_params=None,
-                    cache=False,
                     execution_type=test_case["execution_type"],
                     force_mean=test_case["force_mean"],
                 )
         else:
-            result = model.__call__(
+            result = model(
                 model.params,
                 inputs=None,
-                noise_params=None,
-                cache=False,
                 execution_type=test_case["execution_type"],
                 force_mean=test_case["force_mean"],
             )
 
-            if test_case["shots"] < 0:
+            if test_case["shots"] is None:
                 assert hasattr(
                     result, "requires_grad"
                 ), "No 'requires_grad' property available in output."
-
+            else:
+                # TODO: not supported by PennyLane yet
+                pass
             if test_case["output_qubit"] == -1:
                 if test_case["force_mean"]:
                     assert (
@@ -165,6 +175,34 @@ def test_cache() -> None:
     assert np.array_equal(
         result, cached_result
     ), "Cached result and calcualted result is not equal."
+
+
+@pytest.mark.expensive
+@pytest.mark.smoketest
+def test_lightning() -> None:
+    model = Model(
+        n_qubits=12,  # model.lightning_threshold
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+    )
+    assert model.circuit.device.name == "lightning.qubit"
+
+    _ = model(
+        model.params,
+        inputs=None,
+    )
+
+
+@pytest.mark.smoketest
+def test_draw() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+    )
+
+    repr(model)
+    _ = model.draw(figure=True)
 
 
 @pytest.mark.smoketest
@@ -472,7 +510,7 @@ def test_local_and_global_meas() -> None:
             "inputs": None,
             "execution_type": "expval",
             "output_qubit": -1,
-            "shots": -1,
+            "shots": None,
             "out_shape": (2, 1),
             "warning": False,
         },
@@ -480,7 +518,7 @@ def test_local_and_global_meas() -> None:
             "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
             "output_qubit": -1,
-            "shots": -1,
+            "shots": None,
             "out_shape": (2, 3),
             "warning": False,
         },
@@ -488,7 +526,7 @@ def test_local_and_global_meas() -> None:
             "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
             "output_qubit": 0,
-            "shots": -1,
+            "shots": None,
             "out_shape": (3,),
             "warning": False,
         },
@@ -496,7 +534,7 @@ def test_local_and_global_meas() -> None:
             "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
             "output_qubit": [0, 1],
-            "shots": -1,
+            "shots": None,
             "out_shape": (3,),
             "warning": False,
         },
@@ -504,7 +542,7 @@ def test_local_and_global_meas() -> None:
             "inputs": None,
             "execution_type": "density",
             "output_qubit": -1,
-            "shots": -1,
+            "shots": None,
             "out_shape": (4, 4),
             "warning": False,
         },
@@ -512,7 +550,7 @@ def test_local_and_global_meas() -> None:
             "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "density",
             "output_qubit": -1,
-            "shots": -1,
+            "shots": None,
             "out_shape": (3, 4, 4),
             "warning": False,
         },
@@ -520,7 +558,7 @@ def test_local_and_global_meas() -> None:
             "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "density",
             "output_qubit": 0,
-            "shots": -1,
+            "shots": None,
             "out_shape": (3, 4, 4),
             "warning": True,
         },

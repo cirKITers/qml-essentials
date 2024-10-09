@@ -2,7 +2,7 @@
 name = "qml-essentials"
 version = "0.1.14"
 description = ""
-authors = ["Melvin Strobl <lc3267@kit.edu>"]
+authors = ["Melvin Strobl <melvin.strobl@kit.edu>", "Maja Franz <maja.franz@oth-regensburg.de>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
@@ -20,6 +20,7 @@ flake8 = "^7.1.1"
 pre-commit = "^3.8.0"
 coverage = "^7.6.1"
 licensecheck = "^2024.3"
+matplotlib = "^3.9.2"
 
 [tool.poetry.group.docs]
 optional = true
