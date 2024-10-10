@@ -26,6 +26,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-tags: true
+        ssh-key: ${{ secrets.DEPLOY_KEY }}
     - name: Install poetry
       run: pipx install poetry
     - name: Set up Python 3.11
@@ -51,7 +52,7 @@ jobs:
         git config user.name github-actions[bot]
         git config user.email 41898282+github-actions[bot]@users.noreply.github.com
         git commit -am "Update Citation"
-        git push --force
+        git push
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: Create Release & Tag
