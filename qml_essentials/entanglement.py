@@ -12,7 +12,7 @@ class Entanglement:
 
     @staticmethod
     def meyer_wallach(
-        model: Model, n_samples: int, seed: Optional[int], **kwargs: Any  # type: ignore
+        model: Model, n_samples: Optional[int | None], seed: Optional[int], **kwargs: Any  # type: ignore
     ) -> float:
         """
         Calculates the entangling capacity of a given quantum circuit
@@ -21,6 +21,7 @@ class Entanglement:
         Args:
             model (Callable): Function that models the quantum circuit.
             n_samples (int): Number of samples per qubit.
+                If None or < 0, the current parameters of the model are used
             seed (Optional[int]): Seed for the random number generator.
             kwargs (Any): Additional keyword arguments for the model function.
 
@@ -29,7 +30,7 @@ class Entanglement:
                 to be between 0.0 and 1.0.
         """
         rng = np.random.default_rng(seed)
-        if n_samples > 0:
+        if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             # TODO: maybe switch to JAX rng
             model.initialize_params(rng=rng, repeat=n_samples)
