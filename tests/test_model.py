@@ -81,6 +81,14 @@ def test_parameters() -> None:
         },
     ]
 
+    # Test the most minimal call
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+    assert (model() == model(model.params)).all()
+
     for test_case in test_cases:
         model = Model(
             n_qubits=2,
