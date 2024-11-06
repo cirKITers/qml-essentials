@@ -12,7 +12,10 @@ class Entanglement:
 
     @staticmethod
     def meyer_wallach(
-        model: Model, n_samples: Optional[int | None], seed: Optional[int], **kwargs: Any  # type: ignore
+        model: Model,
+        n_samples: Optional[int | None],
+        seed: Optional[int],
+        **kwargs: Any,
     ) -> float:
         """
         Calculates the entangling capacity of a given quantum circuit
