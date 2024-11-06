@@ -533,6 +533,9 @@ class Model:
         if execution_type is not None:
             self.execution_type = execution_type
 
+        # TODO: dis is important! check dis!
+        self.params = params if params is not None else self.params
+
         # the qasm representation contains the bound parameters,
         # thus it is ok to hash that
         hs = hashlib.md5(
@@ -542,7 +545,7 @@ class Model:
                     "n_layers": self.n_layers,
                     "pqc": self.pqc.__class__.__name__,
                     "dru": self.data_reupload,
-                    "params": params,
+                    "params": self.params,
                     "noise_params": self.noise_params,
                     "execution_type": self.execution_type,
                     "inputs": inputs,
@@ -568,7 +571,7 @@ class Model:
             # if density matrix requested or noise params used
             if self.execution_type == "density" or self.noise_params is not None:
                 result = self.circuit_mixed(
-                    params=params,
+                    params=self.params,
                     inputs=inputs,
                 )
             else:
@@ -578,7 +581,7 @@ class Model:
                     )
                 else:
                     result = self.circuit(
-                        params=params,
+                        params=self.params,
                         inputs=inputs,
                     )
 
