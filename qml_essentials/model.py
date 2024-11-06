@@ -441,8 +441,8 @@ class Model:
 
     def __call__(
         self,
-        params: np.ndarray,
-        inputs: np.ndarray,
+        params: Optional[np.ndarray] = None,
+        inputs: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
@@ -452,9 +452,11 @@ class Model:
         Perform a forward pass of the quantum circuit.
 
         Args:
-            params (np.ndarray): Weight vector of shape
+            params (Optional[np.ndarray]): Weight vector of shape
                 [n_layers, n_qubits*n_params_per_layer].
-            inputs (np.ndarray): Input vector of shape [1].
+                If None, model internal parameters are used.
+            inputs (Optional[np.ndarray]): Input vector of shape [1].
+                If None, zeros are used.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
                 set noise parameters being used.
@@ -488,8 +490,8 @@ class Model:
 
     def _forward(
         self,
-        params: np.ndarray,
-        inputs: np.ndarray,
+        params: Optional[np.ndarray] = None,
+        inputs: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
@@ -499,9 +501,11 @@ class Model:
         Perform a forward pass of the quantum circuit.
 
         Args:
-            params (np.ndarray): Weight vector of shape
+            params (Optional[np.ndarray]): Weight vector of shape
                 [n_layers, n_qubits*n_params_per_layer].
-            inputs (np.ndarray): Input vector of shape [1].
+                If None, model internal parameters are used.
+            inputs (Optional[np.ndarray]): Input vector of shape [1].
+                If None, zeros are used.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
                 set noise parameters being used.
