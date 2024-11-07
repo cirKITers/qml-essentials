@@ -538,10 +538,13 @@ class Model:
         if execution_type is not None:
             self.execution_type = execution_type
 
-        if numpy_boxes.ArrayBox == type(params):
-            self.params = params._value
+        if params is None:
+            params = self.params
         else:
-            self.params = params
+            if numpy_boxes.ArrayBox == type(params):
+                self.params = params._value
+            else:
+                self.params = params
 
         # the qasm representation contains the bound parameters,
         # thus it is ok to hash that
