@@ -81,6 +81,14 @@ def test_parameters() -> None:
         },
     ]
 
+    # Test the most minimal call
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+    assert (model() == model(model.params)).all()
+
     for test_case in test_cases:
         model = Model(
             n_qubits=2,
@@ -645,3 +653,18 @@ def test_parity() -> None:
     assert not np.allclose(
         result_a, result_b
     ), f"Models should be different! Got {result_a} and {result_b}"
+
+
+@pytest.mark.smoketest
+def test_params_store() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_1",
+    )
+    opt = qml.AdamOptimizer(stepsize=0.01)
+
+    def cost(params):
+        return model(params=params, inputs=np.array([0])).mean()._value
+
+    params, cost = opt.step_and_cost(cost, model.params)

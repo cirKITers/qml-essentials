@@ -4,6 +4,7 @@ import pennylane.numpy as np
 import hashlib
 import os
 import warnings
+from autograd.numpy import numpy_boxes
 
 from qml_essentials.ansaetze import Ansaetze, Circuit
 
@@ -441,8 +442,8 @@ class Model:
 
     def __call__(
         self,
-        params: np.ndarray,
-        inputs: np.ndarray,
+        params: Optional[np.ndarray] = None,
+        inputs: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
@@ -452,9 +453,11 @@ class Model:
         Perform a forward pass of the quantum circuit.
 
         Args:
-            params (np.ndarray): Weight vector of shape
+            params (Optional[np.ndarray]): Weight vector of shape
                 [n_layers, n_qubits*n_params_per_layer].
-            inputs (np.ndarray): Input vector of shape [1].
+                If None, model internal parameters are used.
+            inputs (Optional[np.ndarray]): Input vector of shape [1].
+                If None, zeros are used.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
                 set noise parameters being used.
@@ -488,8 +491,8 @@ class Model:
 
     def _forward(
         self,
-        params: np.ndarray,
-        inputs: np.ndarray,
+        params: Optional[np.ndarray] = None,
+        inputs: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
@@ -499,9 +502,11 @@ class Model:
         Perform a forward pass of the quantum circuit.
 
         Args:
-            params (np.ndarray): Weight vector of shape
+            params (Optional[np.ndarray]): Weight vector of shape
                 [n_layers, n_qubits*n_params_per_layer].
-            inputs (np.ndarray): Input vector of shape [1].
+                If None, model internal parameters are used.
+            inputs (Optional[np.ndarray]): Input vector of shape [1].
+                If None, zeros are used.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
                 set noise parameters being used.
@@ -533,6 +538,14 @@ class Model:
         if execution_type is not None:
             self.execution_type = execution_type
 
+        if params is None:
+            params = self.params
+        else:
+            if numpy_boxes.ArrayBox == type(params):
+                self.params = params._value
+            else:
+                self.params = params
+
         # the qasm representation contains the bound parameters,
         # thus it is ok to hash that
         hs = hashlib.md5(
@@ -542,7 +555,7 @@ class Model:
                     "n_layers": self.n_layers,
                     "pqc": self.pqc.__class__.__name__,
                     "dru": self.data_reupload,
-                    "params": params,
+                    "params": self.params,  # use safe-params
                     "noise_params": self.noise_params,
                     "execution_type": self.execution_type,
                     "inputs": inputs,
@@ -568,7 +581,7 @@ class Model:
             # if density matrix requested or noise params used
             if self.execution_type == "density" or self.noise_params is not None:
                 result = self.circuit_mixed(
-                    params=params,
+                    params=params,  # use arraybox params
                     inputs=inputs,
                 )
             else:
@@ -578,7 +591,7 @@ class Model:
                     )
                 else:
                     result = self.circuit(
-                        params=params,
+                        params=params,  # use arraybox params
                         inputs=inputs,
                     )
 
