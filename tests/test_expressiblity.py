@@ -94,3 +94,34 @@ def test_expressibility() -> None:
         ), f"Expressibility is not {test_case['result']}\
             for circuit ansatz {test_case['circuit_type']}.\
             Was {kl_dist} instead"
+
+
+@pytest.mark.unittest
+@pytest.mark.expensive
+def test_scaling() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_1",
+    )
+
+    _, _, z = Expressibility.state_fidelities(
+        seed=1000,
+        n_bins=4,
+        n_samples=10,
+        n_input_samples=0,
+        input_domain=[0, 2 * np.pi],
+        model=model,
+        scale=True,
+    )
+
+    assert z.shape == (8,)
+
+    _, y = Expressibility.haar_integral(
+        n_qubits=model.n_qubits,
+        n_bins=4,
+        cache=True,
+        scale=True,
+    )
+
+    assert y.shape == (8,)
