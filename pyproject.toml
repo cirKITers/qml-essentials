@@ -12,7 +12,7 @@ repository = "https://github.com/cirKITers/qml-essentials"
 keywords = ["quantum", "quantum machine learning", "qml"]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
+python = ">=3.10,<3.13"
 pennylane = "^0.38.0"
 
 [tool.poetry.group.dev]
