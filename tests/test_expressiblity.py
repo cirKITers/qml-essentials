@@ -120,8 +120,10 @@ def test_scaling() -> None:
     _, y = Expressibility.haar_integral(
         n_qubits=model.n_qubits,
         n_bins=4,
-        cache=True,
+        cache=False,
         scale=True,
     )
 
     assert y.shape == (8,)
+
+    _ = Expressibility.kullback_leibler_divergence(z, y)
