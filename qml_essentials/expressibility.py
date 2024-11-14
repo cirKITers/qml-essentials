@@ -33,16 +33,16 @@ class Expressibility:
         """
         rng = np.random.default_rng(seed)
 
-        # Number of input samples
+        # Generate random parameter sets
+        # We need two sets of parameters, as we are computing fidelities for a
+        # pair of random state vectors
+        model.initialize_params(rng=rng, repeat=n_samples * 2)
+
         n_x_samples = len(x_samples)
 
         # Initialize array to store fidelities
         fidelities: np.ndarray = np.zeros((n_x_samples, n_samples))
 
-        # Generate random parameter sets
-        # We need two sets of parameters, as we are computing fidelities for a
-        # pair of random state vectors
-        model.initialize_params(rng=rng, repeat=n_samples * 2)
         # Batch input samples and parameter sets for efficient computation
         x_samples_batched: np.ndarray = x_samples.reshape(1, -1).repeat(
             n_samples * 2, axis=0
@@ -70,6 +70,7 @@ class Expressibility:
                 )
                 ** 2
             )
+            # TODO: abs instead?
             fidelities[idx] = np.real(fidelity)
 
         return fidelities
@@ -101,7 +102,11 @@ class Expressibility:
                 input samples, bin edges, and histogram values.
         """
 
-        x = np.linspace(*input_domain, n_input_samples, requires_grad=False)
+        if input_domain is None or n_input_samples is None or n_input_samples == 0:
+            x = np.zeros((1))
+            n_input_samples = 1
+        else:
+            x = np.linspace(*input_domain, n_input_samples, requires_grad=False)
 
         fidelities = Expressibility._sample_state_fidelities(
             x_samples=x,
