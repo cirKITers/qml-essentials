@@ -3,7 +3,13 @@ name = "qml-essentials"
 version = "0.1.16"
 description = ""
 authors = ["Melvin Strobl <melvin.strobl@kit.edu>", "Maja Franz <maja.franz@oth-regensburg.de>"]
+maintainers = ["Melvin Strobl <melvin.strobl@kit.edu>"]
 readme = "README.md"
+license = "MIT"
+homepage = "https://cirkiters.github.io/qml-essentials/"
+documentation = "https://cirkiters.github.io/qml-essentials/"
+repository = "https://github.com/cirKITers/qml-essentials"
+keywords = ["quantum", "quantum machine learning", "qml"]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
