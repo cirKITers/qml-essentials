@@ -44,6 +44,6 @@ build-backend = "poetry.core.masonry.api"
 [tool.pytest.ini_options]
 markers = [
     "expensive: Tests that take a long time to run",
-    "unittest: Tests with an assertion to check the output of a particular uni",
+    "unittest: Tests with an assertion to check the output of a particular unit",
     "smoketest: Tests that just run a method and check if it not fails",
 ]
