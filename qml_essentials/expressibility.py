@@ -33,16 +33,16 @@ class Expressibility:
         """
         rng = np.random.default_rng(seed)
 
-        # Number of input samples
+        # Generate random parameter sets
+        # We need two sets of parameters, as we are computing fidelities for a
+        # pair of random state vectors
+        model.initialize_params(rng=rng, repeat=n_samples * 2)
+
         n_x_samples = len(x_samples)
 
         # Initialize array to store fidelities
         fidelities: np.ndarray = np.zeros((n_x_samples, n_samples))
 
-        # Generate random parameter sets
-        # We need two sets of parameters, as we are computing fidelities for a
-        # pair of random state vectors
-        model.initialize_params(rng=rng, repeat=n_samples * 2)
         # Batch input samples and parameter sets for efficient computation
         x_samples_batched: np.ndarray = x_samples.reshape(1, -1).repeat(
             n_samples * 2, axis=0
@@ -70,6 +70,7 @@ class Expressibility:
                 )
                 ** 2
             )
+            # TODO: abs instead?
             fidelities[idx] = np.real(fidelity)
 
         return fidelities
@@ -82,6 +83,7 @@ class Expressibility:
         n_input_samples: int,
         input_domain: List[float],
         model: Model,
+        scale: bool = False,
         **kwargs: Any,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -94,14 +96,22 @@ class Expressibility:
             n_input_samples (int): Number of input samples.
             input_domain (List[float]): Input domain.
             model (Callable): Function that models the quantum circuit.
+            scale (bool): Whether to scale the number of samples and bins.
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
             Tuple[np.ndarray, np.ndarray, np.ndarray]: Tuple containing the
                 input samples, bin edges, and histogram values.
         """
+        if scale:
+            n_samples = np.power(2, model.n_qubits) * n_samples
+            n_bins = model.n_qubits * n_bins
 
-        x = np.linspace(*input_domain, n_input_samples, requires_grad=False)
+        if input_domain is None or n_input_samples is None or n_input_samples == 0:
+            x = np.zeros((1))
+            n_input_samples = 1
+        else:
+            x = np.linspace(*input_domain, n_input_samples, requires_grad=False)
 
         fidelities = Expressibility._sample_state_fidelities(
             x_samples=x,
@@ -118,6 +128,9 @@ class Expressibility:
             z[i], _ = np.histogram(f, bins=y)
 
         z = z / n_samples
+
+        if z.shape[0] == 1:
+            z = z.flatten()
 
         return x, y, z
 
@@ -168,6 +181,7 @@ class Expressibility:
         n_qubits: int,
         n_bins: int,
         cache: bool = True,
+        scale: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Calculates theoretical probability density function for random Haar states
@@ -178,6 +192,7 @@ class Expressibility:
             n_qubits (int): number of qubits in the quantum system
             n_bins (int): number of histogram bins
             cache (bool): whether to cache the haar integral
+            scale (bool): whether to scale the number of bins
 
         Returns:
             Tuple[np.ndarray, np.ndarray]:
@@ -185,10 +200,13 @@ class Expressibility:
                 - y component (probabilities): the haar probability density
                   funtion for random Haar states
         """
+        if scale:
+            n_bins = n_qubits * n_bins
+
         x = np.linspace(0, 1, n_bins)
 
         if cache:
-            name = f"haar_{n_qubits}q_{n_bins}s.npy"
+            name = f"haar_{n_qubits}q_{n_bins}s_{'scaled' if scale else ''}.npy"
 
             cache_folder = ".cache"
             if not os.path.exists(cache_folder):
