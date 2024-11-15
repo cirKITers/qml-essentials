@@ -595,9 +595,10 @@ class Model:
                         inputs=inputs,
                     )
 
+        if isinstance(result, list):
+            result = np.stack(result)
+
         if self.execution_type == "expval" and self.output_qubit == -1:
-            if isinstance(result, list):
-                result = np.stack(result)
 
             # Calculating mean value after stacking, to not
             # discard gradient information
