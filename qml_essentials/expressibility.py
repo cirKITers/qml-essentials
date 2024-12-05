@@ -3,8 +3,8 @@ from typing import Tuple, List, Any
 from scipy import integrate
 from scipy.linalg import sqrtm
 from scipy.special import rel_entr
-import pennylane as qml
 from qml_essentials.model import Model
+import os
 
 
 class Expressibility:
@@ -62,18 +62,19 @@ class Expressibility:
             sqrt_sv1: np.ndarray = np.array([sqrtm(m) for m in sv[:n_samples]])
 
             inner_fidelity = sqrt_sv1 @ sv[n_samples:] @ sqrt_sv1
+            # inner_fidelity[inner_fidelity < 0] = 0.0
 
             # Compute the fidelity using the partial trace of the statevector
             fidelity: np.ndarray = (
                 np.trace(
-                    np.sqrt(inner_fidelity),
+                    np.array([sqrtm(m) for m in inner_fidelity]),
                     axis1=1,
                     axis2=2,
                 )
                 ** 2
             )
             # TODO: abs instead?
-            fidelities[idx] = np.real(fidelity)
+            fidelities[idx] = np.abs(fidelity)
 
         return fidelities
 
