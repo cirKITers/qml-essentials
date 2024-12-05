@@ -60,18 +60,19 @@ class Expressibility:
                 **kwargs,
             )
             sqrt_sv1: np.ndarray = np.sqrt(sv[:n_samples])
+            sqrt_sv2: np.ndarray = np.sqrt(sv[n_samples:])
 
             # Compute the fidelity using the partial trace of the statevector
             fidelity: np.ndarray = (
                 np.trace(
-                    np.sqrt(sqrt_sv1 * sv[n_samples:] * sqrt_sv1),
+                    np.sqrt(sqrt_sv1 * sqrt_sv2 * sqrt_sv1),
                     axis1=1,
                     axis2=2,
                 )
                 ** 2
             )
             # TODO: abs instead?
-            fidelities[idx] = np.real(fidelity)
+            fidelities[idx] = np.abs(fidelity)
 
         return fidelities
 

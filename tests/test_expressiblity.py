@@ -127,3 +127,52 @@ def test_scaling() -> None:
     assert y.shape == (8,)
 
     _ = Expressibility.kullback_leibler_divergence(z, y)
+
+
+@pytest.mark.unittest
+@pytest.mark.expensive
+def test_consistency() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Strongly_Entangling",
+    )
+
+    _, _, z = Expressibility.state_fidelities(
+        seed=1000,
+        n_bins=10,
+        n_samples=100,
+        n_input_samples=0,
+        input_domain=None,
+        model=model,
+        scale=True,
+    )
+
+    _, y = Expressibility.haar_integral(
+        n_qubits=model.n_qubits,
+        n_bins=10,
+        cache=False,
+        scale=True,
+    )
+
+    kl_div_a = Expressibility.kullback_leibler_divergence(z, y)
+
+    model = Model(
+        n_qubits=2,
+        n_layers=3,
+        circuit_type="Strongly_Entangling",
+    )
+
+    _, _, z = Expressibility.state_fidelities(
+        seed=1000,
+        n_bins=10,
+        n_samples=100,
+        n_input_samples=0,
+        input_domain=None,
+        model=model,
+        scale=True,
+    )
+
+    kl_div_b = Expressibility.kullback_leibler_divergence(z, y)
+
+    assert kl_div_a > kl_div_b
