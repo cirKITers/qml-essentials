@@ -308,8 +308,7 @@ class Model:
             None
         """
         if inputs is None:
-            # initialize to zero
-            inputs = np.array([[0]])
+            return
         elif len(inputs.shape) == 1:
             # add a batch dimension
             inputs = inputs.reshape(-1, 1)
