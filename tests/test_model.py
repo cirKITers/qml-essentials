@@ -140,9 +140,9 @@ def test_parameters() -> None:
 def test_encoding() -> None:
     test_cases = [
         {"encoding_unitary": qml.RX, "type": Callable, "input": [0]},
-        {"encoding_unitary": [qml.RX, qml.RY], "type": List, "input": [0, 0]},
+        {"encoding_unitary": [qml.RX, qml.RY], "type": List, "input": [[0, 0]]},
         {"encoding_unitary": "RX", "type": Callable, "input": [0]},
-        {"encoding_unitary": ["RX", "RY"], "type": List, "input": [0, 0]},
+        {"encoding_unitary": ["RX", "RY"], "type": List, "input": [[0, 0]]},
     ]
 
     for test_case in test_cases:
@@ -190,7 +190,7 @@ def test_cache() -> None:
                 "params": model.params,
                 "noise_params": model.noise_params,
                 "execution_type": model.execution_type,
-                "inputs": None,
+                "inputs": np.array([[0]]),
                 "output_qubit": model.output_qubit,
             }
         ).encode("utf-8")
@@ -384,7 +384,6 @@ def test_available_ansaetze() -> None:
 @pytest.mark.unittest
 def test_multi_input() -> None:
     input_cases = [
-        np.random.rand(1),
         np.random.rand(1, 1),
         np.random.rand(1, 2),
         np.random.rand(1, 3),
@@ -392,7 +391,6 @@ def test_multi_input() -> None:
         np.random.rand(20, 1),
     ]
     input_cases = [2 * np.pi * i for i in input_cases]
-    input_cases.append(None)
 
     for inputs in input_cases:
         logger.info(
@@ -405,6 +403,7 @@ def test_multi_input() -> None:
             circuit_type="Circuit_19",
             data_reupload=True,
             initialization="random",
+            encoding=[qml.RX for _ in range(inputs.shape[1])],
             output_qubit=0,
             shots=1024,
         )

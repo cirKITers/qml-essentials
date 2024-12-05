@@ -103,6 +103,9 @@ class Model:
                 self._enc = [getattr(qml, enc) for enc in encoding]
             else:
                 self._enc = encoding
+
+            if len(self._enc) == 1:
+                self._enc = self._enc[0]
         else:
             # default to callable
             self._enc = encoding
@@ -426,6 +429,8 @@ class Model:
             # TODO: throws strange argument error if not catched
             return ""
 
+        inputs = self._inputs_validation(inputs)
+
         if figure:
             result = qml.draw_mpl(self.circuit)(params=self.params, inputs=inputs)
         else:
@@ -433,6 +438,7 @@ class Model:
         return result
 
     def draw(self, inputs=None, figure=False) -> None:
+
         return self._draw(inputs, figure)
 
     def __repr__(self) -> str:
@@ -489,6 +495,35 @@ class Model:
             execution_type=execution_type,
             force_mean=force_mean,
         )
+
+    def _inputs_validation(
+        self, inputs: Union[None, List, float, int, np.ndarray]
+    ) -> np.ndarray:
+        """
+        Validate the inputs to be a 2D numpy array of shape (batch_size, n_inputs).
+
+        Args:
+            inputs (Union[None, List, float, int, np.ndarray]): The input to validate.
+
+        Returns:
+            np.ndarray: The validated input.
+        """
+        if inputs is None:
+            # initialize to zero
+            inputs = np.array([[0]])
+        elif isinstance(inputs, List):
+            inputs = np.stack(inputs)
+        elif isinstance(inputs, float) or isinstance(inputs, int):
+            inputs = np.array([inputs])
+
+        if len(inputs.shape) == 1:
+            if isinstance(self._enc, List):
+                inputs = inputs.reshape(-1, 1)
+            else:
+                # add a batch dimension
+                inputs = inputs.reshape(inputs.shape[0], 1)
+
+        return inputs
 
     def _forward(
         self,
@@ -547,17 +582,7 @@ class Model:
             else:
                 self.params = params
 
-        if inputs is None:
-            # initialize to zero
-            inputs = np.array([[0]])
-        elif isinstance(inputs, List):
-            inputs = np.stack(inputs)
-        elif isinstance(inputs, float) or isinstance(inputs, int):
-            inputs = np.array([inputs])
-
-        if len(inputs.shape) == 1:
-            # add a batch dimension
-            inputs = inputs.reshape(-1, inputs.shape[0])
+        inputs = self._inputs_validation(inputs)
 
         # the qasm representation contains the bound parameters,
         # thus it is ok to hash that
