@@ -64,6 +64,7 @@ def test_expressibility() -> None:
             n_qubits=test_case["n_qubits"],
             n_layers=test_case["n_layers"],
             circuit_type=test_case["circuit_type"],
+            data_reupload=False,
         )
 
         _, _, z = Expressibility.state_fidelities(
@@ -128,15 +129,15 @@ def test_scaling() -> None:
 @pytest.mark.expensive
 def test_consistency() -> None:
     model = Model(
-        n_qubits=2,
+        n_qubits=3,
         n_layers=1,
-        circuit_type="Strongly_Entangling",
+        circuit_type="Circuit_9",
     )
 
     _, _, z = Expressibility.state_fidelities(
         seed=1000,
-        n_bins=10,
-        n_samples=100,
+        n_bins=75,
+        n_samples=300,
         n_input_samples=0,
         input_domain=None,
         model=model,
@@ -145,23 +146,23 @@ def test_consistency() -> None:
 
     _, y = Expressibility.haar_integral(
         n_qubits=model.n_qubits,
-        n_bins=10,
-        cache=False,
+        n_bins=75,
+        cache=True,
         scale=True,
     )
 
     kl_div_a = Expressibility.kullback_leibler_divergence(z, y)
 
     model = Model(
-        n_qubits=2,
+        n_qubits=3,
         n_layers=3,
-        circuit_type="Strongly_Entangling",
+        circuit_type="Circuit_9",
     )
 
     _, _, z = Expressibility.state_fidelities(
         seed=1000,
-        n_bins=10,
-        n_samples=100,
+        n_bins=75,
+        n_samples=300,
         n_input_samples=0,
         input_domain=None,
         model=model,
