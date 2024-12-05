@@ -46,22 +46,16 @@ def test_divergence() -> None:
 def test_expressibility() -> None:
     test_cases = [
         {
-            "circuit_type": "Circuit_1",
-            "n_qubits": 3,
+            "circuit_type": "Circuit_9",
+            "n_qubits": 4,
             "n_layers": 1,
-            "n_bins": 10,
-            "n_samples": 400,
-            "n_input_samples": 10,
-            "result": 2.905,
+            "result": 0.8,
         },
         {
             "circuit_type": "Circuit_9",
-            "n_qubits": 3,
-            "n_layers": 1,
-            "n_bins": 10,
-            "n_samples": 400,
-            "n_input_samples": 10,
-            "result": 6.670,
+            "n_qubits": 4,
+            "n_layers": 3,
+            "result": 0.03,
         },
     ]
 
@@ -74,16 +68,17 @@ def test_expressibility() -> None:
 
         _, _, z = Expressibility.state_fidelities(
             seed=1000,
-            n_bins=test_case["n_bins"],
-            n_samples=test_case["n_samples"],
-            n_input_samples=test_case["n_input_samples"],
-            input_domain=[0, 2 * np.pi],
+            n_bins=75,
+            n_samples=1000,
             model=model,
+            scale=False,
         )
 
         _, y_haar = Expressibility.haar_integral(
             n_qubits=test_case["n_qubits"],
-            n_bins=test_case["n_bins"],
+            n_bins=75,
+            cache=False,
+            scale=False,
         )
 
         # Calculate the mean (over all inputs, if required)

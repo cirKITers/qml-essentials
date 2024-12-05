@@ -1,9 +1,9 @@
 import pennylane.numpy as np
 from typing import Tuple, List, Any
 from scipy import integrate
+from scipy.linalg import sqrtm
 from scipy.special import rel_entr
-import os
-
+import pennylane as qml
 from qml_essentials.model import Model
 
 
@@ -59,20 +59,21 @@ class Expressibility:
                 execution_type="density",
                 **kwargs,
             )
-            sqrt_sv1: np.ndarray = np.sqrt(sv[:n_samples])
-            sqrt_sv2: np.ndarray = np.sqrt(sv[n_samples:])
+            sqrt_sv1: np.ndarray = np.array([sqrtm(m) for m in sv[:n_samples]])
+
+            inner_fidelity = sqrt_sv1 @ sv[n_samples:] @ sqrt_sv1
 
             # Compute the fidelity using the partial trace of the statevector
             fidelity: np.ndarray = (
                 np.trace(
-                    np.sqrt(sqrt_sv1 * sqrt_sv2 * sqrt_sv1),
+                    np.sqrt(inner_fidelity),
                     axis1=1,
                     axis2=2,
                 )
                 ** 2
             )
             # TODO: abs instead?
-            fidelities[idx] = np.abs(fidelity)
+            fidelities[idx] = np.real(fidelity)
 
         return fidelities
 
@@ -81,9 +82,9 @@ class Expressibility:
         seed: int,
         n_samples: int,
         n_bins: int,
-        n_input_samples: int,
-        input_domain: List[float],
         model: Model,
+        n_input_samples: int = 0,
+        input_domain: List[float] = None,
         scale: bool = False,
         **kwargs: Any,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
