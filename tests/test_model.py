@@ -10,6 +10,8 @@ from typing import Optional
 import pennylane as qml
 import pennylane.numpy as np
 
+from typing import List, Callable
+
 logger = logging.getLogger(__name__)
 
 
@@ -132,6 +134,30 @@ def test_parameters() -> None:
                         result.shape[0] == 2
                     ), f"Shape of {test_case['output_qubit']} is not correct."
             str(model)
+
+
+@pytest.mark.smoketest
+def test_encoding() -> None:
+    test_cases = [
+        {"encoding_unitary": qml.RX, "type": Callable, "input": [0]},
+        {"encoding_unitary": [qml.RX, qml.RY], "type": List, "input": [0, 0]},
+        {"encoding_unitary": "RX", "type": Callable, "input": [0]},
+        {"encoding_unitary": ["RX", "RY"], "type": List, "input": [0, 0]},
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            encoding_unitary=test_case["encoding_unitary"],
+        )
+        _ = model(
+            model.params,
+            inputs=test_case["input"],
+        )
+
+        assert isinstance(model._enc, test_case["type"])
 
 
 @pytest.mark.unittest
