@@ -69,7 +69,7 @@ def test_expressibility() -> None:
         _, _, z = Expressibility.state_fidelities(
             seed=1000,
             n_bins=75,
-            n_samples=1000,
+            n_samples=5000,
             model=model,
             scale=False,
         )
