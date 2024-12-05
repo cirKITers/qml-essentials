@@ -24,7 +24,7 @@ class Model:
         n_layers: int,
         circuit_type: Union[str, Circuit],
         data_reupload: bool = True,
-        encoding_unitary: Union[str, Callable, List[str], List[Callable]] = qml.RX,
+        encoding: Union[str, Callable, List[str], List[Callable]] = qml.RX,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
         output_qubit: Union[List[int], int] = -1,
@@ -50,7 +50,7 @@ class Model:
                 If None, defaults to "no_ansatz".
             data_reupload (bool, optional): Whether to reupload data to the
                 quantum device on each measurement. Defaults to True.
-            encoding_unitary (Union[str, Callable, List[str], List[Callable]], optional):
+            encoding (Union[str, Callable, List[str], List[Callable]], optional):
                 The unitary to use for encoding the input data. Can be a string
                 (e.g. "RX") or a callable (e.g. qml.RX). Defaults to qml.RX.
                 If input is multidimensional it is assumed to be a list of
@@ -94,18 +94,18 @@ class Model:
 
         # Initialize encoding
         # first check if we have a str, list or callable
-        if isinstance(encoding_unitary, str):
+        if isinstance(encoding, str):
             # if str, use the pennylane fct
-            self._enc = getattr(qml, encoding_unitary)
-        elif isinstance(encoding_unitary, list):
+            self._enc = getattr(qml, encoding)
+        elif isinstance(encoding, list):
             # if list, check if str or callable
-            if isinstance(encoding_unitary[0], str):
-                self._enc = [getattr(qml, enc) for enc in encoding_unitary]
+            if isinstance(encoding[0], str):
+                self._enc = [getattr(qml, enc) for enc in encoding]
             else:
-                self._enc = encoding_unitary
+                self._enc = encoding
         else:
             # default to callable
-            self._enc = encoding_unitary
+            self._enc = encoding
 
         log.info(f"Using {circuit_type} circuit.")
 

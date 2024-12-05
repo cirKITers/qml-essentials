@@ -150,7 +150,7 @@ def test_encoding() -> None:
             n_qubits=2,
             n_layers=1,
             circuit_type="Circuit_19",
-            encoding_unitary=test_case["encoding_unitary"],
+            encoding=test_case["encoding_unitary"],
         )
         _ = model(
             model.params,
