@@ -548,7 +548,7 @@ def test_local_and_global_meas() -> None:
             "execution_type": "expval",
             "output_qubit": -1,
             "shots": None,
-            "out_shape": (2,),
+            "out_shape": (2, 1),
             "warning": False,
         },
         {
