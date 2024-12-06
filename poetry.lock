@@ -1504,12 +1504,12 @@ files = [
 
 [[package]]
 name = "pennylane"
-version = "0.38.0"
+version = "0.39.0"
 description = "PennyLane is a cross-platform Python library for quantum computing, quantum machine learning, and quantum chemistry. Train a quantum computer the same way as a neural network."
 optional = false
 python-versions = "*"
 files = [
-    {file = "PennyLane-0.38.0-py3-none-any.whl", hash = "sha256:6a6f4e96feaffa0aafbf460be901140d6c14481cf26dc92fd050d74aaa793b47"},
+    {file = "PennyLane-0.39.0-py3-none-any.whl", hash = "sha256:e11928a8ffd652b9c1b4f11955b50210c3b637f36ee3d8cea64a3a9a6a830977"},
 ]
 
 [package.dependencies]
@@ -1518,9 +1518,9 @@ autograd = "*"
 autoray = ">=0.6.11"
 cachetools = "*"
 networkx = "*"
-numpy = "<2.0"
+numpy = "<2.1"
 packaging = "*"
-pennylane-lightning = ">=0.38"
+pennylane-lightning = ">=0.39"
 requests = "*"
 rustworkx = ">=0.14.0"
 scipy = "*"
@@ -2408,4 +2408,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.13"
-content-hash = "c2c4bef9318f5f1ec7b750940c586c205a59e95c007b210e0404dc0c97ac4c96"
+content-hash = "670c4a4fa544495a0c5417720c41303e307e9ebc438e57f610084b8e05668216"

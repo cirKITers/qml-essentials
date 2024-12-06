@@ -124,7 +124,7 @@ def test_parameters() -> None:
             if test_case["output_qubit"] == -1:
                 if test_case["force_mean"]:
                     assert (
-                        result.shape[0] == 1
+                        result.size == 1 or result.shape[0] == 1
                     ), f"Shape of {test_case['output_qubit']} is not correct."
                 else:
                     # check for 2 because of n qubits
@@ -519,7 +519,7 @@ def test_local_and_global_meas() -> None:
             "execution_type": "expval",
             "output_qubit": -1,
             "shots": None,
-            "out_shape": (2, 1),
+            "out_shape": (2,),
             "warning": False,
         },
         {

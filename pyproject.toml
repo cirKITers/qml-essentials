@@ -13,7 +13,7 @@ keywords = ["quantum", "quantum machine learning", "qml"]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
-pennylane = "^0.38.0"
+pennylane = "^0.39.0"
 
 [tool.poetry.group.dev]
 optional = true
