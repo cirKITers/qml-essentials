@@ -33,6 +33,33 @@ There is much more to this package, than just providing a Fourier model.
 You can calculate the [Expressibility](expressibility.md) or [Entangling Capability](entanglement.md) besides the [Coefficients](coefficients.md) which are unique to this kind of QML interpretation.
 Also checkout the available [Ansaetze](ansaetze.md) that we provide with this package.
 
+## Parameter Initialization
+
+The initialization strategy can be set when instantiating the model with the `initialization` argument.
+
+The default strategy is "random" which will result in random initialization of the parameters using the domain specified in the `initialization_domain` argument.
+Other options are:
+- "zeros": All parameters are initialized to $0$
+- "zero-controlled": All parameters are initialized to randomly except for the angles of the controlled rotations which are initialized to $0$
+- "pi-controlled": All parameters are initialized to randomly except for the angles of the controlled rotations which are initialized to $\\pi$
+- "pi": All parameters are initialized to $\\pi$
+
+The `initialize_params` method provides the option to re-initialise the parameters after model instantiation using either the previous configuration or a different strategy.
+
+## Encoding
+
+The encoding can be set when instantiating the model with the `encoding` argument.
+
+The default encoding is "RX" which will result in a single RX rotation per qubit.
+Other options are:
+- Any callable such as `qml.RX`
+- A list of callables such as `[qml.RX, qml.RY]`
+- A string such as `"RX"` that will result in a single RX rotation per qubit
+- A list of strings such as `["RX", "RY"]` that will result in a RX and RY rotation per qubit
+
+If a list of encodings is provided, the input is assumed to be multi-dimensional.
+Otherwise a multiple inputs are treated as batches of inputs.
+
 ## Output Shape
 
 The output shape is determined by the `output_qubit` argument, provided in the instantiation of the model.
