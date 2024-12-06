@@ -143,12 +143,23 @@ class Expressibility:
         )
         z: np.ndarray = np.zeros((n_input_samples, n_bins))
 
-        y: np.ndarray = np.zeros((n_input_samples, n_bins + 1))
+        # ---- opt a ----
+
+        y: np.ndarray = np.linspace(0, 1, n_bins + 1)
 
         for i, f in enumerate(fidelities):
-            z[i], y[i] = np.histogram(f, bins=n_bins)
+            z[i], _ = np.histogram(f, bins=y)
 
-        y = np.mean(y, axis=0)
+        # ---- opt b ----
+        # y: np.ndarray = np.zeros((n_input_samples, n_bins + 1))
+
+        # for i, f in enumerate(fidelities):
+        #     z[i], y[i] = np.histogram(f, bins=n_bins)
+
+        # y = np.mean(y, axis=0)
+
+        # ---- fi ----
+
         z = z / n_samples
 
         if z.shape[0] == 1:
