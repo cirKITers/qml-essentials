@@ -59,22 +59,40 @@ class Expressibility:
                 execution_type="density",
                 **kwargs,
             )
+
+            # $\sqrt{\rho}$
             sqrt_sv1: np.ndarray = np.array([sqrtm(m) for m in sv[:n_samples]])
 
+            # $\sqrt{\rho} \sigma \sqrt{\rho}$
             inner_fidelity = sqrt_sv1 @ sv[n_samples:] @ sqrt_sv1
-            # inner_fidelity[inner_fidelity < 0] = 0.0
+
+            # ---- Pennylane Approach ----
+
+            # linalg does not support complex256
+            inner_fidelity = inner_fidelity.astype("complex128")
+            # eigval of complex hermitian (no eigenvectors) + cast to real
+            eigvals = np.real(np.linalg.eigvalsh(inner_fidelity))
+            # cut negative
+            eigvals[eigvals < 0] = 0.0
+
+            # trace using eigenvalues
+            fidelities[idx] = np.sum(np.sqrt(eigvals), axis=-1) ** 2
+
+            # ---- Our Approach ----
 
             # Compute the fidelity using the partial trace of the statevector
-            fidelity: np.ndarray = (
-                np.trace(
-                    np.array([sqrtm(m) for m in inner_fidelity]),
-                    axis1=1,
-                    axis2=2,
-                )
-                ** 2
-            )
-            # TODO: abs instead?
-            fidelities[idx] = np.abs(fidelity)
+            # fidelity: np.ndarray = (
+            #     np.trace(
+            #         np.array([sqrtm(m) for m in inner_fidelity]),
+            #         axis1=1,
+            #         axis2=2,
+            #     )
+            #     ** 2
+            # )
+            # # TODO: abs instead?
+            # fidelities[idx] = np.abs(fidelity)
+
+            # ---- fi ----
 
         return fidelities
 

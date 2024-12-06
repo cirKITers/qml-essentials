@@ -64,6 +64,7 @@ def test_expressibility() -> None:
             n_qubits=test_case["n_qubits"],
             n_layers=test_case["n_layers"],
             circuit_type=test_case["circuit_type"],
+            initialization_domain=[0, 2 * np.pi],
             data_reupload=False,
         )
 
