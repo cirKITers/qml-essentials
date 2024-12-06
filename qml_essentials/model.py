@@ -330,6 +330,8 @@ class Model:
         Returns:
             None
         """
+        if inputs is None:
+            return
 
         if data_reupload:
             if inputs.shape[1] == 1:

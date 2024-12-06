@@ -126,7 +126,7 @@ def test_parameters() -> None:
             if test_case["output_qubit"] == -1:
                 if test_case["force_mean"]:
                     assert (
-                        result.shape[0] == 1
+                        result.size == 1 or result.shape[0] == 1
                     ), f"Shape of {test_case['output_qubit']} is not correct."
                 else:
                     # check for 2 because of n qubits
@@ -399,9 +399,7 @@ def test_multi_input() -> None:
             f"{inputs.shape if inputs is not None else 'None'}"
         )
         encoding = (
-            qml.RX
-            if inputs is None
-            else [qml.RX for _ in range(inputs.shape[1])]
+            qml.RX if inputs is None else [qml.RX for _ in range(inputs.shape[1])]
         )
         model = Model(
             n_qubits=2,

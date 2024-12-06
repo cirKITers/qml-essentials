@@ -1,10 +1,10 @@
 import pennylane.numpy as np
 from typing import Tuple, List, Any
 from scipy import integrate
+from scipy.linalg import sqrtm
 from scipy.special import rel_entr
-import os
-
 from qml_essentials.model import Model
+import os
 
 
 class Expressibility:
@@ -59,19 +59,24 @@ class Expressibility:
                 execution_type="density",
                 **kwargs,
             )
-            sqrt_sv1: np.ndarray = np.sqrt(sv[:n_samples])
+
+            # $\sqrt{\rho}$
+            sqrt_sv1: np.ndarray = np.array([sqrtm(m) for m in sv[:n_samples]])
+
+            # $\sqrt{\rho} \sigma \sqrt{\rho}$
+            inner_fidelity = sqrt_sv1 @ sv[n_samples:] @ sqrt_sv1
 
             # Compute the fidelity using the partial trace of the statevector
             fidelity: np.ndarray = (
                 np.trace(
-                    np.sqrt(sqrt_sv1 * sv[n_samples:] * sqrt_sv1),
+                    np.array([sqrtm(m) for m in inner_fidelity]),
                     axis1=1,
                     axis2=2,
                 )
                 ** 2
             )
-            # TODO: abs instead?
-            fidelities[idx] = np.real(fidelity)
+
+            fidelities[idx] = np.abs(fidelity)
 
         return fidelities
 
@@ -80,9 +85,9 @@ class Expressibility:
         seed: int,
         n_samples: int,
         n_bins: int,
-        n_input_samples: int,
-        input_domain: List[float],
         model: Model,
+        n_input_samples: int = 0,
+        input_domain: List[float] = None,
         scale: bool = False,
         **kwargs: Any,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -168,8 +173,8 @@ class Expressibility:
         """
         dist = np.zeros(n_bins)
         for idx in range(n_bins):
-            v = (1 / n_bins) * idx
-            u = v + (1 / n_bins)
+            v = idx / n_bins
+            u = (idx + 1) / n_bins
             dist[idx], _ = integrate.quad(
                 Expressibility._haar_probability, v, u, args=(n_qubits,)
             )
