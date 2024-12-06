@@ -137,6 +137,9 @@ class Ansaetze:
                     qml.CZ(wires=[(2 * q), (2 * q + 1)])
                 for q in range((n_qubits - 1) // 2):
                     qml.CZ(wires=[(2 * q + 1), (2 * q + 2)])
+                if n_qubits > 2:
+                    qml.CZ(wires=[(n_qubits - 1), 0])
+                # add circular stuff
 
     class Circuit_19(Circuit):
         @staticmethod
