@@ -58,7 +58,7 @@ Other options are:
 - A list of strings such as `["RX", "RY"]` that will result in a RX and RY rotation per qubit
 
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
-Otherwise a multiple inputs are treated as batches of inputs.
+Otherwise multiple inputs are treated as batches of inputs.
 
 ## Output Shape
 
