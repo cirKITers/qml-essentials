@@ -72,7 +72,7 @@ class Expressibility:
             inner_fidelity = inner_fidelity.astype("complex128")
             # eigval of complex hermitian (no eigenvectors) + cast to real
             eigvals = np.real(np.linalg.eigvalsh(inner_fidelity))
-            # cut negative
+            # cut negative, otherwise we'll get complex values in the next step
             eigvals[eigvals < 0] = 0.0
 
             # trace using eigenvalues
