@@ -391,11 +391,17 @@ def test_multi_input() -> None:
         np.random.rand(20, 1),
     ]
     input_cases = [2 * np.pi * i for i in input_cases]
+    input_cases.append(None)
 
     for inputs in input_cases:
         logger.info(
             f"Testing input with shape: "
             f"{inputs.shape if inputs is not None else 'None'}"
+        )
+        encoding = (
+            qml.RX
+            if inputs is None
+            else [qml.RX for _ in range(inputs.shape[1])]
         )
         model = Model(
             n_qubits=2,
@@ -403,7 +409,7 @@ def test_multi_input() -> None:
             circuit_type="Circuit_19",
             data_reupload=True,
             initialization="random",
-            encoding=[qml.RX for _ in range(inputs.shape[1])],
+            encoding=encoding,
             output_qubit=0,
             shots=1024,
         )
