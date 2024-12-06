@@ -55,7 +55,7 @@ def test_expressibility() -> None:
             "circuit_type": "Circuit_9",
             "n_qubits": 4,
             "n_layers": 3,
-            "result": 0.1991,  # should be 0.03
+            "result": 0.03,
         },
     ]
 
