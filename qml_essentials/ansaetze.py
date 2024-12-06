@@ -125,18 +125,20 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
-                w_idx += 1
                 qml.RY(w[w_idx], wires=q)
                 w_idx += 1
-                qml.RX(w[w_idx], wires=q)
+                qml.RZ(w[w_idx], wires=q)
+                w_idx += 1
+                qml.RY(w[w_idx], wires=q)
                 w_idx += 1
 
             if n_qubits > 1:
                 for q in range(n_qubits // 2):
-                    qml.CZ(wires=[(2 * q), (2 * q + 1)])
+                    qml.CNOT(wires=[(2 * q), (2 * q + 1)])
                 for q in range((n_qubits - 1) // 2):
-                    qml.CZ(wires=[(2 * q + 1), (2 * q + 2)])
+                    qml.CNOT(wires=[(2 * q + 1), (2 * q + 2)])
+                if n_qubits > 2:
+                    qml.CNOT(wires=[(n_qubits - 1), 0])
 
     class Circuit_19(Circuit):
         @staticmethod
