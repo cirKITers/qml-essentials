@@ -10,6 +10,8 @@ from typing import Optional
 import pennylane as qml
 import pennylane.numpy as np
 
+from typing import List, Callable
+
 logger = logging.getLogger(__name__)
 
 
@@ -134,6 +136,30 @@ def test_parameters() -> None:
             str(model)
 
 
+@pytest.mark.smoketest
+def test_encoding() -> None:
+    test_cases = [
+        {"encoding_unitary": qml.RX, "type": Callable, "input": [0]},
+        {"encoding_unitary": [qml.RX, qml.RY], "type": List, "input": [[0, 0]]},
+        {"encoding_unitary": "RX", "type": Callable, "input": [0]},
+        {"encoding_unitary": ["RX", "RY"], "type": List, "input": [[0, 0]]},
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            encoding=test_case["encoding_unitary"],
+        )
+        _ = model(
+            model.params,
+            inputs=test_case["input"],
+        )
+
+        assert isinstance(model._enc, test_case["type"])
+
+
 @pytest.mark.unittest
 def test_cache() -> None:
     # Stupid try removing caches
@@ -164,7 +190,7 @@ def test_cache() -> None:
                 "params": model.params,
                 "noise_params": model.noise_params,
                 "execution_type": model.execution_type,
-                "inputs": None,
+                "inputs": np.array([[0]]),
                 "output_qubit": model.output_qubit,
             }
         ).encode("utf-8")
@@ -358,7 +384,6 @@ def test_available_ansaetze() -> None:
 @pytest.mark.unittest
 def test_multi_input() -> None:
     input_cases = [
-        np.random.rand(1),
         np.random.rand(1, 1),
         np.random.rand(1, 2),
         np.random.rand(1, 3),
@@ -373,12 +398,18 @@ def test_multi_input() -> None:
             f"Testing input with shape: "
             f"{inputs.shape if inputs is not None else 'None'}"
         )
+        encoding = (
+            qml.RX
+            if inputs is None
+            else [qml.RX for _ in range(inputs.shape[1])]
+        )
         model = Model(
             n_qubits=2,
             n_layers=1,
             circuit_type="Circuit_19",
             data_reupload=True,
             initialization="random",
+            encoding=encoding,
             output_qubit=0,
             shots=1024,
         )
