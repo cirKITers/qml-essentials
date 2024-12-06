@@ -143,11 +143,12 @@ class Expressibility:
         )
         z: np.ndarray = np.zeros((n_input_samples, n_bins))
 
-        y: np.ndarray = np.linspace(0, 1, n_bins + 1)
+        y: np.ndarray = np.zeros((n_input_samples, n_bins + 1))
 
         for i, f in enumerate(fidelities):
-            z[i], _ = np.histogram(f, bins=y)
+            z[i], y[i] = np.histogram(f, bins=n_bins)
 
+        y = np.mean(y, axis=0)
         z = z / n_samples
 
         if z.shape[0] == 1:
@@ -189,8 +190,8 @@ class Expressibility:
         """
         dist = np.zeros(n_bins)
         for idx in range(n_bins):
-            v = (1 / n_bins) * idx
-            u = v + (1 / n_bins)
+            v = idx / n_bins
+            u = (idx + 1) / n_bins
             dist[idx], _ = integrate.quad(
                 Expressibility._haar_probability, v, u, args=(n_qubits,)
             )
