@@ -66,20 +66,6 @@ class Expressibility:
             # $\sqrt{\rho} \sigma \sqrt{\rho}$
             inner_fidelity = sqrt_sv1 @ sv[n_samples:] @ sqrt_sv1
 
-            # ---- Pennylane Approach ----
-
-            # # linalg does not support complex256
-            # inner_fidelity = inner_fidelity.astype("complex128")
-            # # eigval of complex hermitian (no eigenvectors) + cast to real
-            # eigvals = np.real(np.linalg.eigvalsh(inner_fidelity))
-            # # cut negative, otherwise we'll get complex values in the next step
-            # eigvals[eigvals < 0] = 0.0
-
-            # # trace using eigenvalues
-            # fidelities[idx] = np.sum(np.sqrt(eigvals), axis=-1) ** 2
-
-            # ---- Our Approach ----
-
             # Compute the fidelity using the partial trace of the statevector
             fidelity: np.ndarray = (
                 np.trace(
@@ -89,10 +75,8 @@ class Expressibility:
                 )
                 ** 2
             )
-            # # TODO: abs instead?
-            fidelities[idx] = np.abs(fidelity)
 
-            # ---- fi ----
+            fidelities[idx] = np.abs(fidelity)
 
         return fidelities
 
@@ -143,22 +127,10 @@ class Expressibility:
         )
         z: np.ndarray = np.zeros((n_input_samples, n_bins))
 
-        # ---- opt a ----
-
         y: np.ndarray = np.linspace(0, 1, n_bins + 1)
 
         for i, f in enumerate(fidelities):
             z[i], _ = np.histogram(f, bins=y)
-
-        # ---- opt b ----
-        # y: np.ndarray = np.zeros((n_input_samples, n_bins + 1))
-
-        # for i, f in enumerate(fidelities):
-        #     z[i], y[i] = np.histogram(f, bins=n_bins)
-
-        # y = np.mean(y, axis=0)
-
-        # ---- fi ----
 
         z = z / n_samples
 
