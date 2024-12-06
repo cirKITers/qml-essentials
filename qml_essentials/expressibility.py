@@ -68,29 +68,29 @@ class Expressibility:
 
             # ---- Pennylane Approach ----
 
-            # linalg does not support complex256
-            inner_fidelity = inner_fidelity.astype("complex128")
-            # eigval of complex hermitian (no eigenvectors) + cast to real
-            eigvals = np.real(np.linalg.eigvalsh(inner_fidelity))
-            # cut negative, otherwise we'll get complex values in the next step
-            eigvals[eigvals < 0] = 0.0
+            # # linalg does not support complex256
+            # inner_fidelity = inner_fidelity.astype("complex128")
+            # # eigval of complex hermitian (no eigenvectors) + cast to real
+            # eigvals = np.real(np.linalg.eigvalsh(inner_fidelity))
+            # # cut negative, otherwise we'll get complex values in the next step
+            # eigvals[eigvals < 0] = 0.0
 
-            # trace using eigenvalues
-            fidelities[idx] = np.sum(np.sqrt(eigvals), axis=-1) ** 2
+            # # trace using eigenvalues
+            # fidelities[idx] = np.sum(np.sqrt(eigvals), axis=-1) ** 2
 
             # ---- Our Approach ----
 
             # Compute the fidelity using the partial trace of the statevector
-            # fidelity: np.ndarray = (
-            #     np.trace(
-            #         np.array([sqrtm(m) for m in inner_fidelity]),
-            #         axis1=1,
-            #         axis2=2,
-            #     )
-            #     ** 2
-            # )
+            fidelity: np.ndarray = (
+                np.trace(
+                    np.array([sqrtm(m) for m in inner_fidelity]),
+                    axis1=1,
+                    axis2=2,
+                )
+                ** 2
+            )
             # # TODO: abs instead?
-            # fidelities[idx] = np.abs(fidelity)
+            fidelities[idx] = np.abs(fidelity)
 
             # ---- fi ----
 
