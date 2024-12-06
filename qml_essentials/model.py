@@ -24,6 +24,7 @@ class Model:
         n_layers: int,
         circuit_type: Union[str, Circuit],
         data_reupload: bool = True,
+        encoding: Union[str, Callable, List[str], List[Callable]] = qml.RX,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
         output_qubit: Union[List[int], int] = -1,
@@ -49,6 +50,11 @@ class Model:
                 If None, defaults to "no_ansatz".
             data_reupload (bool, optional): Whether to reupload data to the
                 quantum device on each measurement. Defaults to True.
+            encoding (Union[str, Callable, List[str], List[Callable]], optional):
+                The unitary to use for encoding the input data. Can be a string
+                (e.g. "RX") or a callable (e.g. qml.RX). Defaults to qml.RX.
+                If input is multidimensional it is assumed to be a list of
+                unitaries or a list of strings.
             initialization (str, optional): The strategy to initialize the parameters.
                 Can be "random", "zeros", "zero-controlled", "pi", or "pi-controlled".
                 Defaults to "random".
@@ -85,6 +91,24 @@ class Model:
             )()
         else:
             self.pqc = circuit_type()
+
+        # Initialize encoding
+        # first check if we have a str, list or callable
+        if isinstance(encoding, str):
+            # if str, use the pennylane fct
+            self._enc = getattr(qml, encoding)
+        elif isinstance(encoding, list):
+            # if list, check if str or callable
+            if isinstance(encoding[0], str):
+                self._enc = [getattr(qml, enc) for enc in encoding]
+            else:
+                self._enc = encoding
+
+            if len(self._enc) == 1:
+                self._enc = self._enc[0]
+        else:
+            # default to callable
+            self._enc = encoding
 
         log.info(f"Using {circuit_type} circuit.")
 
@@ -130,8 +154,6 @@ class Model:
             self._circuit,
             qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
         )
-
-        log.debug(self._draw())
 
     @property
     def noise_params(self) -> Optional[Dict[str, float]]:
@@ -294,7 +316,8 @@ class Model:
     def _iec(
         self,
         inputs: np.ndarray,
-        data_reupload: bool = True,
+        data_reupload: bool,
+        enc: Union[Callable, List[Callable]],
     ) -> None:
         """
         Creates an AngleEncoding using RX gates
@@ -309,37 +332,21 @@ class Model:
         """
         if inputs is None:
             return
-        elif len(inputs.shape) == 1:
-            # add a batch dimension
-            inputs = inputs.reshape(-1, 1)
 
         if data_reupload:
             if inputs.shape[1] == 1:
                 for q in range(self.n_qubits):
-                    qml.RX(inputs[:, 0], wires=q)
-            elif inputs.shape[1] == 2:
-                for q in range(self.n_qubits):
-                    qml.RX(inputs[:, 0], wires=q)
-                    qml.RY(inputs[:, 1], wires=q)
-            elif inputs.shape[1] == 3:
-                for q in range(self.n_qubits):
-                    qml.Rot(inputs[:, 0], inputs[:, 1], inputs[:, 2], wires=q)
+                    enc(inputs[:, 0], wires=q)
             else:
-                raise ValueError(
-                    "The number of parameters for this IEC cannot be greater than 3"
-                )
+                for q in range(self.n_qubits):
+                    for idx in range(inputs.shape[1]):
+                        enc[idx](inputs[:, idx], wires=q)
         else:
             if inputs.shape[1] == 1:
-                qml.RX(inputs[:, 0], wires=0)
-            elif inputs.shape[1] == 2:
-                qml.RX(inputs[:, 0], wires=0)
-                qml.RY(inputs[:, 1], wires=0)
-            elif inputs.shape[1] == 3:
-                qml.Rot(inputs[:, 0], inputs[:, 1], inputs[:, 2], wires=0)
+                enc(inputs[:, 0], wires=0)
             else:
-                raise ValueError(
-                    "The number of parameters for this IEC cannot be greater than 3"
-                )
+                for idx in range(inputs.shape[1]):
+                    enc[idx](inputs[:, idx], wires=0)
 
     def _circuit(
         self,
@@ -363,7 +370,7 @@ class Model:
             self.pqc(params[layer], self.n_qubits)
 
             if self.data_reupload or layer == 0:
-                self._iec(inputs, data_reupload=self.data_reupload)
+                self._iec(inputs, data_reupload=self.data_reupload, enc=self._enc)
 
             if self.noise_params is not None:
                 for q in range(self.n_qubits):
@@ -424,6 +431,8 @@ class Model:
             # TODO: throws strange argument error if not catched
             return ""
 
+        inputs = self._inputs_validation(inputs)
+
         if figure:
             result = qml.draw_mpl(self.circuit)(params=self.params, inputs=inputs)
         else:
@@ -431,6 +440,7 @@ class Model:
         return result
 
     def draw(self, inputs=None, figure=False) -> None:
+
         return self._draw(inputs, figure)
 
     def __repr__(self) -> str:
@@ -488,6 +498,35 @@ class Model:
             force_mean=force_mean,
         )
 
+    def _inputs_validation(
+        self, inputs: Union[None, List, float, int, np.ndarray]
+    ) -> np.ndarray:
+        """
+        Validate the inputs to be a 2D numpy array of shape (batch_size, n_inputs).
+
+        Args:
+            inputs (Union[None, List, float, int, np.ndarray]): The input to validate.
+
+        Returns:
+            np.ndarray: The validated input.
+        """
+        if inputs is None:
+            # initialize to zero
+            inputs = np.array([[0]])
+        elif isinstance(inputs, List):
+            inputs = np.stack(inputs)
+        elif isinstance(inputs, float) or isinstance(inputs, int):
+            inputs = np.array([inputs])
+
+        if len(inputs.shape) == 1:
+            if isinstance(self._enc, List):
+                inputs = inputs.reshape(-1, 1)
+            else:
+                # add a batch dimension
+                inputs = inputs.reshape(inputs.shape[0], 1)
+
+        return inputs
+
     def _forward(
         self,
         params: Optional[np.ndarray] = None,
@@ -544,6 +583,8 @@ class Model:
                 self.params = params._value
             else:
                 self.params = params
+
+        inputs = self._inputs_validation(inputs)
 
         # the qasm representation contains the bound parameters,
         # thus it is ok to hash that
