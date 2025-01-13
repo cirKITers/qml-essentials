@@ -19,22 +19,21 @@ pennylane = "^0.39.0"
 optional = true
 
 [tool.poetry.group.dev.dependencies]
-devpi-client = "^7.0.3"
-black = "^24.4.2"
-pytest = "^8.2.2"
+black = "^24.10.0"
+pytest = "^8.3.4"
 flake8 = "^7.1.1"
-pre-commit = "^3.8.0"
-coverage = "^7.6.1"
+pre-commit = "^4.0.1"
+coverage = "^7.6.10"
 licensecheck = "^2024.3"
-matplotlib = "^3.9.2"
+matplotlib = "^3.10.0"
 
 [tool.poetry.group.docs]
 optional = true
 
 [tool.poetry.group.docs.dependencies]
-mkdocs = "^1.6.0"
-mkdocs-material = "^9.5.31"
-mkdocstrings-python = "^1.10.7"
+mkdocs = "^1.6.1"
+mkdocs-material = "^9.5.49"
+mkdocstrings-python = "^1.13.0"
 markdown-include = "^0.8.1"
 
 [build-system]
