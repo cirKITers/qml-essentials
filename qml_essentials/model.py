@@ -337,17 +337,29 @@ class Model:
         if data_reupload:
             if inputs.shape[1] == 1:
                 for q in range(self.n_qubits):
-                    enc(inputs[:, 0], wires=q, noise_params=noise_params)
+                    if noise_params is not None:
+                        enc(inputs[:, 0], wires=q, noise_params=noise_params)
+                    else:
+                        enc(inputs[:, 0], wires=q)
             else:
                 for q in range(self.n_qubits):
                     for idx in range(inputs.shape[1]):
-                        enc[idx](inputs[:, idx], wires=q, noise_params=noise_params)
+                        if noise_params is not None:
+                            enc[idx](inputs[:, idx], wires=q, noise_params=noise_params)
+                        else:
+                            enc[idx](inputs[:, idx], wires=q)
         else:
             if inputs.shape[1] == 1:
-                enc(inputs[:, 0], wires=0, noise_params=noise_params)
+                if noise_params is not None:
+                    enc(inputs[:, 0], wires=0, noise_params=noise_params)
+                else:
+                    enc(inputs[:, 0], wires=0)
             else:
                 for idx in range(inputs.shape[1]):
-                    enc[idx](inputs[:, idx], wires=0, noise_params=noise_params)
+                    if noise_params is not None:
+                        enc[idx](inputs[:, idx], wires=0, noise_params=noise_params)
+                    else:
+                        enc[idx](inputs[:, idx], wires=0)
 
     def _circuit(
         self,
