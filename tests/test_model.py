@@ -1,5 +1,5 @@
 from qml_essentials.model import Model
-from qml_essentials.ansaetze import Ansaetze, Circuit
+from qml_essentials.ansaetze import Ansaetze, Circuit, Gates
 import pytest
 import logging
 import inspect
@@ -338,17 +338,17 @@ def test_ansaetze() -> None:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             w_idx = 0
             for q in range(n_qubits):
-                qml.RY(w[w_idx], wires=q)
+                Gates.NRY(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
+                Gates.NRZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
-                    qml.CZ(wires=[q, q + 1])
+                    Gates.NCZ(wires=[q, q + 1], noise_params=noise_params)
 
     model = Model(
         n_qubits=2,
