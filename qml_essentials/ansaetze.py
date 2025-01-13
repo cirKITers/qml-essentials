@@ -71,57 +71,59 @@ class Circuit(ABC):
 
 
 class Gates:
-    def noise_gate(noise_params=None):
+    def noise_gate(wires, noise_params=None):
         if noise_params is not None:
-            qml.BitFlip(noise_params.get("BitFlip", 0.0), wires=0)
-            qml.PhaseFlip(noise_params.get("PhaseFlip", 0.0), wires=0)
+            if isinstance(wires, list):
+                wires = wires[1]  # control, TARGET qubit
+            qml.BitFlip(noise_params.get("BitFlip", 0.0), wires=wires)
+            qml.PhaseFlip(noise_params.get("PhaseFlip", 0.0), wires=wires)
             qml.DepolarizingChannel(
-                noise_params.get("DepolarizingChannel", 0.0), wires=0
+                noise_params.get("DepolarizingChannel", 0.0), wires=wires
             )
 
-    def NRot(w, wires, noise_params=None):
-        qml.Rot(w[0], w[1], w[2], wires=wires)
-        Gates.noise_gate(noise_params)
+    def NRot(phi, theta, omega, wires, noise_params=None):
+        qml.Rot(phi, theta, omega, wires=wires)
+        Gates.noise_gate(wires, noise_params)
 
     def NRX(w, wires, noise_params=None):
         qml.RX(w, wires=wires)
-        Gates.noise_gate(noise_params)
+        Gates.noise_gate(wires, noise_params)
 
     def NRY(w, wires, noise_params=None):
         qml.RY(w, wires=wires)
-        Gates.noise_gate(noise_params)
+        Gates.noise_gate(wires, noise_params)
 
     def NRZ(w, wires, noise_params=None):
         qml.RZ(w, wires=wires)
-        Gates.noise_gate(noise_params)
+        Gates.noise_gate(wires, noise_params)
 
     def NCRX(w, wires, noise_params=None):
         qml.CRX(w, wires=wires)
-        Gates.noise_gate(noise_params)
+        Gates.noise_gate(wires, noise_params)
 
-    def NRY(w, wires, noise_params=None):
+    def NCRY(w, wires, noise_params=None):
         qml.CRY(w, wires=wires)
-        Gates.noise_gate(noise_params)
+        Gates.noise_gate(wires, noise_params)
 
     def NCRZ(w, wires, noise_params=None):
         qml.CRZ(w, wires=wires)
-        Gates.noise_gate(noise_params)
+        Gates.noise_gate(wires, noise_params)
 
     def NCX(wires, noise_params=None):
         qml.CNOT(wires=wires)
-        Gates.noise_gate(noise_params)
+        Gates.noise_gate(wires, noise_params)
 
     def NCY(wires, noise_params=None):
         qml.CY(wires=wires)
-        Gates.noise_gate(noise_params)
+        Gates.noise_gate(wires, noise_params)
 
     def NCZ(wires, noise_params=None):
-        Gates.NCZ(wires=wires)
-        Gates.noise_gate(noise_params)
+        qml.CZ(wires=wires)
+        Gates.noise_gate(wires, noise_params)
 
     def NH(wires, noise_params=None):
         qml.Hadamard(wires=wires)
-        Gates.noise_gate(noise_params)
+        Gates.noise_gate(wires, noise_params)
 
 
 class Ansaetze:
