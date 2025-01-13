@@ -70,7 +70,62 @@ class Circuit(ABC):
         self.build(*args, **kwds)
 
 
+class Gates:
+    def noise_gate(noise_params=None):
+        if noise_params is not None:
+            qml.BitFlip(noise_params.get("BitFlip", 0.0), wires=0)
+            qml.PhaseFlip(noise_params.get("PhaseFlip", 0.0), wires=0)
+            qml.DepolarizingChannel(
+                noise_params.get("DepolarizingChannel", 0.0), wires=0
+            )
+
+    def NRot(w, wires, noise_params=None):
+        qml.Rot(w[0], w[1], w[2], wires=wires)
+        Gates.noise_gate(noise_params)
+
+    def NRX(w, wires, noise_params=None):
+        qml.RX(w, wires=wires)
+        Gates.noise_gate(noise_params)
+
+    def NRY(w, wires, noise_params=None):
+        qml.RY(w, wires=wires)
+        Gates.noise_gate(noise_params)
+
+    def NRZ(w, wires, noise_params=None):
+        qml.RZ(w, wires=wires)
+        Gates.noise_gate(noise_params)
+
+    def NCRX(w, wires, noise_params=None):
+        qml.CRX(w, wires=wires)
+        Gates.noise_gate(noise_params)
+
+    def NRY(w, wires, noise_params=None):
+        qml.CRY(w, wires=wires)
+        Gates.noise_gate(noise_params)
+
+    def NCRZ(w, wires, noise_params=None):
+        qml.CRZ(w, wires=wires)
+        Gates.noise_gate(noise_params)
+
+    def NCX(wires, noise_params=None):
+        qml.CNOT(wires=wires)
+        Gates.noise_gate(noise_params)
+
+    def NCY(wires, noise_params=None):
+        qml.CY(wires=wires)
+        Gates.noise_gate(noise_params)
+
+    def NCZ(wires, noise_params=None):
+        Gates.NCZ(wires=wires)
+        Gates.noise_gate(noise_params)
+
+    def NH(wires, noise_params=None):
+        qml.Hadamard(wires=wires)
+        Gates.noise_gate(noise_params)
+
+
 class Ansaetze:
+
     def get_available():
         return [
             Ansaetze.No_Ansatz,
@@ -112,7 +167,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             """
             Creates a Hardware-Efficient ansatz, as proposed in
             https://arxiv.org/pdf/2309.03279
@@ -125,20 +180,22 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                qml.RY(w[w_idx], wires=q)
+                Gates.NRY(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
+                Gates.NRZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-                qml.RY(w[w_idx], wires=q)
+                Gates.NRY(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
             if n_qubits > 1:
                 for q in range(n_qubits // 2):
-                    qml.CNOT(wires=[(2 * q), (2 * q + 1)])
+                    Gates.NCX(wires=[(2 * q), (2 * q + 1)], noise_params=noise_params)
                 for q in range((n_qubits - 1) // 2):
-                    qml.CNOT(wires=[(2 * q + 1), (2 * q + 2)])
+                    Gates.NCX(
+                        wires=[(2 * q + 1), (2 * q + 2)], noise_params=noise_params
+                    )
                 if n_qubits > 2:
-                    qml.CNOT(wires=[(n_qubits - 1), 0])
+                    Gates.NCX(wires=[(n_qubits - 1), 0], noise_params=noise_params)
 
     class Circuit_19(Circuit):
         @staticmethod
@@ -157,7 +214,7 @@ class Ansaetze:
                 return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             """
             Creates a Circuit19 ansatz.
 
@@ -170,16 +227,17 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
+                Gates.NRX(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
+                Gates.NRZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
             if n_qubits > 1:
                 for q in range(n_qubits):
-                    qml.CRX(
+                    Gates.NCRX(
                         w[w_idx],
                         wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits],
+                        noise_params=noise_params,
                     )
                     w_idx += 1
 
@@ -200,7 +258,7 @@ class Ansaetze:
                 return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             """
             Creates a Circuit18 ansatz.
 
@@ -212,16 +270,17 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
+                Gates.NRX(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
+                Gates.NRZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
             if n_qubits > 1:
                 for q in range(n_qubits):
-                    qml.CRZ(
+                    Gates.NCRZ(
                         w[w_idx],
                         wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits],
+                        noise_params=noise_params,
                     )
                     w_idx += 1
 
@@ -239,7 +298,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             """
             Creates a Circuit15 ansatz.
 
@@ -254,15 +313,15 @@ class Ansaetze:
 
             w_idx = 0
             for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
+                Gates.NRX(w[w_idx], wires=q)
                 w_idx += 1
 
             if n_qubits > 1:
                 for q in range(n_qubits):
-                    qml.CNOT(wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits])
+                    Gates.NCX(wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits])
 
             for q in range(n_qubits):
-                qml.RZ(w[w_idx], wires=q)
+                Gates.NRZ(w[w_idx], wires=q)
                 w_idx += 1
 
     class Circuit_9(Circuit):
@@ -275,7 +334,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             """
             Creates a Circuit9 ansatz.
 
@@ -291,10 +350,13 @@ class Ansaetze:
 
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
-                    qml.CZ(wires=[n_qubits - q - 2, n_qubits - q - 1])
+                    qml.CZ(
+                        wires=[n_qubits - q - 2, n_qubits - q - 1],
+                        noise_params=noise_params,
+                    )
 
             for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
+                Gates.NRX(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
     class Circuit_6(Circuit):
@@ -314,7 +376,7 @@ class Ansaetze:
                 return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             """
             Creates a Circuit6 ansatz.
 
@@ -329,9 +391,9 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
+                Gates.NRX(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
+                Gates.NRZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
             if n_qubits > 1:
@@ -339,16 +401,17 @@ class Ansaetze:
                     for q in range(n_qubits):
                         if q == ql:
                             continue
-                        qml.CRX(
+                        Gates.NCRX(
                             w[w_idx],
                             wires=[n_qubits - ql - 1, (n_qubits - q - 1) % n_qubits],
+                            noise_params=noise_params,
                         )
                         w_idx += 1
 
             for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
+                Gates.NRX(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
+                Gates.NRZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
     class Circuit_1(Circuit):
@@ -373,9 +436,9 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
+                Gates.NRX(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
+                Gates.NRZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
     class Strongly_Entangling(Circuit):
@@ -392,7 +455,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int) -> None:
+        def build(w: np.ndarray, n_qubits: int, noise_params=None) -> None:
             """
             Creates a StronglyEntanglingLayers ansatz.
 
@@ -407,7 +470,7 @@ class Ansaetze:
 
             if n_qubits > 1:
                 for q in range(n_qubits):
-                    qml.CNOT(wires=[q, (q + 1) % n_qubits])
+                    Gates.NCX(wires=[q, (q + 1) % n_qubits])
 
             for q in range(n_qubits):
                 qml.Rot(w[w_idx], w[w_idx + 1], w[w_idx + 2], wires=q)
@@ -415,7 +478,7 @@ class Ansaetze:
 
             if n_qubits > 1:
                 for q in range(n_qubits):
-                    qml.CNOT(wires=[q, (q + n_qubits // 2) % n_qubits])
+                    Gates.NCX(wires=[q, (q + n_qubits // 2) % n_qubits])
 
     class No_Entangling(Circuit):
         @staticmethod
@@ -427,7 +490,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             """
             Creates a circuit without entangling, but with U3 gates on all qubits
 
@@ -439,5 +502,11 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                qml.Rot(w[w_idx], w[w_idx + 1], w[w_idx + 2], wires=q)
+                Gates.NRot(
+                    w[w_idx],
+                    w[w_idx + 1],
+                    w[w_idx + 2],
+                    wires=q,
+                    noise_params=noise_params,
+                )
                 w_idx += 3
