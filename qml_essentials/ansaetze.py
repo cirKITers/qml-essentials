@@ -152,7 +152,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             pass
 
     class Hardware_Efficient(Circuit):
@@ -348,11 +348,11 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                qml.Hadamard(wires=q)
+                Gates.NH(wires=q, noise_params=noise_params)
 
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
-                    qml.CZ(
+                    Gates.NCZ(
                         wires=[n_qubits - q - 2, n_qubits - q - 1],
                         noise_params=noise_params,
                     )
@@ -426,7 +426,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             """
             Creates a Circuit1 ansatz.
 
@@ -467,20 +467,35 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                qml.Rot(w[w_idx], w[w_idx + 1], w[w_idx + 2], wires=q)
+                Gates.NRot(
+                    w[w_idx],
+                    w[w_idx + 1],
+                    w[w_idx + 2],
+                    wires=q,
+                    noise_params=noise_params,
+                )
                 w_idx += 3
 
             if n_qubits > 1:
                 for q in range(n_qubits):
-                    Gates.NCX(wires=[q, (q + 1) % n_qubits])
+                    Gates.NCX(wires=[q, (q + 1) % n_qubits], noise_params=noise_params)
 
             for q in range(n_qubits):
-                qml.Rot(w[w_idx], w[w_idx + 1], w[w_idx + 2], wires=q)
+                Gates.NRot(
+                    w[w_idx],
+                    w[w_idx + 1],
+                    w[w_idx + 2],
+                    wires=q,
+                    noise_params=noise_params,
+                )
                 w_idx += 3
 
             if n_qubits > 1:
                 for q in range(n_qubits):
-                    Gates.NCX(wires=[q, (q + n_qubits // 2) % n_qubits])
+                    Gates.NCX(
+                        wires=[q, (q + n_qubits // 2) % n_qubits],
+                        noise_params=noise_params,
+                    )
 
     class No_Entangling(Circuit):
         @staticmethod
