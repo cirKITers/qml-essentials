@@ -305,7 +305,7 @@ def test_ansaetze() -> None:
     ansatz_cases = Ansaetze.get_available()
 
     for ansatz in ansatz_cases:
-        # Skipping Circuit_15, as it is not yet correctly implemented
+        # Skipping Circuit_15, as it is not yet correctly implemented (yet)
         if ansatz.__name__ == "Circuit_15":
             continue
 
@@ -323,9 +323,15 @@ def test_ansaetze() -> None:
         _ = model(
             model.params,
             inputs=None,
-            noise_params=None,
+            noise_params={
+                "BitFlip": 0.1,
+                "PhaseFlip": 0.2,
+                "AmplitudeDamping": 0.3,
+                "PhaseDamping": 0.4,
+                "DepolarizingChannel": 0.5,
+            },
             cache=False,
-            execution_type="expval",
+            execution_type="density",
         )
 
     class custom_ansatz(Circuit):
@@ -364,9 +370,15 @@ def test_ansaetze() -> None:
     _ = model(
         model.params,
         inputs=None,
-        noise_params=None,
+        noise_params={
+            "BitFlip": 0.1,
+            "PhaseFlip": 0.2,
+            "AmplitudeDamping": 0.3,
+            "PhaseDamping": 0.4,
+            "DepolarizingChannel": 0.5,
+        },
         cache=False,
-        execution_type="expval",
+        execution_type="density",
     )
 
 
