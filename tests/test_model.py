@@ -1,5 +1,5 @@
 from qml_essentials.model import Model
-from qml_essentials.ansaetze import Ansaetze, Circuit
+from qml_essentials.ansaetze import Ansaetze, Circuit, Gates
 import pytest
 import logging
 import inspect
@@ -139,8 +139,8 @@ def test_parameters() -> None:
 @pytest.mark.smoketest
 def test_encoding() -> None:
     test_cases = [
-        {"encoding_unitary": qml.RX, "type": Callable, "input": [0]},
-        {"encoding_unitary": [qml.RX, qml.RY], "type": List, "input": [[0, 0]]},
+        {"encoding_unitary": Gates.RX, "type": Callable, "input": [0]},
+        {"encoding_unitary": [Gates.RX, Gates.RY], "type": List, "input": [[0, 0]]},
         {"encoding_unitary": "RX", "type": Callable, "input": [0]},
         {"encoding_unitary": ["RX", "RY"], "type": List, "input": [[0, 0]]},
     ]
@@ -305,7 +305,7 @@ def test_ansaetze() -> None:
     ansatz_cases = Ansaetze.get_available()
 
     for ansatz in ansatz_cases:
-        # Skipping Circuit_15, as it is not yet correctly implemented
+        # Skipping Circuit_15, as it is not yet correctly implemented (yet)
         if ansatz.__name__ == "Circuit_15":
             continue
 
@@ -323,9 +323,15 @@ def test_ansaetze() -> None:
         _ = model(
             model.params,
             inputs=None,
-            noise_params=None,
+            noise_params={
+                "BitFlip": 0.1,
+                "PhaseFlip": 0.2,
+                "AmplitudeDamping": 0.3,
+                "PhaseDamping": 0.4,
+                "DepolarizingChannel": 0.5,
+            },
             cache=False,
-            execution_type="expval",
+            execution_type="density",
         )
 
     class custom_ansatz(Circuit):
@@ -338,17 +344,17 @@ def test_ansaetze() -> None:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             w_idx = 0
             for q in range(n_qubits):
-                qml.RY(w[w_idx], wires=q)
+                Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
+                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
-                    qml.CZ(wires=[q, q + 1])
+                    Gates.CZ(wires=[q, q + 1], noise_params=noise_params)
 
     model = Model(
         n_qubits=2,
@@ -364,9 +370,15 @@ def test_ansaetze() -> None:
     _ = model(
         model.params,
         inputs=None,
-        noise_params=None,
+        noise_params={
+            "BitFlip": 0.1,
+            "PhaseFlip": 0.2,
+            "AmplitudeDamping": 0.3,
+            "PhaseDamping": 0.4,
+            "DepolarizingChannel": 0.5,
+        },
         cache=False,
-        execution_type="expval",
+        execution_type="density",
     )
 
 
@@ -399,7 +411,7 @@ def test_multi_input() -> None:
             f"{inputs.shape if inputs is not None else 'None'}"
         )
         encoding = (
-            qml.RX if inputs is None else [qml.RX for _ in range(inputs.shape[1])]
+            Gates.RX if inputs is None else [Gates.RX for _ in range(inputs.shape[1])]
         )
         model = Model(
             n_qubits=2,
