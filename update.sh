@@ -11,5 +11,6 @@ poetry add mkdocs@latest --group docs
 poetry add mkdocs-material@latest --group docs
 poetry add mkdocstrings-python@latest --group docs
 poetry add markdown-include@latest --group docs
+poetry add ipykernel --group docs
 
 poetry update
