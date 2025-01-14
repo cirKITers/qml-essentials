@@ -99,6 +99,18 @@ def test_expressibility() -> None:
             "result": 0.0375,
         },
         {
+            "circuit_type": "Circuit_3",
+            "n_qubits": 4,
+            "n_layers": 1,
+            "result": 0.2396,
+        },
+        {
+            "circuit_type": "Circuit_3",
+            "n_qubits": 4,
+            "n_layers": 3,
+            "result": 0.0403,
+        },
+        {
             "circuit_type": "Circuit_18",
             "n_qubits": 4,
             "n_layers": 1,
@@ -109,6 +121,18 @@ def test_expressibility() -> None:
             "n_qubits": 4,
             "n_layers": 3,
             "result": 0.0221,
+        },
+        {
+            "circuit_type": "Circuit_10",
+            "n_qubits": 4,
+            "n_layers": 1,
+            "result": 0.2286,
+        },
+        {
+            "circuit_type": "Circuit_10",
+            "n_qubits": 4,
+            "n_layers": 3,
+            "result": 0.1297,
         },
         {
             "circuit_type": "Circuit_15",
@@ -135,6 +159,18 @@ def test_expressibility() -> None:
             "result": 0.0180,
         },
         {
+            "circuit_type": "Circuit_4",
+            "n_qubits": 4,
+            "n_layers": 1,
+            "result": 0.1343,
+        },
+        {
+            "circuit_type": "Circuit_4",
+            "n_qubits": 4,
+            "n_layers": 3,
+            "result": 0.0107,
+        },
+        {
             "circuit_type": "Circuit_19",
             "n_qubits": 4,
             "n_layers": 1,
@@ -145,42 +181,6 @@ def test_expressibility() -> None:
             "n_qubits": 4,
             "n_layers": 3,
             "result": 0.0040,
-        },
-        {
-            "circuit_type": "Circuit_5",
-            "n_qubits": 4,
-            "n_layers": 1,
-            "result": 0.0602,
-        },
-        {
-            "circuit_type": "Circuit_5",
-            "n_qubits": 4,
-            "n_layers": 3,
-            "result": 0.0030,
-        },
-        {
-            "circuit_type": "Circuit_13",
-            "n_qubits": 4,
-            "n_layers": 1,
-            "result": 0.0516,
-        },
-        {
-            "circuit_type": "Circuit_13",
-            "n_qubits": 4,
-            "n_layers": 3,
-            "result": 0.0049,
-        },
-        {
-            "circuit_type": "Circuit_14",
-            "n_qubits": 4,
-            "n_layers": 1,
-            "result": 0.0144,
-        },
-        {
-            "circuit_type": "Circuit_14",
-            "n_qubits": 4,
-            "n_layers": 3,
-            "result": 0.0035,
         },
         {
             "circuit_type": "Circuit_6",
