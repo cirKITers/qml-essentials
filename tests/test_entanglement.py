@@ -12,9 +12,12 @@ logger = logging.getLogger(__name__)
 @pytest.mark.unittest
 def test_entanglement() -> None:
     # circuits = [1, 7, 3, 16, 8, 5, 18, 17, 4, 10, 19, 13, 12, 14, 11, 6, 2, 15, 9]
-    # ent_res = [0.0000, 0.3246, 0.3424, 0.3464, 0.3932, 0.4099, 0.4383, 0.4541, 0.4715, 0.5369, 0.5937, 0.6070, 0.6487, 0.6613, 0.7330, 0.7803, 0.8083, 0.8186, 1.0000]
+    # ent_res = [0.0000, 0.3246, 0.3424, 0.3464, 0.3932, 0.4099, 0.4383, 0.4541,
+    # 0.4715, 0.5369, 0.5937, 0.6070, 0.6487, 0.6613, 0.7330, 0.7803, 0.8083,
+    # 0.8186, 1.0000]
 
-    # Circuits [5,7,8,11,12,13,14] are not included in the test cases, because not implemented in ansaetze.py
+    # Circuits [5,7,8,11,12,13,14] are not included in the test cases,
+    # because not implemented in ansaetze.py
     test_cases = [
         {
             "circuit_type": "No_Entangling",
