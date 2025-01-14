@@ -43,7 +43,7 @@ plt.ylabel("f(x)")
 plt.show()
 ```
 
-![Fourier Series](fourier_series.png#only-light)
+![Fourier Series](fourier_series_light.png#only-light)
 ![Fourier Series](fourier_series_dark.png#only-dark)
 
 Note that we chose the coefficients to be all $0.5$. Play around with those values to change the magnitude of each frequency component.
@@ -99,7 +99,7 @@ Epoch: 900, Cost: 0.0006
 Epoch: 1000, Cost: 0.0001
 ```
 
-![Ground Truth and Prediction](trained_series.png#only-light)
+![Ground Truth and Prediction](trained_series_light.png#only-light)
 ![Ground Truth and Prediction](trained_series_dark.png#only-dark)
 
 As you can see, the model is able to learn the Fourier series with the $4$ frequencies.
