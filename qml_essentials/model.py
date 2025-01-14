@@ -371,7 +371,12 @@ class Model:
             self.pqc(params[layer], self.n_qubits, noise_params=self.noise_params)
 
             if self.data_reupload or layer == 0:
-                self._iec(inputs, data_reupload=self.data_reupload, enc=self._enc)
+                self._iec(
+                    inputs,
+                    data_reupload=self.data_reupload,
+                    enc=self._enc,
+                    noise_params=self.noise_params,
+                )
 
             qml.Barrier(wires=list(range(self.n_qubits)), only_visual=True)
 
