@@ -10,7 +10,7 @@ In the simplest scenario, one would instantiate such a model with $2$ qubits and
 model = Model(
     n_qubits=2
     n_layers=1
-    circuit_type="HardwareEfficient"
+    circuit_type="Hardware_Efficient"
 )
 ```
 
@@ -52,11 +52,12 @@ The encoding can be set when instantiating the model with the `encoding` argumen
 
 The default encoding is "RX" which will result in a single RX rotation per qubit.
 Other options are:
-- Any callable such as `qml.RX`
-- A list of callables such as `[qml.RX, qml.RY]`
+- Any callable such as `Gates.RX`
+- A list of callables such as `[Gates.RX, Gates.RY]`
 - A string such as `"RX"` that will result in a single RX rotation per qubit
 - A list of strings such as `["RX", "RY"]` that will result in a RX and RY rotation per qubit
 
+See page ["Ansaetze"](ansaetze.md) for more details regarding the `Gates` class.
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
 Otherwise multiple inputs are treated as batches of inputs.
 
