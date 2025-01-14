@@ -73,13 +73,15 @@ class Circuit(ABC):
 class Gates:
     def noise_gate(wires, noise_params=None):
         if noise_params is not None:
-            if isinstance(wires, list):
-                wires = wires[1]  # control, TARGET qubit
-            qml.BitFlip(noise_params.get("BitFlip", 0.0), wires=wires)
-            qml.PhaseFlip(noise_params.get("PhaseFlip", 0.0), wires=wires)
-            qml.DepolarizingChannel(
-                noise_params.get("DepolarizingChannel", 0.0), wires=wires
-            )
+            if isinstance(wires, int):
+                wires = [wires]  # single qubit gate
+            # iterate for multi qubit gates
+            for wire in wires:
+                qml.BitFlip(noise_params.get("BitFlip", 0.0), wires=wire)
+                qml.PhaseFlip(noise_params.get("PhaseFlip", 0.0), wires=wire)
+                qml.DepolarizingChannel(
+                    noise_params.get("DepolarizingChannel", 0.0), wires=wire
+                )
 
     def Rot(phi, theta, omega, wires, noise_params=None):
         qml.Rot(phi, theta, omega, wires=wires)
