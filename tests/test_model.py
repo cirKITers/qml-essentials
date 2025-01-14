@@ -139,8 +139,8 @@ def test_parameters() -> None:
 @pytest.mark.smoketest
 def test_encoding() -> None:
     test_cases = [
-        {"encoding_unitary": qml.RX, "type": Callable, "input": [0]},
-        {"encoding_unitary": [qml.RX, qml.RY], "type": List, "input": [[0, 0]]},
+        {"encoding_unitary": Gates.RX, "type": Callable, "input": [0]},
+        {"encoding_unitary": [Gates.RX, Gates.RY], "type": List, "input": [[0, 0]]},
         {"encoding_unitary": "RX", "type": Callable, "input": [0]},
         {"encoding_unitary": ["RX", "RY"], "type": List, "input": [[0, 0]]},
     ]
@@ -347,14 +347,14 @@ def test_ansaetze() -> None:
         def build(w: np.ndarray, n_qubits: int, noise_params=None):
             w_idx = 0
             for q in range(n_qubits):
-                Gates.NRY(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-                Gates.NRZ(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
-                    Gates.NCZ(wires=[q, q + 1], noise_params=noise_params)
+                    Gates.CZ(wires=[q, q + 1], noise_params=noise_params)
 
     model = Model(
         n_qubits=2,
@@ -411,7 +411,7 @@ def test_multi_input() -> None:
             f"{inputs.shape if inputs is not None else 'None'}"
         )
         encoding = (
-            qml.RX if inputs is None else [qml.RX for _ in range(inputs.shape[1])]
+            Gates.RX if inputs is None else [Gates.RX for _ in range(inputs.shape[1])]
         )
         model = Model(
             n_qubits=2,

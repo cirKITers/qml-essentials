@@ -24,7 +24,7 @@ class Model:
         n_layers: int,
         circuit_type: Union[str, Circuit],
         data_reupload: bool = True,
-        encoding: Union[str, Callable, List[str], List[Callable]] = qml.RX,
+        encoding: Union[str, Callable, List[str], List[Callable]] = Gates.RX,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
         output_qubit: Union[List[int], int] = -1,
@@ -96,11 +96,11 @@ class Model:
         # first check if we have a str, list or callable
         if isinstance(encoding, str):
             # if str, use the pennylane fct
-            self._enc = getattr(Gates, f"N{encoding}")
+            self._enc = getattr(Gates, f"{encoding}")
         elif isinstance(encoding, list):
             # if list, check if str or callable
             if isinstance(encoding[0], str):
-                self._enc = [getattr(Gates, f"N{enc}") for enc in encoding]
+                self._enc = [getattr(Gates, f"{enc}") for enc in encoding]
             else:
                 self._enc = encoding
 
