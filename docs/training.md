@@ -9,12 +9,17 @@ $$
 Here, $c_{\boldsymbol{\omega}}(\boldsymbol{\theta})$ are the Fourier coefficients of the Fourier series, parameterized by the set of trainable parameters $\boldsymbol{\theta}$ and $\omega \in \boldsymbol{\Omega}$ is the corresponding frequency.
 
 As shown by [Schuld et al. (2020)](https://arxiv.org/abs/2008.08605), we can find a quantum circuit that takes a vector of trainable parameters and an input $x$ and formulate it as a Fourier series of the form above.
+Such circuits must be of the following form:
+$$
+f(x, \boldsymbol{\theta})=\langle 0\vert^{\otimes n} U^{\dagger}(x, \boldsymbol{\theta}) \mathcal{M} U(x, \boldsymbol{\theta})\vert 0\rangle^{\otimes n}
+$$
 
 Therefore, training such a model on a Fourier series is a proof-of-concept which we want to demonstrate here.
 
 Let's start with building our dataset. A Fourier series with $4$ frequencies:
 ```python
-import numpy as np
+import pennylane.numpy as np
+import matplotlib.pyplot as plt
 
 domain = [-np.pi, np.pi]
 omegas = np.array([1, 2, 3, 4])
@@ -30,10 +35,19 @@ def f(x):
     return 1 / np.linalg.norm(omegas) * np.sum(coefficients * np.cos(omegas.T * x))
 
 # evaluate f(x) on the domain samples
-y = np.stack([y(sample) for sample in x])
+y = np.stack([f(sample) for sample in x])
+
+plt.plot(x, y)
+plt.xlabel("x")
+plt.ylabel("f(x)")
+plt.show()
 ```
 
+![Fourier Series](fourier_series.png#only-light)
+![Fourier Series](fourier_series_dark.png#only-dark)
+
 Note that we chose the coefficients to be all $0.5$. Play around with those values to change the magnitude of each frequency component.
+Also note that we're using the Pennylane version of Numpy, which is required because of the optimizer that we will be using later.
 Now that we have our "dataset", let's move on and build a model:
 ```python
 from qml_essentials.model import Model
@@ -41,7 +55,7 @@ from qml_essentials.model import Model
 model = Model(
     n_qubits=4,
     n_layers=1,
-    circuit_type="HardwareEfficient",
+    circuit_type="Circuit_19",
 )
 ```
 
@@ -53,14 +67,43 @@ import pennylane as qml
 
 opt = qml.AdamOptimizer(stepsize=0.01)
 
-def cost(params):
-    y_hat = model(params=params, inputs=domain_samples)
+def cost_fct(params):
+    y_hat = model(params=params, inputs=x, force_mean=True)
 
     return np.mean((y_hat - y) ** 2)
 
-for epoch in range(100):
-    model.params, cost = opt.step_and_cost(cost, model.params)
+for epoch in range(1, 1001):
+    model.params, cost_val = opt.step_and_cost(cost_fct, model.params)
 
-    if epoch % 10 == 0:
-        print(f"Epoch: {epoch}, Cost: {cost}")
+    if epoch % 100 == 0:
+        print(f"Epoch: {epoch}, Cost: {cost_val:.4f}")
+
+plt.plot(x, y, label="True function")
+plt.plot(x, model(params=model.params, inputs=x, force_mean=True), label="Model prediction")
+plt.xlabel("x")
+plt.ylabel("f(x)")
+plt.legend()
+plt.show()
 ```
+
+```
+Epoch: 100, Cost: 0.0081
+Epoch: 200, Cost: 0.0073
+Epoch: 300, Cost: 0.0051
+Epoch: 400, Cost: 0.0043
+Epoch: 500, Cost: 0.0036
+Epoch: 600, Cost: 0.0022
+Epoch: 700, Cost: 0.0014
+Epoch: 800, Cost: 0.0008
+Epoch: 900, Cost: 0.0006
+Epoch: 1000, Cost: 0.0001
+```
+
+![Ground Truth and Prediction](trained_series.png#only-light)
+![Ground Truth and Prediction](trained_series_dark.png#only-dark)
+
+As you can see, the model is able to learn the Fourier series with the $4$ frequencies.
+
+Btw. if you're in a hurry, we have a Jupyter notebook with the exact same example [here](https://github.com/cirKITers/qml-essentials/blob/main/docs/training.ipynb) :upside_down_face:.
+
+Wondering what to do next? You can try a few different models, and see how they perform. If you're curious, checkout how this correlates with the ["Entanglement"](entanglement.md) and ["Expressibility"](expressibility.md) of the model.
