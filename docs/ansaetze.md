@@ -93,4 +93,17 @@ class MyNoisyHardwareEfficient(Circuit):
 ```
 
 As you can see, we slightly modified the example, by importing the `Gates` class from `ansaetze` and by adding the `noise_params` input to each of the gates.
-When using a noisy circuit, make sure to run the model with the `density` execution type.
+When using a noisy circuit, make sure to run the model with the `density` execution type:
+```python
+_ = model(
+    model.params,
+    inputs=None,
+    execution_type="density",
+    noise_params={
+        "BitFlip": 0.01,
+        "PhaseFlip": 0.02,
+        "AmplitudeDamping": 0.03,
+        "PhaseDamping": 0.04,
+        "DepolarizingChannel": 0.05,
+    })
+```
