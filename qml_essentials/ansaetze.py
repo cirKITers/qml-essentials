@@ -319,20 +319,20 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                Gates.RX(w[w_idx], wires=q)
+                Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
             if n_qubits > 1:
                 for q in range(n_qubits):
-                    Gates.CX(wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits])
+                    Gates.CX(wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits], noise_params=noise_params)
 
             for q in range(n_qubits):
-                qml.RY(w[w_idx], wires=q)
+                Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
             if n_qubits > 1:
                 for q in range(n_qubits):
-                    qml.CNOT(wires=[(q - 1) % n_qubits, (q - 2) % n_qubits])
+                    Gates.CX(wires=[(q - 1) % n_qubits, (q - 2) % n_qubits], noise_params=noise_params)
 
     class Circuit_9(Circuit):
         @staticmethod
@@ -461,7 +461,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             """
             Creates a Circuit2 ansatz.
 
@@ -473,14 +473,14 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
+                Gates.RX(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
+                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
             
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
-                    qml.CNOT(wires=[n_qubits - q - 1, n_qubits - q - 2])
+                    Gates.CX(wires=[n_qubits - q - 1, n_qubits - q - 2], noise_params=noise_params)
 
     class Circuit_3(Circuit):
         @staticmethod
@@ -492,7 +492,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             """
             Creates a Circuit3 ansatz.
 
@@ -504,16 +504,17 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
+                Gates.RX(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
+                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
             
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
-                    qml.CRZ(
+                    Gates.CRZ(
                         w[w_idx],
                         wires=[n_qubits - q - 1, n_qubits - q - 2],
+                        noise_params=noise_params
                     )
                     w_idx += 1
 
@@ -527,7 +528,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             """
             Creates a Circuit4 ansatz.
 
@@ -546,9 +547,10 @@ class Ansaetze:
             
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
-                    qml.CRX(
+                    Gates.CRX(
                         w[w_idx],
                         wires=[n_qubits - q - 1, n_qubits - q - 2],
+                        noise_params=noise_params
                     )
                     w_idx += 1
 
@@ -562,7 +564,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             """
             Creates a Circuit10 ansatz.
 
@@ -575,15 +577,17 @@ class Ansaetze:
             w_idx = 0
             # constant gates, independent of layers. has to be fixed
             for q in range(n_qubits):
-                qml.RY(w[w_idx], wires=q)
+                Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
             if n_qubits > 1:
-                for q in range(n_qubits):
-                    qml.CZ(wires=[(n_qubits - q - 2) % n_qubits, (n_qubits - q - 1) % n_qubits])
+                for q in range(n_qubits - 1):
+                    Gates.CZ(wires=[(n_qubits - q - 2) % n_qubits, (n_qubits - q - 1) % n_qubits], noise_params=noise_params)
+                if n_qubits > 2:
+                    Gates.CZ(wires=[n_qubits - 1, 0], noise_params=noise_params)
 
             for q in range(n_qubits):
-                qml.RY(w[w_idx], wires=q)
+                Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
     class Circuit_16(Circuit):
@@ -596,7 +600,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             """
             Creates a Circuit16 ansatz.
 
@@ -608,17 +612,27 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
+                Gates.RX(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
+                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
-            for q in range(n_qubits - 1):
-                qml.CRZ(
-                        w[w_idx],
-                        wires=[q + 1, q],
-                    )
-                w_idx += 1
+            if n_qubits > 1:
+                for q in range(n_qubits // 2):
+                    Gates.CRZ(
+                            w[w_idx],
+                            wires=[(2 * q + 1), (2 * q)],
+                            noise_params=noise_params
+                        )
+                    w_idx += 1
+
+                for q in range((n_qubits - 1) // 2):
+                    Gates.CRZ(
+                            w[w_idx],
+                            wires=[(2 * q + 2), (2 * q + 1)],
+                            noise_params=noise_params
+                        )
+                    w_idx += 1
 
     class Circuit_17(Circuit):
         @staticmethod
@@ -630,7 +644,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
             """
             Creates a Circuit17 ansatz.
 
@@ -642,220 +656,27 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
+                Gates.RX(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
-                w_idx += 1
-
-            for q in range(n_qubits - 1):
-                qml.CRX(
-                        w[w_idx],
-                        wires=[q + 1, q],
-                    )
+                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
 
-    class Circuit_2(Circuit):
-        @staticmethod
-        def n_params_per_layer(n_qubits: int) -> int:
-            return n_qubits * 2
-
-        @staticmethod
-        def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
-            return None
-
-        @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
-            """
-            Creates a Circuit2 ansatz.
-
-            Length of flattened vector must be n_qubits*2
-
-            Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*2)
-                n_qubits (int): number of qubits
-            """
-            w_idx = 0
-            for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
-                w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
-                w_idx += 1
-            
             if n_qubits > 1:
-                for q in range(n_qubits - 1):
-                    qml.CNOT(wires=[n_qubits - q - 1, n_qubits - q - 2])
-
-    class Circuit_3(Circuit):
-        @staticmethod
-        def n_params_per_layer(n_qubits: int) -> int:
-            return n_qubits * 3 - 1
-
-        @staticmethod
-        def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
-            return None
-
-        @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
-            """
-            Creates a Circuit3 ansatz.
-
-            Length of flattened vector must be n_qubits*3-1
-
-            Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
-                n_qubits (int): number of qubits
-            """
-            w_idx = 0
-            for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
-                w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
-                w_idx += 1
-            
-            if n_qubits > 1:
-                for q in range(n_qubits - 1):
-                    qml.CRZ(
-                        w[w_idx],
-                        wires=[n_qubits - q - 1, n_qubits - q - 2],
-                    )
+                for q in range(n_qubits // 2):
+                    Gates.CRX(
+                            w[w_idx],
+                            wires=[(2 * q + 1), (2 * q)],
+                            noise_params=noise_params
+                        )
                     w_idx += 1
 
-    class Circuit_4(Circuit):
-        @staticmethod
-        def n_params_per_layer(n_qubits: int) -> int:
-            return n_qubits * 3 - 1
-
-        @staticmethod
-        def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
-            return None
-
-        @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
-            """
-            Creates a Circuit4 ansatz.
-
-            Length of flattened vector must be n_qubits*3-1
-
-            Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
-                n_qubits (int): number of qubits
-            """
-            w_idx = 0
-            for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
-                w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
-                w_idx += 1
-            
-            if n_qubits > 1:
-                for q in range(n_qubits - 1):
-                    qml.CRX(
-                        w[w_idx],
-                        wires=[n_qubits - q - 1, n_qubits - q - 2],
-                    )
+                for q in range((n_qubits - 1) // 2):
+                    Gates.CRX(
+                            w[w_idx],
+                            wires=[(2 * q + 2), (2 * q + 1)],
+                            noise_params=noise_params
+                        )
                     w_idx += 1
-
-    class Circuit_10(Circuit):
-        @staticmethod
-        def n_params_per_layer(n_qubits: int) -> int:
-            return n_qubits * 2 # constant gates not considered yet. has to be fixed
-
-        @staticmethod
-        def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
-            return None
-
-        @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
-            """
-            Creates a Circuit10 ansatz.
-
-            Length of flattened vector must be n_qubits
-
-            Args:
-                w (np.ndarray): weight vector of size n_layers*n_qubits
-                n_qubits (int): number of qubits
-            """
-            w_idx = 0
-            # constant gates, independent of layers. has to be fixed
-            for q in range(n_qubits):
-                qml.RY(w[w_idx], wires=q)
-                w_idx += 1
-
-            if n_qubits > 1:
-                for q in range(n_qubits):
-                    qml.CZ(wires=[(n_qubits - q - 2) % n_qubits, (n_qubits - q - 1) % n_qubits])
-
-            for q in range(n_qubits):
-                qml.RY(w[w_idx], wires=q)
-                w_idx += 1
-
-    class Circuit_16(Circuit):
-        @staticmethod
-        def n_params_per_layer(n_qubits: int) -> int:
-            return n_qubits * 3 - 1
-
-        @staticmethod
-        def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
-            return None
-
-        @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
-            """
-            Creates a Circuit16 ansatz.
-
-            Length of flattened vector must be n_qubits*3-1
-
-            Args:
-                w (np.ndarray): weight vector of size n_layers*n_qubits*3-1
-                n_qubits (int): number of qubits
-            """
-            w_idx = 0
-            for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
-                w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
-                w_idx += 1
-
-            for q in range(n_qubits - 1):
-                qml.CRZ(
-                        w[w_idx],
-                        wires=[q + 1, q],
-                    )
-                w_idx += 1
-
-    class Circuit_17(Circuit):
-        @staticmethod
-        def n_params_per_layer(n_qubits: int) -> int:
-            return n_qubits * 3 - 1
-
-        @staticmethod
-        def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
-            return None
-
-        @staticmethod
-        def build(w: np.ndarray, n_qubits: int):
-            """
-            Creates a Circuit17 ansatz.
-
-            Length of flattened vector must be n_qubits*3-1
-
-            Args:
-                w (np.ndarray): weight vector of size n_layers*n_qubits*3-1
-                n_qubits (int): number of qubits
-            """
-            w_idx = 0
-            for q in range(n_qubits):
-                qml.RX(w[w_idx], wires=q)
-                w_idx += 1
-                qml.RZ(w[w_idx], wires=q)
-                w_idx += 1
-
-            for q in range(n_qubits - 1):
-                qml.CRX(
-                        w[w_idx],
-                        wires=[q + 1, q],
-                    )
-                w_idx += 1
 
     class Strongly_Entangling(Circuit):
         @staticmethod
