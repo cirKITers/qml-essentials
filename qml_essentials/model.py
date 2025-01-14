@@ -6,7 +6,7 @@ import os
 import warnings
 from autograd.numpy import numpy_boxes
 
-from qml_essentials.ansaetze import Ansaetze, Circuit
+from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
 
 import logging
 
@@ -24,7 +24,7 @@ class Model:
         n_layers: int,
         circuit_type: Union[str, Circuit],
         data_reupload: bool = True,
-        encoding: Union[str, Callable, List[str], List[Callable]] = qml.RX,
+        encoding: Union[str, Callable, List[str], List[Callable]] = Gates.RX,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
         output_qubit: Union[List[int], int] = -1,
@@ -96,11 +96,11 @@ class Model:
         # first check if we have a str, list or callable
         if isinstance(encoding, str):
             # if str, use the pennylane fct
-            self._enc = getattr(qml, encoding)
+            self._enc = getattr(Gates, f"{encoding}")
         elif isinstance(encoding, list):
             # if list, check if str or callable
             if isinstance(encoding[0], str):
-                self._enc = [getattr(qml, enc) for enc in encoding]
+                self._enc = [getattr(Gates, f"{enc}") for enc in encoding]
             else:
                 self._enc = encoding
 
@@ -318,6 +318,7 @@ class Model:
         inputs: np.ndarray,
         data_reupload: bool,
         enc: Union[Callable, List[Callable]],
+        noise_params: Optional[np.ndarray] = None,
     ) -> None:
         """
         Creates an AngleEncoding using RX gates
@@ -336,17 +337,17 @@ class Model:
         if data_reupload:
             if inputs.shape[1] == 1:
                 for q in range(self.n_qubits):
-                    enc(inputs[:, 0], wires=q)
+                    enc(inputs[:, 0], wires=q, noise_params=noise_params)
             else:
                 for q in range(self.n_qubits):
                     for idx in range(inputs.shape[1]):
-                        enc[idx](inputs[:, idx], wires=q)
+                        enc[idx](inputs[:, idx], wires=q, noise_params=noise_params)
         else:
             if inputs.shape[1] == 1:
-                enc(inputs[:, 0], wires=0)
+                enc(inputs[:, 0], wires=0, noise_params=noise_params)
             else:
                 for idx in range(inputs.shape[1]):
-                    enc[idx](inputs[:, idx], wires=0)
+                    enc[idx](inputs[:, idx], wires=0, noise_params=noise_params)
 
     def _circuit(
         self,
@@ -367,30 +368,27 @@ class Model:
         """
 
         for layer in range(0, self.n_layers):
-            self.pqc(params[layer], self.n_qubits)
+            self.pqc(params[layer], self.n_qubits, noise_params=self.noise_params)
 
             if self.data_reupload or layer == 0:
-                self._iec(inputs, data_reupload=self.data_reupload, enc=self._enc)
-
-            if self.noise_params is not None:
-                for q in range(self.n_qubits):
-                    qml.BitFlip(self.noise_params.get("BitFlip", 0.0), wires=q)
-                    qml.PhaseFlip(self.noise_params.get("PhaseFlip", 0.0), wires=q)
-                    qml.AmplitudeDamping(
-                        self.noise_params.get("AmplitudeDamping", 0.0), wires=q
-                    )
-                    qml.PhaseDamping(
-                        self.noise_params.get("PhaseDamping", 0.0), wires=q
-                    )
-                    qml.DepolarizingChannel(
-                        self.noise_params.get("DepolarizingChannel", 0.0),
-                        wires=q,
-                    )
+                self._iec(
+                    inputs,
+                    data_reupload=self.data_reupload,
+                    enc=self._enc,
+                    noise_params=self.noise_params,
+                )
 
             qml.Barrier(wires=list(range(self.n_qubits)), only_visual=True)
 
         if self.data_reupload:
-            self.pqc(params[-1], self.n_qubits)
+            self.pqc(params[-1], self.n_qubits, noise_params=self.noise_params)
+
+        if self.noise_params is not None:
+            for q in range(self.n_qubits):
+                qml.AmplitudeDamping(
+                    self.noise_params.get("AmplitudeDamping", 0.0), wires=q
+                )
+                qml.PhaseDamping(self.noise_params.get("PhaseDamping", 0.0), wires=q)
 
         # run mixed simualtion and get density matrix
         if self.execution_type == "density":
