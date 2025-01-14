@@ -6,7 +6,23 @@ Anyway, we got various of the most-used Ansaetze implemented in this package.
 You can load them manually by
 ```python
 from qml_essentials.ansaetze import Ansaetze
-print(Ansaetze.get_available())
+all_ansaetze = Ansaetze.get_available()
+
+for ansatz in all_ansaetze:
+    print(ansatz.__name__)
+```
+
+```
+No_Ansatz
+Circuit_1
+Circuit_6
+Circuit_9
+Circuit_15
+Circuit_18
+Circuit_19
+No_Entangling
+Strongly_Entangling
+Hardware_Efficient
 ```
 
 However, usually you just want reference to them (by name) when instantiating a model.
