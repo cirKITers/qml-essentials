@@ -326,7 +326,10 @@ class Ansaetze:
 
             if n_qubits > 1:
                 for q in range(n_qubits):
-                    Gates.CX(wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits], noise_params=noise_params)
+                    Gates.CX(
+                        wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits],
+                        noise_params=noise_params,
+                    )
 
             for q in range(n_qubits):
                 Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
@@ -334,7 +337,10 @@ class Ansaetze:
 
             if n_qubits > 1:
                 for q in range(n_qubits):
-                    Gates.CX(wires=[(q - 1) % n_qubits, (q - 2) % n_qubits], noise_params=noise_params)
+                    Gates.CX(
+                        wires=[(q - 1) % n_qubits, (q - 2) % n_qubits],
+                        noise_params=noise_params,
+                    )
 
     class Circuit_9(Circuit):
         @staticmethod
@@ -479,10 +485,13 @@ class Ansaetze:
                 w_idx += 1
                 Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-            
+
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
-                    Gates.CX(wires=[n_qubits - q - 1, n_qubits - q - 2], noise_params=noise_params)
+                    Gates.CX(
+                        wires=[n_qubits - q - 1, n_qubits - q - 2],
+                        noise_params=noise_params,
+                    )
 
     class Circuit_3(Circuit):
         @staticmethod
@@ -510,13 +519,13 @@ class Ansaetze:
                 w_idx += 1
                 Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-            
+
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
                     Gates.CRZ(
                         w[w_idx],
                         wires=[n_qubits - q - 1, n_qubits - q - 2],
-                        noise_params=noise_params
+                        noise_params=noise_params,
                     )
                     w_idx += 1
 
@@ -546,20 +555,20 @@ class Ansaetze:
                 w_idx += 1
                 Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
                 w_idx += 1
-            
+
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
                     Gates.CRX(
                         w[w_idx],
                         wires=[n_qubits - q - 1, n_qubits - q - 2],
-                        noise_params=noise_params
+                        noise_params=noise_params,
                     )
                     w_idx += 1
 
     class Circuit_10(Circuit):
         @staticmethod
         def n_params_per_layer(n_qubits: int) -> int:
-            return n_qubits * 2 # constant gates not considered yet. has to be fixed
+            return n_qubits * 2  # constant gates not considered yet. has to be fixed
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -584,7 +593,13 @@ class Ansaetze:
 
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
-                    Gates.CZ(wires=[(n_qubits - q - 2) % n_qubits, (n_qubits - q - 1) % n_qubits], noise_params=noise_params)
+                    Gates.CZ(
+                        wires=[
+                            (n_qubits - q - 2) % n_qubits,
+                            (n_qubits - q - 1) % n_qubits,
+                        ],
+                        noise_params=noise_params,
+                    )
                 if n_qubits > 2:
                     Gates.CZ(wires=[n_qubits - 1, 0], noise_params=noise_params)
 
@@ -622,18 +637,18 @@ class Ansaetze:
             if n_qubits > 1:
                 for q in range(n_qubits // 2):
                     Gates.CRZ(
-                            w[w_idx],
-                            wires=[(2 * q + 1), (2 * q)],
-                            noise_params=noise_params
-                        )
+                        w[w_idx],
+                        wires=[(2 * q + 1), (2 * q)],
+                        noise_params=noise_params,
+                    )
                     w_idx += 1
 
                 for q in range((n_qubits - 1) // 2):
                     Gates.CRZ(
-                            w[w_idx],
-                            wires=[(2 * q + 2), (2 * q + 1)],
-                            noise_params=noise_params
-                        )
+                        w[w_idx],
+                        wires=[(2 * q + 2), (2 * q + 1)],
+                        noise_params=noise_params,
+                    )
                     w_idx += 1
 
     class Circuit_17(Circuit):
@@ -666,18 +681,18 @@ class Ansaetze:
             if n_qubits > 1:
                 for q in range(n_qubits // 2):
                     Gates.CRX(
-                            w[w_idx],
-                            wires=[(2 * q + 1), (2 * q)],
-                            noise_params=noise_params
-                        )
+                        w[w_idx],
+                        wires=[(2 * q + 1), (2 * q)],
+                        noise_params=noise_params,
+                    )
                     w_idx += 1
 
                 for q in range((n_qubits - 1) // 2):
                     Gates.CRX(
-                            w[w_idx],
-                            wires=[(2 * q + 2), (2 * q + 1)],
-                            noise_params=noise_params
-                        )
+                        w[w_idx],
+                        wires=[(2 * q + 2), (2 * q + 1)],
+                        noise_params=noise_params,
+                    )
                     w_idx += 1
 
     class Strongly_Entangling(Circuit):
