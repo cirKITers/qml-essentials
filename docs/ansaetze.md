@@ -6,7 +6,23 @@ Anyway, we got various of the most-used Ansaetze implemented in this package.
 You can load them manually by
 ```python
 from qml_essentials.ansaetze import Ansaetze
-print(Ansaetze.get_available())
+all_ansaetze = Ansaetze.get_available()
+
+for ansatz in all_ansaetze:
+    print(ansatz.__name__)
+```
+
+```
+No_Ansatz
+Circuit_1
+Circuit_6
+Circuit_9
+Circuit_15
+Circuit_18
+Circuit_19
+No_Entangling
+Strongly_Entangling
+Hardware_Efficient
 ```
 
 However, usually you just want reference to them (by name) when instantiating a model.
@@ -50,7 +66,7 @@ model = Model(
 )
 ```
 
-Checkout page ["Usage"](usage.md) on how to proceed from here.
+Checkout page [*Usage*](usage.md) on how to proceed from here.
 
 You might have noticed, that the `build` method takes an additional input `noise_params`, which we did not used so far.
 In general, all of the Ansatzes, that are implemented in this package allow this additional input which is a dictionary containing all the noise parameters of the circuit (here all with probability $0.0$):
@@ -93,4 +109,17 @@ class MyNoisyHardwareEfficient(Circuit):
 ```
 
 As you can see, we slightly modified the example, by importing the `Gates` class from `ansaetze` and by adding the `noise_params` input to each of the gates.
-When using a noisy circuit, make sure to run the model with the `density` execution type.
+When using a noisy circuit, make sure to run the model with the `density` execution type:
+```python
+_ = model(
+    model.params,
+    inputs=None,
+    execution_type="density",
+    noise_params={
+        "BitFlip": 0.01,
+        "PhaseFlip": 0.02,
+        "AmplitudeDamping": 0.03,
+        "PhaseDamping": 0.04,
+        "DepolarizingChannel": 0.05,
+    })
+```

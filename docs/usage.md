@@ -8,30 +8,33 @@ from qml_essentials.model import Model
 In the simplest scenario, one would instantiate such a model with $2$ qubits and a single layer using the "Hardware Efficient" ansatz by:
 ```python
 model = Model(
-    n_qubits=2
-    n_layers=1
-    circuit_type="HardwareEfficient"
+    n_qubits=4,
+    n_layers=1,
+    circuit_type="Hardware_Efficient",
 )
 ```
 
 You can take a look at your model, by simply calling
 ```python
-print(model)
+model.draw(figure=True)
 ```
 
-You can also provide a custom circuit, by instantiating from the `Circuit` class in `qml_essentials.ansaetze.Circuit`.
-See page ["Ansaetze"](ansaetze.md) for more details.
+![Hardware Efficient Ansatz](hae_light.png#only-light)
+![Hardware Efficient Ansatz](hae_dark.png#only-dark)
+
+Looks good to you? :eyes: Head over to the [*Training*](training.md) page for **getting started** with an easy example :rocket:
 
 Calling the model without any (`None`) values for the `params` and `inputs` argument, will implicitly call the model with the recently (or initial) parameters and `0`s as input.
 
-In the following we will describe some concepts of this class.
+In the following we will describe some concepts of the `Model` class.
 For a more detailled reference on the methods and arguments that are available, please see the [references page](https://cirkiters.github.io/qml-essentials/references/#model).
 
 ## The essentials
 
 There is much more to this package, than just providing a Fourier model.
 You can calculate the [Expressibility](expressibility.md) or [Entangling Capability](entanglement.md) besides the [Coefficients](coefficients.md) which are unique to this kind of QML interpretation.
-Also checkout the available [Ansaetze](ansaetze.md) that we provide with this package.
+You can also provide a custom circuit, by instantiating from the `Circuit` class in `qml_essentials.ansaetze.Circuit`.
+See page [*Ansaetze*](ansaetze.md) for more details and a list of available Ansatzes that we provide with this package.
 
 ## Parameter Initialization
 
@@ -52,11 +55,12 @@ The encoding can be set when instantiating the model with the `encoding` argumen
 
 The default encoding is "RX" which will result in a single RX rotation per qubit.
 Other options are:
-- Any callable such as `qml.RX`
-- A list of callables such as `[qml.RX, qml.RY]`
+- Any callable such as `Gates.RX`
+- A list of callables such as `[Gates.RX, Gates.RY]`
 - A string such as `"RX"` that will result in a single RX rotation per qubit
 - A list of strings such as `["RX", "RY"]` that will result in a RX and RY rotation per qubit
 
+See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
 Otherwise multiple inputs are treated as batches of inputs.
 

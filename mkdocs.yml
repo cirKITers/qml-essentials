@@ -8,6 +8,8 @@ nav:
       - coefficients.md
       - entanglement.md
       - expressibility.md
+  - Examples:
+      - training.md
   - references.md
 theme:
   name: material
@@ -16,6 +18,11 @@ theme:
     - content.code.select
     - content.code.copy
   palette:
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
     # Palette toggle for light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -52,8 +59,15 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - pymdownx.superfences
+  - pymdownx.arithmatex:
+      generic: true
+
 extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/cirKITers/qml-essentials
       name: Github
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
