@@ -229,7 +229,7 @@ def test_expressibility() -> None:
         kl_dist = Expressibility.kullback_leibler_divergence(z, y_haar).mean()
 
         assert math.isclose(
-            kl_dist.mean(), test_case["result"], abs_tol=4e-2
+            kl_dist.mean(), test_case["result"], abs_tol=1e-3
         ), f"Expressibility is not {test_case['result']}\
             for circuit ansatz {test_case['circuit_type']}.\
             Was {kl_dist} instead"
