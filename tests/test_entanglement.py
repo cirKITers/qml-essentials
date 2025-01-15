@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 @pytest.mark.expensive
 @pytest.mark.unittest
 def test_entanglement() -> None:
+    # Results taken from: https://doi.org/10.1002/qute.201900070
     # circuits = [1, 7, 3, 16, 8, 5, 18, 17, 4, 10, 19, 13, 12, 14, 11, 6, 2, 15, 9]
     # ent_res = [0.0000, 0.3246, 0.3424, 0.3464, 0.3932, 0.4099, 0.4383, 0.4541,
     # 0.4715, 0.5369, 0.5937, 0.6070, 0.6487, 0.6613, 0.7330, 0.7803, 0.8083,
@@ -136,7 +137,7 @@ def test_entanglement() -> None:
             ent_cap, test_case["result"], abs_tol=1e-3
         ), f"Entangling capacity is not {test_case['result']}\
             for circuit ansatz {test_case['circuit_type']}.\
-            Was {ent_cap} instead"
+            Was {ent_cap} instead; diff {ent_cap - test_case['result']}."
 
 
 @pytest.mark.smoketest

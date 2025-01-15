@@ -44,6 +44,7 @@ def test_divergence() -> None:
 @pytest.mark.unittest
 @pytest.mark.expensive
 def test_expressibility() -> None:
+    # Results taken from: https://doi.org/10.1002/qute.201900070
     # circuits = [9, 1, 2, 16, 3, 18, 10, 12, 15, 17, 4, 11, 7, 8, 19, 5, 13, 14, 6]
     # results-n_layers-1 = [0.6773, 0.2999, 0.2860, 0.2602, 0.2396, 0.2340, 0.2286,
     # 0.1984, 0.1892, 0.1359, 0.1343, 0.1312, 0.0977, 0.0858, 0.0809, 0.0602,
@@ -232,7 +233,7 @@ def test_expressibility() -> None:
             kl_dist.mean(), test_case["result"], abs_tol=1e-3
         ), f"Expressibility is not {test_case['result']}\
             for circuit ansatz {test_case['circuit_type']}.\
-            Was {kl_dist} instead"
+            Was {kl_dist} instead; diff {kl_dist - test_case['result']}."
 
 
 @pytest.mark.unittest
