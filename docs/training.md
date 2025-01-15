@@ -3,12 +3,14 @@
 This section describes how to use the model provided with this package, using a simple training scenario as an example.
 
 We consider a Fourier series with $n$ frequencies defined as follows:
+
 $$
 f(x, \boldsymbol{\theta})=\sum_{\boldsymbol{\omega} \in \boldsymbol{\Omega}} c_{\boldsymbol{\omega}}(\boldsymbol{\theta}) e^{i \boldsymbol{\omega} x}=\sum_{\boldsymbol{\omega} \in \boldsymbol{\Omega}} c_{\boldsymbol{\omega}}(\boldsymbol{\theta}) \left(\cos(\boldsymbol{\omega} x) + i \sin(\boldsymbol{\omega} x)\right)
 $$
-Here, $c_{\boldsymbol{\omega}}(\boldsymbol{\theta})$ are the Fourier coefficients of the Fourier series, parameterized by the set of trainable parameters $\boldsymbol{\theta}$ and $\omega \in \boldsymbol{\Omega}$ is the corresponding frequency.
 
-As shown by [Schuld et al. (2020)](https://arxiv.org/abs/2008.08605), we can find a quantum circuit that takes a vector of trainable parameters and an input $x$ and formulate it as a Fourier series of the form above.
+Here, $\omega \in \boldsymbol{\Omega}$ are the frequencies in the spectrum with the Fourier coefficients $c_{\boldsymbol{\omega}}(\boldsymbol{\theta})$, parameterized by the set of trainable parameters $\boldsymbol{\theta}$.
+
+As shown by [Schuld et al. (2020)](https://arxiv.org/abs/2008.08605), a quantum circuit, parametrised by $\boldsymbol{\theta}$ and input $x$ and is equivalent to the Fourier series representation.
 Such circuits must be of the following form:
 $$
 f(x, \boldsymbol{\theta})=\langle 0\vert^{\otimes n} U^{\dagger}(x, \boldsymbol{\theta}) \mathcal{M} U(x, \boldsymbol{\theta})\vert 0\rangle^{\otimes n}
