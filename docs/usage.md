@@ -22,7 +22,7 @@ model.draw(figure=True)
 ![Hardware Efficient Ansatz](hae_light.png#only-light)
 ![Hardware Efficient Ansatz](hae_dark.png#only-dark)
 
-Looks good to you? :eyes: Head over to the ["Training"](training.md) page for **getting started** with an easy example :rocket:
+Looks good to you? :eyes: Head over to the [*Training*](training.md) page for **getting started** with an easy example :rocket:
 
 Calling the model without any (`None`) values for the `params` and `inputs` argument, will implicitly call the model with the recently (or initial) parameters and `0`s as input.
 
@@ -34,7 +34,7 @@ For a more detailled reference on the methods and arguments that are available, 
 There is much more to this package, than just providing a Fourier model.
 You can calculate the [Expressibility](expressibility.md) or [Entangling Capability](entanglement.md) besides the [Coefficients](coefficients.md) which are unique to this kind of QML interpretation.
 You can also provide a custom circuit, by instantiating from the `Circuit` class in `qml_essentials.ansaetze.Circuit`.
-See page ["Ansaetze"](ansaetze.md) for more details and a list of available Ansatzes that we provide with this package.
+See page [*Ansaetze*](ansaetze.md) for more details and a list of available Ansatzes that we provide with this package.
 
 ## Parameter Initialization
 
@@ -60,7 +60,7 @@ Other options are:
 - A string such as `"RX"` that will result in a single RX rotation per qubit
 - A list of strings such as `["RX", "RY"]` that will result in a RX and RY rotation per qubit
 
-See page ["Ansaetze"](ansaetze.md) for more details regarding the `Gates` class.
+See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
 Otherwise multiple inputs are treated as batches of inputs.
 

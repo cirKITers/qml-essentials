@@ -106,4 +106,4 @@ As you can see, the model is able to learn the Fourier series with the $4$ frequ
 
 Btw. if you're in a hurry, we have a Jupyter notebook with the exact same example [here](https://github.com/cirKITers/qml-essentials/blob/main/docs/training.ipynb) :upside_down_face:.
 
-Wondering what to do next? You can try a few different models, and see how they perform. If you're curious, checkout how this correlates with the ["Entanglement"](entanglement.md) and ["Expressibility"](expressibility.md) of the model.
+Wondering what to do next? You can try a few different models, and see how they perform. If you're curious, checkout how this correlates with the [*Entanglement*](entanglement.md) and [*Expressibility*](expressibility.md) of the model.

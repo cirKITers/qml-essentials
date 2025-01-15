@@ -66,7 +66,7 @@ model = Model(
 )
 ```
 
-Checkout page ["Usage"](usage.md) on how to proceed from here.
+Checkout page [*Usage*](usage.md) on how to proceed from here.
 
 You might have noticed, that the `build` method takes an additional input `noise_params`, which we did not used so far.
 In general, all of the Ansatzes, that are implemented in this package allow this additional input which is a dictionary containing all the noise parameters of the circuit (here all with probability $0.0$):
