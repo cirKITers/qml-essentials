@@ -24,98 +24,84 @@ def test_entanglement() -> None:
             "circuit_type": "No_Entangling",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 1000,
             "result": 0.0,
         },
         {
             "circuit_type": "Strongly_Entangling",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 2000,
             "result": 0.3912,
         },
         {
             "circuit_type": "Circuit_1",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 1000,
             "result": 0.0000,
         },
         {
             "circuit_type": "Circuit_3",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 1000,
             "result": 0.3424,
         },
         {
             "circuit_type": "Circuit_16",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 1000,
             "result": 0.3464,
         },
         {
             "circuit_type": "Circuit_18",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 1000,
             "result": 0.4383,
         },
         {
             "circuit_type": "Circuit_17",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 1000,
             "result": 0.4541,
         },
         {
             "circuit_type": "Circuit_4",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 1000,
             "result": 0.4715,
         },
         {
             "circuit_type": "Circuit_10",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 1000,
             "result": 0.5369,
         },
         {
             "circuit_type": "Circuit_19",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 1000,
             "result": 0.5937,
         },
         {
             "circuit_type": "Circuit_6",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 1000,
             "result": 0.7803,
         },
         {
             "circuit_type": "Circuit_2",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 1000,
             "result": 0.8083,
         },
         {
             "circuit_type": "Circuit_15",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 1000,
             "result": 0.8186,
         },
         {
             "circuit_type": "Circuit_9",
             "n_qubits": 2,
             "n_layers": 1,
-            "n_samples": 1000,
             "result": 1.0005,
         },
     ]
@@ -130,7 +116,7 @@ def test_entanglement() -> None:
         )
 
         ent_cap = Entanglement.meyer_wallach(
-            model, n_samples=test_case["n_samples"], seed=1000, cache=False
+            model, n_samples=1000, seed=1000, cache=False
         )
 
         assert math.isclose(
