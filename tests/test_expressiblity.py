@@ -237,9 +237,7 @@ def test_expressibility() -> None:
 
         assert (
             error < 0.1
-        ), f"Expressibility of circuit {test_case['circuit_type']} is not {test_case['result']}\
-            for circuit ansatz {test_case['circuit_type']}.\
-            Was {kl_dist} instead. Deviation {error*100:1f}>10%"
+        ), f"Expressibility of circuit {test_case['circuit_type']} is not {test_case['result']} but {kl_dist} instead. Deviation {error*100:1f}>10%"
 
 
 @pytest.mark.unittest

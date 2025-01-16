@@ -127,9 +127,7 @@ def test_entanglement() -> None:
 
         assert (
             error < 0.1
-        ), f"Entangling-capability of circuit {test_case['circuit_type']} is not {test_case['result']}\
-            for circuit ansatz {test_case['circuit_type']}.\
-            Was {ent_cap} instead. Deviation {error*100:1f}>10%"
+        ), f"Entangling-capability of circuit {test_case['circuit_type']} is not {test_case['result']} but {ent_cap} instead. Deviation {error*100:1f}>10%"
 
 
 @pytest.mark.smoketest
