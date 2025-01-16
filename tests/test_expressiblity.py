@@ -231,9 +231,9 @@ def test_expressibility() -> None:
 
         assert math.isclose(
             kl_dist.mean(), test_case["result"], abs_tol=1e-3
-        ), f"Expressibility is not {test_case['result']}\
+        ), f"Expressibility of circuit {test_case['circuit_type']} is not {test_case['result']}\
             for circuit ansatz {test_case['circuit_type']}.\
-            Was {kl_dist} instead; diff {kl_dist - test_case['result']}."
+            Was {kl_dist} instead; diff {kl_dist - test_case['result']} > 1e-3."
 
 
 @pytest.mark.unittest

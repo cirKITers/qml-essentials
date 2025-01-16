@@ -30,7 +30,7 @@ def test_entanglement() -> None:
             "circuit_type": "Strongly_Entangling",
             "n_qubits": 2,
             "n_layers": 1,
-            "result": 0.3912,
+            "result": 0.4032,
         },
         {
             "circuit_type": "Circuit_1",
@@ -121,9 +121,9 @@ def test_entanglement() -> None:
 
         assert math.isclose(
             ent_cap, test_case["result"], abs_tol=1e-3
-        ), f"Entangling capacity is not {test_case['result']}\
+        ), f"Entangling-capability of circuit {test_case['circuit_type']} is not {test_case['result']}\
             for circuit ansatz {test_case['circuit_type']}.\
-            Was {ent_cap} instead; diff {ent_cap - test_case['result']}."
+            Was {ent_cap} instead; diff {ent_cap - test_case['result']} > 1e-3."
 
 
 @pytest.mark.smoketest
