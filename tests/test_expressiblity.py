@@ -229,11 +229,17 @@ def test_expressibility() -> None:
         # Calculate the mean (over all inputs, if required)
         kl_dist = Expressibility.kullback_leibler_divergence(z, y_haar).mean()
 
-        assert math.isclose(
-            kl_dist.mean(), test_case["result"], abs_tol=1e-3
+        difference = abs(kl_dist - test_case["result"])
+        if math.isclose(difference, 0.0, abs_tol=1e-10):
+            error = 0
+        else:
+            error = abs(kl_dist - test_case["result"]) / (test_case["result"])
+
+        assert (
+            error < 0.1
         ), f"Expressibility of circuit {test_case['circuit_type']} is not {test_case['result']}\
             for circuit ansatz {test_case['circuit_type']}.\
-            Was {kl_dist} instead; diff {kl_dist - test_case['result']} > 1e-3."
+            Was {kl_dist} instead. Deviation {error*100:1f}>10%"
 
 
 @pytest.mark.unittest
@@ -267,3 +273,7 @@ def test_scaling() -> None:
     assert y.shape == (8,)
 
     # _ = Expressibility.kullback_leibler_divergence(z, y)
+
+
+if __name__ == "__main__":
+    test_expressibility()

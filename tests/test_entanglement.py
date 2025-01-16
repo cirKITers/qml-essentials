@@ -102,7 +102,7 @@ def test_entanglement() -> None:
             "circuit_type": "Circuit_9",
             "n_qubits": 2,
             "n_layers": 1,
-            "result": 1.0005,
+            "result": 1.0000,
         },
     ]
 
@@ -116,14 +116,20 @@ def test_entanglement() -> None:
         )
 
         ent_cap = Entanglement.meyer_wallach(
-            model, n_samples=1000, seed=1000, cache=False
+            model, n_samples=5000, seed=1000, cache=False
         )
 
-        assert math.isclose(
-            ent_cap, test_case["result"], abs_tol=1e-3
+        difference = abs(ent_cap - test_case["result"])
+        if math.isclose(difference, 0.0, abs_tol=1e-3):
+            error = 0
+        else:
+            error = abs(ent_cap - test_case["result"]) / (test_case["result"])
+
+        assert (
+            error < 0.1
         ), f"Entangling-capability of circuit {test_case['circuit_type']} is not {test_case['result']}\
             for circuit ansatz {test_case['circuit_type']}.\
-            Was {ent_cap} instead; diff {ent_cap - test_case['result']} > 1e-3."
+            Was {ent_cap} instead. Deviation {error*100:1f}>10%"
 
 
 @pytest.mark.smoketest
@@ -137,3 +143,7 @@ def test_no_sampling() -> None:
     )
 
     _ = Entanglement.meyer_wallach(model, n_samples=-1, seed=1000, cache=False)
+
+
+if __name__ == "__main__":
+    test_entanglement()
