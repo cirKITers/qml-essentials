@@ -111,7 +111,7 @@ def test_entanglement() -> None:
             n_qubits=test_case["n_qubits"],
             n_layers=test_case["n_layers"],
             circuit_type=test_case["circuit_type"],
-            data_reupload=True,
+            data_reupload=False,
             initialization="random",
         )
 
