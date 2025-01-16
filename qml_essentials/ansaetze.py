@@ -698,11 +698,9 @@ class Ansaetze:
     class Strongly_Entangling(Circuit):
         @staticmethod
         def n_params_per_layer(n_qubits: int) -> int:
-            if n_qubits > 1:
-                return n_qubits * 6
-            else:
+            if n_qubits < 2:
                 log.warning("Number of Qubits < 2, no entanglement available")
-                return 2
+            return n_qubits * 6
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
