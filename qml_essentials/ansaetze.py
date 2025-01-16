@@ -166,11 +166,9 @@ class Ansaetze:
     class Hardware_Efficient(Circuit):
         @staticmethod
         def n_params_per_layer(n_qubits: int) -> int:
-            if n_qubits > 1:
-                return n_qubits * 3
-            else:
+            if n_qubits < 2:
                 log.warning("Number of Qubits < 2, no entanglement available")
-                return 3
+            return n_qubits * 3
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
