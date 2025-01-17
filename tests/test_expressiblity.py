@@ -55,6 +55,8 @@ def test_expressibility() -> None:
 
     # Circuits [5,7,8,11,12,13,14] are not included in the test cases,
     # because not implemented in ansaetze.py
+
+    # Circuit 10 excluded because implementation with current setup not possible
     test_cases = [
         {
             "circuit_type": "Circuit_9",
@@ -128,12 +130,12 @@ def test_expressibility() -> None:
         #     "n_layers": 3,
         #     "result": 0.0221,
         # },
-        {
-            "circuit_type": "Circuit_10",
-            "n_qubits": 4,
-            "n_layers": 1,
-            "result": 0.2286,
-        },
+        # {
+        #     "circuit_type": "Circuit_10",
+        #     "n_qubits": 4,
+        #     "n_layers": 1,
+        #     "result": 0.2286,
+        # },
         # {
         #     "circuit_type": "Circuit_10",
         #     "n_qubits": 4,
