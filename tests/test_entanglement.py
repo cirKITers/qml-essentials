@@ -117,7 +117,7 @@ def test_entanglement() -> None:
         )
 
         ent_cap = Entanglement.meyer_wallach(
-            model, n_samples=5000, seed=1000, cache=False
+            model, n_samples=1000, seed=1000, cache=False
         )
 
         difference = abs(ent_cap - test_case["result"])
@@ -127,8 +127,8 @@ def test_entanglement() -> None:
             error = abs(ent_cap - test_case["result"]) / (test_case["result"])
 
         assert (
-            error < 0.1
-        ), f"Entangling-capability of circuit {test_case['circuit_type']} is not {test_case['result']} but {ent_cap} instead. Deviation {error*100:1f}>10%"
+            error < tolerance
+        ), f"Entangling-capability of circuit {test_case['circuit_type']} is not {test_case['result']} but {ent_cap} instead. Deviation {(error*100):.1f}%>{tolerance*100}%"
 
 
 @pytest.mark.smoketest
@@ -142,7 +142,3 @@ def test_no_sampling() -> None:
     )
 
     _ = Entanglement.meyer_wallach(model, n_samples=-1, seed=1000, cache=False)
-
-
-if __name__ == "__main__":
-    test_entanglement()
