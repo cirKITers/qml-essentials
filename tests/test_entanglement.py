@@ -144,7 +144,3 @@ def test_no_sampling() -> None:
     )
 
     _ = Entanglement.meyer_wallach(model, n_samples=-1, seed=1000, cache=False)
-
-
-if __name__ == "__main__":
-    test_entanglement()
