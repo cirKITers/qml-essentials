@@ -39,6 +39,7 @@ def test_coefficients() -> None:
             "output_qubit": [0, 1, 2, 3],
         },
     ]
+    reference_inputs = np.linspace(-np.pi, np.pi, 10)
 
     for test_case in test_cases:
         model = Model(
@@ -52,7 +53,21 @@ def test_coefficients() -> None:
 
         coeffs = Coefficients.sample_coefficients(model)
 
-        assert len(coeffs) == model.degree * 2 + 1, "Wrong number of coefficients"
+        assert (
+            len(coeffs) == model.degree * 2 + 1
+        ), "Wrong number of coefficients"
         assert np.isclose(
             np.sum(coeffs).imag, 0.0, rtol=1.0e-5
         ), "Imaginary part is not zero"
+
+        for ref_input in reference_inputs:
+            exp_model = model(params=None, inputs=ref_input)
+
+            exp_fourier = Coefficients.evaluate_Fourier_series(
+                coefficients=coeffs,
+                input=ref_input,
+            )
+
+            assert np.isclose(
+                exp_model, exp_fourier, atol=1.0e-5
+            ), "Fourier series does not match model expectation"
