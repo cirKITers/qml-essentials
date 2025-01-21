@@ -1,32 +1,8 @@
-from typing import List, Tuple
 import pennylane as qml
-from pennylane.operation import Operator
-from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
-from pennylane.typing import PostprocessingFn
 from qml_essentials.model import Model
 from functools import partial
 from pennylane.fourier import coefficients
 import numpy as np
-
-CLIFFORD_GATES = (
-    qml.PauliX,
-    qml.PauliY,
-    qml.PauliZ,
-    qml.X,
-    qml.Y,
-    qml.Z,
-    qml.Hadamard,
-    qml.S,
-    qml.CNOT,
-)
-
-PAULI_ROTATION_GATES = (
-    qml.RX,
-    qml.RY,
-    qml.RZ,
-)
-
-SKIPPABLE_OPERATIONS = (qml.Barrier,)
 
 
 class Coefficients:
@@ -90,90 +66,3 @@ class Coefficients:
             exp += pos_coeff[omega - 1] * np.exp(1j * omega * input)
             exp += neg_coeff[omega - 1] * np.exp(-1j * omega * input)
         return exp
-
-
-class PauliCircuit:
-    """
-    Wrapper for Pauli-Clifford Circuits described by Nemkov et al.
-    (https://doi.org/10.1103/PhysRevA.108.032406). The code is inspired
-    by the corresponding implementation: https://github.com/idnm/FourierVQA.
-
-    A Pauli Circuit only consists of parameterised Pauli-rotations and Clifford
-    gates, which is the default for the most common VQCs.
-    """
-
-    def __init__(self, paulis, final_clifford=None, parameters=None):
-        self.paulis = paulis
-        self.final_clifford = final_clifford
-        self.parameters = parameters
-
-    @qml.transform
-    @staticmethod
-    def from_parameterised_circuit(
-        tape: QuantumScript,
-    ) -> tuple[QuantumScriptBatch, PostprocessingFn]:
-
-        operations = PauliCircuit.get_clifford_pauli_gates(tape)
-
-        pauli_gates, final_clifford = (
-            PauliCircuit.commute_all_cliffords_to_the_end(operations)
-        )
-
-        with QuantumTape() as tape_new:
-            for op in pauli_gates:
-                tape_new.append(op)
-            for op in final_clifford:
-                # TODO: actually move clifford gates to observable
-                tape_new.append(op)
-            for obs in tape.observables:
-                tape_new.observables.append(qml.expval(obs))
-
-        def postprocess(res):
-            return res
-
-        return [
-            tape_new,
-        ], postprocess
-
-    @staticmethod
-    def commute_all_cliffords_to_the_end(
-        operations: List[Operator],
-    ) -> Tuple[List[Operator], List[Operator]]:
-        raise NotImplementedError("TODO")
-
-    @staticmethod
-    def get_clifford_pauli_gates(tape: QuantumScript) -> List[Operator]:
-        """
-        Unroll the circuit and identify each gate either as a Clifford gate or
-        as a Pauli rotation.
-        """
-        operations = []
-        for operation in tape.operations:
-            if PauliCircuit._is_clifford(
-                operation
-            ) or PauliCircuit._is_pauli_rotation(operation):
-                operations.append(operation)
-            elif PauliCircuit._is_skippable(operation):
-                continue
-            elif PauliCircuit._is_skippable(operation):
-                continue
-            else:
-                raise NotImplementedError(
-                    f"Gate {operation.name} is neither Clifford nor Pauli rotation "
-                    "and a conversion to Cifford+Pauli gates is not "
-                    "implemented, yet."
-                )
-
-        return operations
-
-    @staticmethod
-    def _is_skippable(operation: Operator) -> bool:
-        return isinstance(operation, SKIPPABLE_OPERATIONS)
-
-    @staticmethod
-    def _is_clifford(operation: Operator) -> bool:
-        return isinstance(operation, CLIFFORD_GATES)
-
-    @staticmethod
-    def _is_pauli_rotation(operation: Operator) -> bool:
-        return isinstance(operation, PAULI_ROTATION_GATES)

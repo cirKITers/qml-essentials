@@ -7,6 +7,7 @@ import warnings
 from autograd.numpy import numpy_boxes
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
+from qml_essentials.utils import PauliCircuit
 
 import logging
 
@@ -30,6 +31,7 @@ class Model:
         output_qubit: Union[List[int], int] = -1,
         shots: Optional[int] = None,
         random_seed: int = 1000,
+        as_pauli_circuit: bool = False,
     ) -> None:
         """
         Initialize the quantum circuit model.
@@ -66,6 +68,11 @@ class Model:
                 the quantum device. Defaults to None.
             random_seed (int, optional): seed for the random number generator
                 in initialization is "random", Defaults to 1000.
+            as_pauli_circuit (bool, optional): whether the circuit is
+                transformed to a Pauli-Clifford circuit as described by Nemkov
+                et al. (https://doi.org/10.1103/PhysRevA.108.032406), which is
+                required for analytical Fourier coefficient computation.
+                Defaults to False.
 
         Returns:
             None
@@ -154,6 +161,9 @@ class Model:
             self._circuit,
             qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
         )
+
+        if as_pauli_circuit:
+            self.circuit = PauliCircuit.from_parameterised_circuit(self.circuit)
 
     @property
     def noise_params(self) -> Optional[Dict[str, float]]:
