@@ -81,17 +81,18 @@ class PauliCircuit:
 
         operations = PauliCircuit.get_clifford_pauli_gates(tape)
 
-        pauli_gates, final_clifford = (
+        pauli_gates, final_cliffords = (
             PauliCircuit.commute_all_cliffords_to_the_end(operations)
+        )
+
+        observables = PauliCircuit.cliffords_in_observable(
+            final_cliffords, tape.observables
         )
 
         with QuantumTape() as tape_new:
             for op in pauli_gates:
                 op.queue()
-            for op in final_clifford:
-                # TODO: actually move clifford gates to observable
-                op.queue()
-            for obs in tape.observables:
+            for obs in observables:
                 qml.expval(obs)
 
         def postprocess(res):
@@ -126,7 +127,7 @@ class PauliCircuit:
                 and PauliCircuit._is_clifford(operations[j])
                 and PauliCircuit._is_pauli_rotation(operations[j + 1])
             ):
-                pauli, clifford = PauliCircuit._evolve_clifford(
+                pauli, clifford = PauliCircuit._evolve_clifford_rotation(
                     operations[j], operations[j + 1]
                 )
                 operations[j] = pauli
@@ -185,7 +186,7 @@ class PauliCircuit:
         return isinstance(operation, PAULI_ROTATION_GATES)
 
     @staticmethod
-    def _evolve_clifford(
+    def _evolve_clifford_rotation(
         clifford: Operator, pauli: Operator
     ) -> Tuple[Operator, Operator]:
         """
@@ -215,7 +216,9 @@ class PauliCircuit:
         gen = pauli.generator()
         param = pauli.parameters[0]
 
-        evolved_gen = clifford @ gen @ qml.adjoint(clifford)
+        evolved_gen, _ = PauliCircuit._evolve_clifford_pauli(
+            clifford, gen, adjoint_left=False
+        )
         qubits = evolved_gen.wires
         evolved_gen = qml.pauli_decompose(evolved_gen.matrix())
         pauli_str, param_factor = PauliCircuit._get_paulistring_from_generator(
@@ -224,6 +227,61 @@ class PauliCircuit:
         pauli = qml.PauliRot(param * param_factor, pauli_str, qubits)
 
         return pauli, clifford
+
+    @staticmethod
+    def _evolve_clifford_pauli(
+        clifford: Operator, pauli: Operator, adjoint_left: bool = True
+    ) -> Tuple[Operator, Operator]:
+        """
+        This function computes the resulting operation, when evolving a Pauli
+        Operation with a Clifford operation.
+        For a Clifford operator C and a Pauli operator P, this functin computes:
+            P' = C* P C
+
+        Args:
+            clifford (Operator): Clifford gate
+            pauli (Operator): Pauli gate
+            adjoint_left (bool, optional): If adjoint of the clifford gate is
+                applied to the left. If this is set to True C* P C is computed,
+                else C P C*. Defaults to True.
+
+        Returns:
+            Tuple[Operator, Operator]:
+                - Resulting Clifford operator (should be the same as the input)
+                - Evolved Pauli operator
+        """
+        if not any(p_c in clifford.wires for p_c in pauli.wires):
+            return pauli, clifford
+
+        if adjoint_left:
+            evolved_pauli = (
+                qml.adjoint(clifford) @ pauli @ qml.adjoint(clifford)
+            )
+        else:
+            evolved_pauli = clifford @ pauli @ qml.adjoint(clifford)
+
+        return evolved_pauli, clifford
+
+    @staticmethod
+    def _evolve_cliffords_list(
+        cliffords: List[Operator], pauli: Operator
+    ) -> Operator:
+        """
+        This function evolves a Pauli operation according to a sequence of cliffords.
+
+        Args:
+            clifford (Operator): Clifford gate
+            pauli (Operator): Pauli gate
+
+        Returns:
+            Operator: Evolved Pauli operator
+        """
+        for clifford in cliffords[::-1]:
+            pauli, _ = PauliCircuit._evolve_clifford_pauli(clifford, pauli)
+            qubits = pauli.wires
+            pauli = qml.pauli_decompose(pauli.matrix(), wire_order=qubits)
+
+        return pauli
 
     @staticmethod
     def _get_paulistring_from_generator(
@@ -253,3 +311,24 @@ class PauliCircuit:
                 pauli_str_list[q] = p.name[-1]
         pauli_str = "".join(pauli_str_list)
         return pauli_str, param_factor
+
+    @staticmethod
+    def cliffords_in_observable(
+        operations: List[Operator], original_obs: List[Operator]
+    ) -> List[Operator]:
+        """
+        Integrates Clifford gates in the observables of the original ansatz.
+
+        Args:
+            operations (List[Operator]): Clifford gates
+            original_obs (List[Operator]): Original observables from the
+                circuit
+
+        Returns:
+            List[Operator]: Observables with Clifford operations
+        """
+        observables = []
+        for ob in original_obs:
+            clifford_obs = PauliCircuit._evolve_cliffords_list(operations, ob)
+            observables.append(clifford_obs)
+        return observables
