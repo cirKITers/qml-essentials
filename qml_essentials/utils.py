@@ -41,6 +41,43 @@ class PauliCircuit:
     def from_parameterised_circuit(
         tape: QuantumScript,
     ) -> tuple[QuantumScriptBatch, PostprocessingFn]:
+        """
+        Transformation function (see also qml.transforms) to convert an ansatz
+        into a Pauli-Clifford circuit.
+
+
+        **Usage** (without using Model, Model provides a boolean argument
+               "as_pauli_circuit" that internally uses the Pauli-Clifford):
+        ```
+        # initialise some QNode
+        circuit = qml.QNode(
+            circuit_fkt,  # function for your circuit definition
+            qml.device("default.qubit", wires=5),
+        )
+        pauli_circuit = PauliCircuit.from_parameterised_circuit(circuit)
+
+        # Call exactly the same as circuit
+        some_input = [0.1, 0.2]
+
+        circuit(some_input)
+        pauli_circuit(some_input)
+
+        # Both results should be equal!
+        ```
+
+        Args:
+            tape (QuantumScript): The quantum tape for the operations in the
+                ansatz. This is automatically passed, when initialising the
+                transform function with a QNode. Note: directly calling
+                `PauliCircuit.from_parameterised_circuit(circuit)` for a QNode
+                circuit will fail, see usage above.
+
+        Returns:
+            tuple[QuantumScriptBatch, PostprocessingFn]:
+                - A new quantum tape, containing the operations of the
+                  Pauli-Clifford Circuit.
+                - A postprocessing function that does nothing.
+        """
 
         operations = PauliCircuit.get_clifford_pauli_gates(tape)
 
@@ -66,6 +103,19 @@ class PauliCircuit:
     def commute_all_cliffords_to_the_end(
         operations: List[Operator],
     ) -> Tuple[List[Operator], List[Operator]]:
+        """
+        This function moves all clifford gates to the end of the circuit,
+        accounting for commutation rules.
+
+        Args:
+            operations (List[Operator]): The operations in the tape of the
+                circuit
+
+        Returns:
+            Tuple[List[Operator], List[Operator]]:
+                - List of the resulting Pauli-rotations
+                - List of the resulting Clifford gates
+        """
 
         first_clifford = -1
         for i in range(len(operations) - 2, -1, -1):
@@ -92,8 +142,16 @@ class PauliCircuit:
     @staticmethod
     def get_clifford_pauli_gates(tape: QuantumScript) -> List[Operator]:
         """
-        Unroll the circuit and identify each gate either as a Clifford gate or
-        as a Pauli rotation.
+        This function decomposes all gates in the circuit to clifford and
+        pauli-rotation gates
+
+        Args:
+            tape (QuantumScript): The tape of the circuit containing all
+                operations.
+
+        Returns:
+            List[Operator]: A list of operations consisting only of clifford
+                and Pauli-rotation gates.
         """
         operations = []
         for operation in tape.operations:
@@ -130,6 +188,26 @@ class PauliCircuit:
     def _evolve_clifford(
         clifford: Operator, pauli: Operator
     ) -> Tuple[Operator, Operator]:
+        """
+        This function computes the resulting operations, when switching a
+        Cifford gate and a Pauli rotation in the circuit.
+
+        **Example**:
+        Consider a circuit consisting of the gate sequence
+        ... --- H --- R_z --- ...
+        This function computes the evolved Pauli Rotation, and moves the
+        clifford (Hadamard) gate to the end:
+        ... --- R_x --- H --- ...
+
+        Args:
+            clifford (Operator): Clifford gate to move.
+            pauli (Operator): Pauli rotation gate to move the clifford past.
+
+        Returns:
+            Tuple[Operator, Operator]:
+                - Resulting Clifford operator (should be the same as the input)
+                - Evolved Pauli rotation operator
+        """
 
         if not any(p_c in clifford.wires for p_c in pauli.wires):
             return pauli, clifford
@@ -151,6 +229,20 @@ class PauliCircuit:
     def _get_paulistring_from_generator(
         gen: qml_op.LinearCombination,
     ) -> Tuple[str, float]:
+        """
+        Compute a Paulistring, consisting of "X", "Y", "Z" and "I" from a
+        generator.
+
+        Args:
+            gen (qml_op.LinearCombination): The generator operation created by
+                Pennylane
+
+        Returns:
+            Tuple[str, float]:
+                - The Paulistring
+                - A factor with which to multiply a parameter to the rotation
+                  gate.
+        """
         factor, term = gen.terms()
         param_factor = -2 * factor  # Rotation is defined as exp(-0.5 theta G)
         pauli_term = term[0] if isinstance(term[0], qml_op.Prod) else [term[0]]
