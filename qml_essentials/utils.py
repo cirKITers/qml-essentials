@@ -36,7 +36,6 @@ class PauliCircuit:
     gates, which is the default for the most common VQCs.
     """
 
-    @qml.transform
     @staticmethod
     def from_parameterised_circuit(
         tape: QuantumScript,

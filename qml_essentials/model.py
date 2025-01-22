@@ -163,7 +163,10 @@ class Model:
         )
 
         if as_pauli_circuit:
-            self.circuit = PauliCircuit.from_parameterised_circuit(self.circuit)
+            pauli_circuit_transform = qml.transform(
+                PauliCircuit.from_parameterised_circuit
+            )
+            self.circuit = pauli_circuit_transform(self.circuit)
 
     @property
     def noise_params(self) -> Optional[Dict[str, float]]:
