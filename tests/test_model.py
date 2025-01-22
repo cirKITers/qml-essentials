@@ -709,3 +709,106 @@ def test_params_store() -> None:
         return model(params=params, inputs=np.array([0])).mean()._value
 
     params, cost = opt.step_and_cost(cost, model.params)
+
+
+@pytest.mark.unittest
+def test_pauli_circuit_model() -> None:
+    test_cases = [
+        {
+            "shots": None,
+            "output_qubit": 0,
+            "force_mean": False,
+            "inputs": np.array([0.1, 0.2, 0.3]),
+        },
+        {
+            "shots": None,
+            "output_qubit": -1,
+            "force_mean": False,
+            "inputs": np.array([0.1, 0.2, 0.3]),
+        },
+        {
+            "shots": None,
+            "output_qubit": -1,
+            "force_mean": True,
+            "inputs": np.array([0.1, 0.2, 0.3]),
+        },
+        {
+            "shots": 1024,
+            "output_qubit": 0,
+            "force_mean": False,
+            "inputs": np.array([0.1, 0.2, 0.3]),
+        },
+        {
+            "shots": 1024,
+            "output_qubit": 0,
+            "force_mean": True,
+            "inputs": np.array([0.1, 0.2, 0.3]),
+        },
+        {
+            "shots": None,
+            "output_qubit": 0,
+            "force_mean": False,
+            "inputs": None,
+        },
+        {
+            "shots": None,
+            "output_qubit": -1,
+            "force_mean": False,
+            "inputs": None,
+        },
+        {
+            "shots": None,
+            "output_qubit": -1,
+            "force_mean": True,
+            "inputs": None,
+        },
+        {
+            "shots": 1024,
+            "output_qubit": 0,
+            "force_mean": False,
+            "inputs": None,
+        },
+        {
+            "shots": 1024,
+            "output_qubit": 0,
+            "force_mean": True,
+            "inputs": None,
+        },
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=3,
+            n_layers=2,
+            circuit_type="Circuit_19",
+            output_qubit=test_case["output_qubit"],
+            shots=test_case["shots"],
+            as_pauli_circuit=True,
+        )
+
+        pauli_model = Model(
+            n_qubits=3,
+            n_layers=2,
+            circuit_type="Circuit_19",
+            output_qubit=test_case["output_qubit"],
+            shots=test_case["shots"],
+            as_pauli_circuit=True,
+        )
+
+        result_circuit = model(
+            model.params,
+            inputs=test_case["inputs"],
+            force_mean=test_case["force_mean"],
+        )
+
+        result_pauli_circuit = pauli_model(
+            pauli_model.params,
+            inputs=test_case["inputs"],
+            force_mean=test_case["force_mean"],
+        )
+
+        assert all(
+            np.isclose(
+                result_circuit, result_pauli_circuit, atol=1e-5
+            ).flatten()
+        ), f"results of Pauli Circuit and basic Ansatz should be equal, but are {result_pauli_circuit} and {result_circuit} for testcase {test_case}, respectively."
