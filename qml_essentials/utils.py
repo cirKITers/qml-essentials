@@ -3,6 +3,7 @@ import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
 from pennylane.typing import PostprocessingFn
+import pennylane.ops.op_math as qml_op
 
 CLIFFORD_GATES = (
     qml.PauliX,
@@ -102,14 +103,14 @@ class PauliCircuit:
                 operations.append(operation)
             elif PauliCircuit._is_skippable(operation):
                 continue
-            elif PauliCircuit._is_skippable(operation):
-                continue
             else:
-                raise NotImplementedError(
-                    f"Gate {operation.name} is neither Clifford nor Pauli rotation "
-                    "and a conversion to Cifford+Pauli gates is not "
-                    "implemented, yet."
+                # TODO: Maybe there is a prettier way to decompose a gate
+                tape = QuantumScript([operation])
+                decomposed_tape = qml.transforms.decompose(
+                    tape, gate_set=PAULI_ROTATION_GATES + CLIFFORD_GATES
                 )
+                decomposed_ops = decomposed_tape[0][0].operations
+                operations.extend(decomposed_ops)
 
         return operations
 
@@ -148,13 +149,11 @@ class PauliCircuit:
 
     @staticmethod
     def _get_paulistring_from_generator(
-        gen: qml.ops.op_math.LinearCombination,
+        gen: qml_op.LinearCombination,
     ) -> Tuple[str, float]:
         factor, term = gen.terms()
-        assert factor[0] in [-0.5, 0.5]
         param_factor = -2 * factor  # Rotation is defined as exp(-0.5 theta G)
-
-        pauli_term = term[0]
+        pauli_term = term[0] if isinstance(term[0], qml_op.Prod) else [term[0]]
         pauli_str_list = ["I"] * len(pauli_term)
         for p in pauli_term:
             if "Pauli" in p.name:
