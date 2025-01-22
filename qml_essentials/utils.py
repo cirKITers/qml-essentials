@@ -129,10 +129,9 @@ class PauliCircuit:
     def _evolve_clifford(
         clifford: Operator, pauli: Operator
     ) -> Tuple[Operator, Operator]:
-        if not isinstance(clifford, qml.CNOT):
-            raise NotImplementedError(
-                "Currently we only support CNOT as clifford gate."
-            )
+
+        if not any(p_c in clifford.wires for p_c in pauli.wires):
+            return pauli, clifford
 
         gen = pauli.generator()
         param = pauli.parameters[0]
