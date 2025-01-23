@@ -331,7 +331,8 @@ class Model:
         Returns:
             None
         """
-        if inputs is None:
+        # check for zero, because due to input validation, input cannot be none
+        if not inputs.any():
             return
 
         if data_reupload:

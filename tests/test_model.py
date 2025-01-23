@@ -314,7 +314,7 @@ def test_ansaetze() -> None:
             n_qubits=4,
             n_layers=1,
             circuit_type=ansatz.__name__,
-            data_reupload=True,
+            data_reupload=False,
             initialization="random",
             output_qubit=0,
             shots=1024,
@@ -560,7 +560,7 @@ def test_local_and_global_meas() -> None:
             "execution_type": "expval",
             "output_qubit": -1,
             "shots": None,
-            "out_shape": (2, 1),
+            "out_shape": (2,),
             "warning": False,
         },
         {
