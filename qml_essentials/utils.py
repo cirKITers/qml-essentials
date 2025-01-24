@@ -1,4 +1,5 @@
-from typing import List, Tuple
+from __future__ import annotations
+from typing import List, Tuple, Optional
 import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
@@ -332,3 +333,125 @@ class PauliCircuit:
             clifford_obs = PauliCircuit._evolve_cliffords_list(operations, ob)
             observables.append(clifford_obs)
         return observables
+
+
+class CoefficientsTreeNode:
+    def __init__(
+        self,
+        parameter: Optional[float],
+        parameter_idx: int, # TODO: use or remove
+        observable: Operator,
+        pauli_rotations: List[Operator],
+        is_sine_factor: bool,
+        is_cosine_factor: bool,
+        left: Optional[CoefficientsTreeNode] = None,
+        right: Optional[CoefficientsTreeNode] = None,
+    ):
+        self.parameter = parameter
+
+        assert not (
+            is_sine_factor and is_cosine_factor
+        ), "Cannot be sine and cosine at the same time"
+        self.is_sine_factor = is_sine_factor
+        self.is_cosine_factor = is_sine_factor
+        self.parameter_idx = parameter_idx
+        self.observable = observable
+        self.pauli_rotations = pauli_rotations
+
+        self.left = left
+        self.right = right
+
+
+class FourierTree:
+
+    def __init__(self, quantum_tape: QuantumScript):
+        self.parameters = quantum_tape.get_parameters()
+        self.observables = quantum_tape.observables
+        self.pauli_rotations = quantum_tape.operations
+        self.tree_roots = self.build_tree()
+
+    # TODO currently wrapped in transform
+    @staticmethod
+    def build_coefficients_tree(
+        quantum_tape: QuantumScript,
+    ) -> tuple[QuantumScriptBatch, PostprocessingFn]:
+
+        tree = FourierTree(quantum_tape)
+
+        def postprocess(res):
+            return res[0]
+
+        return [quantum_tape], postprocess
+
+    def build_tree(self) -> List[CoefficientsTreeNode]:
+        tree_roots = []
+        for obs in self.observables:
+            root = self.create_tree_node(obs, self.pauli_rotations)
+            tree_roots.append(root)
+        return tree_roots
+
+    def create_tree_node(
+        self,
+        observable: Operator,
+        pauli_rotations: List[Operation],
+        parameter: Optional[float] = None,
+        is_sine: bool = False,
+        is_cosine: bool = False,
+    ) -> CoefficientsTreeNode:
+
+        # remove commuting paulis
+        last_pauli = pauli_rotations[-1] if len(pauli_rotations) > 0 else None
+        while last_pauli is not None and qml.is_commuting(
+            last_pauli.generator(), observable
+        ):
+            pauli_rotations = pauli_rotations[:-1]
+            last_pauli = (
+                pauli_rotations[-1] if len(pauli_rotations) > 0 else None
+            )
+
+        if last_pauli is None:  # leaf
+            return CoefficientsTreeNode(
+                parameter, 0, observable, [], is_sine, is_cosine
+            )
+
+        next_pauli_rotations = pauli_rotations[:-1]
+        left = self.create_tree_node(
+            observable,
+            next_pauli_rotations,
+            last_pauli.parameters[0],
+            is_cosine=True,
+        )
+
+        next_observable = self._create_new_observable(
+            last_pauli.generator(), observable
+        )
+        right = self.create_tree_node(
+            next_observable,
+            next_pauli_rotations,
+            last_pauli.parameters[0],
+            is_sine=True,
+        )
+
+        return CoefficientsTreeNode(
+            parameter,
+            0,
+            observable,
+            pauli_rotations,
+            is_sine,
+            is_cosine,
+            left,
+            right,
+        )
+
+    def _create_new_observable(
+        self, pauli: Operator, observable: Operator, adjoint_left: bool = True
+    ) -> Operator:
+        if adjoint_left:
+            obs = qml.adjoint(pauli) @ observable @ qml.adjoint(pauli)
+        else:
+            obs = pauli @ observable @ qml.adjoint(pauli)
+
+        qubits = obs.wires
+        obs = qml.pauli_decompose(obs.matrix(), wire_order=qubits)
+
+        return obs
