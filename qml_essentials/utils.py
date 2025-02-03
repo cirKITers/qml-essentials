@@ -118,6 +118,9 @@ class PauliCircuit:
                 - List of the resulting Pauli-rotations
                 - List of the resulting Clifford gates
         """
+        # No Clifford gates are in the circuit
+        if not PauliCircuit._is_clifford(operations[-1]):
+            return operations, []
 
         first_clifford = -1
         for i in range(len(operations) - 2, -1, -1):
