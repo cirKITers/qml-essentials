@@ -7,7 +7,7 @@ import warnings
 from autograd.numpy import numpy_boxes
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
-from qml_essentials.utils import PauliCircuit
+from qml_essentials.utils import PauliCircuit, FourierTree
 
 import logging
 
@@ -162,7 +162,8 @@ class Model:
             qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
         )
 
-        if as_pauli_circuit:
+        self.as_pauli_circuit = as_pauli_circuit
+        if self.as_pauli_circuit:
             pauli_circuit_transform = qml.transform(
                 PauliCircuit.from_parameterised_circuit
             )
@@ -509,6 +510,78 @@ class Model:
             force_mean=force_mean,
         )
 
+    def build_coefficients_tree(
+        self,
+        params: Optional[np.ndarray] = None,
+        inputs: Optional[np.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        execution_type: Optional[str] = None,
+    ) -> FourierTree:
+        """
+        Builds a Fourier coefficient tree for the circuit, build with the same
+        parameters as the callable model.
+
+        Args:
+            params (Optional[np.ndarray]): Weight vector of shape
+                [n_layers, n_qubits*n_params_per_layer].
+                If None, model internal parameters are used.
+            inputs (Optional[np.ndarray]): Input vector of shape [1].
+                If None, zeros are used.
+            noise_params (Optional[Dict[str, float]], optional): The noise parameters.
+                Defaults to None which results in the last
+                set noise parameters being used.
+            execution_type (str, optional): The type of execution.
+                Must be one of 'expval', 'density', or 'probs'.
+                Defaults to None which results in the last set execution type
+                being used.
+
+        Returns:
+            FourierTree: The fourier tree constructed from the circuit.
+        """
+        if self.as_pauli_circuit:
+            circuit = self.circuit
+        else:
+            pauli_circuit_transform = qml.transform(
+                PauliCircuit.from_parameterised_circuit
+            )
+            circuit = pauli_circuit_transform(self.circuit)
+
+        # set the parameters as object attributes
+        if noise_params is not None:
+            raise NotImplementedError(
+                f"Currently, noise is not supported when building FourierTree."
+            )
+        if execution_type != "expval":
+            raise NotImplementedError(
+                f'Currently, only "expval" execution type is supported when '
+                f"building FourierTree. Got {execution_type}."
+            )
+
+        params = self._set_call_params(params)
+        inputs = self._inputs_validation(inputs)
+
+        tape = qml.workflow.construct_tape(circuit)(
+            params=params, inputs=inputs
+        )
+
+        return FourierTree(tape)
+
+    def _set_call_params(self, params) -> np.ndarray:
+        """
+        Sets the parameters when calling the quantum circuit
+
+        Args:
+            params (np.ndarray): The parameters used for the call
+        """
+        if params is None:
+            params = self.params
+        else:
+            if numpy_boxes.ArrayBox == type(params):
+                self.params = params._value
+            else:
+                self.params = params
+        return params
+
     def _inputs_validation(
         self, inputs: Union[None, List, float, int, np.ndarray]
     ) -> np.ndarray:
@@ -587,14 +660,7 @@ class Model:
         if execution_type is not None:
             self.execution_type = execution_type
 
-        if params is None:
-            params = self.params
-        else:
-            if numpy_boxes.ArrayBox == type(params):
-                self.params = params._value
-            else:
-                self.params = params
-
+        params = self._set_call_params(params)
         inputs = self._inputs_validation(inputs)
 
         # the qasm representation contains the bound parameters,

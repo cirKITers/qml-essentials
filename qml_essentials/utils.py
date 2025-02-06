@@ -4,6 +4,7 @@ import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
 from pennylane.typing import PostprocessingFn
+import numpy as np
 import pennylane.ops.op_math as qml_op
 
 CLIFFORD_GATES = (
@@ -118,10 +119,6 @@ class PauliCircuit:
                 - List of the resulting Pauli-rotations
                 - List of the resulting Clifford gates
         """
-        # No Clifford gates are in the circuit
-        if not PauliCircuit._is_clifford(operations[-1]):
-            return operations, []
-
         first_clifford = -1
         for i in range(len(operations) - 2, -1, -1):
             j = i
@@ -138,6 +135,10 @@ class PauliCircuit:
                 operations[j + 1] = clifford
                 j += 1
                 first_clifford = j
+
+        # No Clifford gates are in the circuit
+        if not PauliCircuit._is_clifford(operations[-1]):
+            return operations, []
 
         pauli_rotations = operations[:first_clifford]
         clifford_gates = operations[first_clifford:]
@@ -341,8 +342,8 @@ class PauliCircuit:
 class CoefficientsTreeNode:
     def __init__(
         self,
-        parameter: Optional[float],
-        parameter_idx: int, # TODO: use or remove
+        parameter: Optional[np.ndarray],
+        parameter_idx: int,  # TODO: use or remove
         observable: Operator,
         pauli_rotations: List[Operator],
         is_sine_factor: bool,
@@ -350,19 +351,49 @@ class CoefficientsTreeNode:
         left: Optional[CoefficientsTreeNode] = None,
         right: Optional[CoefficientsTreeNode] = None,
     ):
+        if parameter is not None:
+            parameter = (
+                parameter[0].flatten()[0]
+                if isinstance(parameter, list)
+                else parameter.flatten()[0]
+            )
         self.parameter = parameter
 
         assert not (
             is_sine_factor and is_cosine_factor
         ), "Cannot be sine and cosine at the same time"
         self.is_sine_factor = is_sine_factor
-        self.is_cosine_factor = is_sine_factor
+        self.is_cosine_factor = is_cosine_factor
         self.parameter_idx = parameter_idx
         self.observable = observable
         self.pauli_rotations = pauli_rotations
 
         self.left = left
         self.right = right
+
+    def evaluate(self) -> float:
+        factor = 1.0
+        if self.is_sine_factor:
+            factor = 1j * np.sin(self.parameter)
+        elif self.is_cosine_factor:
+            factor = np.cos(self.parameter)
+        if not (self.left or self.right):  # leaf
+            # exp = qml.expval(self.observable).eigvals()[0]
+            exp = qml.execute(  # TODO: make somehow nicer
+                [QuantumScript(measurements=[qml.expval(self.observable)])],
+                device=qml.device("default.qubit"),
+            )[0]
+            return factor * exp
+
+        sum_children = 0.0
+        if self.left:
+            left = self.left.evaluate()
+            sum_children = sum_children + left
+        if self.right:
+            right = self.right.evaluate()
+            sum_children = sum_children + right
+
+        return factor * sum_children
 
 
 class FourierTree:
@@ -373,19 +404,6 @@ class FourierTree:
         self.pauli_rotations = quantum_tape.operations
         self.tree_roots = self.build_tree()
 
-    # TODO currently wrapped in transform
-    @staticmethod
-    def build_coefficients_tree(
-        quantum_tape: QuantumScript,
-    ) -> tuple[QuantumScriptBatch, PostprocessingFn]:
-
-        tree = FourierTree(quantum_tape)
-
-        def postprocess(res):
-            return res[0]
-
-        return [quantum_tape], postprocess
-
     def build_tree(self) -> List[CoefficientsTreeNode]:
         tree_roots = []
         for obs in self.observables:
@@ -393,11 +411,18 @@ class FourierTree:
             tree_roots.append(root)
         return tree_roots
 
+    # TODO: not working for n_qubits > 1
+    def evaluate(self) -> np.ndarray:
+        results = np.zeros(len(self.tree_roots), dtype=np.complex128)
+        for i, root in enumerate(self.tree_roots):
+            results[i] = root.evaluate()
+        return np.real_if_close(results)
+
     def create_tree_node(
         self,
         observable: Operator,
         pauli_rotations: List[Operation],
-        parameter: Optional[float] = None,
+        parameter: Optional[np.ndarray] = None,
         is_sine: bool = False,
         is_cosine: bool = False,
     ) -> CoefficientsTreeNode:
@@ -418,10 +443,11 @@ class FourierTree:
             )
 
         next_pauli_rotations = pauli_rotations[:-1]
+
         left = self.create_tree_node(
             observable,
             next_pauli_rotations,
-            last_pauli.parameters[0],
+            last_pauli.parameters,
             is_cosine=True,
         )
 
@@ -431,7 +457,7 @@ class FourierTree:
         right = self.create_tree_node(
             next_observable,
             next_pauli_rotations,
-            last_pauli.parameters[0],
+            last_pauli.parameters,
             is_sine=True,
         )
 
@@ -447,14 +473,11 @@ class FourierTree:
         )
 
     def _create_new_observable(
-        self, pauli: Operator, observable: Operator, adjoint_left: bool = True
+        self, pauli: Operator, observable: Operator
     ) -> Operator:
-        if adjoint_left:
-            obs = qml.adjoint(pauli) @ observable @ qml.adjoint(pauli)
-        else:
-            obs = pauli @ observable @ qml.adjoint(pauli)
 
-        qubits = obs.wires
-        obs = qml.pauli_decompose(obs.matrix(), wire_order=qubits)
+        pauli = pauli[0] / pauli.coeffs[0]  # ignore coefficients of generator
+        obs = pauli @ observable
+        obs = qml.simplify(obs)
 
         return obs
