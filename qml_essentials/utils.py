@@ -394,7 +394,14 @@ class CoefficientsTreeNode:
         self.is_sine_factor = is_sine_factor
         self.is_cosine_factor = is_cosine_factor
         self.parameter_idx = parameter_idx
-        self.observable = observable
+
+        if isinstance(observable, qml_op.SProd):
+            self.observable = observable.terms()[1][0]
+            self.coeff = observable.terms()[0][0]
+        else:
+            self.observable = observable
+            self.coeff = 1.0
+
         self.pauli_rotations = pauli_rotations
 
         self.left = left
@@ -407,12 +414,11 @@ class CoefficientsTreeNode:
         elif self.is_cosine_factor:
             factor = np.cos(self.parameter)
         if not (self.left or self.right):  # leaf
-            # exp = qml.expval(self.observable).eigvals()[0]
             exp = qml.execute(  # TODO: make somehow nicer
                 [QuantumScript(measurements=[qml.expval(self.observable)])],
                 device=qml.device("default.qubit"),
             )[0]
-            return factor * exp
+            return factor * exp * self.coeff
 
         sum_children = 0.0
         if self.left:
@@ -450,7 +456,7 @@ class FourierTree:
     def create_tree_node(
         self,
         observable: Operator,
-        pauli_rotations: List[Operation],
+        pauli_rotations: List[Operator],
         parameter: Optional[np.ndarray] = None,
         is_sine: bool = False,
         is_cosine: bool = False,
