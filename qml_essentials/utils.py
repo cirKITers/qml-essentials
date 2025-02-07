@@ -229,9 +229,38 @@ class PauliCircuit:
         pauli_str, param_factor = PauliCircuit._get_paulistring_from_generator(
             evolved_gen
         )
+        pauli_str, qubits = PauliCircuit._remove_identities_from_paulistr(
+            pauli_str, qubits
+        )
         pauli = qml.PauliRot(param * param_factor, pauli_str, qubits)
 
         return pauli, clifford
+
+    @staticmethod
+    def _remove_identities_from_paulistr(
+        pauli_str: str, qubits: List[int]
+    ) -> Tuple[str, List[int]]:
+        """
+        Removes identities from Pauli string and its corresponding qubits.
+
+        Args:
+            pauli_str (str): Pauli string
+            qubits (List[int]): Corresponding qubit indices.
+
+        Returns:
+            Tuple[str, List[int]]:
+                - Pauli string without identities
+                - Qubits indices without the identities
+        """
+
+        reduced_qubits = []
+        reduced_pauli_str = ""
+        for i, p in enumerate(pauli_str):
+            if p != "I":
+                reduced_pauli_str += p
+                reduced_qubits.append(qubits[i])
+
+        return reduced_pauli_str, reduced_qubits
 
     @staticmethod
     def _evolve_clifford_pauli(
