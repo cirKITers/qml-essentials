@@ -447,7 +447,6 @@ class FourierTree:
             tree_roots.append(root)
         return tree_roots
 
-    # TODO: not working for n_qubits > 1
     def evaluate(self) -> np.ndarray:
         results = np.zeros(len(self.tree_roots))
         for i, root in enumerate(self.tree_roots):
