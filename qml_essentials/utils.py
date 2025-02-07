@@ -433,11 +433,12 @@ class CoefficientsTreeNode:
 
 class FourierTree:
 
-    def __init__(self, quantum_tape: QuantumScript):
+    def __init__(self, quantum_tape: QuantumScript, force_mean: bool = False):
         self.parameters = quantum_tape.get_parameters()
         self.observables = quantum_tape.observables
         self.pauli_rotations = quantum_tape.operations
         self.tree_roots = self.build_tree()
+        self.force_mean = force_mean
 
     def build_tree(self) -> List[CoefficientsTreeNode]:
         tree_roots = []
@@ -448,10 +449,14 @@ class FourierTree:
 
     # TODO: not working for n_qubits > 1
     def evaluate(self) -> np.ndarray:
-        results = np.zeros(len(self.tree_roots), dtype=np.complex128)
+        results = np.zeros(len(self.tree_roots))
         for i, root in enumerate(self.tree_roots):
-            results[i] = root.evaluate()
-        return np.real_if_close(results)
+            results[i] = np.real_if_close(root.evaluate())
+
+        if self.force_mean:
+            return np.mean(results)
+        else:
+            return results
 
     def create_tree_node(
         self,

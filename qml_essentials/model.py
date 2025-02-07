@@ -488,6 +488,9 @@ class Model:
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
+            force_mean (Optional[bool], optional): If the average over multiple
+                expectation values for each observable should be returned,
+                instead of individual values. Defaults to False
 
         Returns:
             np.ndarray: The output of the quantum circuit.
@@ -516,6 +519,7 @@ class Model:
         inputs: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, float]] = None,
         execution_type: Optional[str] = None,
+        force_mean: Optional[bool] = False,
     ) -> FourierTree:
         """
         Builds a Fourier coefficient tree for the circuit, build with the same
@@ -534,6 +538,9 @@ class Model:
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
+            force_mean (Optional[bool], optional): If the average over multiple
+                expectation values for each observable should be returned,
+                instead of individual values. Defaults to False
 
         Returns:
             FourierTree: The fourier tree constructed from the circuit.
@@ -549,7 +556,7 @@ class Model:
         # set the parameters as object attributes
         if noise_params is not None:
             raise NotImplementedError(
-                f"Currently, noise is not supported when building FourierTree."
+                "Currently, noise is not supported when building FourierTree."
             )
         if execution_type != "expval":
             raise NotImplementedError(
@@ -564,7 +571,7 @@ class Model:
             params=params, inputs=inputs
         )
 
-        return FourierTree(tape)
+        return FourierTree(tape, force_mean)
 
     def _set_call_params(self, params) -> np.ndarray:
         """
@@ -638,6 +645,9 @@ class Model:
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
+            force_mean (Optional[bool], optional): If the average over multiple
+                expectation values for each observable should be returned,
+                instead of individual values. Defaults to False
 
         Returns:
             np.ndarray: The output of the quantum circuit.
