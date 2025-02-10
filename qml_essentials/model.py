@@ -426,7 +426,7 @@ class Model:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
     def _draw(self, inputs=None, figure=False) -> None:
-        if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
+        if not isinstance(self.circuit, qml.QNode):
             # TODO: throws strange argument error if not catched
             return ""
 
@@ -624,7 +624,7 @@ class Model:
                     inputs=inputs,
                 )
             else:
-                if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
+                if not isinstance(self.circuit, qml.QNode):
                     result = self.circuit(
                         inputs=inputs,
                     )
@@ -643,7 +643,7 @@ class Model:
             # discard gradient information
             if force_mean:
                 # exception for torch layer because it swaps batch and output dimension
-                if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
+                if not isinstance(self.circuit, qml.QNode):
                     result = result.mean(axis=-1)
                 else:
                     result = result.mean(axis=0)
