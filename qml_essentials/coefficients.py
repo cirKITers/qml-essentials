@@ -7,7 +7,7 @@ class Coefficients:
 
     @staticmethod
     def sample_coefficients(
-        model: Model, shift=False, nfs: int = 2, nts: int = 1, **kwargs
+        model: Model, shift=False, mfs: int = 2, mts: int = 1, **kwargs
     ) -> np.ndarray:
         """
         Sample the Fourier coefficients of a given model
@@ -20,8 +20,8 @@ class Coefficients:
         Args:
             model (Model): The model to sample.
             shift (bool): Whether to apply fftshift. Default is False.
-            nfs (int): Multiplicator for the highest frequency. Default is 2.
-            nts (int): Multiplicator for the number of time samples. Default is 1.
+            mfs (int): Multiplicator for the highest frequency. Default is 2.
+            mts (int): Multiplicator for the number of time samples. Default is 1.
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
@@ -30,7 +30,12 @@ class Coefficients:
         kwargs.setdefault("force_mean", True)
         kwargs.setdefault("execution_type", "expval")
 
-        coeffs = Coefficients._fourier_transform(model, nfs=nfs, nts=nts, **kwargs)
+        if mfs < 2:
+            raise ValueError(
+                f"Frequency sample multiplicator must be at least 2, but got {mfs}"
+            )
+
+        coeffs = Coefficients._fourier_transform(model, mfs=mfs, mts=mts, **kwargs)
 
         if not np.isclose(np.sum(coeffs).imag, 0.0, rtol=1.0e-5):
             raise ValueError(
@@ -46,7 +51,7 @@ class Coefficients:
 
     @staticmethod
     def _fourier_transform(
-        model: Model, nfs: int = 2, nts: int = 1, **kwargs: Any
+        model: Model, mfs: int, mts: int, **kwargs: Any
     ) -> np.ndarray:
         """
         Perform a Fourier transform on the given model.
@@ -62,13 +67,17 @@ class Coefficients:
         """
         # Create a frequency vector with as many frequencies as model degrees,
         # oversampled by nfs
-        n_freqs: int = int(nfs * model.degree + 1)
+        n_freqs: int = int(mfs * model.degree + 1)
 
         # Create a vector of equally spaced time points
-        nvecs = np.arange(-nts * model.degree, nts * model.degree + 1)
+        nvecs = np.arange(-mts * model.degree, mts * model.degree + 1)
 
         # Stretch according to the number of frequencies
         inputs: np.ndarray = nvecs * (2 * np.pi / n_freqs)
 
+        outputs: np.ndarray = np.zeros((mts * n_freqs))
+
+        outputs[nvecs] = model(inputs=inputs, **kwargs)
+
         # Run the fft and rearrange + normalize the output
-        return np.fft.fft(model(inputs=inputs, **kwargs)[nvecs - 1]) / inputs.size
+        return np.fft.fft(outputs) / inputs.size

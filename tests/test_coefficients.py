@@ -66,4 +66,30 @@ def test_coefficients() -> None:
 
         assert np.allclose(
             coeffs, ref_coeffs, rtol=1.0e-5
-        ), "Coefficients don't match the pennylane referenceare not the same"
+        ), "Coefficients don't match the pennylane reference"
+
+
+@pytest.mark.unittest
+def test_oversampling_time() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+
+    assert (
+        Coefficients.sample_coefficients(model, mts=2, shift=True).shape[0] == 10
+    ), "Oversampling time failed"
+
+
+@pytest.mark.unittest
+def test_oversampling_frequency() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+
+    assert (
+        Coefficients.sample_coefficients(model, mfs=4, shift=True).shape[0] == 9
+    ), "Oversampling frequency failed"
