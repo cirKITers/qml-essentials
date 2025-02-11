@@ -78,7 +78,7 @@ def test_oversampling_time() -> None:
     )
 
     assert (
-        Coefficients.sample_coefficients(model, mts=2, shift=True).shape[0] == 10
+        Coefficients.sample_coefficients(model, mts=2).shape[0] == 10
     ), "Oversampling time failed"
 
 
@@ -91,5 +91,19 @@ def test_oversampling_frequency() -> None:
     )
 
     assert (
-        Coefficients.sample_coefficients(model, mfs=4, shift=True).shape[0] == 9
+        Coefficients.sample_coefficients(model, mfs=4).shape[0] == 9
     ), "Oversampling frequency failed"
+
+
+@pytest.mark.unittest
+def test_shift() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+    coeffs = Coefficients.sample_coefficients(model, shift=True)
+
+    assert (
+        np.abs(coeffs) == np.abs(coeffs[::-1])
+    ).all(), "Shift failed. Spectrum must be symmetric."
