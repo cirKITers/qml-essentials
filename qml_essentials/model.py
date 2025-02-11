@@ -468,7 +468,7 @@ class Model:
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
-        force_mean: Optional[bool] = False,
+        force_mean: bool = False,
     ) -> np.ndarray:
         """
         Perform a forward pass of the quantum circuit.
@@ -488,7 +488,7 @@ class Model:
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
-            force_mean (Optional[bool], optional): If the average over multiple
+            force_mean (bool, optional): If the average over multiple
                 expectation values for each observable should be returned,
                 instead of individual values. Defaults to False
 
@@ -519,7 +519,7 @@ class Model:
         inputs: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, float]] = None,
         execution_type: Optional[str] = None,
-        force_mean: Optional[bool] = False,
+        force_mean: bool = False,
     ) -> FourierTree:
         """
         Builds a Fourier coefficient tree for the circuit, build with the same
@@ -538,7 +538,7 @@ class Model:
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
-            force_mean (Optional[bool], optional): If the average over multiple
+            force_mean (bool, optional): If the average over multiple
                 expectation values for each observable should be returned,
                 instead of individual values. Defaults to False
 
@@ -625,7 +625,7 @@ class Model:
         noise_params: Optional[Dict[str, float]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
-        force_mean: Optional[bool] = False,
+        force_mean: bool = False,
     ) -> np.ndarray:
         """
         Perform a forward pass of the quantum circuit.
@@ -645,7 +645,7 @@ class Model:
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
-            force_mean (Optional[bool], optional): If the average over multiple
+            force_mean (bool, optional): If the average over multiple
                 expectation values for each observable should be returned,
                 instead of individual values. Defaults to False
 
