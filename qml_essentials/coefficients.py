@@ -80,4 +80,10 @@ class Coefficients:
         outputs[nvecs] = model(inputs=inputs, **kwargs)
 
         # Run the fft and rearrange + normalize the output
-        return np.fft.fft(outputs) / inputs.size
+    @staticmethod
+    def get_frequencies(coeffs: np.ndarray, shift=False) -> np.ndarray:
+        freqs = np.fft.fftfreq(coeffs.size, 2 * np.pi / coeffs.size)
+        if shift:
+            return np.fft.fftshift(freqs)
+        else:
+            return freqs

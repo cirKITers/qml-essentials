@@ -107,3 +107,18 @@ def test_shift() -> None:
     assert (
         np.abs(coeffs) == np.abs(coeffs[::-1])
     ).all(), "Shift failed. Spectrum must be symmetric."
+
+
+@pytest.mark.smoketest
+def test_frequencies() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+    coeffs = Coefficients.sample_coefficients(model, shift=True)
+    freqs = Coefficients.get_frequencies(coeffs, shift=True)
+
+    assert (
+        freqs.size == coeffs.size
+    ), "Frequencies and coefficients must have the same length."
