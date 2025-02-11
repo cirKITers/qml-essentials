@@ -10,16 +10,18 @@ class Coefficients:
         model: Model, shift=False, mfs: int = 2, mts: int = 1, **kwargs
     ) -> np.ndarray:
         """
-        Sample the Fourier coefficients of a given model
-        using Pennylane fourier.coefficients function.
+        Extracts the coefficients of a given model using a FFT (np-fft).
 
         Note that the coefficients are complex numbers, but the imaginary part
         of the coefficients should be very close to zero, since the expectation
         values of the Pauli operators are real numbers.
 
+        It can perform oversampling in both the frequency and time domain
+        using the `mfs` and `mts` arguments.
+
         Args:
             model (Model): The model to sample.
-            shift (bool): Whether to apply fftshift. Default is False.
+            shift (bool): Whether to apply np-fftshift. Default is False.
             mfs (int): Multiplicator for the highest frequency. Default is 2.
             mts (int): Multiplicator for the number of time samples. Default is 1.
             kwargs (Any): Additional keyword arguments for the model function.
@@ -43,8 +45,8 @@ class Coefficients:
                 {np.sum(coeffs).imag}"
             )
 
+        # Apply fftshift if required
         if shift:
-            # Apply fftshift if required
             return np.fft.fftshift(coeffs)
         else:
             return coeffs
@@ -53,21 +55,9 @@ class Coefficients:
     def _fourier_transform(
         model: Model, mfs: int, mts: int, **kwargs: Any
     ) -> np.ndarray:
-        """
-        Perform a Fourier transform on the given model.
-
-        Args:
-            model (Model): The quantum model to transform.
-            nfs (int): Number of frequency samples.
-            nts (int): Number of time samples.
-            kwargs (Any): Additional keyword arguments for the model function.
-
-        Returns:
-            np.ndarray: The Fourier-transformed data.
-        """
         # Create a frequency vector with as many frequencies as model degrees,
         # oversampled by nfs
-        n_freqs: int = int(mfs * model.degree + 1)
+        n_freqs: int = mfs * model.degree + 1
 
         # Create a vector of equally spaced time points
         nvecs = np.arange(-mts * model.degree, mts * model.degree + 1)
@@ -84,6 +74,16 @@ class Coefficients:
 
     @staticmethod
     def get_frequencies(coeffs: np.ndarray, shift=False) -> np.ndarray:
+        """
+        Get the frequencies corresponding to the given Fourier coefficients.
+
+        Args:
+            coeffs (np.ndarray): The Fourier coefficients.
+            shift (bool): Whether to apply np-fftshift. Default is False.
+
+        Returns:
+            np.ndarray: The frequencies.
+        """
         freqs = np.fft.fftfreq(coeffs.size, 2 * np.pi / coeffs.size)
         if shift:
             return np.fft.fftshift(freqs)
