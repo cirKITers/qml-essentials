@@ -1,9 +1,13 @@
 from qml_essentials.model import Model
 from qml_essentials.coefficients import Coefficients
+from pennylane.fourier import coefficients as pcoefficients
 
 import numpy as np
 import logging
 import pytest
+
+from functools import partial
+
 
 logger = logging.getLogger(__name__)
 
@@ -56,3 +60,10 @@ def test_coefficients() -> None:
         assert np.isclose(
             np.sum(coeffs).imag, 0.0, rtol=1.0e-5
         ), "Imaginary part is not zero"
+
+        partial_circuit = partial(model, model.params)
+        ref_coeffs = pcoefficients(partial_circuit, 1, model.degree)
+
+        assert np.allclose(
+            coeffs, ref_coeffs, rtol=1.0e-5
+        ), "Coefficients don't match the pennylane referenceare not the same"
