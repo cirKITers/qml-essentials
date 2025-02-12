@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import dataclass
 from typing import List, Tuple, Optional
 import pennylane as qml
 from pennylane.operation import Operator
@@ -417,7 +418,7 @@ class CoefficientsTreeNode:
         self.left = left
         self.right = right
 
-    def evaluate(self, parameters) -> float:
+    def evaluate(self, parameters: list[float]) -> float:
         factor = (
             parameters[self.parameter_idx]
             if self.parameter_idx is not None
@@ -440,6 +441,46 @@ class CoefficientsTreeNode:
 
         return factor * sum_children
 
+    def get_leafs(
+        self, sin_list, cos_list, existing_leafs=[]
+    ) -> List[TreeLeaf]:
+
+        if self.is_sine_factor:
+            sin_list[self.parameter_idx] += 1
+        if self.is_cosine_factor:
+            cos_list[self.parameter_idx] += 1
+
+        if not (self.left or self.right):  # leaf
+            if self.exp != 0.0:
+                return [TreeLeaf(sin_list, cos_list, self.exp)]
+            else:
+                return []
+
+        if self.left:
+            leafs_left = self.left.get_leafs(
+                sin_list.copy(), cos_list.copy(), existing_leafs.copy()
+            )
+        else:
+            leafs_left = []
+
+        if self.right:
+            leafs_right = self.right.get_leafs(
+                sin_list.copy(), cos_list.copy(), existing_leafs.copy()
+            )
+        else:
+            leafs_right = []
+
+        existing_leafs.extend(leafs_left)
+        existing_leafs.extend(leafs_right)
+        return existing_leafs
+
+
+@dataclass
+class TreeLeaf:
+    sin_indices: np.ndarray
+    cos_indices: np.ndarray
+    exp: np.complex128
+
 
 class FourierTree:
 
@@ -449,6 +490,7 @@ class FourierTree:
         self.pauli_rotations = quantum_tape.operations
         self.tree_roots = self.build_tree()
         self.force_mean = force_mean
+        self.leafs: Optional[List[TreeLeaf]] = None
 
     def build_tree(self) -> List[CoefficientsTreeNode]:
         tree_roots = []
@@ -459,6 +501,38 @@ class FourierTree:
             root = self.create_tree_node(obs, pauli_rotation_indices)
             tree_roots.append(root)
         return tree_roots
+
+    def initialise_leafs(self):
+        if self.leafs is not None:
+            return
+        self.leafs = []
+        for root in self.tree_roots:
+            sin_list = np.zeros(len(self.parameters), dtype=np.int32)
+            cos_list = np.zeros(len(self.parameters), dtype=np.int32)
+            self.leafs.append(root.get_leafs(sin_list, cos_list, []))
+
+    def evaluate_via_leafs(self) -> np.ndarray:
+        results = np.zeros(len(self.tree_roots))
+        if self.leafs is None:
+            self.initialise_leafs()
+        for j, leafs in enumerate(self.leafs):
+            sum = 0.0
+            for leaf in leafs:
+                leaf_factor = 1.0
+                for i in range(len(self.parameters)):
+                    interm_factor = (
+                        np.cos(self.parameters[i]) ** leaf.cos_indices[i]
+                        * (1j * np.sin(self.parameters[i]))
+                        ** leaf.sin_indices[i]
+                    )
+                    leaf_factor = leaf_factor * interm_factor
+                sum += leaf.exp * leaf_factor
+            results[j] = np.real_if_close(sum)
+
+        if self.force_mean:
+            return np.mean(results)
+        else:
+            return results
 
     def evaluate(self) -> np.ndarray:
         results = np.zeros(len(self.tree_roots))
