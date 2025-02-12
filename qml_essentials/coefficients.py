@@ -1,4 +1,3 @@
-import pennylane as qml
 from qml_essentials.model import Model
 from functools import partial
 from pennylane.fourier import coefficients
