@@ -95,7 +95,7 @@ def test_expressibility() -> None:
 
     # Circuit 10 excluded because implementation with current setup not possible
     skip_indices = [5, 7, 8, 11, 12, 13, 14, 10]
-    skip_indices = [16, 3, 18, 10, 12, 15, 17, 4, 11, 7, 8, 19, 5, 13, 14, 6]
+    # skip_indices = [16, 3, 18, 10, 12, 15, 17, 4, 11, 7, 8, 19, 5, 13, 14, 6]
 
     test_cases = []
     for i, result1, result3 in zip(circuits, results_n_layers_1, results_n_layers_3):
@@ -164,7 +164,7 @@ def test_expressibility() -> None:
             {test_case['result']} but {kl_dist} instead.\
             Deviation {(error*100):.1f}>{tolerance*100}%"
 
-    circuits_results_1 = sorted(
+    expected_results = sorted(
         [
             (circuit, results_n_layers_1[circuits.index(circuit)])
             for circuit in circuits
@@ -173,13 +173,13 @@ def test_expressibility() -> None:
         key=lambda x: x[1],
     )
 
-    kl_distances_sorted = sorted(kl_distances, key=lambda x: x[1])
+    actual_results = sorted(kl_distances, key=lambda x: x[1])
 
     print("Expected \t| Actual")
-    for expected, actual in zip(circuits_results_1, kl_distances_sorted):
+    for expected, actual in zip(expected_results, actual_results):
         print(f"{expected[0]}, {expected[1]} \t| {actual[0]}, {actual[1]}")
-    assert [circuit for circuit, _ in circuits_results_1] == [
-        circuit for circuit, _ in kl_distances_sorted
+    assert [circuit for circuit, _ in expected_results] == [
+        circuit for circuit, _ in actual_results
     ]
 
 
