@@ -281,8 +281,8 @@ class PauliCircuit:
 
         Returns:
             Tuple[Operator, Operator]:
-                - Resulting Clifford operator (should be the same as the input)
                 - Evolved Pauli operator
+                - Resulting Clifford operator (should be the same as the input)
         """
         if not any(p_c in clifford.wires for p_c in pauli.wires):
             return pauli, clifford
@@ -314,6 +314,15 @@ class PauliCircuit:
             pauli, _ = PauliCircuit._evolve_clifford_pauli(clifford, pauli)
             qubits = pauli.wires
             pauli = qml.pauli_decompose(pauli.matrix(), wire_order=qubits)
+
+        pauli = qml.simplify(pauli)
+
+        # remove coefficients
+        pauli = (
+            pauli.terms()[1][0]
+            if isinstance(pauli, (qml_op.Prod, qml_op.LinearCombination))
+            else pauli
+        )
 
         return pauli
 
@@ -396,12 +405,23 @@ class CoefficientsTreeNode:
         self.parameter_idx = parameter_idx
 
         if isinstance(observable, qml_op.SProd):
-            self.observable = observable.terms()[1][0]
-            self.coeff = observable.terms()[0][0]
+            coeff = observable.terms()[0][0]
+            observable = observable.terms()[1][0]
         else:
-            self.observable = observable
-            self.coeff = 1.0
+            coeff = 1.0
 
+        # If the observable does not constist of only Z and I, the
+        # expectation is zero
+        if (
+            isinstance(observable, qml_op.Prod)
+            and any([isinstance(p, (qml.X, qml.Y)) for p in observable])
+            or isinstance(observable, (qml.PauliX, qml.PauliY))
+        ):
+            self.exp = 0.0
+        else:
+            self.exp = coeff
+
+        self.observable = observable
         self.pauli_rotations = pauli_rotations
 
         self.left = left
@@ -414,12 +434,7 @@ class CoefficientsTreeNode:
         elif self.is_cosine_factor:
             factor = np.cos(self.parameter)
         if not (self.left or self.right):  # leaf
-            # If the observable does not constist of only Z and I, the
-            # expectation is zero
-            if any([isinstance(p, (qml.X, qml.Y)) for p in self.observable]):
-                return 0.0
-            else:
-                return factor * self.coeff
+            return factor * self.exp
 
         sum_children = 0.0
         if self.left:
