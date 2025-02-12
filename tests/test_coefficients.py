@@ -19,28 +19,19 @@ def test_coefficients() -> None:
             "circuit_type": "Circuit_1",
             "n_qubits": 1,
             "n_layers": 3,
-            "n_bins": 10,
-            "n_samples": 200,
-            "n_input_samples": 2,
             "output_qubit": 0,
         },
         {
             "circuit_type": "Circuit_9",
             "n_qubits": 4,
             "n_layers": 1,
-            "n_bins": 10,
-            "n_samples": 200,
-            "n_input_samples": 2,
             "output_qubit": 0,
         },
         {
-            "circuit_type": "Circuit_9",
-            "n_qubits": 4,
+            "circuit_type": "Circuit_19",
+            "n_qubits": 5,
             "n_layers": 1,
-            "n_bins": 10,
-            "n_samples": 200,
-            "n_input_samples": 2,
-            "output_qubit": [0, 1, 2, 3],
+            "output_qubit": 0,
         },
     ]
 
@@ -49,8 +40,6 @@ def test_coefficients() -> None:
             n_qubits=test_case["n_qubits"],
             n_layers=test_case["n_layers"],
             circuit_type=test_case["circuit_type"],
-            data_reupload=True,
-            initialization="random",
             output_qubit=test_case["output_qubit"],
         )
 
@@ -91,7 +80,7 @@ def test_oversampling_frequency() -> None:
     )
 
     assert (
-        Coefficients.sample_coefficients(model, mfs=4).shape[0] == 9
+        Coefficients.sample_coefficients(model, mfs=2).shape[0] == 9
     ), "Oversampling frequency failed"
 
 
