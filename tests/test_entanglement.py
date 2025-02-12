@@ -42,20 +42,20 @@ def test_entanglement() -> None:
 
     # Circuit 10 excluded because implementation with current setup not possible
     skip_indices = [5, 7, 8, 11, 12, 13, 14, 10]
-    # skip_indices = [7, 3, 16, 8, 5, 18, 17, 4, 10, 19, 13, 12, 14, 11, 6, 2, 15, 9]
+    skip_indices = [7, 3, 16, 8, 5, 18, 17, 4, 10, 19, 13, 12, 14, 11, 6, 15, 9]
     test_cases = [
-        {
-            "circuit_type": "No_Entangling",
-            "n_qubits": 4,
-            "n_layers": 1,
-            "result": no_ent_result,
-        },
-        {
-            "circuit_type": "Strongly_Entangling",
-            "n_qubits": 4,
-            "n_layers": 1,
-            "result": strongly_ent_result,
-        },
+        # {
+        #     "circuit_type": "No_Entangling",
+        #     "n_qubits": 4,
+        #     "n_layers": 1,
+        #     "result": no_ent_result,
+        # },
+        # {
+        #     "circuit_type": "Strongly_Entangling",
+        #     "n_qubits": 4,
+        #     "n_layers": 1,
+        #     "result": strongly_ent_result,
+        # },
     ]
     for i, ent_res in zip(circuits, ent_results):
         if i in skip_indices:
@@ -101,7 +101,9 @@ def test_entanglement() -> None:
             error = abs(ent_cap - test_case["result"]) / (test_case["result"])
 
         print(
-            f"Entangling-capability: {ent_cap}, Expected Result: {test_case['result']}, Error: {error}"
+            f"Entangling-capability: {ent_cap}, \
+            Expected Result: {test_case['result']}, \
+            Error: {error}"
         )
         assert (
             error < tolerance

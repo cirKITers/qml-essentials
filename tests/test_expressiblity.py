@@ -156,7 +156,9 @@ def test_expressibility() -> None:
             error = abs(kl_dist - test_case["result"]) / (test_case["result"])
 
         print(
-            f"KL Divergence: {kl_dist}, Expected Result: {test_case['result']}, Error: {error}"
+            f"KL Divergence: {kl_dist}, \
+            Expected Result: {test_case['result']}, \
+            Error: {error}"
         )
         assert (
             error < tolerance
