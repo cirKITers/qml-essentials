@@ -7,7 +7,7 @@ class Coefficients:
 
     @staticmethod
     def sample_coefficients(
-        model: Model, shift=False, mfs: int = 1, mts: int = 1, **kwargs
+        model: Model, mfs: int = 1, mts: int = 1, **kwargs
     ) -> np.ndarray:
         """
         Extracts the coefficients of a given model using a FFT (np-fft).
@@ -41,10 +41,7 @@ class Coefficients:
             )
 
         # Apply fftshift if required
-        if shift:
-            return np.fft.fftshift(coeffs)
-        else:
-            return coeffs
+        return coeffs
 
     @staticmethod
     def _fourier_transform(
@@ -54,19 +51,18 @@ class Coefficients:
         # oversampled by nfs
         n_freqs: int = 2 * mfs * model.degree + 1
 
-        # Create a vector of equally spaced time points
-        nvecs = np.arange(-mfs * mts * model.degree, mfs * mts * model.degree + 1)
-
         # Stretch according to the number of frequencies
-        inputs: np.ndarray = np.arange(0, mts * 2 * np.pi, 2 * np.pi / n_freqs)
+        inputs: np.ndarray = np.arange(-mts * np.pi, mts * np.pi, 2 * np.pi / n_freqs)
 
         # Output vector is not necessarily the same length as input
         outputs: np.ndarray = np.zeros((mts * n_freqs))
 
         outputs = model(inputs=inputs, **kwargs)
 
+        coefficients = np.fft.fft(outputs)
+
         # Run the fft and rearrange + normalize the output
-        return np.fft.fft(outputs) / outputs.size
+        return coefficients / outputs.size
 
     @staticmethod
     def get_frequencies(coeffs: np.ndarray, shift=False, mts=1) -> np.ndarray:
@@ -80,8 +76,14 @@ class Coefficients:
         Returns:
             np.ndarray: The frequencies.
         """
+
         freqs = np.fft.fftfreq(coeffs.size, mts / coeffs.size)
+
+        if coeffs.size % 2 == 0:
+            coeffs = np.delete(coeffs, len(coeffs) // 2)
+            freqs = np.delete(freqs, len(freqs) // 2)
+
         if shift:
-            return np.fft.fftshift(freqs)
+            return np.fft.fftshift(coeffs), np.fft.fftshift(freqs)
         else:
-            return freqs
+            return coeffs, freqs
