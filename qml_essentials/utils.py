@@ -380,29 +380,20 @@ class PauliCircuit:
 class CoefficientsTreeNode:
     def __init__(
         self,
-        parameter: Optional[np.ndarray],
-        parameter_idx: int,  # TODO: use or remove
+        parameter_idx: Optional[int],
         observable: Operator,
-        pauli_rotations: List[Operator],
         is_sine_factor: bool,
         is_cosine_factor: bool,
         left: Optional[CoefficientsTreeNode] = None,
         right: Optional[CoefficientsTreeNode] = None,
     ):
-        if parameter is not None:
-            parameter = (
-                parameter[0].flatten()[0]
-                if isinstance(parameter, list)
-                else parameter.flatten()[0]
-            )
-        self.parameter = parameter
+        self.parameter_idx = parameter_idx
 
         assert not (
             is_sine_factor and is_cosine_factor
         ), "Cannot be sine and cosine at the same time"
         self.is_sine_factor = is_sine_factor
         self.is_cosine_factor = is_cosine_factor
-        self.parameter_idx = parameter_idx
 
         if isinstance(observable, qml_op.SProd):
             coeff = observable.terms()[0][0]
@@ -422,26 +413,29 @@ class CoefficientsTreeNode:
             self.exp = coeff
 
         self.observable = observable
-        self.pauli_rotations = pauli_rotations
 
         self.left = left
         self.right = right
 
-    def evaluate(self) -> float:
-        factor = 1.0
+    def evaluate(self, parameters) -> float:
+        factor = (
+            parameters[self.parameter_idx]
+            if self.parameter_idx is not None
+            else 1.0
+        )
         if self.is_sine_factor:
-            factor = 1j * np.sin(self.parameter)
+            factor = 1j * np.sin(factor)
         elif self.is_cosine_factor:
-            factor = np.cos(self.parameter)
+            factor = np.cos(factor)
         if not (self.left or self.right):  # leaf
             return factor * self.exp
 
         sum_children = 0.0
         if self.left:
-            left = self.left.evaluate()
+            left = self.left.evaluate(parameters)
             sum_children = sum_children + left
         if self.right:
-            right = self.right.evaluate()
+            right = self.right.evaluate(parameters)
             sum_children = sum_children + right
 
         return factor * sum_children
@@ -459,14 +453,17 @@ class FourierTree:
     def build_tree(self) -> List[CoefficientsTreeNode]:
         tree_roots = []
         for obs in self.observables:
-            root = self.create_tree_node(obs, self.pauli_rotations)
+            pauli_rotation_indices = np.arange(
+                len(self.pauli_rotations), dtype=np.int16
+            )
+            root = self.create_tree_node(obs, pauli_rotation_indices)
             tree_roots.append(root)
         return tree_roots
 
     def evaluate(self) -> np.ndarray:
         results = np.zeros(len(self.tree_roots))
         for i, root in enumerate(self.tree_roots):
-            results[i] = np.real_if_close(root.evaluate())
+            results[i] = np.real_if_close(root.evaluate(self.parameters))
 
         if self.force_mean:
             return np.mean(results)
@@ -476,33 +473,33 @@ class FourierTree:
     def create_tree_node(
         self,
         observable: Operator,
-        pauli_rotations: List[Operator],
-        parameter: Optional[np.ndarray] = None,
+        pauli_rotation_indices: List[int],
+        parameter_idx: Optional[int] = None,
         is_sine: bool = False,
         is_cosine: bool = False,
     ) -> CoefficientsTreeNode:
 
         # remove commuting paulis
-        last_pauli = pauli_rotations[-1] if len(pauli_rotations) > 0 else None
-        while last_pauli is not None and qml.is_commuting(
-            last_pauli.generator(), observable
-        ):
-            pauli_rotations = pauli_rotations[:-1]
-            last_pauli = (
-                pauli_rotations[-1] if len(pauli_rotations) > 0 else None
-            )
+        idx = len(pauli_rotation_indices) - 1
+        while idx >= 0:
+            last_pauli = self.pauli_rotations[pauli_rotation_indices[idx]]
+            if not qml.is_commuting(last_pauli.generator(), observable):
+                break
+            idx -= 1
 
-        if last_pauli is None:  # leaf
+        if idx < 0:  # leaf
             return CoefficientsTreeNode(
-                parameter, 0, observable, [], is_sine, is_cosine
+                parameter_idx, observable, is_sine, is_cosine
             )
 
-        next_pauli_rotations = pauli_rotations[:-1]
+        next_pauli_rotation_indices = pauli_rotation_indices[:idx]
+        last_pauli_idx = pauli_rotation_indices[idx]
+        last_pauli = self.pauli_rotations[last_pauli_idx]
 
         left = self.create_tree_node(
             observable,
-            next_pauli_rotations,
-            last_pauli.parameters,
+            next_pauli_rotation_indices,
+            last_pauli_idx,
             is_cosine=True,
         )
 
@@ -511,16 +508,14 @@ class FourierTree:
         )
         right = self.create_tree_node(
             next_observable,
-            next_pauli_rotations,
-            last_pauli.parameters,
+            next_pauli_rotation_indices,
+            last_pauli_idx,
             is_sine=True,
         )
 
         return CoefficientsTreeNode(
-            parameter,
-            0,
+            parameter_idx,
             observable,
-            pauli_rotations,
             is_sine,
             is_cosine,
             left,
