@@ -16,3 +16,69 @@ model = Model(
 
 coeffs = Coefficients.sample_coefficients(model)
 ```
+
+## Detailled Explanation
+
+To visualize what happens, let's create a very simplified Fourier model
+```python
+class Model_Fct:
+    def __init__(self, c, f):
+        self.c = c
+        self.f = f
+        self.degree = max(f)
+
+    def __call__(self, inputs, **kwargs):
+        return np.sum([c * np.cos(inputs * f) for f, c in zip(self.f, self.c)], axis=0)
+```
+
+This model takes a vector of coefficients and frequencies on instantiation.
+When called, these coefficients and frequencies are used to compute the output of the model, which is the sum of sine functions determined by the length of the vectors.
+Let's try that for just two frequencies:
+
+```python
+freqs = [1,3]
+coeffs = [1,1]
+
+fs = max(freqs) * 2 + 1
+model_fct = Model_Fct(coeffs,freqs)
+
+x = np.arange(0,2 * np.pi, 2 * np.pi/fs)
+```
+
+We can now calculate the Fast Fourier Transform of our model:
+```python
+X = np.fft.fft(out)
+X_shift = np.fft.fftshift(X)
+X_freq = np.fft.fftfreq(X.size, 1/fs)
+X_freq_shift = np.fft.fftshift(X_freq)
+```
+
+![Model Fct Spectr](model_fct_spectr_light.png#only-light)
+![Model Fct Spectr](model_fct_spectr_dark.png#only-dark)
+
+The same can be done with our framework, within just two lines:
+```python
+X_shift = Coefficients.sample_coefficients(model_fct, shift=True)
+X_freq_shift = Coefficients.get_frequencies(coeffs, shift=True)
+```
+
+![Model Fct Spectr Ours](model_fct_spectr_ours_light.png#only-light)
+![Model Fct Spectr Ours](model_fct_spectr_ours_dark.png#only-dark)
+
+However, there is much more to this.
+You might have noticed that we choose our sampling frequency `fs` in such a way, that it just fulfills the Nyquist criterium.
+Also the number of samples `x` are just enough to sufficiently represent our function.
+In such a simplified scenario, this is fine, but there are cases, where we want to have more information both in the time and frequency domain.
+Therefore, two additional arguments exist in the `sample_coefficients` method:
+- `mfs`: The multiplier for the highest frequency. Increasing this will increase the width of the spectrum
+- `mts`: The multiplier for the number of time samples. Increasing this will increase the resolution of the time domain and therefore "add" frequencies in between our original frequencies.
+
+```python
+X_shift = Coefficients.sample_coefficients(model_fct, shift=True, mfs=2, mts=2)
+X_freq_shift = Coefficients.get_frequencies(coeffs, shift=True, mts=2)
+```
+
+![Model Fct Spectr OS](model_fct_spectr_os_light.png#only-light)
+![Model Fct Spectr OS](model_fct_spectr_os_dark.png#only-dark)
+
+Note that, as the frequencies change with the `mts` argument, we have to take that into account when calculating the frequencies with the last call.
