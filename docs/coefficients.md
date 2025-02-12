@@ -17,6 +17,8 @@ model = Model(
 coeffs = Coefficients.sample_coefficients(model)
 ```
 
+But wait! There is much more to this. Let's keep on reading if you're curious :eyes:.
+
 ## Detailled Explanation
 
 To visualize what happens, let's create a very simplified Fourier model
@@ -45,13 +47,14 @@ model_fct = Model_Fct(coeffs,freqs)
 x = np.arange(0,2 * np.pi, 2 * np.pi/fs)
 ```
 
-We can now calculate the Fast Fourier Transform of our model:
+We can now calculate the [Fast Fourier Transform](https://en.wikipedia.org/wiki/Fast_Fourier_transform) of our model:
 ```python
 X = np.fft.fft(out)
 X_shift = np.fft.fftshift(X)
 X_freq = np.fft.fftfreq(X.size, 1/fs)
 X_freq_shift = np.fft.fftshift(X_freq)
 ```
+Note that calling `np.fft.fftshift` is not required from a technical point of view, but makes our spectrum nicely zero-centered and projected correctly.
 
 ![Model Fct Spectr](model_fct_spectr_light.png#only-light)
 ![Model Fct Spectr](model_fct_spectr_dark.png#only-dark)
@@ -65,8 +68,9 @@ X_freq_shift = Coefficients.get_frequencies(coeffs, shift=True)
 ![Model Fct Spectr Ours](model_fct_spectr_ours_light.png#only-light)
 ![Model Fct Spectr Ours](model_fct_spectr_ours_dark.png#only-dark)
 
-However, there is much more to this.
-You might have noticed that we choose our sampling frequency `fs` in such a way, that it just fulfills the Nyquist criterium.
+## Increasing the Resolution
+
+You might have noticed that we choose our sampling frequency `fs` in such a way, that it just fulfills the [Nyquist criterium](https://en.wikipedia.org/wiki/Nyquist_frequency).
 Also the number of samples `x` are just enough to sufficiently represent our function.
 In such a simplified scenario, this is fine, but there are cases, where we want to have more information both in the time and frequency domain.
 Therefore, two additional arguments exist in the `sample_coefficients` method:
@@ -82,3 +86,5 @@ X_freq_shift = Coefficients.get_frequencies(coeffs, shift=True, mts=2)
 ![Model Fct Spectr OS](model_fct_spectr_os_dark.png#only-dark)
 
 Note that, as the frequencies change with the `mts` argument, we have to take that into account when calculating the frequencies with the last call.
+
+Feel free to checkout our [jupyter notebook](https://github.com/quantum-machine-learning/qml_essentials/blob/main/docs/notebooks/coefficients.ipynb) if you would like to play around with this.
