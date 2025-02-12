@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "qml-essentials"
-version = "0.1.20"
+version = "0.1.21"
 description = ""
 authors = ["Melvin Strobl <melvin.strobl@kit.edu>", "Maja Franz <maja.franz@oth-regensburg.de>"]
 maintainers = ["Melvin Strobl <melvin.strobl@kit.edu>"]
