@@ -7,7 +7,7 @@ class Coefficients:
 
     @staticmethod
     def sample_coefficients(
-        model: Model, shift=False, mfs: int = 2, mts: int = 1, **kwargs
+        model: Model, shift=False, mfs: int = 1, mts: int = 1, **kwargs
     ) -> np.ndarray:
         """
         Extracts the coefficients of a given model using a FFT (np-fft).
@@ -32,11 +32,6 @@ class Coefficients:
         kwargs.setdefault("force_mean", True)
         kwargs.setdefault("execution_type", "expval")
 
-        if mfs < 2:
-            raise ValueError(
-                f"Frequency sample multiplicator must be at least 2, but got {mfs}"
-            )
-
         coeffs = Coefficients._fourier_transform(model, mfs=mfs, mts=mts, **kwargs)
 
         if not np.isclose(np.sum(coeffs).imag, 0.0, rtol=1.0e-5):
@@ -57,23 +52,24 @@ class Coefficients:
     ) -> np.ndarray:
         # Create a frequency vector with as many frequencies as model degrees,
         # oversampled by nfs
-        n_freqs: int = mfs * model.degree + 1
+        n_freqs: int = 2 * mfs * model.degree + 1
 
         # Create a vector of equally spaced time points
-        nvecs = np.arange(-mts * model.degree, mts * model.degree + 1)
+        nvecs = np.arange(-mfs * mts * model.degree, mfs * mts * model.degree + 1)
 
         # Stretch according to the number of frequencies
-        inputs: np.ndarray = nvecs * (2 * np.pi / n_freqs)
+        inputs: np.ndarray = np.arange(0, mts * 2 * np.pi, 2 * np.pi / n_freqs)
 
+        # Output vector is not necessarily the same length as input
         outputs: np.ndarray = np.zeros((mts * n_freqs))
 
-        outputs[nvecs] = model(inputs=inputs, **kwargs)
+        outputs = model(inputs=inputs, **kwargs)
 
         # Run the fft and rearrange + normalize the output
         return np.fft.fft(outputs) / outputs.size
 
     @staticmethod
-    def get_frequencies(coeffs: np.ndarray, shift=False) -> np.ndarray:
+    def get_frequencies(coeffs: np.ndarray, shift=False, mts=1) -> np.ndarray:
         """
         Get the frequencies corresponding to the given Fourier coefficients.
 
@@ -84,7 +80,7 @@ class Coefficients:
         Returns:
             np.ndarray: The frequencies.
         """
-        freqs = np.fft.fftfreq(coeffs.size, 2 * np.pi / coeffs.size)
+        freqs = np.fft.fftfreq(coeffs.size, mts / coeffs.size)
         if shift:
             return np.fft.fftshift(freqs)
         else:
