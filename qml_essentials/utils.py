@@ -414,11 +414,12 @@ class CoefficientsTreeNode:
         elif self.is_cosine_factor:
             factor = np.cos(self.parameter)
         if not (self.left or self.right):  # leaf
-            exp = qml.execute(  # TODO: make somehow nicer
-                [QuantumScript(measurements=[qml.expval(self.observable)])],
-                device=qml.device("default.qubit"),
-            )[0]
-            return factor * exp * self.coeff
+            # If the observable does not constist of only Z and I, the
+            # expectation is zero
+            if any([isinstance(p, (qml.X, qml.Y)) for p in self.observable]):
+                return 0.0
+            else:
+                return factor * self.coeff
 
         sum_children = 0.0
         if self.left:
