@@ -89,3 +89,33 @@ X_shift, X_freq_shift = Coefficients.get_spectrum(model_fct, mfs=2, mts=3, shift
 Note that, as the frequencies change with the `mts` argument, we have to take that into account when calculating the frequencies with the last call.
 
 Feel free to checkout our [jupyter notebook](https://github.com/quantum-machine-learning/qml_essentials/blob/main/docs/notebooks/coefficients.ipynb) if you would like to play around with this.
+
+A sidenote on the performance; Increasing the `mts` value effectively increases the input lenght that goes into the model.
+This means that `mts=2` will require twice the time to compute, which will be very noticable when running noisy simulations.
+
+## Power spectral density
+
+In some cases it can be useful to get the [power spectral density (PSD)](https://en.wikipedia.org/wiki/Spectral_density).
+As calculation of this metric might differ between the different research domains, we included a function to get the PSD of a given spectrum using the following formula:
+
+$$
+PSD = \frac{2 (\mathrm{Re}(F)^2+\mathrm{Im}(F)^2)}{n_\text{samples}^2}
+$$
+
+where $F$ is the spectrum and $n_\text{samples}$ the length of the input vector.
+
+```python
+model = Model(
+    n_qubits=4,
+    n_layers=1,
+    circuit_type="Circuit_19",
+    random_seed=1000
+)
+
+coeffs, freqs = Coefficients.get_spectrum(model, mfs=1, mts=1, shift=True)
+
+psd = Coefficients.get_psd(coeffs)
+```
+
+![Model PSD](model_psd_light.png#only-light)
+![Model PSD](model_psd_dark.png#only-dark)

@@ -82,5 +82,5 @@ class Coefficients:
         def abs2(x):
             return x.real**2 + x.imag**2
 
-        scale = 2.0 / (len(coeffs) * len(coeffs))
+        scale = 2.0 / (len(coeffs) ** 2)
         return scale * abs2(coeffs)
