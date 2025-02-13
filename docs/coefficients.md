@@ -1,7 +1,7 @@
 # Coefficients
 
 A characteristic property of any Fourier model are its coefficients.
-Our package can, given a model, calculate the corresponding coefficients by utilizing the [Pennylane Fourier Coefficients](https://docs.pennylane.ai/en/stable/_modules/pennylane/fourier/coefficients.html) method.
+Our package can, given a model, calculate the corresponding coefficients.
 
 In the simplest case, this could look as follows:
 ```python
@@ -9,9 +9,9 @@ from qml_essentials.model import Model
 from qml_essentials.coefficients import Coefficients
 
 model = Model(
-            n_qubits=2
-            n_layers=1
-            circuit_type="HardwareEfficient",
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Hardware_Efficient",
         )
 
 coeffs = Coefficients.get_spectrum(model)
@@ -45,11 +45,12 @@ fs = max(freqs) * 2 + 1
 model_fct = Model_Fct(coeffs,freqs)
 
 x = np.arange(0,2 * np.pi, 2 * np.pi/fs)
+out = model_fct(x)
 ```
 
 We can now calculate the [Fast Fourier Transform](https://en.wikipedia.org/wiki/Fast_Fourier_transform) of our model:
 ```python
-X = np.fft.fft(out)
+X = np.fft.fft(out) / len(out)
 X_shift = np.fft.fftshift(X)
 X_freq = np.fft.fftfreq(X.size, 1/fs)
 X_freq_shift = np.fft.fftshift(X_freq)
