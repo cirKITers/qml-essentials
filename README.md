@@ -1,6 +1,6 @@
 # QML Essentials
 
-![logo](docs/logo.svg)
+<img src="docs/logo.svg" width="200" title="Logo">
 
 [![Quality](https://github.com/cirKITers/qml-essentials/actions/workflows/quality.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/quality.yml) [![Testing](https://github.com/cirKITers/qml-essentials/actions/workflows/test.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/test.yml) [![Documentation](https://github.com/cirKITers/qml-essentials/actions/workflows/docs.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/docs.yml)
 
