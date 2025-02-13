@@ -62,7 +62,7 @@ class Coefficients:
         n_freqs: int = 2 * mfs * model.degree + 1
 
         # Stretch according to the number of frequencies
-        inputs: np.ndarray = np.arange(-mts * np.pi, mts * np.pi, 2 * np.pi / n_freqs)
+        inputs: np.ndarray = np.arange(0, 2 * mts * np.pi, 2 * np.pi / n_freqs)
 
         # Output vector is not necessarily the same length as input
         outputs: np.ndarray = np.zeros((mts * n_freqs))
