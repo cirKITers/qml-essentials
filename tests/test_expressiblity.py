@@ -156,9 +156,9 @@ def test_expressibility() -> None:
             error = abs(kl_dist - test_case["result"]) / (test_case["result"])
 
         print(
-            f"KL Divergence: {kl_dist}, \
-            Expected Result: {test_case['result']}, \
-            Error: {error}"
+            f"KL Divergence: {kl_dist},\t"
+            + f"Expected Result: {test_case['result']},\t"
+            + f"Error: {error}"
         )
         assert (
             error < tolerance
@@ -168,8 +168,8 @@ def test_expressibility() -> None:
 
     expected_results = sorted(
         [
-            (circuit, results_n_layers_1[circuits.index(circuit)])
-            for circuit in circuits
+            (circuit, result)
+            for circuit, result in zip(circuits, results_n_layers_1)
             if circuit not in skip_indices
         ],
         key=lambda x: x[1],
