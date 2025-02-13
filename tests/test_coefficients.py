@@ -43,7 +43,7 @@ def test_coefficients() -> None:
             output_qubit=test_case["output_qubit"],
         )
 
-        coeffs = Coefficients.sample_coefficients(model)
+        coeffs = Coefficients.get_spectrum(model)
 
         assert len(coeffs) == model.degree * 2 + 1, "Wrong number of coefficients"
         assert np.isclose(
@@ -67,7 +67,7 @@ def test_oversampling_time() -> None:
     )
 
     assert (
-        Coefficients.sample_coefficients(model, mts=2).shape[0] == 10
+        Coefficients.get_spectrum(model, mts=2).shape[0] == 10
     ), "Oversampling time failed"
 
 
@@ -80,7 +80,7 @@ def test_oversampling_frequency() -> None:
     )
 
     assert (
-        Coefficients.sample_coefficients(model, mfs=2).shape[0] == 9
+        Coefficients.get_spectrum(model, mfs=2).shape[0] == 9
     ), "Oversampling frequency failed"
 
 
@@ -91,7 +91,7 @@ def test_shift() -> None:
         n_layers=1,
         circuit_type="Circuit_19",
     )
-    coeffs = Coefficients.sample_coefficients(model, shift=True)
+    coeffs = Coefficients.get_spectrum(model, shift=True)
 
     assert (
         np.abs(coeffs) == np.abs(coeffs[::-1])
@@ -105,7 +105,7 @@ def test_frequencies() -> None:
         n_layers=1,
         circuit_type="Circuit_19",
     )
-    coeffs = Coefficients.sample_coefficients(model, shift=True)
+    coeffs = Coefficients.get_spectrum(model, shift=True)
     freqs = Coefficients.get_frequencies(coeffs, shift=True)
 
     assert (

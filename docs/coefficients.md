@@ -14,7 +14,7 @@ model = Model(
             circuit_type="HardwareEfficient",
         )
 
-coeffs = Coefficients.sample_coefficients(model)
+coeffs = Coefficients.get_spectrum(model)
 ```
 
 But wait! There is much more to this. Let's keep on reading if you're curious :eyes:.
@@ -59,27 +59,28 @@ Note that calling `np.fft.fftshift` is not required from a technical point of vi
 ![Model Fct Spectr](model_fct_spectr_light.png#only-light)
 ![Model Fct Spectr](model_fct_spectr_dark.png#only-dark)
 
-The same can be done with our framework, within just two lines:
+The same can be done with our framework, with a neat one-liner:
 ```python
-X_shift = Coefficients.sample_coefficients(model_fct, shift=True)
-X_freq_shift = Coefficients.get_frequencies(coeffs, shift=True)
+X_shift, X_freq_shift = Coefficients.get_spectrum(model_fct, shift=True)
 ```
 
 ![Model Fct Spectr Ours](model_fct_spectr_ours_light.png#only-light)
 ![Model Fct Spectr Ours](model_fct_spectr_ours_dark.png#only-dark)
+
+Note, that applying the shift can be controlled with the optional `shift` argument.
 
 ## Increasing the Resolution
 
 You might have noticed that we choose our sampling frequency `fs` in such a way, that it just fulfills the [Nyquist criterium](https://en.wikipedia.org/wiki/Nyquist_frequency).
 Also the number of samples `x` are just enough to sufficiently represent our function.
 In such a simplified scenario, this is fine, but there are cases, where we want to have more information both in the time and frequency domain.
-Therefore, two additional arguments exist in the `sample_coefficients` method:
+Therefore, two additional arguments exist in the `get_spectrum` method:
 - `mfs`: The multiplier for the highest frequency. Increasing this will increase the width of the spectrum
 - `mts`: The multiplier for the number of time samples. Increasing this will increase the resolution of the time domain and therefore "add" frequencies in between our original frequencies.
+- `trim`: Whether to remove the Nyquist frequency if spectrum is even. This will result in a symmetric spectrum
 
 ```python
-X_shift = Coefficients.sample_coefficients(model_fct, shift=True, mfs=2, mts=2)
-X_freq_shift = Coefficients.get_frequencies(coeffs, shift=True, mts=2)
+X_shift, X_freq_shift = Coefficients.get_spectrum(model_fct, mfs=2, mts=3, shift=True)
 ```
 
 ![Model Fct Spectr OS](model_fct_spectr_os_light.png#only-light)

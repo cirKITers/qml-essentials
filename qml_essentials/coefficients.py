@@ -6,8 +6,8 @@ from typing import Any
 class Coefficients:
 
     @staticmethod
-    def sample_coefficients(
-        model: Model, mfs: int = 1, mts: int = 1, **kwargs
+    def get_spectrum(
+        model: Model, mfs: int = 1, mts: int = 1, shift=False, trim=False, **kwargs
     ) -> np.ndarray:
         """
         Extracts the coefficients of a given model using a FFT (np-fft).
@@ -21,9 +21,11 @@ class Coefficients:
 
         Args:
             model (Model): The model to sample.
-            shift (bool): Whether to apply np-fftshift. Default is False.
             mfs (int): Multiplicator for the highest frequency. Default is 2.
             mts (int): Multiplicator for the number of time samples. Default is 1.
+            shift (bool): Whether to apply np-fftshift. Default is False.
+            trim (bool): Whether to remove the Nyquist frequency if spectrum is even.
+                Default is False.
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
@@ -32,7 +34,9 @@ class Coefficients:
         kwargs.setdefault("force_mean", True)
         kwargs.setdefault("execution_type", "expval")
 
-        coeffs = Coefficients._fourier_transform(model, mfs=mfs, mts=mts, **kwargs)
+        coeffs, freqs = Coefficients._fourier_transform(
+            model, mfs=mfs, mts=mts, **kwargs
+        )
 
         if not np.isclose(np.sum(coeffs).imag, 0.0, rtol=1.0e-5):
             raise ValueError(
@@ -40,8 +44,14 @@ class Coefficients:
                 {np.sum(coeffs).imag}"
             )
 
-        # Apply fftshift if required
-        return coeffs
+        if trim and coeffs.size % 2 == 0:
+            coeffs = np.delete(coeffs, len(coeffs) // 2)
+            freqs = np.delete(freqs, len(freqs) // 2)
+
+        if shift:
+            return np.fft.fftshift(coeffs), np.fft.fftshift(freqs)
+        else:
+            return coeffs, freqs
 
     @staticmethod
     def _fourier_transform(
@@ -59,31 +69,18 @@ class Coefficients:
 
         outputs = model(inputs=inputs, **kwargs)
 
-        coefficients = np.fft.fft(outputs)
-
-        # Run the fft and rearrange + normalize the output
-        return coefficients / outputs.size
-
-    @staticmethod
-    def get_frequencies(coeffs: np.ndarray, shift=False, mts=1) -> np.ndarray:
-        """
-        Get the frequencies corresponding to the given Fourier coefficients.
-
-        Args:
-            coeffs (np.ndarray): The Fourier coefficients.
-            shift (bool): Whether to apply np-fftshift. Default is False.
-
-        Returns:
-            np.ndarray: The frequencies.
-        """
+        coeffs = np.fft.fft(outputs)
 
         freqs = np.fft.fftfreq(coeffs.size, mts / coeffs.size)
 
-        if coeffs.size % 2 == 0:
-            coeffs = np.delete(coeffs, len(coeffs) // 2)
-            freqs = np.delete(freqs, len(freqs) // 2)
+        # Run the fft and rearrange + normalize the output
+        return coeffs / outputs.size, freqs
 
-        if shift:
-            return np.fft.fftshift(coeffs), np.fft.fftshift(freqs)
-        else:
-            return coeffs, freqs
+    @staticmethod
+    def get_psd(coeffs: np.ndarray) -> np.ndarray:
+        # TODO: if we apply trim=True in advance, this will be slightly wrong..
+        def abs2(x):
+            return x.real**2 + x.imag**2
+
+        scale = 2.0 / (len(coeffs) * len(coeffs))
+        return scale * abs2(coeffs)
