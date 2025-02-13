@@ -29,7 +29,7 @@ theme:
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: white
-      accent: cyan
+      accent: teal
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
@@ -37,7 +37,7 @@ theme:
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: black
-      accent: cyan
+      accent: teal
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
