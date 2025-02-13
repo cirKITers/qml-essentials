@@ -13,6 +13,8 @@ nav:
   - references.md
 theme:
   name: material
+  logo: logo.svg
+  favicon: logo.svg
   highlightjs: true
   features:
     - content.code.select
@@ -26,16 +28,16 @@ theme:
     # Palette toggle for light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: teal
-      accent: cyan
+      primary: white
+      accent: teal
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     # Palette toggle for dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: teal
-      accent: cyan
+      primary: black
+      accent: teal
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
