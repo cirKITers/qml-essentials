@@ -79,6 +79,16 @@ class Coefficients:
     @staticmethod
     def get_psd(coeffs: np.ndarray) -> np.ndarray:
         # TODO: if we apply trim=True in advance, this will be slightly wrong..
+        """
+        Calculates the power spectral density (PSD) from given Fourier coefficients.
+
+        Args:
+            coeffs (np.ndarray): The Fourier coefficients.
+
+        Returns:
+            np.ndarray: The power spectral density.
+        """
+
         def abs2(x):
             return x.real**2 + x.imag**2
 
