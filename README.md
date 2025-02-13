@@ -1,5 +1,7 @@
 # QML Essentials
 
+![logo](docs/logo.svg)
+
 [![Quality](https://github.com/cirKITers/qml-essentials/actions/workflows/quality.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/quality.yml) [![Testing](https://github.com/cirKITers/qml-essentials/actions/workflows/test.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/test.yml) [![Documentation](https://github.com/cirKITers/qml-essentials/actions/workflows/docs.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/docs.yml)
 
 ## 📜 About
