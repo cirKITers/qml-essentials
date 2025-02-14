@@ -12,8 +12,32 @@ logger = logging.getLogger(__name__)
 @pytest.mark.unittest
 def test_entanglement() -> None:
     # Results taken from: https://doi.org/10.1002/qute.201900070
-    circuits = [1, 7, 3, 16, 8, 5, 18, 17, 4, 10, 19, 13, 12, 14, 11, 6, 2, 15, 9]
+    circuits = [
+        "No_Entangling",
+        "Strongly_Entangling",
+        1,
+        7,
+        3,
+        16,
+        8,
+        5,
+        18,
+        17,
+        4,
+        10,
+        19,
+        13,
+        12,
+        14,
+        11,
+        6,
+        2,
+        15,
+        9,
+    ]
     ent_results = [
+        0.0000,
+        0.8379,
         0.0000,
         0.3246,
         0.3424,
@@ -34,43 +58,38 @@ def test_entanglement() -> None:
         0.8186,
         1.0000,
     ]
-    no_ent_result = 0.0
-    strongly_ent_result = 0.8379
-
     # Circuits [5,7,8,11,12,13,14] are not included in the test cases,
     # because not implemented in ansaetze.py
 
     # Circuit 10 excluded because implementation with current setup not possible
     skip_indices = [5, 7, 8, 11, 12, 13, 14, 10]
-    # skip_indices = [7, 3, 16, 8, 5, 18, 17, 4, 10, 19, 13, 12, 14, 11, 6, 15, 9]
-    test_cases = [
-        # {
-        #     "circuit_type": "No_Entangling",
-        #     "n_qubits": 4,
-        #     "n_layers": 1,
-        #     "result": no_ent_result,
-        # },
-        # {
-        #     "circuit_type": "Strongly_Entangling",
-        #     "n_qubits": 4,
-        #     "n_layers": 1,
-        #     "result": strongly_ent_result,
-        # },
-    ]
-    for i, ent_res in zip(circuits, ent_results):
-        if i in skip_indices:
+    # skip the most for testing
+    # skip_indices += [16, 8, 5, 18, 17, 4, 10, 19, 13, 12, 14, 11, 6, 2, 15, 9]
+    test_cases = []
+    for circuit, ent_res in zip(circuits, ent_results):
+        if circuit in skip_indices:
             continue
-        test_cases.append(
-            {
-                "circuit_type": f"Circuit_{i}",
-                "n_qubits": 4,
-                "n_layers": 1,
-                "result": ent_res,
-            }
-        )
+        if isinstance(circuit, int):
+            test_cases.append(
+                {
+                    "circuit_type": f"Circuit_{circuit}",
+                    "n_qubits": 4,
+                    "n_layers": 1,
+                    "result": ent_res,
+                }
+            )
+        elif isinstance(circuit, str):
+            test_cases.append(
+                {
+                    "circuit_type": circuit,
+                    "n_qubits": 4,
+                    "n_layers": 1,
+                    "result": ent_res,
+                }
+            )
 
     tolerance = 0.55  # FIXME: reduce when reason for discrepancy is found
-    ent_caps: list[tuple[int, float]] = []
+    ent_caps: list[tuple[str, float]] = []
     for test_case in test_cases:
         print(f"--- Running Entanglement test for {test_case['circuit_type']} ---")
         model = Model(
@@ -85,13 +104,10 @@ def test_entanglement() -> None:
             model, n_samples=5000, seed=1000, cache=False
         )
 
-        circuit_number = 0
-        if test_case["circuit_type"] == "No_Entangling":
-            circuit_number = -1
-        elif test_case["circuit_type"] == "Strongly_Entangling":
-            circuit_number = -2
-        else:
-            circuit_number = int(test_case["circuit_type"].split("_")[1])
+        # Save results for later comparison
+        circuit_number = test_case["circuit_type"]
+        if circuit_number.split("_")[1].isdigit():
+            circuit_number = int(circuit_number.split("_")[1])
         ent_caps.append((circuit_number, ent_cap))
 
         difference = abs(ent_cap - test_case["result"])
@@ -112,8 +128,7 @@ def test_entanglement() -> None:
             Deviation {(error*100):.1f}%>{tolerance*100}%"
 
     expected_ent_results = sorted(
-        [(-1, no_ent_result), (-2, strongly_ent_result)]
-        + [
+        [
             (circuit, ent_result)
             for circuit, ent_result in zip(circuits, ent_results)
             if circuit not in skip_indices

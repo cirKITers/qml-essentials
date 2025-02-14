@@ -95,8 +95,8 @@ def test_expressibility() -> None:
 
     # Circuit 10 excluded because implementation with current setup not possible
     skip_indices = [5, 7, 8, 11, 12, 13, 14, 10]
-    # skip_indices = [16, 3, 18, 10, 12, 15, 17, 4, 11, 7, 8, 19, 5, 13, 14, 6]
-
+    # skip the most for testing
+    # skip_indices += [16, 3, 18, 10, 12, 15, 17, 4, 11, 7, 8, 19, 5, 13, 14, 6]
     test_cases = []
     for i, result1, result3 in zip(circuits, results_n_layers_1, results_n_layers_3):
         if i in skip_indices:
