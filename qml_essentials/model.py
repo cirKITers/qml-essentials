@@ -194,10 +194,10 @@ class Model:
 
     @execution_type.setter
     def execution_type(self, value: str) -> None:
-        if value not in ["density", "expval", "probs"]:
+        if value not in ["density", "state", "expval", "probs"]:
             raise ValueError(f"Invalid execution type: {value}.")
 
-        if value == "density" and self.output_qubit != -1:
+        if (value == "density" or value == "state") and self.output_qubit != -1:
             warnings.warn(
                 f"{value} measurement does ignore output_qubit, which is "
                 f"{self.output_qubit}.",
@@ -394,6 +394,8 @@ class Model:
         # run mixed simualtion and get density matrix
         if self.execution_type == "density":
             return qml.density_matrix(wires=list(range(self.n_qubits)))
+        elif self.execution_type == "state":
+            return qml.state()
         # run default simulation and get expectation value
         elif self.execution_type == "expval":
             # global measurement (tensored Pauli Z, i.e. parity)
