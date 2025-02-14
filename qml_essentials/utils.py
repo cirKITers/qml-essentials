@@ -1,11 +1,13 @@
 from __future__ import annotations
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional
 import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
 from pennylane.typing import PostprocessingFn
 import numpy as np
+import math
 import pennylane.ops.op_math as qml_op
 
 CLIFFORD_GATES = (
@@ -484,8 +486,14 @@ class TreeLeaf:
 
 class FourierTree:
 
-    def __init__(self, quantum_tape: QuantumScript, force_mean: bool = False):
+    def __init__(
+        self,
+        quantum_tape: QuantumScript,
+        input_indices: np.ndarray,
+        force_mean: bool = False,
+    ):
         self.parameters = quantum_tape.get_parameters()
+        self.input_indices = input_indices
         self.observables = quantum_tape.observables
         self.pauli_rotations = quantum_tape.operations
         self.tree_roots = self.build_tree()
@@ -511,10 +519,46 @@ class FourierTree:
             cos_list = np.zeros(len(self.parameters), dtype=np.int32)
             self.leafs.append(root.get_leafs(sin_list, cos_list, []))
 
+    def get_spectrum(self) -> List[Dict[int, float]]:
+        self.initialise_leafs()
+        parameter_indices = [
+            i
+            for i in range(len(self.parameters))
+            if i not in self.input_indices
+        ]
+
+        coefficients = []
+        for leafs in self.leafs:
+            freq_terms = defaultdict(np.complex128)
+            for leaf in leafs:
+                leaf_factor = 1.0
+                for i in parameter_indices:
+                    interm_factor = (
+                        np.cos(self.parameters[i]) ** leaf.cos_indices[i]
+                        * (1j * np.sin(self.parameters[i]))
+                        ** leaf.sin_indices[i]
+                    )
+                    leaf_factor = leaf_factor * interm_factor
+
+                c = np.sum([leaf.cos_indices[k] for k in self.input_indices])
+                s = np.sum([leaf.sin_indices[k] for k in self.input_indices])
+
+                leaf_factor = leaf.exp * leaf_factor * 0.5 ** (s + c)
+
+                for a in range(s + 1):
+                    for b in range(c + 1):
+                        comb = (
+                            math.comb(s, a) * math.comb(c, b) * (-1) ** (s - a)
+                        )
+                        freq_terms[2 * a + 2 * b - s - c] += comb * leaf_factor
+
+            coefficients.append(freq_terms)
+
+        return coefficients
+
     def evaluate_via_leafs(self) -> np.ndarray:
         results = np.zeros(len(self.tree_roots))
-        if self.leafs is None:
-            self.initialise_leafs()
+        self.initialise_leafs()
         for j, leafs in enumerate(self.leafs):
             sum = 0.0
             for leaf in leafs:
