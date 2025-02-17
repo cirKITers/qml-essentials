@@ -78,7 +78,8 @@ class Model:
         if isinstance(output_qubit, list):
             assert (
                 len(output_qubit) <= n_qubits
-            ), f"Size of output_qubit cannot be larger than number of qubits."
+            ), f"Size of output_qubit {len(output_qubit)} cannot be\
+            larger than number of qubits {n_qubits}."
         self.output_qubit: Union[List[int], int] = output_qubit
 
         # Copy the parameters
