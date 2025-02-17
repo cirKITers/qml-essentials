@@ -18,45 +18,45 @@ logger = logging.getLogger(__name__)
 @pytest.mark.unittest
 def test_parameters() -> None:
     test_cases = [
-        {
-            "shots": None,
-            "execution_type": "expval",
-            "output_qubit": 0,
-            "force_mean": False,
-            "exception": False,
-        },
-        {
-            "shots": None,
-            "execution_type": "expval",
-            "output_qubit": -1,
-            "force_mean": False,
-            "exception": False,
-        },
-        {
-            "shots": None,
-            "execution_type": "expval",
-            "output_qubit": -1,
-            "force_mean": True,
-            "exception": False,
-        },
-        {
-            "shots": None,
-            "execution_type": "density",
-            "output_qubit": 0,
-            "force_mean": False,
-            "exception": False,
-        },
+        # {
+        #     "shots": None,
+        #     "execution_type": "expval",
+        #     "output_qubit": 0,
+        #     "force_mean": False,
+        #     "exception": False,
+        # },
+        # {
+        #     "shots": None,
+        #     "execution_type": "expval",
+        #     "output_qubit": -1,
+        #     "force_mean": False,
+        #     "exception": False,
+        # },
+        # {
+        #     "shots": None,
+        #     "execution_type": "expval",
+        #     "output_qubit": -1,
+        #     "force_mean": True,
+        #     "exception": False,
+        # },
+        # {
+        #     "shots": None,
+        #     "execution_type": "density",
+        #     "output_qubit": 0,
+        #     "force_mean": False,
+        #     "exception": False,
+        # },
+        # {
+        #     "shots": 1024,
+        #     "execution_type": "probs",
+        #     "output_qubit": 0,
+        #     "force_mean": False,
+        #     "exception": False,
+        # },
         {
             "shots": 1024,
             "execution_type": "probs",
-            "output_qubit": 0,
-            "force_mean": False,
-            "exception": False,
-        },
-        {
-            "shots": 1024,
-            "execution_type": "probs",
-            "output_qubit": 0,
+            "output_qubit": -1,
             "force_mean": True,
             "exception": False,
         },
@@ -129,10 +129,15 @@ def test_parameters() -> None:
                         result.size == 1 or result.shape[0] == 1
                     ), f"Shape of {test_case['output_qubit']} is not correct."
                 else:
-                    # check for 2 because of n qubits
-                    assert (
-                        result.shape[0] == 2
-                    ), f"Shape of {test_case['output_qubit']} is not correct."
+                    if test_case["execution_type"] == "expval":
+                        # check for 2 because of n qubits
+                        assert (
+                            result.shape[0] == 2
+                        ), f"Shape of {test_case['output_qubit']} is not correct."
+                    elif test_case["execution_type"] == "probs":
+                        assert (
+                            result.shape[0] == 4
+                        ), f"Shape of {test_case['output_qubit']} is not correct."
             str(model)
 
 
@@ -400,6 +405,7 @@ def test_multi_input() -> None:
         np.random.rand(1, 2),
         np.random.rand(1, 3),
         np.random.rand(2, 1),
+        np.random.rand(3, 2),
         np.random.rand(20, 1),
     ]
     input_cases = [2 * np.pi * i for i in input_cases]

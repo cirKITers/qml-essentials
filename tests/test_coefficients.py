@@ -17,9 +17,9 @@ def test_coefficients() -> None:
     test_cases = [
         {
             "circuit_type": "Circuit_1",
-            "n_qubits": 1,
-            "n_layers": 3,
-            "output_qubit": 0,
+            "n_qubits": 3,
+            "n_layers": 1,
+            "output_qubit": [0, 1],
         },
         {
             "circuit_type": "Circuit_9",
@@ -32,6 +32,7 @@ def test_coefficients() -> None:
             "n_qubits": 5,
             "n_layers": 1,
             "output_qubit": 0,
+            "force_mean": True,
         },
     ]
 

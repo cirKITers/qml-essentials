@@ -74,6 +74,12 @@ class Model:
         self.noise_params: Optional[Dict[str, float]] = None
         self.execution_type: Optional[str] = "expval"
         self.shots = shots
+
+        if isinstance(output_qubit, list):
+            assert (
+                len(output_qubit) <= n_qubits
+            ), f"Size of output_qubit {len(output_qubit)} cannot be\
+            larger than number of qubits {n_qubits}."
         self.output_qubit: Union[List[int], int] = output_qubit
 
         # Copy the parameters
@@ -396,17 +402,17 @@ class Model:
             return qml.density_matrix(wires=list(range(self.n_qubits)))
         # run default simulation and get expectation value
         elif self.execution_type == "expval":
-            # global measurement (tensored Pauli Z, i.e. parity)
+            # n-local measurement
             if self.output_qubit == -1:
                 return [qml.expval(qml.PauliZ(q)) for q in range(self.n_qubits)]
             # local measurement(s)
             elif isinstance(self.output_qubit, int):
                 return qml.expval(qml.PauliZ(self.output_qubit))
-            # n-local measurenment
+            # parity measurenment
             elif isinstance(self.output_qubit, list):
                 obs = qml.simplify(
                     qml.Hamiltonian(
-                        [1.0] * self.n_qubits,
+                        [1.0] * len(self.output_qubit),
                         [qml.PauliZ(q) for q in self.output_qubit],
                     )
                 )
@@ -475,6 +481,9 @@ class Model:
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
+            force_mean (Optional[bool], optional): Whether to average
+                when performing n-local measurements.
+                Defaults to False.
 
         Returns:
             np.ndarray: The output of the quantum circuit.
@@ -553,6 +562,9 @@ class Model:
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
+            force_mean (Optional[bool], optional): Whether to average
+                when performing n-local measurements.
+                Defaults to False.
 
         Returns:
             np.ndarray: The output of the quantum circuit.
@@ -637,16 +649,18 @@ class Model:
         if isinstance(result, list):
             result = np.stack(result)
 
-        if self.execution_type == "expval" and self.output_qubit == -1:
-
-            # Calculating mean value after stacking, to not
-            # discard gradient information
-            if force_mean:
-                # exception for torch layer because it swaps batch and output dimension
-                if not isinstance(self.circuit, qml.QNode):
-                    result = result.mean(axis=-1)
-                else:
-                    result = result.mean(axis=0)
+        if self.execution_type == "expval" and force_mean and self.output_qubit == -1:
+            # exception for torch layer because it swaps batch and output dimension
+            if not isinstance(self.circuit, qml.QNode):
+                result = result.mean(axis=-1)
+            else:
+                result = result.mean(axis=0)
+        elif self.execution_type == "probs" and force_mean and self.output_qubit == -1:
+            # exception for torch layer because it swaps batch and output dimension
+            if not isinstance(self.circuit, qml.QNode):
+                result = result[..., -1].sum(axis=-1)
+            else:
+                result = result[1:, ...].sum(axis=0)
 
         if len(result.shape) == 3 and result.shape[0] == 1:
             result = result[0]
