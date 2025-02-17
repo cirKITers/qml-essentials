@@ -198,7 +198,8 @@ class Gates:
 
     def CRX(w, wires, noise_params=None):
         """
-        Applies a controlled rotation around the X axis to the given wires and adds `Noise`
+        Applies a controlled rotation around the X axis to the given wires
+        and adds `Noise`
 
         Parameters
         ----------
@@ -221,7 +222,8 @@ class Gates:
 
     def CRY(w, wires, noise_params=None):
         """
-        Applies a controlled rotation around the Y axis to the given wires and adds `Noise`
+        Applies a controlled rotation around the Y axis to the given wires
+        and adds `Noise`
 
         Parameters
         ----------
@@ -244,7 +246,8 @@ class Gates:
 
     def CRZ(w, wires, noise_params=None):
         """
-        Applies a controlled rotation around the Z axis to the given wires and adds `Noise`
+        Applies a controlled rotation around the Z axis to the given wires
+        and adds `Noise`
 
         Parameters
         ----------
@@ -1324,7 +1327,8 @@ class Ansaetze:
         @staticmethod
         def n_params_per_layer(n_qubits: int) -> int:
             """
-            Returns the number of parameters per layer for the StronglyEntanglingLayers ansatz.
+            Returns the number of parameters per layer for the
+            Strongly Entangling ansatz.
 
             The number of parameters is calculated as n_qubits*6.
 
@@ -1363,7 +1367,7 @@ class Ansaetze:
         @staticmethod
         def build(w: np.ndarray, n_qubits: int, noise_params=None) -> None:
             """
-            Creates a StronglyEntanglingLayers ansatz.
+            Creates a Strongly Entangling ansatz.
 
             Args:
                 w (np.ndarray): weight vector of size n_layers*(n_qubits*6)
