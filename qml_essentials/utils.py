@@ -1,7 +1,7 @@
 from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Optional
+from typing import Union, List, Tuple, Optional
 import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
@@ -489,10 +489,10 @@ class FourierTree:
     def __init__(
         self,
         quantum_tape: QuantumScript,
-        input_indices: np.ndarray,
+        input_indices: List[int],
         force_mean: bool = False,
     ):
-        self.parameters = quantum_tape.get_parameters()
+        self.parameters = [np.squeeze(p) for p in quantum_tape.get_parameters()]
         self.input_indices = input_indices
         self.observables = quantum_tape.observables
         self.pauli_rotations = quantum_tape.operations
@@ -519,7 +519,11 @@ class FourierTree:
             cos_list = np.zeros(len(self.parameters), dtype=np.int32)
             self.leafs.append(root.get_leafs(sin_list, cos_list, []))
 
-    def get_spectrum(self) -> List[Dict[int, float]]:
+    def get_spectrum(
+        self,
+    ) -> Union[
+        Tuple[List[np.ndarray], List[np.ndarray]], Tuple[np.ndarray, np.ndarray]
+    ]:
         self.initialise_leafs()
         parameter_indices = [
             i
@@ -527,7 +531,7 @@ class FourierTree:
             if i not in self.input_indices
         ]
 
-        coefficients = []
+        coeffs = []
         for leafs in self.leafs:
             freq_terms = defaultdict(np.complex128)
             for leaf in leafs:
@@ -552,9 +556,23 @@ class FourierTree:
                         )
                         freq_terms[2 * a + 2 * b - s - c] += comb * leaf_factor
 
-            coefficients.append(freq_terms)
+            coeffs.append(freq_terms)
 
-        return coefficients
+        if self.force_mean or len(coeffs) == 1:
+            all_freqs = set([f for c in coeffs for f in c.keys()])
+            frequencies = np.array(sorted(all_freqs))
+            coefficients = np.array(
+                [np.mean([c.get(f, 0.0) for c in coeffs]) for f in frequencies]
+            )
+        else:
+            coefficients = []
+            frequencies = []
+            for freq_terms in coeffs:
+                freq_terms = dict(sorted(freq_terms.items()))
+                frequencies.append(np.array(list(freq_terms.keys())))
+                coefficients.append(np.array(list(freq_terms.values())))
+
+        return frequencies, coefficients
 
     def evaluate_via_leafs(self) -> np.ndarray:
         results = np.zeros(len(self.tree_roots))
