@@ -74,6 +74,11 @@ class Model:
         self.noise_params: Optional[Dict[str, float]] = None
         self.execution_type: Optional[str] = "expval"
         self.shots = shots
+
+        if isinstance(output_qubit, list):
+            assert (
+                len(output_qubit) <= n_qubits
+            ), f"Size of output_qubit cannot be larger than number of qubits."
         self.output_qubit: Union[List[int], int] = output_qubit
 
         # Copy the parameters
@@ -396,17 +401,17 @@ class Model:
             return qml.density_matrix(wires=list(range(self.n_qubits)))
         # run default simulation and get expectation value
         elif self.execution_type == "expval":
-            # global measurement (tensored Pauli Z, i.e. parity)
+            # n-local measurement
             if self.output_qubit == -1:
                 return [qml.expval(qml.PauliZ(q)) for q in range(self.n_qubits)]
             # local measurement(s)
             elif isinstance(self.output_qubit, int):
                 return qml.expval(qml.PauliZ(self.output_qubit))
-            # n-local measurenment
+            # parity measurenment
             elif isinstance(self.output_qubit, list):
                 obs = qml.simplify(
                     qml.Hamiltonian(
-                        [1.0] * self.n_qubits,
+                        [1.0] * len(self.output_qubit),
                         [qml.PauliZ(q) for q in self.output_qubit],
                     )
                 )
@@ -637,7 +642,7 @@ class Model:
         if isinstance(result, list):
             result = np.stack(result)
 
-        if (self.execution_type == "expval") and force_mean and len(result.shape) > 0:
+        if (self.execution_type == "expval") and force_mean and self.output_qubit == -1:
             # exception for torch layer because it swaps batch and output dimension
             if not isinstance(self.circuit, qml.QNode):
                 result = result.mean(axis=-1)

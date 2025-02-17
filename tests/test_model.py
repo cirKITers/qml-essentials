@@ -405,6 +405,7 @@ def test_multi_input() -> None:
         np.random.rand(1, 2),
         np.random.rand(1, 3),
         np.random.rand(2, 1),
+        np.random.rand(3, 2),
         np.random.rand(20, 1),
     ]
     input_cases = [2 * np.pi * i for i in input_cases]
