@@ -660,7 +660,7 @@ class Model:
                     result[:, [*get_indices(self.n_qubits, i)]].mean(axis=-1)
                 )
 
-            if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
+            if not isinstance(self.circuit, qml.QNode):
                 result = np.mean(accumulated_probability, axis=-1)
             else:
                 result = np.mean(accumulated_probability, axis=0)
