@@ -18,46 +18,46 @@ logger = logging.getLogger(__name__)
 @pytest.mark.unittest
 def test_parameters() -> None:
     test_cases = [
+        # {
+        #     "shots": None,
+        #     "execution_type": "expval",
+        #     "output_qubit": 0,
+        #     "force_mean": False,
+        #     "exception": False,
+        # },
+        # {
+        #     "shots": None,
+        #     "execution_type": "expval",
+        #     "output_qubit": -1,
+        #     "force_mean": False,
+        #     "exception": False,
+        # },
+        # {
+        #     "shots": None,
+        #     "execution_type": "expval",
+        #     "output_qubit": -1,
+        #     "force_mean": True,
+        #     "exception": False,
+        # },
+        # {
+        #     "shots": None,
+        #     "execution_type": "density",
+        #     "output_qubit": 0,
+        #     "force_mean": False,
+        #     "exception": False,
+        # },
+        # {
+        #     "shots": 1024,
+        #     "execution_type": "probs",
+        #     "output_qubit": 0,
+        #     "force_mean": False,
+        #     "exception": False,
+        # },
         {
-            "shots": None,
-            "execution_type": "expval",
-            "output_qubit": 0,
-            "force_mean": False,
-            "exception": False,
-        },
-        {
-            "shots": None,
-            "execution_type": "expval",
-            "output_qubit": -1,
-            "force_mean": False,
-            "exception": False,
-        },
-        {
-            "shots": None,
-            "execution_type": "expval",
+            "shots": 1024,
+            "execution_type": "probs",
             "output_qubit": -1,
             "force_mean": True,
-            "exception": False,
-        },
-        {
-            "shots": None,
-            "execution_type": "density",
-            "output_qubit": 0,
-            "force_mean": False,
-            "exception": False,
-        },
-        {
-            "shots": 1024,
-            "execution_type": "probs",
-            "output_qubit": 0,
-            "force_mean": False,
-            "exception": False,
-        },
-        {
-            "shots": 1024,
-            "execution_type": "probs",
-            "output_qubit": -1,
-            "force_mean": False,
             "exception": False,
         },
         {

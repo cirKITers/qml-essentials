@@ -480,6 +480,9 @@ class Model:
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
+            force_mean (Optional[bool], optional): Whether to average
+                when performing n-local measurements.
+                Defaults to False.
 
         Returns:
             np.ndarray: The output of the quantum circuit.
@@ -558,6 +561,9 @@ class Model:
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
+            force_mean (Optional[bool], optional): Whether to average
+                when performing n-local measurements.
+                Defaults to False.
 
         Returns:
             np.ndarray: The output of the quantum circuit.
@@ -642,12 +648,18 @@ class Model:
         if isinstance(result, list):
             result = np.stack(result)
 
-        if (self.execution_type == "expval") and force_mean and self.output_qubit == -1:
+        if self.execution_type == "expval" and force_mean and self.output_qubit == -1:
             # exception for torch layer because it swaps batch and output dimension
             if not isinstance(self.circuit, qml.QNode):
                 result = result.mean(axis=-1)
             else:
                 result = result.mean(axis=0)
+        elif self.execution_type == "probs" and force_mean and self.output_qubit == -1:
+            # exception for torch layer because it swaps batch and output dimension
+            if not isinstance(self.circuit, qml.QNode):
+                result = result[..., -1].sum(axis=-1)
+            else:
+                result = result[1:, ...].sum(axis=0)
 
         if len(result.shape) == 3 and result.shape[0] == 1:
             result = result[0]
