@@ -56,8 +56,8 @@ def test_parameters() -> None:
         {
             "shots": 1024,
             "execution_type": "probs",
-            "output_qubit": 0,
-            "force_mean": True,
+            "output_qubit": -1,
+            "force_mean": False,
             "exception": False,
         },
         {
@@ -129,10 +129,15 @@ def test_parameters() -> None:
                         result.size == 1 or result.shape[0] == 1
                     ), f"Shape of {test_case['output_qubit']} is not correct."
                 else:
-                    # check for 2 because of n qubits
-                    assert (
-                        result.shape[0] == 2
-                    ), f"Shape of {test_case['output_qubit']} is not correct."
+                    if test_case["execution_type"] == "expval":
+                        # check for 2 because of n qubits
+                        assert (
+                            result.shape[0] == 2
+                        ), f"Shape of {test_case['output_qubit']} is not correct."
+                    elif test_case["execution_type"] == "probs":
+                        assert (
+                            result.shape[0] == 4
+                        ), f"Shape of {test_case['output_qubit']} is not correct."
             str(model)
 
 
