@@ -566,6 +566,7 @@ class Model:
 
         params = self._set_call_params(params)
         inputs = self._inputs_validation(inputs)
+        inputs.requires_grad = False
 
         tape = qml.workflow.construct_tape(circuit)(
             params=params, inputs=inputs

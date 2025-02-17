@@ -6,7 +6,7 @@ import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
 from pennylane.typing import PostprocessingFn
-import numpy as np
+import pennylane.numpy as np
 import math
 import pennylane.ops.op_math as qml_op
 
@@ -223,6 +223,7 @@ class PauliCircuit:
 
         gen = pauli.generator()
         param = pauli.parameters[0]
+        requires_grad = pauli.parameters[0].requires_grad
 
         evolved_gen, _ = PauliCircuit._evolve_clifford_pauli(
             clifford, gen, adjoint_left=False
@@ -236,6 +237,7 @@ class PauliCircuit:
             pauli_str, qubits
         )
         pauli = qml.PauliRot(param * param_factor, pauli_str, qubits)
+        pauli.parameters[0].requires_grad = requires_grad
 
         return pauli, clifford
 
@@ -489,11 +491,12 @@ class FourierTree:
     def __init__(
         self,
         quantum_tape: QuantumScript,
-        input_indices: List[int],
         force_mean: bool = False,
     ):
         self.parameters = [np.squeeze(p) for p in quantum_tape.get_parameters()]
-        self.input_indices = input_indices
+        self.input_indices = [
+            i for (i, p) in enumerate(self.parameters) if not p.requires_grad
+        ]
         self.observables = quantum_tape.observables
         self.pauli_rotations = quantum_tape.operations
         self.tree_roots = self.build_tree()
@@ -559,11 +562,11 @@ class FourierTree:
             coeffs.append(freq_terms)
 
         if self.force_mean or len(coeffs) == 1:
-            all_freqs = set([f for c in coeffs for f in c.keys()])
-            frequencies = np.array(sorted(all_freqs))
+            all_freqs = sorted(set([f for c in coeffs for f in c.keys()]))
             coefficients = np.array(
-                [np.mean([c.get(f, 0.0) for c in coeffs]) for f in frequencies]
+                [np.mean([c.get(f, 0.0) for c in coeffs]) for f in all_freqs]
             )
+            frequencies = np.array(all_freqs)
         else:
             coefficients = []
             frequencies = []
