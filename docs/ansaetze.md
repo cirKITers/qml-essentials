@@ -1,7 +1,7 @@
 # Ansaetze
 
 .. or Ansatzes as preferred by the english community.
-Anyway, we got various of the most-used Ansaetze implemented in this package.
+Anyway, we got various of the most-used Ansaetze implemented in this package. :rocket:
 
 You can load them manually by
 ```python
