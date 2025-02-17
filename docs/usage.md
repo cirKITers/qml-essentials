@@ -69,7 +69,8 @@ Otherwise multiple inputs are treated as batches of inputs.
 The output shape is determined by the `output_qubit` argument, provided in the instantiation of the model.
 When set to -1 all qubits are measured which will result in the shape being of size $n$ by default (depending on the execution type, see below).
 
-If `force_mean` flag is set when calling the model, the output is averaged to a single value (while keeping the batch dimension).
+If `force_mean` flag is set when calling the model, the output is averaged to a single value (while keeping the batch/ input dimension).
+This is usually helpful, if you want to perform a n-local measurement over all qubits where only the average over $n$ expecation values is of interest.
 
 ## Execution Type
 
