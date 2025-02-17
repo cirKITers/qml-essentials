@@ -8,6 +8,16 @@ from qml_essentials.ansaetze import Ansaetze
     options:
       heading_level: 3
 
+## Gates
+
+```python
+from qml_essentials.ansaetze import Gates
+```
+
+::: qml_essentials.ansaetze.Gates
+    options:
+      heading_level: 3
+
 ## Model
 
 ```python
