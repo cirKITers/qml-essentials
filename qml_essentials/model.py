@@ -637,33 +637,12 @@ class Model:
         if isinstance(result, list):
             result = np.stack(result)
 
-        if self.execution_type == "expval" and self.output_qubit == -1 and force_mean:
+        if (self.execution_type == "expval") and force_mean and len(result.shape) > 0:
             # exception for torch layer because it swaps batch and output dimension
             if not isinstance(self.circuit, qml.QNode):
                 result = result.mean(axis=-1)
             else:
                 result = result.mean(axis=0)
-
-        elif self.execution_type == "probs" and self.output_qubit == -1 and force_mean:
-            # output probabilities are ordered in lexicographic order
-            # accumulate those outputs where the corresponding binary index is one
-            def get_indices(length, idx):
-                indices = []
-                for i in range(2**length):
-                    if format(i, f"0{length}b")[-idx] == "1":
-                        indices.append(i)
-                return indices
-
-            accumulated_probability = []
-            for i in range(self.n_qubits):
-                accumulated_probability.append(
-                    result[:, [*get_indices(self.n_qubits, i)]].mean(axis=-1)
-                )
-
-            if not isinstance(self.circuit, qml.QNode):
-                result = np.mean(accumulated_probability, axis=-1)
-            else:
-                result = np.mean(accumulated_probability, axis=0)
 
         if len(result.shape) == 3 and result.shape[0] == 1:
             result = result[0]
