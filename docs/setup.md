@@ -9,6 +9,6 @@ Or, if you prefer poetry:
 
 `poetry add qml-essentials`
 
-Once you set things up, go ahead and checkout [how to use qml-essentials](usage.md).
+Once you have set things up, go ahead and checkout [how to use qml-essentials](usage.md).
 
 If you want to contribute to this project, a more detailled explaination is available in the [CONTRIBUTING guide](https://github.com/cirKITers/qml-essentials/blob/main/CONTRIBUTING.md). 

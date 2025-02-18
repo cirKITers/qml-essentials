@@ -81,6 +81,12 @@ class Model:
         self.noise_params: Optional[Dict[str, float]] = None
         self.execution_type: Optional[str] = "expval"
         self.shots = shots
+
+        if isinstance(output_qubit, list):
+            assert (
+                len(output_qubit) <= n_qubits
+            ), f"Size of output_qubit {len(output_qubit)} cannot be\
+            larger than number of qubits {n_qubits}."
         self.output_qubit: Union[List[int], int] = output_qubit
 
         # Copy the parameters
@@ -120,7 +126,9 @@ class Model:
         log.info(f"Using {circuit_type} circuit.")
 
         if data_reupload:
-            impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
+            impl_n_layers: int = (
+                n_layers + 1
+            )  # we need L+1 according to Schuld et al.
             self.degree = n_layers * n_qubits
         else:
             impl_n_layers: int = n_layers
@@ -220,12 +228,14 @@ class Model:
 
         if value == "probs" and self.shots is None:
             warnings.warn(
-                "Setting execution_type to probs without specifying shots.", UserWarning
+                "Setting execution_type to probs without specifying shots.",
+                UserWarning,
             )
 
         if value == "density" and self.shots is not None:
             warnings.warn(
-                "Setting execution_type to density with specified shots.", UserWarning
+                "Setting execution_type to density with specified shots.",
+                UserWarning,
             )
 
         self._execution_type = value
@@ -279,11 +289,15 @@ class Model:
             None
         """
         params_shape = (
-            self._params_shape if repeat is None else [*self._params_shape, repeat]
+            self._params_shape
+            if repeat is None
+            else [*self._params_shape, repeat]
         )
         # use existing strategy if not specified
         initialization = initialization or self._inialization_strategy
-        initialization_domain = initialization_domain or self._initialization_domain
+        initialization_domain = (
+            initialization_domain or self._initialization_domain
+        )
 
         def set_control_params(params: np.ndarray, value: float) -> np.ndarray:
             indices = self.pqc.get_control_indices(self.n_qubits)
@@ -296,7 +310,9 @@ class Model:
                 )
             else:
                 params[:, indices[0] : indices[1] : indices[2]] = (
-                    np.ones_like(params[:, indices[0] : indices[1] : indices[2]])
+                    np.ones_like(
+                        params[:, indices[0] : indices[1] : indices[2]]
+                    )
                     * value
                 )
             return params
@@ -308,7 +324,9 @@ class Model:
         elif initialization == "zeros":
             self.params: np.ndarray = np.zeros(params_shape, requires_grad=True)
         elif initialization == "pi":
-            self.params: np.ndarray = np.ones(params_shape, requires_grad=True) * np.pi
+            self.params: np.ndarray = (
+                np.ones(params_shape, requires_grad=True) * np.pi
+            )
         elif initialization == "zero-controlled":
             self.params: np.ndarray = rng.uniform(
                 *initialization_domain, params_shape, requires_grad=True
@@ -345,7 +363,8 @@ class Model:
         Returns:
             None
         """
-        if inputs is None:
+        # check for zero, because due to input validation, input cannot be none
+        if not inputs.any():
             return
 
         if data_reupload:
@@ -355,7 +374,9 @@ class Model:
             else:
                 for q in range(self.n_qubits):
                     for idx in range(inputs.shape[1]):
-                        enc[idx](inputs[:, idx], wires=q, noise_params=noise_params)
+                        enc[idx](
+                            inputs[:, idx], wires=q, noise_params=noise_params
+                        )
         else:
             if inputs.shape[1] == 1:
                 enc(inputs[:, 0], wires=0, noise_params=noise_params)
@@ -382,7 +403,9 @@ class Model:
         """
 
         for layer in range(0, self.n_layers):
-            self.pqc(params[layer], self.n_qubits, noise_params=self.noise_params)
+            self.pqc(
+                params[layer], self.n_qubits, noise_params=self.noise_params
+            )
 
             if self.data_reupload or layer == 0:
                 self._iec(
@@ -402,27 +425,26 @@ class Model:
                 qml.AmplitudeDamping(
                     self.noise_params.get("AmplitudeDamping", 0.0), wires=q
                 )
-                qml.PhaseDamping(self.noise_params.get("PhaseDamping", 0.0), wires=q)
+                qml.PhaseDamping(
+                    self.noise_params.get("PhaseDamping", 0.0), wires=q
+                )
 
         # run mixed simualtion and get density matrix
         if self.execution_type == "density":
             return qml.density_matrix(wires=list(range(self.n_qubits)))
         # run default simulation and get expectation value
         elif self.execution_type == "expval":
-            # global measurement (tensored Pauli Z, i.e. parity)
+            # n-local measurement
             if self.output_qubit == -1:
                 return [qml.expval(qml.PauliZ(q)) for q in range(self.n_qubits)]
             # local measurement(s)
             elif isinstance(self.output_qubit, int):
                 return qml.expval(qml.PauliZ(self.output_qubit))
-            # n-local measurenment
+            # parity measurenment
             elif isinstance(self.output_qubit, list):
-                obs = qml.simplify(
-                    qml.Hamiltonian(
-                        [1.0] * self.n_qubits,
-                        [qml.PauliZ(q) for q in self.output_qubit],
-                    )
-                )
+                obs = qml.PauliZ(self.output_qubit[0])
+                for out_qubit in self.output_qubit[1:]:
+                    obs = obs @ qml.PauliZ(out_qubit)
                 return qml.expval(obs)
             else:
                 raise ValueError(
@@ -439,14 +461,16 @@ class Model:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
     def _draw(self, inputs=None, figure=False) -> None:
-        if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
+        if not isinstance(self.circuit, qml.QNode):
             # TODO: throws strange argument error if not catched
             return ""
 
         inputs = self._inputs_validation(inputs)
 
         if figure:
-            result = qml.draw_mpl(self.circuit)(params=self.params, inputs=inputs)
+            result = qml.draw_mpl(self.circuit)(
+                params=self.params, inputs=inputs
+            )
         else:
             result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
         return result
@@ -488,9 +512,9 @@ class Model:
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
-            force_mean (bool, optional): If the average over multiple
-                expectation values for each observable should be returned,
-                instead of individual values. Defaults to False
+            force_mean (bool, optional): Whether to average
+                when performing n-local measurements.
+                Defaults to False.
 
         Returns:
             np.ndarray: The output of the quantum circuit.
@@ -545,6 +569,10 @@ class Model:
         Returns:
             FourierTree: The fourier tree constructed from the circuit.
         """
+        if input is None or input == 0.0:
+            raise ValueError(
+                "When building Fourier Tree, we need a non zero input."
+            )
         if self.as_pauli_circuit:
             circuit = self.circuit
         else:
@@ -646,9 +674,9 @@ class Model:
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
-            force_mean (bool, optional): If the average over multiple
-                expectation values for each observable should be returned,
-                instead of individual values. Defaults to False
+            force_mean (bool, optional): Whether to average
+                when performing n-local measurements.
+                Defaults to False.
 
         Returns:
             np.ndarray: The output of the quantum circuit.
@@ -707,13 +735,16 @@ class Model:
 
         if result is None:
             # if density matrix requested or noise params used
-            if self.execution_type == "density" or self.noise_params is not None:
+            if (
+                self.execution_type == "density"
+                or self.noise_params is not None
+            ):
                 result = self.circuit_mixed(
                     params=params,  # use arraybox params
                     inputs=inputs,
                 )
             else:
-                if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
+                if not isinstance(self.circuit, qml.QNode):
                     result = self.circuit(
                         inputs=inputs,
                     )
@@ -722,20 +753,33 @@ class Model:
                         params=params,  # use arraybox params
                         inputs=inputs,
                     )
+                    tape = qml.workflow.construct_tape(self.circuit)(
+                        params=params, inputs=inputs
+                    )
 
         if isinstance(result, list):
             result = np.stack(result)
 
-        if self.execution_type == "expval" and self.output_qubit == -1:
-
-            # Calculating mean value after stacking, to not
-            # discard gradient information
-            if force_mean:
-                # exception for torch layer because it swaps batch and output dimension
-                if isinstance(self.circuit, qml.qnn.torch.TorchLayer):
-                    result = result.mean(axis=-1)
-                else:
-                    result = result.mean(axis=0)
+        if (
+            self.execution_type == "expval"
+            and force_mean
+            and self.output_qubit == -1
+        ):
+            # exception for torch layer because it swaps batch and output dimension
+            if not isinstance(self.circuit, qml.QNode):
+                result = result.mean(axis=-1)
+            else:
+                result = result.mean(axis=0)
+        elif (
+            self.execution_type == "probs"
+            and force_mean
+            and self.output_qubit == -1
+        ):
+            # exception for torch layer because it swaps batch and output dimension
+            if not isinstance(self.circuit, qml.QNode):
+                result = result[..., -1].sum(axis=-1)
+            else:
+                result = result[1:, ...].sum(axis=0)
 
         if len(result.shape) == 3 and result.shape[0] == 1:
             result = result[0]

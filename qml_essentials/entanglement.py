@@ -49,7 +49,7 @@ class Entanglement:
                 params = model.params
 
         n_samples = params.shape[-1]
-        mw_measure = np.zeros(n_samples, dtype=complex)
+        mw_measure = np.zeros(n_samples)
         qb = list(range(model.n_qubits))
 
         # TODO: vectorize in future iterations
@@ -59,17 +59,23 @@ class Entanglement:
             # explicitly set execution type because everything else won't work
             U = model(params=params[:, :, i], execution_type="density", **kwargs)
 
+            # Formula 6 in https://doi.org/10.48550/arXiv.quant-ph/0305094
+            # ---
             entropy = 0
-
             for j in range(model.n_qubits):
                 density = qml.math.partial_trace(U, qb[:j] + qb[j + 1 :])
+                # only real values, because imaginary part will be separate
+                # in all following calculations anyway
+                # entropy should be 1/2 <= entropy <= 1
                 entropy += np.trace((density @ density).real)
 
-            mw_measure[i] = 1 - entropy / model.n_qubits
+            # inverse averaged entropy and scale to [0, 1]
+            mw_measure[i] = 2 * (1 - entropy / model.n_qubits)
+            # ---
 
-        mw = 2 * np.sum(mw_measure.real) / n_samples
-
+        # Average all iterated states
         # catch floating point errors
-        entangling_capability = min(max(mw, 0.0), 1.0)
+        entangling_capability = min(max(mw_measure.mean(), 0.0), 1.0)
+        log.debug(f"Variance of measure: {mw_measure.var()}")
 
         return float(entangling_capability)

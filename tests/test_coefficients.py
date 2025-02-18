@@ -1,10 +1,14 @@
 from qml_essentials.model import Model
 from qml_essentials.coefficients import Coefficients
+from pennylane.fourier import coefficients as pcoefficients
 
 import numpy as np
 import pennylane.numpy as pnp
 import logging
 import pytest
+
+from functools import partial
+
 
 logger = logging.getLogger(__name__)
 
@@ -14,24 +18,21 @@ def test_coefficients() -> None:
     test_cases = [
         {
             "circuit_type": "Circuit_1",
-            "n_qubits": 1,
-            "n_layers": 3,
-            "n_samples": 200,
-            "output_qubit": 0,
+            "n_qubits": 3,
+            "n_layers": 1,
+            "output_qubit": [0, 1],
         },
         {
             "circuit_type": "Circuit_9",
             "n_qubits": 4,
             "n_layers": 1,
-            "n_samples": 200,
             "output_qubit": 0,
         },
         {
-            "circuit_type": "Circuit_9",
-            "n_qubits": 4,
+            "circuit_type": "Circuit_19",
+            "n_qubits": 5,
             "n_layers": 1,
-            "n_samples": 200,
-            "output_qubit": [0, 1, 2, 3],
+            "output_qubit": 0,
         },
     ]
     reference_inputs = np.linspace(-np.pi, np.pi, 10)
@@ -41,12 +42,10 @@ def test_coefficients() -> None:
             n_qubits=test_case["n_qubits"],
             n_layers=test_case["n_layers"],
             circuit_type=test_case["circuit_type"],
-            data_reupload=True,
-            initialization="random",
             output_qubit=test_case["output_qubit"],
         )
 
-        coeffs = Coefficients.sample_coefficients(model)
+        coeffs, _ = Coefficients.get_spectrum(model)
 
         assert (
             len(coeffs) == model.degree * 2 + 1
@@ -54,6 +53,13 @@ def test_coefficients() -> None:
         assert np.isclose(
             np.sum(coeffs).imag, 0.0, rtol=1.0e-5
         ), "Imaginary part is not zero"
+
+        partial_circuit = partial(model, model.params)
+        ref_coeffs = pcoefficients(partial_circuit, 1, model.degree)
+
+        assert np.allclose(
+            coeffs, ref_coeffs, rtol=1.0e-5
+        ), "Coefficients don't match the pennylane reference"
 
         for ref_input in reference_inputs:
             exp_model = model(params=None, inputs=ref_input)
@@ -72,22 +78,22 @@ def test_coefficients() -> None:
 def test_coefficients_tree() -> None:
     test_cases = [
         {
+            "circuit_type": "Circuit_1",
+            "n_qubits": 3,
+            "n_layers": 1,
+            "output_qubit": [0, 1],
+        },
+        {
+            "circuit_type": "Circuit_9",
+            "n_qubits": 4,
+            "n_layers": 1,
+            "output_qubit": 0,
+        },
+        {
             "circuit_type": "Circuit_19",
-            "n_qubits": 1,
-            "n_layers": 3,
-            "output_qubit": 0,
-        },
-        {
-            "circuit_type": "Circuit_9",
-            "n_qubits": 4,
+            "n_qubits": 3,
             "n_layers": 1,
             "output_qubit": 0,
-        },
-        {
-            "circuit_type": "Circuit_9",
-            "n_qubits": 4,
-            "n_layers": 1,
-            "output_qubit": [0, 1, 2, 3],
         },
     ]
 
@@ -97,18 +103,15 @@ def test_coefficients_tree() -> None:
             n_qubits=test_case["n_qubits"],
             n_layers=test_case["n_layers"],
             circuit_type=test_case["circuit_type"],
-            data_reupload=True,
-            initialization="random",
             output_qubit=test_case["output_qubit"],
-            as_pauli_circuit=True,
+            as_pauli_circuit=False,
         )
 
-        fft_coeffs = Coefficients.sample_coefficients(model)
-        fft_coeffs = np.fft.fftshift(fft_coeffs)
+        fft_coeffs, fft_freqs = Coefficients.get_spectrum(model, shift=True)
 
         coeff_tree = model.build_coefficients_tree(
             pnp.tensor(model.params),
-            inputs=None,
+            inputs=1.0, # we need a non zero input.
             force_mean=True,
             execution_type="expval",
         )
@@ -131,13 +134,69 @@ def test_coefficients_tree() -> None:
             exp_fourier_fft = Coefficients.evaluate_Fourier_series(
                 coefficients=fft_coeffs,
                 input=ref_input,
+                frequencies=fft_freqs
             )
 
             exp_fourier = Coefficients.evaluate_Fourier_series(
                 coefficients=analytical_coeffs[0],
                 input=ref_input,
+                frequencies=analytical_freqs[0],
             )
 
             assert np.isclose(
                 exp_fourier_fft, exp_fourier, atol=1.0e-5
-            ), "Fourier series does not match model expectation"
+            ), f"FFT and analytical Fourier series do not match"
+
+
+@pytest.mark.unittest
+def test_oversampling_time() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+
+    assert (
+        Coefficients.get_spectrum(model, mts=2)[0].shape[0] == 10
+    ), "Oversampling time failed"
+
+
+@pytest.mark.unittest
+def test_oversampling_frequency() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+
+    assert (
+        Coefficients.get_spectrum(model, mfs=2)[0].shape[0] == 9
+    ), "Oversampling frequency failed"
+
+
+@pytest.mark.unittest
+def test_shift() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+    coeffs, freqs = Coefficients.get_spectrum(model, shift=True)
+
+    assert (
+        np.abs(coeffs) == np.abs(coeffs[::-1])
+    ).all(), "Shift failed. Spectrum must be symmetric."
+
+
+@pytest.mark.smoketest
+def test_frequencies() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+    coeffs, freqs = Coefficients.get_spectrum(model, shift=True)
+
+    assert (
+        freqs.size == coeffs.size
+    ), "Frequencies and coefficients must have the same length."

@@ -1,4 +1,10 @@
-[![version](https://img.shields.io/badge/version-0.1.12-green.svg)](https://ea3a0fbb-599f-4d83-86f1-0e71abe27513.ka.bw-cloud-instance.org/lc3267/quantum/)  [![Quality](https://github.com/cirKITers/qml-essentials/actions/workflows/quality.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/quality.yml) [![Testing](https://github.com/cirKITers/qml-essentials/actions/workflows/test.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/test.yml) [![Documentation](https://github.com/cirKITers/qml-essentials/actions/workflows/docs.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/docs.yml)
+<p align="center">
+<img src="logo.svg" width="200" title="Logo">
+</p>
+<h3 align="center">A toolbox to make working with QML models easier.</h3>
+<br/>
+
+[![Quality](https://github.com/cirKITers/qml-essentials/actions/workflows/quality.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/quality.yml) [![Testing](https://github.com/cirKITers/qml-essentials/actions/workflows/test.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/test.yml) [![Documentation](https://github.com/cirKITers/qml-essentials/actions/workflows/docs.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/docs.yml)
 
 
 This repo contains some of the commonly used Ansaetze and coding stuff required for working with QML and Data-Reuploading models.

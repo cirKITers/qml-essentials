@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "qml-essentials"
-version = "0.1.19"
-description = ""
+version = "0.1.21"
+description = "A toolbox to make working with QML models easier."
 authors = ["Melvin Strobl <melvin.strobl@kit.edu>", "Maja Franz <maja.franz@oth-regensburg.de>"]
 maintainers = ["Melvin Strobl <melvin.strobl@kit.edu>"]
 readme = "README.md"
@@ -13,7 +13,7 @@ keywords = ["quantum", "quantum machine learning", "qml"]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
-pennylane = "^0.39.0"
+pennylane = "^0.40.0"
 
 [tool.poetry.group.dev]
 optional = true
@@ -32,8 +32,8 @@ optional = true
 
 [tool.poetry.group.docs.dependencies]
 mkdocs = "^1.6.1"
-mkdocs-material = "^9.5.49"
-mkdocstrings-python = "^1.13.0"
+mkdocs-material = "^9.6.4"
+mkdocstrings-python = "^1.15.0"
 markdown-include = "^0.8.1"
 ipykernel = "^6.29.5"
 
