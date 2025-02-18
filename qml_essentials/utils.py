@@ -183,14 +183,42 @@ class PauliCircuit:
 
     @staticmethod
     def _is_skippable(operation: Operator) -> bool:
+        """
+        Determines is an operator can be ignored when building the Pauli
+        Clifford circuit. Currently this only contains barriers.
+
+        Args:
+            operation (Operator): Gate operation
+
+        Returns:
+            bool: Whether the operation can be skipped.
+        """
         return isinstance(operation, SKIPPABLE_OPERATIONS)
 
     @staticmethod
     def _is_clifford(operation: Operator) -> bool:
+        """
+        Determines is an operator is a Clifford gate.
+
+        Args:
+            operation (Operator): Gate operation
+
+        Returns:
+            bool: Whether the operation is Clifford.
+        """
         return isinstance(operation, CLIFFORD_GATES)
 
     @staticmethod
     def _is_pauli_rotation(operation: Operator) -> bool:
+        """
+        Determines is an operator is a Pauli rotation gate.
+
+        Args:
+            operation (Operator): Gate operation
+
+        Returns:
+            bool: Whether the operation is a Pauli operation.
+        """
         return isinstance(operation, PAULI_ROTATION_GATES)
 
     @staticmethod
@@ -383,6 +411,11 @@ class PauliCircuit:
 
 
 class CoefficientsTreeNode:
+    """
+    Representation of a node in the coefficients tree for the algorithm by
+    Nemkov et al.
+    """
+
     def __init__(
         self,
         parameter_idx: Optional[int],
@@ -392,6 +425,19 @@ class CoefficientsTreeNode:
         left: Optional[CoefficientsTreeNode] = None,
         right: Optional[CoefficientsTreeNode] = None,
     ):
+        """
+        Coefficient tree node initialisation. Each node has information about
+        its creation context and it's children, i.e.:
+
+        Args:
+            parameter_idx (Optional[int]): Index of the corresponding parameter index i.
+            observable (Operator): The nodes observable to obtain the
+                expectation value that contributes to the constant term.
+            is_sine_factor (bool): If this node belongs to a sine coefficient.
+            is_cosine_factor (bool): If this node belongs to a cosine coefficient.
+            left (Optional[CoefficientsTreeNode]): left child (if any).
+            right (Optional[CoefficientsTreeNode]): right child (if any).
+        """
         self.parameter_idx = parameter_idx
 
         assert not (
@@ -423,6 +469,17 @@ class CoefficientsTreeNode:
         self.right = right
 
     def evaluate(self, parameters: list[float]) -> float:
+        """
+        Recursive function to evaluate the expectation of the coefficient tree,
+        starting from the current node.
+
+        Args:
+            parameters (list[float]): The parameters, by which the circuit (and
+                therefore the tree) is parametrised.
+
+        Returns:
+            float: The expectation for the current node and it's children.
+        """
         factor = (
             parameters[self.parameter_idx]
             if self.parameter_idx is not None
@@ -446,8 +503,34 @@ class CoefficientsTreeNode:
         return factor * sum_children
 
     def get_leafs(
-        self, sin_list, cos_list, existing_leafs=[]
+        self,
+        sin_list: List[int],
+        cos_list: List[int],
+        existing_leafs: List[TreeLeaf] = [],
     ) -> List[TreeLeaf]:
+        """
+        Traverse the tree starting from the current node, to obtain the tree
+        leafs only.
+        The leafs correspond to the terms in the sine-cosine tree
+        representation that eventually are used to obtain coefficients and
+        frequencies.
+        Sine and cosine lists are recursively passed to the children until a
+        leaf is reached (top to bottom).
+        Leafs are then passed bottom to top to the caller.
+
+        Args:
+            sin_list (List[int]): Current number of sine contributions for each
+                parameter. Has the same length as the parameters, as each
+                position corresponds to one parameter.
+            cos_list (List[int]):  Current number of cosine contributions for
+                each parameter. Has the same length as the parameters, as each
+                position corresponds to one parameter.
+            existing_leafs (List[TreeLeaf]): Current list of leaf nodes from
+                parents.
+
+        Returns:
+            List[TreeLeaf]: Updated list of leaf nodes.
+        """
 
         if self.is_sine_factor:
             sin_list[self.parameter_idx] += 1
@@ -481,18 +564,76 @@ class CoefficientsTreeNode:
 
 @dataclass
 class TreeLeaf:
-    sin_indices: np.ndarray
-    cos_indices: np.ndarray
+    """
+    Coefficient tree leafs according to the algorithm by Nemkov et al., which
+    correspond to the terms in the sine-cosine tree representation that
+    eventually are used to obtain coefficients and frequencies.
+
+        Attributes:
+            sin_indices (List[int]): Current number of sine contributions for each
+                parameter. Has the same length as the parameters, as each
+                position corresponds to one parameter.
+            cos_list (List[int]):  Current number of cosine contributions for
+                each parameter. Has the same length as the parameters, as each
+                position corresponds to one parameter.
+            term (np.complex): Constant factor of the leaf, depending on the
+                expectation value of the observable, and a phase.
+    """
+
+    sin_indices: List[int]
+    cos_indices: List[int]
     term: np.complex128
 
 
 class FourierTree:
+    """
+    Sine-cosine tree representation for the algorithm by Nemkov et al.
+    This tree can be used to obtain analytical Fourier coefficients for a given
+    Pauli-Clifford circuit.
+    """
 
     def __init__(
         self,
         quantum_tape: QuantumScript,
         force_mean: bool = False,
     ):
+        """
+        The tree can be initialised with the operation tape of a Pauli-Clifford
+        circuit.
+        Currently, only one input feature is supported.
+
+        **Usage**:
+        ```
+        # initialise some QNode
+        circuit = qml.QNode(
+            circuit_fkt,  # function for your circuit definition
+            qml.device("default.qubit", wires=5),
+        )
+
+        # Obtain the Pauli-Clifford circuit representation and it's tape
+        pauli_circuit = PauliCircuit.from_parameterised_circuit(circuit)
+        tape = qml.workflow.construct_tape(circuit)(
+            params=params, inputs=inputs
+        )
+
+        # initialise FourierTree
+        tree = FourierTree(tape)
+
+        # get expectaion value
+        exp = tree.evaluate()
+
+        # Get spectrum (for each observable, we have one list element)
+        freq_list, coeff_list = tree.spectrum()
+        ```
+
+        Args:
+            quantum_tape (QuantumScript): The PennyLane operation tape of the
+                Pauli-Clifford circuit, consisting of gate operations, and
+                observables. Note that gates with input parameters are required
+                to have the flag requires_grad=False.
+            force_mean (bool, optional): If the mean of the observables should
+                be taken. Defaults to False.
+        """
         self.parameters = [np.squeeze(p) for p in quantum_tape.get_parameters()]
         self.input_indices = [
             i for (i, p) in enumerate(self.parameters) if not p.requires_grad
@@ -504,6 +645,16 @@ class FourierTree:
         self.leafs: List[List[TreeLeaf]] = self._get_tree_leafs()
 
     def build_tree(self) -> List[CoefficientsTreeNode]:
+        """
+        Creates the coefficient tree, i.e. it creates and initialises the tree
+        nodes.
+        Leafs can be obtained separately in _get_tree_leafs, once the tree is
+        set up.
+
+        Returns:
+            List[CoefficientsTreeNode]: The list of root nodes (one root for
+                each observable).
+        """
         tree_roots = []
         for obs in self.observables:
             pauli_rotation_indices = np.arange(
@@ -514,6 +665,13 @@ class FourierTree:
         return tree_roots
 
     def _get_tree_leafs(self) -> List[List[TreeLeaf]]:
+        """
+        Obtain all Leaf Nodes with its sine- and cosine terms.
+
+        Returns:
+            List[List[TreeLeaf]]: For each observable (root), the list of leaf
+                nodes.
+        """
         leafs = []
         for root in self.tree_roots:
             sin_list = np.zeros(len(self.parameters), dtype=np.int32)
@@ -522,6 +680,18 @@ class FourierTree:
         return leafs
 
     def get_spectrum(self) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+        """
+        Computes the Fourier spectrum for the tree, consisting of the
+        frequencies and its corresponding coefficinets.
+        If the frag force_mean was set in the constructor, the mean coefficient
+        over all observables (roots) are computed.
+
+        Returns:
+            Tuple[List[np.ndarray], List[np.ndarray]]:
+                - List of frequencies, one list for each observable (root).
+                - List of corresponding coefficents, one list for each
+                  observable (root).
+        """
         parameter_indices = [
             i
             for i in range(len(self.parameters))
@@ -551,6 +721,48 @@ class FourierTree:
     def _freq_terms_to_coeffs(
         self, coeffs: List[Dict[int, np.ndarray]]
     ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+        """
+        Given a list of dictionaries of the form:
+        [
+            {
+                freq_obs1_1: coeff1,
+                freq_obs1_2: coeff2,
+                ...
+             },
+            {
+                freq_obs2_1: coeff3,
+                freq_obs2_2: coeff4,
+                ...
+             }
+            ...
+        ],
+        Compute two separate lists of frequencies and coefficients.
+        such that:
+        freqs: [
+                [freq_obs1_1, freq_obs1_1, ...],
+                [freq_obs2_1, freq_obs2_1, ...],
+                ...
+        ]
+        coeffs: [
+                [coeff1, coeff2, ...],
+                [coeff3, coeff4, ...],
+                ...
+        ]
+
+        If force_mean was set in the constructor of the FourierTree,
+        coefficients are averaged over frequencies. The length of the resulting
+        frequency and coefficent list is then 1
+
+        Args:
+            coeffs (List[Dict[int, np.ndarray]]): Frequency->Coefficients
+                dictionary list, one dict for each observable (root).
+
+        Returns:
+            Tuple[List[np.ndarray], List[np.ndarray]]:
+                - List of frequencies, one list for each observable (root).
+                - List of corresponding coefficents, one list for each
+                  observable (root).
+        """
         frequencies = []
         coefficients = []
         if self.force_mean:
@@ -573,7 +785,23 @@ class FourierTree:
 
     def _compute_leaf_factors(
         self, leaf: TreeLeaf, parameter_indices: List[int]
-    ):
+    ) -> Tuple[float, int, int]:
+        """
+        Computes the constant coefficient factor for each leaf.
+        Additionally sine and cosine contributions of the input parameters for
+        this leaf are returned, which are required to obtain the corresponding
+        frequencies.
+
+        Args:
+            leaf (TreeLeaf): The leaf for which to compute the factor.
+            parameter_indices (List[int]): Variational parameter indices.
+
+        Returns:
+            Tuple[float, int, int]:
+                - float: the constant factor for the leaf
+                - int: number of sine contributions of the input
+                - int: number of cosine contributions of the input
+        """
         leaf_factor = 1.0
         for i in parameter_indices:
             interm_factor = (
@@ -582,6 +810,7 @@ class FourierTree:
             )
             leaf_factor = leaf_factor * interm_factor
 
+        # Get number of sine and cosine factors to which the input contributes
         c = np.sum([leaf.cos_indices[k] for k in self.input_indices])
         s = np.sum([leaf.sin_indices[k] for k in self.input_indices])
 
@@ -590,6 +819,15 @@ class FourierTree:
         return leaf_factor, s, c
 
     def evaluate(self) -> np.ndarray:
+        """
+        Evaluate the expectation value of the corresponding circuit, based on
+        the sine and cosine representation of the tree.
+        If force_mean was set in the constructor, the mean for all observables
+        is returned.
+
+        Returns:
+            np.ndarray: the expectation values (one for each observable/root).
+        """
         results = np.zeros(len(self.tree_roots))
         for i, root in enumerate(self.tree_roots):
             results[i] = np.real_if_close(root.evaluate(self.parameters))
@@ -607,6 +845,22 @@ class FourierTree:
         is_sine: bool = False,
         is_cosine: bool = False,
     ) -> CoefficientsTreeNode:
+        """
+        Builds the Fourier-Tree according to the algorithm by Nemkov et al.
+
+        Args:
+            observable (Operator): Current observable
+            pauli_rotation_indices (List[int]): Indices of remaining Pauli
+                rotation gates. Gates itself are attributes of the class.
+            parameter_idx (Optional[int]): Index of the current parameter.
+                Parameters itself are attributes of the class.
+            is_sine (bool): If the current node is a sine (left) node.
+            is_cosine (bool): If the current node is a cosine (right) node.
+
+        Returns:
+            CoefficientsTreeNode: The resulting node. Children are set
+            recursively. The top level receives the tree root.
+        """
 
         # remove commuting paulis
         idx = len(pauli_rotation_indices) - 1
@@ -654,6 +908,18 @@ class FourierTree:
     def _create_new_observable(
         self, pauli: Operator, observable: Operator
     ) -> Operator:
+        """
+        Utility function to obtain the new observable for a tree node, if the
+        last Pauli and the observable do not commute.
+
+        Args:
+            pauli (Operator): The generator of the last Pauli rotation in the
+            operation sequence.
+            observable (Operator): The current observable.
+
+        Returns:
+            Operator: The new observable.
+        """
 
         pauli = pauli[0] / pauli.coeffs[0]  # ignore coefficients of generator
         obs = pauli @ observable
