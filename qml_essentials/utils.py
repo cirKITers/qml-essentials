@@ -825,8 +825,8 @@ class FourierTree:
             leaf_factor = leaf_factor * interm_factor
 
         # Get number of sine and cosine factors to which the input contributes
-        c = np.sum([leaf.cos_indices[k] for k in self.input_indices])
-        s = np.sum([leaf.sin_indices[k] for k in self.input_indices])
+        c = np.sum([leaf.cos_indices[k] for k in self.input_indices], dtype=np.int32)
+        s = np.sum([leaf.sin_indices[k] for k in self.input_indices], dtype=np.int32)
 
         leaf_factor = leaf.term * leaf_factor * 0.5 ** (s + c)
 
