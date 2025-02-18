@@ -105,10 +105,14 @@ class Gates:
             for wire in wires:
                 qml.BitFlip(noise_params.get("BitFlip", 0.0), wires=wire)
                 qml.PhaseFlip(noise_params.get("PhaseFlip", 0.0), wires=wire)
-                qml.DepolarizingChannel(noise_params.get("Depolarizing", 0.0), wires=wire)
+                qml.DepolarizingChannel(
+                    noise_params.get("Depolarizing", 0.0), wires=wire
+                )
 
     @staticmethod
-    def GateError(w: np.ndarray, noise_params: Optional[Dict[str, float]] = None) -> np.ndarray:
+    def GateError(
+        w: np.ndarray, noise_params: Optional[Dict[str, float]] = None
+    ) -> np.ndarray:
         """
         Applies a gate error to the given rotation angle(s).
 
@@ -131,7 +135,10 @@ class Gates:
             The modified rotation angle(s) after applying the gate error.
         """
         if Gates.rng is None:
-            raise ValueError("Gates.rng is not initialised, yet. Forgot to call" "`Gates.init_rng(seed)`?")
+            raise ValueError(
+                "Gates.rng is not initialised, yet. Forgot to call\
+                `Gates.init_rng(seed)`?"
+            )
         if noise_params is not None:
             w += Gates.rng.normal(0, noise_params["GateError"], w.shape)
         return w
@@ -162,7 +169,10 @@ class Gates:
             All parameters are optional and default to 0.0 if not provided.
         """
         if Gates.rng is None:
-            raise ValueError("Gates.rng is not initialised, yet. Forgot to call" "`Gates.init_rng(seed)`?")
+            raise ValueError(
+                "Gates.rng is not initialised, yet. Forgot to call\
+                `Gates.init_rng(seed)`?"
+            )
         if noise_params is not None and "GateError" in noise_params:
             phi += Gates.rng.normal(0, noise_params["GateError"])
             theta += Gates.rng.normal(0, noise_params["GateError"])
@@ -317,10 +327,7 @@ class Gates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        if Gates.rng is None:
-            raise ValueError("Gates.rng is not initialised, yet. Forgot to call" "`Gates.init_rng(seed)`?")
-        if noise_params is not None and "GateError" in noise_params:
-            w += Gates.rng.normal(0, noise_params["GateError"], w.shape)
+        w = Gates.GateError(w, noise_params)
         qml.CRZ(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
