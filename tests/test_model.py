@@ -382,6 +382,17 @@ def test_ansaetze() -> None:
         execution_type="density",
     )
 
+    with pytest.warns(UserWarning):
+        _ = model(
+            model.params,
+            inputs=None,
+            noise_params={
+                "UnsupportedNoise": 0.1,
+            },
+            cache=False,
+            execution_type="density",
+        )
+
 
 @pytest.mark.unittest
 def test_available_ansaetze() -> None:
