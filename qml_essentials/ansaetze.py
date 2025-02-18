@@ -71,8 +71,13 @@ class Circuit(ABC):
 
 
 class Gates:
-    rng = np.random.default_rng(1000)
+    rng = None
 
+    @staticmethod
+    def init_rng(seed: int):
+        Gates.rng = np.random.default_rng(seed)
+
+    @staticmethod
     def Noise(
         wires: Union[int, List[int]], noise_params: Optional[Dict[str, float]] = None
     ) -> None:
@@ -104,6 +109,7 @@ class Gates:
                     noise_params.get("Depolarizing", 0.0), wires=wire
                 )
 
+    @staticmethod
     def GateError(
         w: np.ndarray, noise_params: Optional[Dict[str, float]] = None
     ) -> np.ndarray:
@@ -128,10 +134,16 @@ class Gates:
         np.ndarray
             The modified rotation angle(s) after applying the gate error.
         """
+        if Gates.rng is None:
+            raise ValueError(
+                "Gates.rng is not initialised, yet. Forgot to call"
+                "`Gates.init_rng(seed)`?"
+            )
         if noise_params is not None:
             w += Gates.rng.normal(0, noise_params["GateError"], w.shape)
         return w
 
+    @staticmethod
     def Rot(phi, theta, omega, wires, noise_params=None):
         """
         Applies a rotation gate to the given wires and adds `Noise`
@@ -156,6 +168,11 @@ class Gates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
+        if Gates.rng is None:
+            raise ValueError(
+                "Gates.rng is not initialised, yet. Forgot to call"
+                "`Gates.init_rng(seed)`?"
+            )
         if noise_params is not None and "GateError" in noise_params:
             phi += Gates.rng.normal(0, noise_params["GateError"])
             theta += Gates.rng.normal(0, noise_params["GateError"])
@@ -163,6 +180,7 @@ class Gates:
         qml.Rot(phi, theta, omega, wires=wires)
         Gates.Noise(wires, noise_params)
 
+    @staticmethod
     def RX(w, wires, noise_params=None):
         """
         Applies a rotation around the X axis to the given wires and adds `Noise`
@@ -186,6 +204,7 @@ class Gates:
         qml.RX(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
+    @staticmethod
     def RY(w, wires, noise_params=None):
         """
         Applies a rotation around the Y axis to the given wires and adds `Noise`
@@ -210,6 +229,7 @@ class Gates:
         qml.RY(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
+    @staticmethod
     def RZ(w, wires, noise_params=None):
         """
         Applies a rotation around the Z axis to the given wires and adds `Noise`
@@ -233,6 +253,7 @@ class Gates:
         qml.RZ(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
+    @staticmethod
     def CRX(w, wires, noise_params=None):
         """
         Applies a controlled rotation around the X axis to the given wires
@@ -258,6 +279,7 @@ class Gates:
         qml.CRX(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
+    @staticmethod
     def CRY(w, wires, noise_params=None):
         """
         Applies a controlled rotation around the Y axis to the given wires
@@ -283,6 +305,7 @@ class Gates:
         qml.CRY(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
+    @staticmethod
     def CRZ(w, wires, noise_params=None):
         """
         Applies a controlled rotation around the Z axis to the given wires
@@ -304,11 +327,17 @@ class Gates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
+        if Gates.rng is None:
+            raise ValueError(
+                "Gates.rng is not initialised, yet. Forgot to call"
+                "`Gates.init_rng(seed)`?"
+            )
         if noise_params is not None and "GateError" in noise_params:
             w += Gates.rng.normal(0, noise_params["GateError"], w.shape)
         qml.CRZ(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
+    @staticmethod
     def CX(wires, noise_params=None):
         """
         Applies a controlled NOT gate to the given wires and adds `Noise`
@@ -330,6 +359,7 @@ class Gates:
         qml.CNOT(wires=wires)
         Gates.Noise(wires, noise_params)
 
+    @staticmethod
     def CY(wires, noise_params=None):
         """
         Applies a controlled Y gate to the given wires and adds `Noise`
@@ -351,6 +381,7 @@ class Gates:
         qml.CY(wires=wires)
         Gates.Noise(wires, noise_params)
 
+    @staticmethod
     def CZ(wires, noise_params=None):
         """
         Applies a controlled Z gate to the given wires and adds `Noise`
@@ -372,6 +403,7 @@ class Gates:
         qml.CZ(wires=wires)
         Gates.Noise(wires, noise_params)
 
+    @staticmethod
     def H(wires, noise_params=None):
         """
         Applies a Hadamard gate to the given wires and adds `Noise`
