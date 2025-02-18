@@ -65,7 +65,8 @@ class Model:
             shots (Optional[int], optional): The number of shots to use for
                 the quantum device. Defaults to None.
             random_seed (int, optional): seed for the random number generator
-                in initialization is "random", Defaults to 1000.
+                in initialization is "random" and for random noise parameters.
+                Defaults to 1000.
 
         Returns:
             None
@@ -97,6 +98,9 @@ class Model:
             )()
         else:
             self.pqc = circuit_type()
+
+        # Initialize rng in Gates
+        Gates.init_rng(random_seed)
 
         # Initialize encoding
         # first check if we have a str, list or callable
