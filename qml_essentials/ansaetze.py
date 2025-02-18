@@ -75,6 +75,14 @@ class Gates:
 
     @staticmethod
     def init_rng(seed: int):
+        """
+        Initializes the random number generator with the given seed.
+
+        Parameters
+        ----------
+        seed : int
+            The seed for the random number generator.
+        """
         Gates.rng = np.random.default_rng(seed)
 
     @staticmethod
@@ -134,11 +142,6 @@ class Gates:
         np.ndarray
             The modified rotation angle(s) after applying the gate error.
         """
-        if Gates.rng is None:
-            raise ValueError(
-                "Gates.rng is not initialised, yet. Forgot to call\
-                `Gates.init_rng(seed)`?"
-            )
         if noise_params is not None:
             w += Gates.rng.normal(0, noise_params["GateError"], w.shape)
         return w
@@ -168,11 +171,6 @@ class Gates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        if Gates.rng is None:
-            raise ValueError(
-                "Gates.rng is not initialised, yet. Forgot to call\
-                `Gates.init_rng(seed)`?"
-            )
         if noise_params is not None and "GateError" in noise_params:
             phi += Gates.rng.normal(0, noise_params["GateError"])
             theta += Gates.rng.normal(0, noise_params["GateError"])
