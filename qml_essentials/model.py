@@ -173,7 +173,7 @@ class Model:
         return self._noise_params
 
     @noise_params.setter
-    def noise_params(self, value: Optional[Dict[str, float]]) -> None:
+    def noise_params(self, kvs: Optional[Dict[str, float]]) -> None:
         """
         Sets the noise parameters of the model.
 
@@ -185,33 +185,34 @@ class Model:
             None
         """
         # set to None if only zero values provided
-        if value is not None and all(np == 0.0 for np in value.values()):
-            value = None
+        if kvs is not None and all(np == 0.0 for np in kvs.values()):
+            kvs = None
 
         # set default values
-        if value is not None:
-            value.setdefault("BitFlip", 0.0)
-            value.setdefault("PhaseFlip", 0.0)
-            value.setdefault("Depolarizing", 0.0)
-            value.setdefault("AmplitudeDamping", 0.0)
-            value.setdefault("PhaseDamping", 0.0)
-            value.setdefault("GateError", 0.0)
+        if kvs is not None:
+            kvs.setdefault("BitFlip", 0.0)
+            kvs.setdefault("PhaseFlip", 0.0)
+            kvs.setdefault("Depolarizing", 0.0)
+            kvs.setdefault("AmplitudeDamping", 0.0)
+            kvs.setdefault("PhaseDamping", 0.0)
+            kvs.setdefault("GateError", 0.0)
 
-        # check if there are any keys not supported
-        for key in value.keys():
-            if key not in [
-                "BitFlip",
-                "PhaseFlip",
-                "Depolarizing",
-                "AmplitudeDamping",
-                "PhaseDamping",
-                "GateError",
-            ]:
-                warnings.warn(
-                    f"Noise type {key} is not supported by this package", UserWarning
-                )
+            # check if there are any keys not supported
+            for key in kvs.keys():
+                if key not in [
+                    "BitFlip",
+                    "PhaseFlip",
+                    "Depolarizing",
+                    "AmplitudeDamping",
+                    "PhaseDamping",
+                    "GateError",
+                ]:
+                    warnings.warn(
+                        f"Noise type {key} is not supported by this package",
+                        UserWarning,
+                    )
 
-        self._noise_params = value
+        self._noise_params = kvs
 
     @property
     def execution_type(self) -> str:
