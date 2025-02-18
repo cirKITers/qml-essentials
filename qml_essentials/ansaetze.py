@@ -71,7 +71,7 @@ class Circuit(ABC):
 
 
 class Gates:
-    rng = None
+    rng = np.random.default_rng()
 
     @staticmethod
     def init_rng(seed: int):
