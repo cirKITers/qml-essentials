@@ -7,6 +7,7 @@ from pennylane.operation import Operator
 from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
 from pennylane.typing import PostprocessingFn
 import numpy as np
+import pennylane.numpy as pnp
 import math
 import pennylane.ops.op_math as qml_op
 
@@ -172,11 +173,21 @@ class PauliCircuit:
                 continue
             else:
                 # TODO: Maybe there is a prettier way to decompose a gate
+                # We currently can not handle parametrised input gates, that
+                # are not plain pauli rotations
                 tape = QuantumScript([operation])
                 decomposed_tape = qml.transforms.decompose(
                     tape, gate_set=PAULI_ROTATION_GATES + CLIFFORD_GATES
                 )
                 decomposed_ops = decomposed_tape[0][0].operations
+                decomposed_ops = [
+                    (
+                        op
+                        if PauliCircuit._is_clifford(op)
+                        else op.__class__(pnp.tensor(op.parameters), op.wires)
+                    )
+                    for op in decomposed_ops
+                ]
                 operations.extend(decomposed_ops)
 
         return operations
@@ -251,7 +262,10 @@ class PauliCircuit:
 
         gen = pauli.generator()
         param = pauli.parameters[0]
-        requires_grad = pauli.parameters[0].requires_grad
+        requires_grad = (
+            param.requires_grad if isinstance(param, pnp.tensor) else False
+        )
+        param = pnp.tensor(param)
 
         evolved_gen, _ = PauliCircuit._evolve_clifford_pauli(
             clifford, gen, adjoint_left=False
