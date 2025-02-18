@@ -186,6 +186,15 @@ class Model:
         """
         if value is not None and all(np == 0.0 for np in value.values()):
             value = None
+
+        if value is not None:
+            value.setdefault("BitFlip", 0.0)
+            value.setdefault("PhaseFlip", 0.0)
+            value.setdefault("Depolarizing", 0.0)
+            value.setdefault("AmplitudeDamping", 0.0)
+            value.setdefault("PhaseDamping", 0.0)
+            value.setdefault("GateError", 0.0)
+
         self._noise_params = value
 
     @property
