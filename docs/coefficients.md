@@ -70,6 +70,9 @@ X_shift, X_freq_shift = Coefficients.get_spectrum(model_fct, shift=True)
 
 Note, that applying the shift can be controlled with the optional `shift` argument.
 
+Another important point is, that the `force_mean` flag is set, and the `execution_type` is is implicitly set to `expval`.
+This is mainly because, we require a single expectation value to calculate the coefficients.
+
 ## Increasing the Resolution
 
 You might have noticed that we choose our sampling frequency `fs` in such a way, that it just fulfills the [Nyquist criterium](https://en.wikipedia.org/wiki/Nyquist_frequency).

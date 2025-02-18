@@ -1,3 +1,9 @@
+<p align="center">
+<img src="logo.svg" width="200" title="Logo">
+</p>
+<h3 align="center">A toolbox to make working with QML models easier.</h3>
+<br/>
+
 [![Quality](https://github.com/cirKITers/qml-essentials/actions/workflows/quality.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/quality.yml) [![Testing](https://github.com/cirKITers/qml-essentials/actions/workflows/test.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/test.yml) [![Documentation](https://github.com/cirKITers/qml-essentials/actions/workflows/docs.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/docs.yml)
 
 
