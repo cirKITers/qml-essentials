@@ -1,12 +1,12 @@
 from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Union, List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
 from pennylane.typing import PostprocessingFn
-import pennylane.numpy as np
+import numpy as np
 import math
 import pennylane.ops.op_math as qml_op
 
@@ -401,21 +401,21 @@ class CoefficientsTreeNode:
         self.is_cosine_factor = is_cosine_factor
 
         if isinstance(observable, qml_op.SProd):
-            coeff = observable.terms()[0][0]
+            term = observable.terms()[0][0]
             observable = observable.terms()[1][0]
         else:
-            coeff = 1.0
+            term = 1.0
 
         # If the observable does not constist of only Z and I, the
-        # expectation is zero
+        # expectation (and therefore the constant node term) is zero
         if (
             isinstance(observable, qml_op.Prod)
             and any([isinstance(p, (qml.X, qml.Y)) for p in observable])
             or isinstance(observable, (qml.PauliX, qml.PauliY))
         ):
-            self.exp = 0.0
+            self.term = 0.0
         else:
-            self.exp = coeff
+            self.term = term
 
         self.observable = observable
 
@@ -433,7 +433,7 @@ class CoefficientsTreeNode:
         elif self.is_cosine_factor:
             factor = np.cos(factor)
         if not (self.left or self.right):  # leaf
-            return factor * self.exp
+            return factor * self.term
 
         sum_children = 0.0
         if self.left:
@@ -455,8 +455,8 @@ class CoefficientsTreeNode:
             cos_list[self.parameter_idx] += 1
 
         if not (self.left or self.right):  # leaf
-            if self.exp != 0.0:
-                return [TreeLeaf(sin_list, cos_list, self.exp)]
+            if self.term != 0.0:
+                return [TreeLeaf(sin_list, cos_list, self.term)]
             else:
                 return []
 
@@ -483,7 +483,7 @@ class CoefficientsTreeNode:
 class TreeLeaf:
     sin_indices: np.ndarray
     cos_indices: np.ndarray
-    exp: np.complex128
+    term: np.complex128
 
 
 class FourierTree:
@@ -499,9 +499,9 @@ class FourierTree:
         ]
         self.observables = quantum_tape.observables
         self.pauli_rotations = quantum_tape.operations
-        self.tree_roots = self.build_tree()
         self.force_mean = force_mean
-        self.leafs: Optional[List[TreeLeaf]] = None
+        self.tree_roots = self.build_tree()
+        self.leafs: List[List[TreeLeaf]] = self._get_tree_leafs()
 
     def build_tree(self) -> List[CoefficientsTreeNode]:
         tree_roots = []
@@ -513,21 +513,15 @@ class FourierTree:
             tree_roots.append(root)
         return tree_roots
 
-    def initialise_leafs(self):
-        if self.leafs is not None:
-            return
-        self.leafs = []
+    def _get_tree_leafs(self) -> List[List[TreeLeaf]]:
+        leafs = []
         for root in self.tree_roots:
             sin_list = np.zeros(len(self.parameters), dtype=np.int32)
             cos_list = np.zeros(len(self.parameters), dtype=np.int32)
-            self.leafs.append(root.get_leafs(sin_list, cos_list, []))
+            leafs.append(root.get_leafs(sin_list, cos_list, []))
+        return leafs
 
-    def get_spectrum(
-        self,
-    ) -> Union[
-        Tuple[List[np.ndarray], List[np.ndarray]], Tuple[np.ndarray, np.ndarray]
-    ]:
-        self.initialise_leafs()
+    def get_spectrum(self) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         parameter_indices = [
             i
             for i in range(len(self.parameters))
@@ -538,19 +532,9 @@ class FourierTree:
         for leafs in self.leafs:
             freq_terms = defaultdict(np.complex128)
             for leaf in leafs:
-                leaf_factor = 1.0
-                for i in parameter_indices:
-                    interm_factor = (
-                        np.cos(self.parameters[i]) ** leaf.cos_indices[i]
-                        * (1j * np.sin(self.parameters[i]))
-                        ** leaf.sin_indices[i]
-                    )
-                    leaf_factor = leaf_factor * interm_factor
-
-                c = np.sum([leaf.cos_indices[k] for k in self.input_indices])
-                s = np.sum([leaf.sin_indices[k] for k in self.input_indices])
-
-                leaf_factor = leaf.exp * leaf_factor * 0.5 ** (s + c)
+                leaf_factor, s, c = self._compute_leaf_factors(
+                    leaf, parameter_indices
+                )
 
                 for a in range(s + 1):
                     for b in range(c + 1):
@@ -561,43 +545,49 @@ class FourierTree:
 
             coeffs.append(freq_terms)
 
-        if self.force_mean or len(coeffs) == 1:
+        frequencies, coefficients = self._freq_terms_to_coeffs(coeffs)
+        return frequencies, coefficients
+
+    def _freq_terms_to_coeffs(
+        self, coeffs: List[Dict[int, np.ndarray]]
+    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+        frequencies = []
+        coefficients = []
+        if self.force_mean:
             all_freqs = sorted(set([f for c in coeffs for f in c.keys()]))
-            coefficients = np.array(
-                [np.mean([c.get(f, 0.0) for c in coeffs]) for f in all_freqs]
+            coefficients.append(
+                np.array(
+                    [
+                        np.mean([c.get(f, 0.0) for c in coeffs])
+                        for f in all_freqs
+                    ]
+                )
             )
-            frequencies = np.array(all_freqs)
+            frequencies.append(np.array(all_freqs))
         else:
-            coefficients = []
-            frequencies = []
             for freq_terms in coeffs:
                 freq_terms = dict(sorted(freq_terms.items()))
                 frequencies.append(np.array(list(freq_terms.keys())))
                 coefficients.append(np.array(list(freq_terms.values())))
-
         return frequencies, coefficients
 
-    def evaluate_via_leafs(self) -> np.ndarray:
-        results = np.zeros(len(self.tree_roots))
-        self.initialise_leafs()
-        for j, leafs in enumerate(self.leafs):
-            sum = 0.0
-            for leaf in leafs:
-                leaf_factor = 1.0
-                for i in range(len(self.parameters)):
-                    interm_factor = (
-                        np.cos(self.parameters[i]) ** leaf.cos_indices[i]
-                        * (1j * np.sin(self.parameters[i]))
-                        ** leaf.sin_indices[i]
-                    )
-                    leaf_factor = leaf_factor * interm_factor
-                sum += leaf.exp * leaf_factor
-            results[j] = np.real_if_close(sum)
+    def _compute_leaf_factors(
+        self, leaf: TreeLeaf, parameter_indices: List[int]
+    ):
+        leaf_factor = 1.0
+        for i in parameter_indices:
+            interm_factor = (
+                np.cos(self.parameters[i]) ** leaf.cos_indices[i]
+                * (1j * np.sin(self.parameters[i])) ** leaf.sin_indices[i]
+            )
+            leaf_factor = leaf_factor * interm_factor
 
-        if self.force_mean:
-            return np.mean(results)
-        else:
-            return results
+        c = np.sum([leaf.cos_indices[k] for k in self.input_indices])
+        s = np.sum([leaf.sin_indices[k] for k in self.input_indices])
+
+        leaf_factor = leaf.term * leaf_factor * 0.5 ** (s + c)
+
+        return leaf_factor, s, c
 
     def evaluate(self) -> np.ndarray:
         results = np.zeros(len(self.tree_roots))
