@@ -3,7 +3,7 @@ from typing import Any, Optional
 import pennylane.numpy as np
 import pennylane as qml
 
-from typing import List
+from typing import List, Union, Dict
 
 import logging
 
@@ -73,7 +73,9 @@ class Circuit(ABC):
 class Gates:
     rng = np.random.default_rng(1000)
 
-    def Noise(wires, noise_params=None):
+    def Noise(
+        wires: Union[int, List[int]], noise_params: Optional[Dict[str, float]] = None
+    ) -> None:
         """
         Applies noise to the given wires.
 
@@ -102,7 +104,30 @@ class Gates:
                     noise_params.get("Depolarizing", 0.0), wires=wire
                 )
 
-    def GateError(w, noise_params=None):
+    def GateError(
+        w: np.ndarray, noise_params: Optional[Dict[str, float]] = None
+    ) -> np.ndarray:
+        """
+        Applies a gate error to the given rotation angle(s).
+
+        Parameters
+        ----------
+        w : np.ndarray
+            The rotation angle(s) in radians.
+        noise_params : Optional[Dict[str, float]]
+            A dictionary of noise parameters. The following noise gates are
+            supported:
+            - GateError: Applies a normal distribution error to the rotation
+            angle(s). The standard deviation of the noise is specified by
+            the "GateError" key in the dictionary.
+
+            All parameters are optional and default to 0.0 if not provided.
+
+        Returns
+        -------
+        np.ndarray
+            The modified rotation angle(s) after applying the gate error.
+        """
         if noise_params is not None:
             w += Gates.rng.normal(0, noise_params["GateError"], w.shape)
         return w
