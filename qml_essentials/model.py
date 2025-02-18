@@ -184,9 +184,11 @@ class Model:
         Returns:
             None
         """
+        # set to None if only zero values provided
         if value is not None and all(np == 0.0 for np in value.values()):
             value = None
 
+        # set default values
         if value is not None:
             value.setdefault("BitFlip", 0.0)
             value.setdefault("PhaseFlip", 0.0)
@@ -194,6 +196,20 @@ class Model:
             value.setdefault("AmplitudeDamping", 0.0)
             value.setdefault("PhaseDamping", 0.0)
             value.setdefault("GateError", 0.0)
+
+        # check if there are any keys not supported
+        for key in value.keys():
+            if key not in [
+                "BitFlip",
+                "PhaseFlip",
+                "Depolarizing",
+                "AmplitudeDamping",
+                "PhaseDamping",
+                "GateError",
+            ]:
+                warnings.warn(
+                    f"Noise type {key} is not supported by this package", UserWarning
+                )
 
         self._noise_params = value
 
