@@ -71,6 +71,8 @@ class Circuit(ABC):
 
 
 class Gates:
+    rng = np.random.default_rng(1000)
+
     def Noise(wires, noise_params=None):
         """
         Applies noise to the given wires.
@@ -84,7 +86,7 @@ class Gates:
             supported:
             - BitFlip: Applies a bit flip error to the given wires.
             - PhaseFlip: Applies a phase flip error to the given wires.
-            - DepolarizingChannel: Applies a depolarizing channel error to the
+            - Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -97,8 +99,13 @@ class Gates:
                 qml.BitFlip(noise_params.get("BitFlip", 0.0), wires=wire)
                 qml.PhaseFlip(noise_params.get("PhaseFlip", 0.0), wires=wire)
                 qml.DepolarizingChannel(
-                    noise_params.get("DepolarizingChannel", 0.0), wires=wire
+                    noise_params.get("Depolarizing", 0.0), wires=wire
                 )
+
+    def GateError(w, noise_params=None):
+        if noise_params is not None:
+            w += Gates.rng.normal(0, noise_params["GateError"], w.shape)
+        return w
 
     def Rot(phi, theta, omega, wires, noise_params=None):
         """
@@ -119,11 +126,15 @@ class Gates:
             supported:
             - BitFlip: Applies a bit flip error to the given wires.
             - PhaseFlip: Applies a phase flip error to the given wires.
-            - DepolarizingChannel: Applies a depolarizing channel error to the
+            - Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
         """
+        if noise_params is not None and "GateError" in noise_params:
+            phi += Gates.rng.normal(0, noise_params["GateError"])
+            theta += Gates.rng.normal(0, noise_params["GateError"])
+            omega += Gates.rng.normal(0, noise_params["GateError"])
         qml.Rot(phi, theta, omega, wires=wires)
         Gates.Noise(wires, noise_params)
 
@@ -142,7 +153,7 @@ class Gates:
             supported:
             - BitFlip: Applies a bit flip error to the given wires.
             - PhaseFlip: Applies a phase flip error to the given wires.
-            - DepolarizingChannel: Applies a depolarizing channel error to the
+            - Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -165,11 +176,12 @@ class Gates:
             supported:
             - BitFlip: Applies a bit flip error to the given wires.
             - PhaseFlip: Applies a phase flip error to the given wires.
-            - DepolarizingChannel: Applies a depolarizing channel error to the
+            - Depolarizing: Applies a depolarizing channel error to the
             given wires.
 
             All parameters are optional and default to 0.0 if not provided.
         """
+        w = Gates.GateError(w, noise_params)
         qml.RY(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
@@ -188,7 +200,7 @@ class Gates:
             supported:
             - BitFlip: Applies a bit flip error to the given wires.
             - PhaseFlip: Applies a phase flip error to the given wires.
-            - DepolarizingChannel: Applies a depolarizing channel error to the
+            - Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -212,11 +224,12 @@ class Gates:
             supported:
             - BitFlip: Applies a bit flip error to the given wires.
             - PhaseFlip: Applies a phase flip error to the given wires.
-            - DepolarizingChannel: Applies a depolarizing channel error to the
+            - Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
         """
+        w = Gates.GateError(w, noise_params)
         qml.CRX(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
@@ -236,11 +249,12 @@ class Gates:
             supported:
             - BitFlip: Applies a bit flip error to the given wires.
             - PhaseFlip: Applies a phase flip error to the given wires.
-            - DepolarizingChannel: Applies a depolarizing channel error to the
+            - Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
         """
+        w = Gates.GateError(w, noise_params)
         qml.CRY(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
@@ -260,11 +274,13 @@ class Gates:
             supported:
             - BitFlip: Applies a bit flip error to the given wires.
             - PhaseFlip: Applies a phase flip error to the given wires.
-            - DepolarizingChannel: Applies a depolarizing channel error to the
+            - Depolarizing: Applies a depolarizing channel error to the
             given wires.
 
             All parameters are optional and default to 0.0 if not provided.
         """
+        if noise_params is not None and "GateError" in noise_params:
+            w += Gates.rng.normal(0, noise_params["GateError"], w.shape)
         qml.CRZ(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
@@ -281,7 +297,7 @@ class Gates:
             supported:
             - BitFlip: Applies a bit flip error to the given wires.
             - PhaseFlip: Applies a phase flip error to the given wires.
-            - DepolarizingChannel: Applies a depolarizing channel error to the
+            - Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -302,7 +318,7 @@ class Gates:
             supported:
             - BitFlip: Applies a bit flip error to the given wires.
             - PhaseFlip: Applies a phase flip error to the given wires.
-            - DepolarizingChannel: Applies a depolarizing channel error to the
+            - Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -323,7 +339,7 @@ class Gates:
             supported:
             - BitFlip: Applies a bit flip error to the given wires.
             - PhaseFlip: Applies a phase flip error to the given wires.
-            - DepolarizingChannel: Applies a depolarizing channel error to the
+            - Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -344,7 +360,7 @@ class Gates:
             supported:
             - BitFlip: Applies a bit flip error to the given wires.
             - PhaseFlip: Applies a phase flip error to the given wires.
-            - DepolarizingChannel: Applies a depolarizing channel error to the
+            - Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
