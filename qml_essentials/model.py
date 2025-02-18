@@ -753,9 +753,6 @@ class Model:
                         params=params,  # use arraybox params
                         inputs=inputs,
                     )
-                    tape = qml.workflow.construct_tape(self.circuit)(
-                        params=params, inputs=inputs
-                    )
 
         if isinstance(result, list):
             result = np.stack(result)

@@ -111,7 +111,7 @@ def test_coefficients_tree() -> None:
 
         coeff_tree = model.build_coefficients_tree(
             pnp.tensor(model.params),
-            inputs=1.0, # we need a non zero input.
+            inputs=1.0,  # we need a non zero input.
             force_mean=True,
             execution_type="expval",
         )
@@ -125,16 +125,16 @@ def test_coefficients_tree() -> None:
         ), "Imaginary part is not zero"
 
         if len(fft_coeffs) == len(analytical_coeffs[0]):
-            assert all(np.isclose(fft_coeffs, analytical_coeffs[0], atol=1.0e-5)), (
+            assert all(
+                np.isclose(fft_coeffs, analytical_coeffs[0], atol=1.0e-5)
+            ), (
                 "FFT and analytical coefficients are not equal, despite same"
                 "frequencies."
             )
 
         for ref_input in reference_inputs:
             exp_fourier_fft = Coefficients.evaluate_Fourier_series(
-                coefficients=fft_coeffs,
-                input=ref_input,
-                frequencies=fft_freqs
+                coefficients=fft_coeffs, input=ref_input, frequencies=fft_freqs
             )
 
             exp_fourier = Coefficients.evaluate_Fourier_series(
@@ -145,7 +145,7 @@ def test_coefficients_tree() -> None:
 
             assert np.isclose(
                 exp_fourier_fft, exp_fourier, atol=1.0e-5
-            ), f"FFT and analytical Fourier series do not match"
+            ), "FFT and analytical Fourier series do not match"
 
 
 @pytest.mark.unittest
