@@ -396,9 +396,7 @@ def test_available_ansaetze() -> None:
     ansatze = set(Ansaetze.get_available())
 
     actual_ansaetze = set(
-        ansatz
-        for ansatz in Ansaetze.__dict__.values()
-        if inspect.isclass(ansatz)
+        ansatz for ansatz in Ansaetze.__dict__.values() if inspect.isclass(ansatz)
     )
     # check that the classes are the ones returned by .__subclasses__
     assert actual_ansaetze == ansatze
@@ -423,9 +421,7 @@ def test_multi_input() -> None:
             f"{inputs.shape if inputs is not None else 'None'}"
         )
         encoding = (
-            Gates.RX
-            if inputs is None
-            else [Gates.RX for _ in range(inputs.shape[1])]
+            Gates.RX if inputs is None else [Gates.RX for _ in range(inputs.shape[1])]
         )
         model = Model(
             n_qubits=2,
@@ -457,9 +453,7 @@ def test_multi_input() -> None:
                     inputs.shape[0] == 1
                 ), "expected one elemental input for zero dimensional output"
         else:
-            assert (
-                len(out.shape) == 0
-            ), "expected one elemental output for empty input"
+            assert len(out.shape) == 0, "expected one elemental output for empty input"
 
 
 @pytest.mark.smoketest
@@ -824,9 +818,7 @@ def test_pauli_circuit_model() -> None:
         )
 
         assert all(
-            np.isclose(
-                result_circuit, result_pauli_circuit, atol=1e-5
-            ).flatten()
+            np.isclose(result_circuit, result_pauli_circuit, atol=1e-5).flatten()
         ), (
             f"results of Pauli Circuit and basic Ansatz should be equal, but "
             f"are {result_pauli_circuit} and {result_circuit} for testcase "

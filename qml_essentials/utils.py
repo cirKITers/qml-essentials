@@ -87,8 +87,8 @@ class PauliCircuit:
 
         operations = PauliCircuit.get_clifford_pauli_gates(tape)
 
-        pauli_gates, final_cliffords = (
-            PauliCircuit.commute_all_cliffords_to_the_end(operations)
+        pauli_gates, final_cliffords = PauliCircuit.commute_all_cliffords_to_the_end(
+            operations
         )
 
         observables = PauliCircuit.cliffords_in_observable(
@@ -127,8 +127,7 @@ class PauliCircuit:
         for i in range(len(operations) - 2, -1, -1):
             j = i
             while (
-                j + 1
-                < len(operations)  # Clifford has not alredy reached the end
+                j + 1 < len(operations)  # Clifford has not alredy reached the end
                 and PauliCircuit._is_clifford(operations[j])
                 and PauliCircuit._is_pauli_rotation(operations[j + 1])
             ):
@@ -165,9 +164,9 @@ class PauliCircuit:
         """
         operations = []
         for operation in tape.operations:
-            if PauliCircuit._is_clifford(
+            if PauliCircuit._is_clifford(operation) or PauliCircuit._is_pauli_rotation(
                 operation
-            ) or PauliCircuit._is_pauli_rotation(operation):
+            ):
                 operations.append(operation)
             elif PauliCircuit._is_skippable(operation):
                 continue
@@ -262,9 +261,7 @@ class PauliCircuit:
 
         gen = pauli.generator()
         param = pauli.parameters[0]
-        requires_grad = (
-            param.requires_grad if isinstance(param, pnp.tensor) else False
-        )
+        requires_grad = param.requires_grad if isinstance(param, pnp.tensor) else False
         param = pnp.tensor(param)
 
         evolved_gen, _ = PauliCircuit._evolve_clifford_pauli(
@@ -335,18 +332,14 @@ class PauliCircuit:
             return pauli, clifford
 
         if adjoint_left:
-            evolved_pauli = (
-                qml.adjoint(clifford) @ pauli @ qml.adjoint(clifford)
-            )
+            evolved_pauli = qml.adjoint(clifford) @ pauli @ qml.adjoint(clifford)
         else:
             evolved_pauli = clifford @ pauli @ qml.adjoint(clifford)
 
         return evolved_pauli, clifford
 
     @staticmethod
-    def _evolve_cliffords_list(
-        cliffords: List[Operator], pauli: Operator
-    ) -> Operator:
+    def _evolve_cliffords_list(cliffords: List[Operator], pauli: Operator) -> Operator:
         """
         This function evolves a Pauli operation according to a sequence of cliffords.
 
@@ -495,9 +488,7 @@ class CoefficientsTreeNode:
             float: The expectation for the current node and it's children.
         """
         factor = (
-            parameters[self.parameter_idx]
-            if self.parameter_idx is not None
-            else 1.0
+            parameters[self.parameter_idx] if self.parameter_idx is not None else 1.0
         )
         if self.is_sine_factor:
             factor = 1j * np.sin(factor)
@@ -707,24 +698,18 @@ class FourierTree:
                   observable (root).
         """
         parameter_indices = [
-            i
-            for i in range(len(self.parameters))
-            if i not in self.input_indices
+            i for i in range(len(self.parameters)) if i not in self.input_indices
         ]
 
         coeffs = []
         for leafs in self.leafs:
             freq_terms = defaultdict(np.complex128)
             for leaf in leafs:
-                leaf_factor, s, c = self._compute_leaf_factors(
-                    leaf, parameter_indices
-                )
+                leaf_factor, s, c = self._compute_leaf_factors(leaf, parameter_indices)
 
                 for a in range(s + 1):
                     for b in range(c + 1):
-                        comb = (
-                            math.comb(s, a) * math.comb(c, b) * (-1) ** (s - a)
-                        )
+                        comb = math.comb(s, a) * math.comb(c, b) * (-1) ** (s - a)
                         freq_terms[2 * a + 2 * b - s - c] += comb * leaf_factor
 
             coeffs.append(freq_terms)
@@ -782,12 +767,7 @@ class FourierTree:
         if self.force_mean:
             all_freqs = sorted(set([f for c in coeffs for f in c.keys()]))
             coefficients.append(
-                np.array(
-                    [
-                        np.mean([c.get(f, 0.0) for c in coeffs])
-                        for f in all_freqs
-                    ]
-                )
+                np.array([np.mean([c.get(f, 0.0) for c in coeffs]) for f in all_freqs])
             )
             frequencies.append(np.array(all_freqs))
         else:
@@ -885,9 +865,7 @@ class FourierTree:
             idx -= 1
 
         if idx < 0:  # leaf
-            return CoefficientsTreeNode(
-                parameter_idx, observable, is_sine, is_cosine
-            )
+            return CoefficientsTreeNode(parameter_idx, observable, is_sine, is_cosine)
 
         next_pauli_rotation_indices = pauli_rotation_indices[:idx]
         last_pauli_idx = pauli_rotation_indices[idx]
@@ -919,9 +897,7 @@ class FourierTree:
             right,
         )
 
-    def _create_new_observable(
-        self, pauli: Operator, observable: Operator
-    ) -> Operator:
+    def _create_new_observable(self, pauli: Operator, observable: Operator) -> Operator:
         """
         Utility function to obtain the new observable for a tree node, if the
         last Pauli and the observable do not commute.
