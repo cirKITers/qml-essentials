@@ -87,10 +87,21 @@ Noise can be added to the model by providing a `noise_params` argument, when cal
 - `AmplitudeDamping`
 - `PhaseDamping`
 - `Depolarizing`
+- `StatePreparation`
+- `Measurement`
+
 with values between $0$ and $1$.
 Additionally, a `GateError` can be applied, which controls the variance of a Gaussian distribution with zero mean applied on the input vector.
 
 This will apply the corresponding noise in each layer with the provided factor.
+
+Furthermore, `ThermalRelaxation` can be applied. Instead of the probability, the entry for this type of error consists of another dict with the keys:
+- `T1`: The relative T1 relaxation time (a typical value might be 180 (us))
+- `T2`: The relative T2 relaxation time (a typical value might be 100 (us))
+- `t_factor`: The relative gate time (a typical value might be 0.018 (us))
+The units can be ignored as we are only interested in relative times, above values might belong to some superconducting system.
+Note that T2 is required to be max. 2 T1.
+Based on `t_factor` and the circuit depth the execution time is esimated, and therefore the influence of thermal relaxation over time.
 
 ## Caching
 
