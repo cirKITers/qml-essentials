@@ -215,6 +215,8 @@ class Model:
             kvs.setdefault("PhaseDamping", 0.0)
             kvs.setdefault("GateError", 0.0)
             kvs.setdefault("ThermalRelaxation", 0.0)
+            kvs.setdefault("StatePreparation", 0.0)
+            kvs.setdefault("Measurement", 0.0)
 
             # check if there are any keys not supported
             for key in kvs.keys():
@@ -226,6 +228,8 @@ class Model:
                     "PhaseDamping",
                     "GateError",
                     "ThermalRelaxation",
+                    "StatePreparation",
+                    "Measurement",
                 ]:
                     warnings.warn(
                         f"Noise type {key} is not supported by this package",
@@ -444,6 +448,8 @@ class Model:
                 of the circuit if state_vector is False and exp_val is True,
                 otherwise the density matrix of all qubits.
         """
+        if self.noise_params is not None:
+            self._apply_state_prep_noise()
 
         for layer in range(0, self.n_layers):
             self.pqc(params[layer], self.n_qubits, noise_params=self.noise_params)
@@ -498,6 +504,16 @@ class Model:
         else:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
+    def _apply_state_prep_noise(self) -> None:
+        """
+        Applies a state preparation error on each qubit according to the
+        probability for StatePreparation provided in the noise_params.
+        """
+        sp = self.noise_params.get("StatePreparation", 0.0)
+        for q in range(self.n_qubits):
+            if sp > 0:
+                qml.BitFlip(sp, wires=q)
+
     def _apply_general_noise(self) -> None:
         """
         Applies general types of noise the full circuit (in contrast to gate
@@ -508,15 +524,19 @@ class Model:
             - PhaseDamping (specified through probability)
             - ThermalRelaxation (specified through a dict, containing keys
                                  "T1", "T2", "t_factor")
+            - Measurement (specified through probability)
         """
         amp_damp = self.noise_params.get("AmplitudeDamping", 0.0)
         phase_damp = self.noise_params.get("PhaseDamping", 0.0)
         thermal_relax = self.noise_params.get("ThermalRelaxation", 0.0)
+        meas = self.noise_params.get("Measurement", 0.0)
         for q in range(self.n_qubits):
             if amp_damp > 0:
                 qml.AmplitudeDamping(amp_damp, wires=q)
             if phase_damp > 0:
                 qml.PhaseDamping(phase_damp, wires=q)
+            if meas > 0:
+                qml.BitFlip(meas, wires=q)
             if isinstance(thermal_relax, dict):
                 t1 = thermal_relax["T1"]
                 t2 = thermal_relax["T2"]
