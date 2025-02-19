@@ -331,6 +331,7 @@ def test_ansaetze() -> None:
                 "AmplitudeDamping": 0.3,
                 "PhaseDamping": 0.4,
                 "Depolarizing": 0.5,
+                "ThermalRelaxation": {"T1": 2000.0, "T2": 1000.0, "t_factor": 1},
             },
             cache=False,
             execution_type="density",

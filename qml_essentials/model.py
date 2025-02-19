@@ -5,6 +5,7 @@ import hashlib
 import os
 import warnings
 from autograd.numpy import numpy_boxes
+from copy import deepcopy
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
 
@@ -72,7 +73,7 @@ class Model:
             None
         """
         # Initialize default parameters needed for circuit evaluation
-        self.noise_params: Optional[Dict[str, float]] = None
+        self.noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None
         self.execution_type: Optional[str] = "expval"
         self.shots = shots
 
@@ -166,7 +167,7 @@ class Model:
         )
 
     @property
-    def noise_params(self) -> Optional[Dict[str, float]]:
+    def noise_params(self) -> Optional[Dict[str, Union[float, Dict[str, float]]]]:
         """
         Gets the noise parameters of the model.
 
@@ -177,13 +178,26 @@ class Model:
         return self._noise_params
 
     @noise_params.setter
-    def noise_params(self, kvs: Optional[Dict[str, float]]) -> None:
+    def noise_params(
+        self, kvs: Optional[Dict[str, Union[float, Dict[str, float]]]]
+    ) -> None:
         """
         Sets the noise parameters of the model.
 
+        Typically a "noise parameter" refers to the error probability.
+        ThermalRelaxation is a special case, and supports a dict as value with
+        structure:
+            "ThermalRelaxation":
+            {
+                "T1": 2000, # relative t1 time.
+                "T2": 1000, # relative t2 time
+                "t_factor" 1: # relative gate time factor
+            },
+
         Args:
-            value (Optional[Dict[str, float]]): A dictionary of noise parameters.
-                If all values are 0.0, the noise parameters are set to None.
+            value (Optional[Dict[str, Union[float, Dict[str, float]]]]): A
+            dictionary of noise parameters. If all values are 0.0, the noise
+            parameters are set to None.
 
         Returns:
             None
@@ -200,6 +214,7 @@ class Model:
             kvs.setdefault("AmplitudeDamping", 0.0)
             kvs.setdefault("PhaseDamping", 0.0)
             kvs.setdefault("GateError", 0.0)
+            kvs.setdefault("ThermalRelaxation", 0.0)
 
             # check if there are any keys not supported
             for key in kvs.keys():
@@ -210,11 +225,37 @@ class Model:
                     "AmplitudeDamping",
                     "PhaseDamping",
                     "GateError",
+                    "ThermalRelaxation",
                 ]:
                     warnings.warn(
                         f"Noise type {key} is not supported by this package",
                         UserWarning,
                     )
+
+            # check valid params for thermal relaxation noise channel
+            tr_params = kvs["ThermalRelaxation"]
+            if isinstance(tr_params, dict):
+                tr_params.setdefault("T1", 0.0)
+                tr_params.setdefault("T2", 0.0)
+                tr_params.setdefault("t_factor", 0.0)
+                for k in tr_params.keys():
+                    if k not in [
+                        "T1",
+                        "T2",
+                        "t_factor",
+                    ]:
+                        warnings.warn(
+                            f"Thermal Relaxation parameter {k} is not supported "
+                            f"by this package",
+                            UserWarning,
+                        )
+                if not all(tr_params.values()) or tr_params["T2"] > 2 * tr_params["T1"]:
+                    warnings.warn(
+                        "Received invalid values for Thermal Relaxation noise "
+                        "parameter. Thermal relaxation is not applied!",
+                        UserWarning,
+                    )
+                    kvs["ThermalRelaxation"] = 0.0
 
         self._noise_params = kvs
 
@@ -354,7 +395,7 @@ class Model:
         inputs: np.ndarray,
         data_reupload: bool,
         enc: Union[Callable, List[Callable]],
-        noise_params: Optional[np.ndarray] = None,
+        noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
     ) -> None:
         """
         Creates an AngleEncoding using RX gates
@@ -421,11 +462,7 @@ class Model:
             self.pqc(params[-1], self.n_qubits, noise_params=self.noise_params)
 
         if self.noise_params is not None:
-            for q in range(self.n_qubits):
-                qml.AmplitudeDamping(
-                    self.noise_params.get("AmplitudeDamping", 0.0), wires=q
-                )
-                qml.PhaseDamping(self.noise_params.get("PhaseDamping", 0.0), wires=q)
+            self._apply_general_noise()
 
         # run mixed simualtion and get density matrix
         if self.execution_type == "density":
@@ -461,6 +498,33 @@ class Model:
         else:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
+    def _apply_general_noise(self) -> None:
+        """
+        Applies general types of noise the full circuit (in contrast to gate
+        errors, applied directly at gate level, see Gates.Noise).
+
+        Possible types of noise are:
+            - AmplitudeDamping (specified through probability)
+            - PhaseDamping (specified through probability)
+            - ThermalRelaxation (specified through a dict, containing keys
+                                 "T1", "T2", "t_factor")
+        """
+        amp_damp = self.noise_params.get("AmplitudeDamping", 0.0)
+        phase_damp = self.noise_params.get("PhaseDamping", 0.0)
+        thermal_relax = self.noise_params.get("ThermalRelaxation", 0.0)
+        for q in range(self.n_qubits):
+            if amp_damp > 0:
+                qml.AmplitudeDamping(amp_damp, wires=q)
+            if phase_damp > 0:
+                qml.PhaseDamping(phase_damp, wires=q)
+            if isinstance(thermal_relax, dict):
+                t1 = thermal_relax["T1"]
+                t2 = thermal_relax["T2"]
+                t_factor = thermal_relax["t_factor"]
+                circuit_depth = self.get_circuit_depth()
+                tg = circuit_depth * t_factor
+                qml.ThermalRelaxationError(1.0, t1, t2, tg, q)
+
     def _draw(self, inputs=None, figure=False) -> None:
         if not isinstance(self.circuit, qml.QNode):
             # TODO: throws strange argument error if not catched
@@ -488,7 +552,7 @@ class Model:
         self,
         params: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
-        noise_params: Optional[Dict[str, float]] = None,
+        noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
         force_mean: Optional[bool] = False,
@@ -569,7 +633,7 @@ class Model:
         self,
         params: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
-        noise_params: Optional[Dict[str, float]] = None,
+        noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
         force_mean: Optional[bool] = False,
@@ -713,7 +777,9 @@ class Model:
                 about the circuit size and gate statistics.
         """
         inputs = self._inputs_validation(inputs)
-        return qml.specs(self.circuit)(self.params, inputs)
+        spec_model = deepcopy(self)
+        spec_model.noise_params = None  # remove noise
+        return qml.specs(spec_model.circuit)(self.params, inputs)
 
     def get_circuit_depth(self, inputs: Optional[np.ndarray] = None) -> int:
         """
