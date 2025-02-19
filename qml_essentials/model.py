@@ -699,3 +699,31 @@ class Model:
             np.save(file_path, result)
 
         return result
+
+    def get_specs(self, inputs: Optional[np.ndarray] = None) -> dict:
+        """
+        Get pennylane specs for the model.
+
+        Args:
+            inputs (Optional[np.ndarray]): The inputs, with which to call the
+                circuit. Defaults to None.
+
+        Returns:
+            dict: Dictionary of specs. The key "resources" contains information
+                about the circuit size and gate statistics.
+        """
+        inputs = self._inputs_validation(inputs)
+        return qml.specs(self.circuit)(self.params, inputs)
+
+    def get_circuit_depth(self, inputs: Optional[np.ndarray] = None) -> int:
+        """
+        Obtain circuit depth for the model
+
+        Args:
+            inputs (Optional[np.ndarray]): The inputs, with which to call the
+                circuit. Defaults to None.
+
+        Returns:
+            int: Circuit depth (longest path of gates in circuit.)
+        """
+        return self.get_specs(inputs)["resources"].depth
