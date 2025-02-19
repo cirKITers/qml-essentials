@@ -65,7 +65,8 @@ class Model:
             shots (Optional[int], optional): The number of shots to use for
                 the quantum device. Defaults to None.
             random_seed (int, optional): seed for the random number generator
-                in initialization is "random", Defaults to 1000.
+                in initialization is "random" and for random noise parameters.
+                Defaults to 1000.
 
         Returns:
             None
@@ -97,6 +98,9 @@ class Model:
             )()
         else:
             self.pqc = circuit_type()
+
+        # Initialize rng in Gates
+        Gates.init_rng(random_seed)
 
         # Initialize encoding
         # first check if we have a str, list or callable
@@ -173,7 +177,7 @@ class Model:
         return self._noise_params
 
     @noise_params.setter
-    def noise_params(self, value: Optional[Dict[str, float]]) -> None:
+    def noise_params(self, kvs: Optional[Dict[str, float]]) -> None:
         """
         Sets the noise parameters of the model.
 
@@ -184,9 +188,35 @@ class Model:
         Returns:
             None
         """
-        if value is not None and all(np == 0.0 for np in value.values()):
-            value = None
-        self._noise_params = value
+        # set to None if only zero values provided
+        if kvs is not None and all(np == 0.0 for np in kvs.values()):
+            kvs = None
+
+        # set default values
+        if kvs is not None:
+            kvs.setdefault("BitFlip", 0.0)
+            kvs.setdefault("PhaseFlip", 0.0)
+            kvs.setdefault("Depolarizing", 0.0)
+            kvs.setdefault("AmplitudeDamping", 0.0)
+            kvs.setdefault("PhaseDamping", 0.0)
+            kvs.setdefault("GateError", 0.0)
+
+            # check if there are any keys not supported
+            for key in kvs.keys():
+                if key not in [
+                    "BitFlip",
+                    "PhaseFlip",
+                    "Depolarizing",
+                    "AmplitudeDamping",
+                    "PhaseDamping",
+                    "GateError",
+                ]:
+                    warnings.warn(
+                        f"Noise type {key} is not supported by this package",
+                        UserWarning,
+                    )
+
+        self._noise_params = kvs
 
     @property
     def execution_type(self) -> str:

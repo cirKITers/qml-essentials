@@ -86,8 +86,9 @@ Noise can be added to the model by providing a `noise_params` argument, when cal
 - `PhaseFlip`
 - `AmplitudeDamping`
 - `PhaseDamping`
-- `DepolarizingChannel`
+- `Depolarizing`
 with values between $0$ and $1$.
+Additionally, a `GateError` can be applied, which controls the variance of a Gaussian distribution with zero mean applied on the input vector.
 
 This will apply the corresponding noise in each layer with the provided factor.
 

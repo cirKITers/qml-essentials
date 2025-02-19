@@ -310,10 +310,6 @@ def test_ansaetze() -> None:
     ansatz_cases = Ansaetze.get_available()
 
     for ansatz in ansatz_cases:
-        # Skipping Circuit_15, as it is not yet correctly implemented (yet)
-        if ansatz.__name__ == "Circuit_15":
-            continue
-
         logger.info(f"Testing Ansatz: {ansatz.__name__}")
         model = Model(
             n_qubits=4,
@@ -329,11 +325,12 @@ def test_ansaetze() -> None:
             model.params,
             inputs=None,
             noise_params={
+                "GateError": 0.1,
                 "BitFlip": 0.1,
                 "PhaseFlip": 0.2,
                 "AmplitudeDamping": 0.3,
                 "PhaseDamping": 0.4,
-                "DepolarizingChannel": 0.5,
+                "Depolarizing": 0.5,
             },
             cache=False,
             execution_type="density",
@@ -376,15 +373,25 @@ def test_ansaetze() -> None:
         model.params,
         inputs=None,
         noise_params={
-            "BitFlip": 0.1,
+            "GateError": 0.1,
             "PhaseFlip": 0.2,
             "AmplitudeDamping": 0.3,
-            "PhaseDamping": 0.4,
-            "DepolarizingChannel": 0.5,
+            "Depolarizing": 0.5,
         },
         cache=False,
         execution_type="density",
     )
+
+    with pytest.warns(UserWarning):
+        _ = model(
+            model.params,
+            inputs=None,
+            noise_params={
+                "UnsupportedNoise": 0.1,
+            },
+            cache=False,
+            execution_type="density",
+        )
 
 
 @pytest.mark.unittest
@@ -489,7 +496,7 @@ def test_local_state() -> None:
                 "PhaseFlip": 0.2,
                 "AmplitudeDamping": 0.3,
                 "PhaseDamping": 0.4,
-                "DepolarizingChannel": 0.5,
+                "Depolarizing": 0.5,
             },
             "execution_type": "density",
         },

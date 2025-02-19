@@ -117,7 +117,7 @@ noise_params = {
     "PhaseFlip": 0.0,
     "AmplitudeDamping": 0.0,
     "PhaseDamping": 0.0,
-    "DepolarizingChannel": 0.0,
+    "Depolarizing": 0.0,
 }
 ```
 
@@ -161,6 +161,6 @@ model(
         "PhaseFlip": 0.02,
         "AmplitudeDamping": 0.03,
         "PhaseDamping": 0.04,
-        "DepolarizingChannel": 0.05,
+        "Depolarizing": 0.05,
 })
 ```
