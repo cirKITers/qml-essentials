@@ -5,6 +5,7 @@ import hashlib
 import os
 import warnings
 from autograd.numpy import numpy_boxes
+from copy import deepcopy
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
 from qml_essentials.utils import PauliCircuit, FourierTree
@@ -67,7 +68,8 @@ class Model:
             shots (Optional[int], optional): The number of shots to use for
                 the quantum device. Defaults to None.
             random_seed (int, optional): seed for the random number generator
-                in initialization is "random", Defaults to 1000.
+                in initialization is "random" and for random noise parameters.
+                Defaults to 1000.
             as_pauli_circuit (bool, optional): whether the circuit is
                 transformed to a Pauli-Clifford circuit as described by Nemkov
                 et al. (https://doi.org/10.1103/PhysRevA.108.032406), which is
@@ -78,7 +80,7 @@ class Model:
             None
         """
         # Initialize default parameters needed for circuit evaluation
-        self.noise_params: Optional[Dict[str, float]] = None
+        self.noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None
         self.execution_type: Optional[str] = "expval"
         self.shots = shots
 
@@ -105,6 +107,9 @@ class Model:
         else:
             self.pqc = circuit_type()
 
+        # Initialize rng in Gates
+        Gates.init_rng(random_seed)
+
         # Initialize encoding
         # first check if we have a str, list or callable
         if isinstance(encoding, str):
@@ -126,9 +131,7 @@ class Model:
         log.info(f"Using {circuit_type} circuit.")
 
         if data_reupload:
-            impl_n_layers: int = (
-                n_layers + 1
-            )  # we need L+1 according to Schuld et al.
+            impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
             self.degree = n_layers * n_qubits
         else:
             impl_n_layers: int = n_layers
@@ -178,7 +181,7 @@ class Model:
             self.circuit = pauli_circuit_transform(self.circuit)
 
     @property
-    def noise_params(self) -> Optional[Dict[str, float]]:
+    def noise_params(self) -> Optional[Dict[str, Union[float, Dict[str, float]]]]:
         """
         Gets the noise parameters of the model.
 
@@ -189,20 +192,90 @@ class Model:
         return self._noise_params
 
     @noise_params.setter
-    def noise_params(self, value: Optional[Dict[str, float]]) -> None:
+    def noise_params(
+        self, kvs: Optional[Dict[str, Union[float, Dict[str, float]]]]
+    ) -> None:
         """
         Sets the noise parameters of the model.
 
+        Typically a "noise parameter" refers to the error probability.
+        ThermalRelaxation is a special case, and supports a dict as value with
+        structure:
+            "ThermalRelaxation":
+            {
+                "t1": 2000, # relative t1 time.
+                "t2": 1000, # relative t2 time
+                "t_factor" 1: # relative gate time factor
+            },
+
         Args:
-            value (Optional[Dict[str, float]]): A dictionary of noise parameters.
-                If all values are 0.0, the noise parameters are set to None.
+            value (Optional[Dict[str, Union[float, Dict[str, float]]]]): A
+            dictionary of noise parameters. If all values are 0.0, the noise
+            parameters are set to None.
 
         Returns:
             None
         """
-        if value is not None and all(np == 0.0 for np in value.values()):
-            value = None
-        self._noise_params = value
+        # set to None if only zero values provided
+        if kvs is not None and all(np == 0.0 for np in kvs.values()):
+            kvs = None
+
+        # set default values
+        if kvs is not None:
+            kvs.setdefault("BitFlip", 0.0)
+            kvs.setdefault("PhaseFlip", 0.0)
+            kvs.setdefault("Depolarizing", 0.0)
+            kvs.setdefault("AmplitudeDamping", 0.0)
+            kvs.setdefault("PhaseDamping", 0.0)
+            kvs.setdefault("GateError", 0.0)
+            kvs.setdefault("ThermalRelaxation", None)
+            kvs.setdefault("StatePreparation", 0.0)
+            kvs.setdefault("Measurement", 0.0)
+
+            # check if there are any keys not supported
+            for key in kvs.keys():
+                if key not in [
+                    "BitFlip",
+                    "PhaseFlip",
+                    "Depolarizing",
+                    "AmplitudeDamping",
+                    "PhaseDamping",
+                    "GateError",
+                    "ThermalRelaxation",
+                    "StatePreparation",
+                    "Measurement",
+                ]:
+                    warnings.warn(
+                        f"Noise type {key} is not supported by this package",
+                        UserWarning,
+                    )
+
+            # check valid params for thermal relaxation noise channel
+            tr_params = kvs["ThermalRelaxation"]
+            if isinstance(tr_params, dict):
+                tr_params.setdefault("t1", 0.0)
+                tr_params.setdefault("t2", 0.0)
+                tr_params.setdefault("t_factor", 0.0)
+                for k in tr_params.keys():
+                    if k not in [
+                        "t1",
+                        "t2",
+                        "t_factor",
+                    ]:
+                        warnings.warn(
+                            f"Thermal Relaxation parameter {k} is not supported "
+                            f"by this package",
+                            UserWarning,
+                        )
+                if not all(tr_params.values()) or tr_params["t2"] > 2 * tr_params["t1"]:
+                    warnings.warn(
+                        "Received invalid values for Thermal Relaxation noise "
+                        "parameter. Thermal relaxation is not applied!",
+                        UserWarning,
+                    )
+                    kvs["ThermalRelaxation"] = 0.0
+
+        self._noise_params = kvs
 
     @property
     def execution_type(self) -> str:
@@ -216,10 +289,10 @@ class Model:
 
     @execution_type.setter
     def execution_type(self, value: str) -> None:
-        if value not in ["density", "expval", "probs"]:
+        if value not in ["density", "state", "expval", "probs"]:
             raise ValueError(f"Invalid execution type: {value}.")
 
-        if value == "density" and self.output_qubit != -1:
+        if (value == "density" or value == "state") and self.output_qubit != -1:
             warnings.warn(
                 f"{value} measurement does ignore output_qubit, which is "
                 f"{self.output_qubit}.",
@@ -289,15 +362,11 @@ class Model:
             None
         """
         params_shape = (
-            self._params_shape
-            if repeat is None
-            else [*self._params_shape, repeat]
+            self._params_shape if repeat is None else [*self._params_shape, repeat]
         )
         # use existing strategy if not specified
         initialization = initialization or self._inialization_strategy
-        initialization_domain = (
-            initialization_domain or self._initialization_domain
-        )
+        initialization_domain = initialization_domain or self._initialization_domain
 
         def set_control_params(params: np.ndarray, value: float) -> np.ndarray:
             indices = self.pqc.get_control_indices(self.n_qubits)
@@ -310,9 +379,7 @@ class Model:
                 )
             else:
                 params[:, indices[0] : indices[1] : indices[2]] = (
-                    np.ones_like(
-                        params[:, indices[0] : indices[1] : indices[2]]
-                    )
+                    np.ones_like(params[:, indices[0] : indices[1] : indices[2]])
                     * value
                 )
             return params
@@ -324,9 +391,7 @@ class Model:
         elif initialization == "zeros":
             self.params: np.ndarray = np.zeros(params_shape, requires_grad=True)
         elif initialization == "pi":
-            self.params: np.ndarray = (
-                np.ones(params_shape, requires_grad=True) * np.pi
-            )
+            self.params: np.ndarray = np.ones(params_shape, requires_grad=True) * np.pi
         elif initialization == "zero-controlled":
             self.params: np.ndarray = rng.uniform(
                 *initialization_domain, params_shape, requires_grad=True
@@ -350,7 +415,7 @@ class Model:
         inputs: np.ndarray,
         data_reupload: bool,
         enc: Union[Callable, List[Callable]],
-        noise_params: Optional[np.ndarray] = None,
+        noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
     ) -> None:
         """
         Creates an AngleEncoding using RX gates
@@ -374,9 +439,7 @@ class Model:
             else:
                 for q in range(self.n_qubits):
                     for idx in range(inputs.shape[1]):
-                        enc[idx](
-                            inputs[:, idx], wires=q, noise_params=noise_params
-                        )
+                        enc[idx](inputs[:, idx], wires=q, noise_params=noise_params)
         else:
             if inputs.shape[1] == 1:
                 enc(inputs[:, 0], wires=0, noise_params=noise_params)
@@ -401,11 +464,11 @@ class Model:
                 of the circuit if state_vector is False and exp_val is True,
                 otherwise the density matrix of all qubits.
         """
+        if self.noise_params is not None:
+            self._apply_state_prep_noise()
 
         for layer in range(0, self.n_layers):
-            self.pqc(
-                params[layer], self.n_qubits, noise_params=self.noise_params
-            )
+            self.pqc(params[layer], self.n_qubits, noise_params=self.noise_params)
 
             if self.data_reupload or layer == 0:
                 self._iec(
@@ -421,17 +484,13 @@ class Model:
             self.pqc(params[-1], self.n_qubits, noise_params=self.noise_params)
 
         if self.noise_params is not None:
-            for q in range(self.n_qubits):
-                qml.AmplitudeDamping(
-                    self.noise_params.get("AmplitudeDamping", 0.0), wires=q
-                )
-                qml.PhaseDamping(
-                    self.noise_params.get("PhaseDamping", 0.0), wires=q
-                )
+            self._apply_general_noise()
 
         # run mixed simualtion and get density matrix
         if self.execution_type == "density":
             return qml.density_matrix(wires=list(range(self.n_qubits)))
+        elif self.execution_type == "state":
+            return qml.state()
         # run default simulation and get expectation value
         elif self.execution_type == "expval":
             # n-local measurement
@@ -460,6 +519,47 @@ class Model:
         else:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
+    def _apply_state_prep_noise(self) -> None:
+        """
+        Applies a state preparation error on each qubit according to the
+        probability for StatePreparation provided in the noise_params.
+        """
+        sp = self.noise_params.get("StatePreparation", 0.0)
+        for q in range(self.n_qubits):
+            if sp > 0:
+                qml.BitFlip(sp, wires=q)
+
+    def _apply_general_noise(self) -> None:
+        """
+        Applies general types of noise the full circuit (in contrast to gate
+        errors, applied directly at gate level, see Gates.Noise).
+
+        Possible types of noise are:
+            - AmplitudeDamping (specified through probability)
+            - PhaseDamping (specified through probability)
+            - ThermalRelaxation (specified through a dict, containing keys
+                                 "t1", "t2", "t_factor")
+            - Measurement (specified through probability)
+        """
+        amp_damp = self.noise_params.get("AmplitudeDamping", 0.0)
+        phase_damp = self.noise_params.get("PhaseDamping", 0.0)
+        thermal_relax = self.noise_params.get("ThermalRelaxation", 0.0)
+        meas = self.noise_params.get("Measurement", 0.0)
+        for q in range(self.n_qubits):
+            if amp_damp > 0:
+                qml.AmplitudeDamping(amp_damp, wires=q)
+            if phase_damp > 0:
+                qml.PhaseDamping(phase_damp, wires=q)
+            if meas > 0:
+                qml.BitFlip(meas, wires=q)
+            if isinstance(thermal_relax, dict):
+                t1 = thermal_relax["t1"]
+                t2 = thermal_relax["t2"]
+                t_factor = thermal_relax["t_factor"]
+                circuit_depth = self.get_circuit_depth()
+                tg = circuit_depth * t_factor
+                qml.ThermalRelaxationError(1.0, t1, t2, tg, q)
+
     def _draw(self, inputs=None, figure=False) -> None:
         if not isinstance(self.circuit, qml.QNode):
             # TODO: throws strange argument error if not catched
@@ -468,9 +568,7 @@ class Model:
         inputs = self._inputs_validation(inputs)
 
         if figure:
-            result = qml.draw_mpl(self.circuit)(
-                params=self.params, inputs=inputs
-            )
+            result = qml.draw_mpl(self.circuit)(params=self.params, inputs=inputs)
         else:
             result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
         return result
@@ -489,7 +587,7 @@ class Model:
         self,
         params: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
-        noise_params: Optional[Dict[str, float]] = None,
+        noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
@@ -570,9 +668,7 @@ class Model:
             FourierTree: The fourier tree constructed from the circuit.
         """
         if input is None or input == 0.0:
-            raise ValueError(
-                "When building Fourier Tree, we need a non zero input."
-            )
+            raise ValueError("When building Fourier Tree, we need a non zero input.")
         if self.as_pauli_circuit:
             circuit = self.circuit
         else:
@@ -596,9 +692,7 @@ class Model:
         inputs = self._inputs_validation(inputs)
         inputs.requires_grad = False
 
-        tape = qml.workflow.construct_tape(circuit)(
-            params=params, inputs=inputs
-        )
+        tape = qml.workflow.construct_tape(circuit)(params=params, inputs=inputs)
 
         return FourierTree(tape, force_mean)
 
@@ -651,7 +745,7 @@ class Model:
         self,
         params: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
-        noise_params: Optional[Dict[str, float]] = None,
+        noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
@@ -735,10 +829,7 @@ class Model:
 
         if result is None:
             # if density matrix requested or noise params used
-            if (
-                self.execution_type == "density"
-                or self.noise_params is not None
-            ):
+            if self.execution_type == "density" or self.noise_params is not None:
                 result = self.circuit_mixed(
                     params=params,  # use arraybox params
                     inputs=inputs,
@@ -757,21 +848,13 @@ class Model:
         if isinstance(result, list):
             result = np.stack(result)
 
-        if (
-            self.execution_type == "expval"
-            and force_mean
-            and self.output_qubit == -1
-        ):
+        if self.execution_type == "expval" and force_mean and self.output_qubit == -1:
             # exception for torch layer because it swaps batch and output dimension
             if not isinstance(self.circuit, qml.QNode):
                 result = result.mean(axis=-1)
             else:
                 result = result.mean(axis=0)
-        elif (
-            self.execution_type == "probs"
-            and force_mean
-            and self.output_qubit == -1
-        ):
+        elif self.execution_type == "probs" and force_mean and self.output_qubit == -1:
             # exception for torch layer because it swaps batch and output dimension
             if not isinstance(self.circuit, qml.QNode):
                 result = result[..., -1].sum(axis=-1)
@@ -785,3 +868,33 @@ class Model:
             np.save(file_path, result)
 
         return result
+
+    def get_specs(self, inputs: Optional[np.ndarray] = None) -> dict:
+        """
+        Get pennylane specs for the model.
+
+        Args:
+            inputs (Optional[np.ndarray]): The inputs, with which to call the
+                circuit. Defaults to None.
+
+        Returns:
+            dict: Dictionary of specs. The key "resources" contains information
+                about the circuit size and gate statistics.
+        """
+        inputs = self._inputs_validation(inputs)
+        spec_model = deepcopy(self)
+        spec_model.noise_params = None  # remove noise
+        return qml.specs(spec_model.circuit)(self.params, inputs)
+
+    def get_circuit_depth(self, inputs: Optional[np.ndarray] = None) -> int:
+        """
+        Obtain circuit depth for the model
+
+        Args:
+            inputs (Optional[np.ndarray]): The inputs, with which to call the
+                circuit. Defaults to None.
+
+        Returns:
+            int: Circuit depth (longest path of gates in circuit.)
+        """
+        return self.get_specs(inputs)["resources"].depth
