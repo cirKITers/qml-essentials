@@ -55,6 +55,7 @@ The encoding can be set when instantiating the model with the `encoding` argumen
 
 The default encoding is "RX" which will result in a single RX rotation per qubit.
 Other options are:
+
 - Any callable such as `Gates.RX`
 - A list of callables such as `[Gates.RX, Gates.RY]`
 - A string such as `"RX"` that will result in a single RX rotation per qubit
@@ -75,6 +76,7 @@ This is usually helpful, if you want to perform a n-local measurement over all q
 ## Execution Type
 
 Our model be simulated in different ways by setting the `execution_type` property, when calling the model, to:
+
 - `exp_val`: Returns the expectation value between $0$ and $1$
 - `density`: Calculates the density matrix
 - `probs`: Simulates the model with the number of shots, set by `model.shots`
@@ -82,21 +84,37 @@ Our model be simulated in different ways by setting the `execution_type` propert
 ## Noise
 
 Noise can be added to the model by providing a `noise_params` argument, when calling the model, which is a dictionary with following keys
+
 - `BitFlip`
 - `PhaseFlip`
 - `AmplitudeDamping`
 - `PhaseDamping`
 - `Depolarizing`
+- `StatePreparation`
+- `Measurement`
+
 with values between $0$ and $1$.
 Additionally, a `GateError` can be applied, which controls the variance of a Gaussian distribution with zero mean applied on the input vector.
 
-This will apply the corresponding noise in each layer with the provided factor.
+While `BitFlip`, `PhaseFlip`, `Depolarizing` and `GateError`s are applied on each gate, `AmplitudeDamping`, `PhaseDamping`, `StatePreparation` and `Measurement` are applied on the whole circuit.
+
+Furthermore, `ThermalRelaxation` can be applied. 
+Instead of the probability, the entry for this type of error consists of another dict with the keys:
+
+- `t1`: The relative T1 relaxation time (a typical value might be $180\mathrm{us}$)
+- `t2`: The relative T2 relaxation time (a typical value might be $100\mathrm{us}$)
+- `t_factor`: The relative gate time factor (a typical value might be $0.018\mathrm{us}$)
+
+The units can be ignored as we are only interested in relative times, above values might belong to some superconducting system.
+Note that `t2` is required to be max. $2\times$`t1`.
+Based on `t_factor` and the circuit depth the execution time is estimated, and therefore the influence of thermal relaxation over time.
 
 ## Caching
 
 To speed up calculation, you can add `cache=True` when calling the model.
 The result of the model call will then be stored in a numpy format in a folder `.cache`.
 Each result is being identified by a md5 hash that is a representation of the following model properties:
+
 - number of qubits
 - number of layers
 - ansatz
