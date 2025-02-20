@@ -101,12 +101,12 @@ While `BitFlip`, `PhaseFlip` and `GateError`s are applied on each gate, `Amplitu
 Furthermore, `ThermalRelaxation` can be applied. 
 Instead of the probability, the entry for this type of error consists of another dict with the keys:
 
-- `T1`: The relative T1 relaxation time (a typical value might be $180\mathrm{us}$)
-- `T2`: The relative T2 relaxation time (a typical value might be $100\mathrm{us}$)
-- `t_factor`: The relative gate time (a typical value might be $0.018\mathrm{us}$)
+- `t1`: The relative T1 relaxation time (a typical value might be $180\mathrm{us}$)
+- `t2`: The relative T2 relaxation time (a typical value might be $100\mathrm{us}$)
+- `t_factor`: The relative gate time factor (a typical value might be $0.018\mathrm{us}$)
 
 The units can be ignored as we are only interested in relative times, above values might belong to some superconducting system.
-Note that `T2` is required to be max. $2\times$`T1`.
+Note that `t2` is required to be max. $2\times$`t1`.
 Based on `t_factor` and the circuit depth the execution time is estimated, and therefore the influence of thermal relaxation over time.
 
 ## Caching
