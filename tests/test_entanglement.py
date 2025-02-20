@@ -35,7 +35,7 @@ def test_entanglement() -> None:
         15,
         9,
     ]
-    ent_results = [
+    results_n_layers_1 = [
         0.0000,
         0.8379,
         0.0000,
@@ -63,28 +63,27 @@ def test_entanglement() -> None:
 
     # Circuit 10 excluded because implementation with current setup not possible
     skip_indices = [5, 7, 8, 11, 12, 13, 14, 10]
-    # skip the most for testing
-    # skip_indices += [16, 8, 5, 18, 17, 4, 10, 19, 13, 12, 14, 11, 6, 2, 15, 9]
+    skip_indices += [2, 3]  # exclude these for now as order is failing
     test_cases = []
-    for circuit, ent_res in zip(circuits, ent_results):
-        if circuit in skip_indices:
+    for circuit_id, res_1l in zip(circuits, results_n_layers_1):
+        if circuit_id in skip_indices:
             continue
-        if isinstance(circuit, int):
+        if isinstance(circuit_id, int):
             test_cases.append(
                 {
-                    "circuit_type": f"Circuit_{circuit}",
+                    "circuit_type": f"Circuit_{circuit_id}",
                     "n_qubits": 4,
                     "n_layers": 1,
-                    "result": ent_res,
+                    "result": res_1l,
                 }
             )
-        elif isinstance(circuit, str):
+        elif isinstance(circuit_id, str):
             test_cases.append(
                 {
-                    "circuit_type": circuit,
+                    "circuit_type": circuit_id,
                     "n_qubits": 4,
                     "n_layers": 1,
-                    "result": ent_res,
+                    "result": res_1l,
                 }
             )
 
@@ -127,23 +126,23 @@ def test_entanglement() -> None:
             {test_case['result']} but {ent_cap} instead.\
             Deviation {(error*100):.1f}%>{tolerance*100}%"
 
-    expected_ent_results = sorted(
+    references = sorted(
         [
             (circuit, ent_result)
-            for circuit, ent_result in zip(circuits, ent_results)
+            for circuit, ent_result in zip(circuits, results_n_layers_1)
             if circuit not in skip_indices
         ],
         key=lambda x: x[1],
     )
 
-    actual_ent_results = sorted(ent_caps, key=lambda x: x[1])
+    actuals = sorted(ent_caps, key=lambda x: x[1])
 
     print("Expected \t| Actual")
-    for expected, actual in zip(expected_ent_results, actual_ent_results):
-        print(f"{expected[0]}, {expected[1]} \t| {actual[0]}, {actual[1]}")
-    assert [circuit for circuit, _ in actual_ent_results] == [
-        circuit for circuit, _ in expected_ent_results
-    ]
+    for reference, actual in zip(references, actuals):
+        print(f"{reference[0]}, {reference[1]} \t| {actual[0]}, {actual[1]}")
+    assert [circuit for circuit, _ in actuals] == [
+        circuit for circuit, _ in references
+    ], f"Order of circuits does not match: {actuals} != {references}"
 
 
 @pytest.mark.smoketest

@@ -183,7 +183,7 @@ def test_expressibility() -> None:
         print(f"{reference[0]}, {reference[1]} \t| {actual[0]}, {actual[1]}")
     assert [circuit for circuit, _ in references] == [
         circuit for circuit, _ in actuals
-    ], "Order of circuits does not match"
+    ], f"Order of circuits does not match: {actuals} != {references}"
 
 
 @pytest.mark.unittest
