@@ -189,8 +189,8 @@ class Model:
         structure:
             "ThermalRelaxation":
             {
-                "T1": 2000, # relative t1 time.
-                "T2": 1000, # relative t2 time
+                "t1": 2000, # relative t1 time.
+                "t2": 1000, # relative t2 time
                 "t_factor" 1: # relative gate time factor
             },
 
@@ -214,7 +214,7 @@ class Model:
             kvs.setdefault("AmplitudeDamping", 0.0)
             kvs.setdefault("PhaseDamping", 0.0)
             kvs.setdefault("GateError", 0.0)
-            kvs.setdefault("ThermalRelaxation", 0.0)
+            kvs.setdefault("ThermalRelaxation", None)
             kvs.setdefault("StatePreparation", 0.0)
             kvs.setdefault("Measurement", 0.0)
 
@@ -239,13 +239,13 @@ class Model:
             # check valid params for thermal relaxation noise channel
             tr_params = kvs["ThermalRelaxation"]
             if isinstance(tr_params, dict):
-                tr_params.setdefault("T1", 0.0)
-                tr_params.setdefault("T2", 0.0)
+                tr_params.setdefault("t1", 0.0)
+                tr_params.setdefault("t2", 0.0)
                 tr_params.setdefault("t_factor", 0.0)
                 for k in tr_params.keys():
                     if k not in [
-                        "T1",
-                        "T2",
+                        "t1",
+                        "t2",
                         "t_factor",
                     ]:
                         warnings.warn(
@@ -253,7 +253,7 @@ class Model:
                             f"by this package",
                             UserWarning,
                         )
-                if not all(tr_params.values()) or tr_params["T2"] > 2 * tr_params["T1"]:
+                if not all(tr_params.values()) or tr_params["t2"] > 2 * tr_params["t1"]:
                     warnings.warn(
                         "Received invalid values for Thermal Relaxation noise "
                         "parameter. Thermal relaxation is not applied!",
@@ -523,7 +523,7 @@ class Model:
             - AmplitudeDamping (specified through probability)
             - PhaseDamping (specified through probability)
             - ThermalRelaxation (specified through a dict, containing keys
-                                 "T1", "T2", "t_factor")
+                                 "t1", "t2", "t_factor")
             - Measurement (specified through probability)
         """
         amp_damp = self.noise_params.get("AmplitudeDamping", 0.0)
@@ -538,8 +538,8 @@ class Model:
             if meas > 0:
                 qml.BitFlip(meas, wires=q)
             if isinstance(thermal_relax, dict):
-                t1 = thermal_relax["T1"]
-                t2 = thermal_relax["T2"]
+                t1 = thermal_relax["t1"]
+                t2 = thermal_relax["t2"]
                 t_factor = thermal_relax["t_factor"]
                 circuit_depth = self.get_circuit_depth()
                 tg = circuit_depth * t_factor
