@@ -96,7 +96,7 @@ Noise can be added to the model by providing a `noise_params` argument, when cal
 with values between $0$ and $1$.
 Additionally, a `GateError` can be applied, which controls the variance of a Gaussian distribution with zero mean applied on the input vector.
 
-While `BitFlip`, `PhaseFlip` and `GateError`s are applied on each gate, `AmplitudeDamping`, `PhaseDamping`, `Depolarizing`, `StatePreparation` and `Measurement` are applied on the whole circuit.
+While `BitFlip`, `PhaseFlip`, `Depolarizing` and `GateError`s are applied on each gate, `AmplitudeDamping`, `PhaseDamping`, `StatePreparation` and `Measurement` are applied on the whole circuit.
 
 Furthermore, `ThermalRelaxation` can be applied. 
 Instead of the probability, the entry for this type of error consists of another dict with the keys:
