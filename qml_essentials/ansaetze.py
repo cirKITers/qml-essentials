@@ -457,8 +457,7 @@ class Ansaetze:
         @staticmethod
         def n_params_per_layer(n_qubits: int) -> int:
             """
-            Returns the number of parameters per layer for the
-            Hardware Efficient Ansatz.
+            Returns the number of parameters per layer for Circuit_19.
 
             The number of parameters is 3 times the number of qubits when there
             is more than one qubit, as each qubit contributes 3 parameters.
@@ -584,11 +583,11 @@ class Ansaetze:
             """
             Creates a Circuit19 ansatz.
 
-            Length of flattened vector must be n_qubits*3
+            Length of flattened vector must be n_qubits*3-1
             because for >1 qubits there are three gates
 
             Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3)
+                w (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
                 n_qubits (int): number of qubits
             """
             w_idx = 0
@@ -832,8 +831,8 @@ class Ansaetze:
             """
             Returns the number of parameters per layer for Circuit_6.
 
-            The total number of parameters is n_qubits*3 + n_qubits**2, which is
-            the number of rotations (n_qubits*3) plus the number of entangling gates
+            The total number of parameters is n_qubits * 3 + n_qubits**2, which is
+            the number of rotations (n_qubits * 3) plus the number of entangling gates
             (n_qubits**2).
 
             If n_qubits is 1, the number of parameters is 4, and a warning is logged
@@ -885,11 +884,11 @@ class Ansaetze:
 
             Length of flattened vector must be
                 n_qubits * 4 + n_qubits * (n_qubits - 1) =
-                n_qubits*3 + n_qubits**2
+                n_qubits * 3 + n_qubits**2
 
             Args:
                 w (np.ndarray): weight vector of size
-                    n_layers * (n_qubits*3 + n_qubits**2)
+                    n_layers * (n_qubits * 3 + n_qubits**2)
                 n_qubits (int): number of qubits
             """
             w_idx = 0
@@ -1213,7 +1212,7 @@ class Ansaetze:
             """
             Creates a Circuit10 ansatz.
 
-            Length of flattened vector must be n_qubits*2
+            Length of flattened vector must be n_qubits
 
             Args:
                 w (np.ndarray): weight vector of size n_layers*n_qubits
@@ -1247,7 +1246,7 @@ class Ansaetze:
             """
             Returns the number of parameters per layer for the Circuit_16 ansatz.
 
-            The number of parameters is calculated as n_qubits*3-1.
+            The number of parameters is calculated as n_qubits * 3 - 1.
 
             Parameters
             ----------
@@ -1434,8 +1433,6 @@ class Ansaetze:
         def build(w: np.ndarray, n_qubits: int, noise_params=None) -> None:
             """
             Creates a Strongly Entangling ansatz.
-
-            Length of flattened vector must be n_qubits*6
 
             Args:
                 w (np.ndarray): weight vector of size n_layers*(n_qubits*6)
