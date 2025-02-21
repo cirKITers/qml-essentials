@@ -477,7 +477,7 @@ class Ansaetze:
             """
             if n_qubits < 2:
                 log.warning("Number of Qubits < 2, no entanglement available")
-            return n_qubits*3
+            return n_qubits * 3
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -551,7 +551,7 @@ class Ansaetze:
             """
 
             if n_qubits > 1:
-                return n_qubits*3
+                return n_qubits * 3
             else:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 2
@@ -629,7 +629,7 @@ class Ansaetze:
                 Number of parameters required for one layer of the circuit
             """
             if n_qubits > 1:
-                return n_qubits*3
+                return n_qubits * 3
             else:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 2
@@ -704,7 +704,7 @@ class Ansaetze:
                 Number of parameters required for one layer of the circuit
             """
             if n_qubits > 1:
-                return n_qubits*2
+                return n_qubits * 2
             else:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 2
@@ -850,7 +850,7 @@ class Ansaetze:
                 Number of parameters per layer
             """
             if n_qubits > 1:
-                return n_qubits*3 + n_qubits**2
+                return n_qubits * 3 + n_qubits**2
             else:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 4
@@ -936,7 +936,7 @@ class Ansaetze:
             int
                 Number of parameters per layer
             """
-            return n_qubits*2
+            return n_qubits * 2
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -993,7 +993,7 @@ class Ansaetze:
             int
                 Number of parameters per layer
             """
-            return n_qubits*2
+            return n_qubits * 2
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1058,7 +1058,7 @@ class Ansaetze:
             int
                 Number of parameters per layer
             """
-            return n_qubits*3-1
+            return n_qubits * 3 - 1
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1123,7 +1123,7 @@ class Ansaetze:
             int
                 Number of parameters per layer
             """
-            return n_qubits*3-1
+            return n_qubits * 3 - 1
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1188,7 +1188,7 @@ class Ansaetze:
             int
                 Number of parameters per layer
             """
-            return n_qubits*2  # constant gates not considered yet. has to be fixed
+            return n_qubits * 2  # constant gates not considered yet. has to be fixed
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1260,7 +1260,7 @@ class Ansaetze:
                 Number of parameters per layer
             """
 
-            return n_qubits*3-1
+            return n_qubits * 3 - 1
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1334,7 +1334,7 @@ class Ansaetze:
                 Number of parameters per layer
             """
 
-            return n_qubits*3-1
+            return n_qubits * 3 - 1
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1491,7 +1491,7 @@ class Ansaetze:
             int
                 Number of parameters per layer
             """
-            return n_qubits*3
+            return n_qubits * 3
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
