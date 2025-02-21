@@ -77,7 +77,7 @@ This is usually helpful, if you want to perform a n-local measurement over all q
 
 Our model be simulated in different ways by setting the `execution_type` property, when calling the model, to:
 
-- `exp_val`: Returns the expectation value between $0$ and $1$
+- `expval`: Returns the expectation value between $0$ and $1$
 - `density`: Calculates the density matrix
 - `probs`: Simulates the model with the number of shots, set by `model.shots`
 
