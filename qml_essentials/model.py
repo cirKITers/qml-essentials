@@ -445,7 +445,7 @@ class Model:
             inputs (np.ndarray): input vector of size 1
         Returns:
             Union[float, np.ndarray]: Expectation value of PauliZ(0)
-                of the circuit if state_vector is False and exp_val is True,
+                of the circuit if state_vector is False and expval is True,
                 otherwise the density matrix of all qubits.
         """
         if self.noise_params is not None:

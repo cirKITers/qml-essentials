@@ -1,41 +1,11 @@
-name: Testing
+name: Testing on Review
 on:
-  pull_request:
-    branches: [ "main" ]
+  pull_request_review:
+    types: [submitted]
   workflow_call:
 permissions:
   contents: write
 jobs:
-  test-created:
-    runs-on: ubuntu-latest
-    steps:
-    # - name: Install Act dependencies
-    #   if: ${{ env.ACT }}
-    #   run: |
-    #     apt update -qq > /dev/null
-    #     apt install apt-utils -y -qq > /dev/null
-    #     apt remove python3
-    #     apt install python3.11 python3-venv pipx -y
-    - uses: actions/checkout@v4
-    - name: Install poetry
-      run: pipx install poetry
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
-        cache: 'poetry'
-    - name: Install dependencies
-      run: poetry install --with dev
-    - name: Test with pytest
-      run: |
-        poetry run coverage run -m pytest -m "not expensive"
-        poetry run coverage report -m
-        poetry run coverage html
-    - name: Share coverage report
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-report
-        path: htmlcov/
   test-approved:
     if: github.event.review.state == 'approved'
     runs-on: ubuntu-latest
