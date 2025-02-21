@@ -457,7 +457,8 @@ class Ansaetze:
         @staticmethod
         def n_params_per_layer(n_qubits: int) -> int:
             """
-            Returns the number of parameters per layer for Circuit_19.
+            Returns the number of parameters per layer for the
+            Hardware Efficient Ansatz.
 
             The number of parameters is 3 times the number of qubits when there
             is more than one qubit, as each qubit contributes 3 parameters.
@@ -476,7 +477,7 @@ class Ansaetze:
             """
             if n_qubits < 2:
                 log.warning("Number of Qubits < 2, no entanglement available")
-            return n_qubits * 3
+            return n_qubits*3
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -550,7 +551,7 @@ class Ansaetze:
             """
 
             if n_qubits > 1:
-                return n_qubits * 3
+                return n_qubits*3
             else:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 2
@@ -583,11 +584,11 @@ class Ansaetze:
             """
             Creates a Circuit19 ansatz.
 
-            Length of flattened vector must be n_qubits*3-1
+            Length of flattened vector must be n_qubits*3
             because for >1 qubits there are three gates
 
             Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
+                w (np.ndarray): weight vector of size n_layers*(n_qubits*3)
                 n_qubits (int): number of qubits
             """
             w_idx = 0
@@ -628,7 +629,7 @@ class Ansaetze:
                 Number of parameters required for one layer of the circuit
             """
             if n_qubits > 1:
-                return n_qubits * 3
+                return n_qubits*3
             else:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 2
@@ -703,7 +704,7 @@ class Ansaetze:
                 Number of parameters required for one layer of the circuit
             """
             if n_qubits > 1:
-                return n_qubits * 2
+                return n_qubits*2
             else:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 2
@@ -831,8 +832,8 @@ class Ansaetze:
             """
             Returns the number of parameters per layer for Circuit_6.
 
-            The total number of parameters is n_qubits * 3 + n_qubits**2, which is
-            the number of rotations (n_qubits * 3) plus the number of entangling gates
+            The total number of parameters is n_qubits*3 + n_qubits**2, which is
+            the number of rotations (n_qubits*3) plus the number of entangling gates
             (n_qubits**2).
 
             If n_qubits is 1, the number of parameters is 4, and a warning is logged
@@ -849,7 +850,7 @@ class Ansaetze:
                 Number of parameters per layer
             """
             if n_qubits > 1:
-                return n_qubits * 3 + n_qubits**2
+                return n_qubits*3 + n_qubits**2
             else:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 4
@@ -884,11 +885,11 @@ class Ansaetze:
 
             Length of flattened vector must be
                 n_qubits * 4 + n_qubits * (n_qubits - 1) =
-                n_qubits * 3 + n_qubits**2
+                n_qubits*3 + n_qubits**2
 
             Args:
                 w (np.ndarray): weight vector of size
-                    n_layers * (n_qubits * 3 + n_qubits**2)
+                    n_layers * (n_qubits*3 + n_qubits**2)
                 n_qubits (int): number of qubits
             """
             w_idx = 0
@@ -935,7 +936,7 @@ class Ansaetze:
             int
                 Number of parameters per layer
             """
-            return n_qubits * 2
+            return n_qubits*2
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -992,7 +993,7 @@ class Ansaetze:
             int
                 Number of parameters per layer
             """
-            return n_qubits * 2
+            return n_qubits*2
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1057,7 +1058,7 @@ class Ansaetze:
             int
                 Number of parameters per layer
             """
-            return n_qubits * 3 - 1
+            return n_qubits*3-1
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1122,7 +1123,7 @@ class Ansaetze:
             int
                 Number of parameters per layer
             """
-            return n_qubits * 3 - 1
+            return n_qubits*3-1
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1187,7 +1188,7 @@ class Ansaetze:
             int
                 Number of parameters per layer
             """
-            return n_qubits * 2  # constant gates not considered yet. has to be fixed
+            return n_qubits*2  # constant gates not considered yet. has to be fixed
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1212,7 +1213,7 @@ class Ansaetze:
             """
             Creates a Circuit10 ansatz.
 
-            Length of flattened vector must be n_qubits
+            Length of flattened vector must be n_qubits*2
 
             Args:
                 w (np.ndarray): weight vector of size n_layers*n_qubits
@@ -1246,7 +1247,7 @@ class Ansaetze:
             """
             Returns the number of parameters per layer for the Circuit_16 ansatz.
 
-            The number of parameters is calculated as n_qubits * 3 - 1.
+            The number of parameters is calculated as n_qubits*3-1.
 
             Parameters
             ----------
@@ -1259,7 +1260,7 @@ class Ansaetze:
                 Number of parameters per layer
             """
 
-            return n_qubits * 3 - 1
+            return n_qubits*3-1
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1333,7 +1334,7 @@ class Ansaetze:
                 Number of parameters per layer
             """
 
-            return n_qubits * 3 - 1
+            return n_qubits*3-1
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1434,6 +1435,8 @@ class Ansaetze:
             """
             Creates a Strongly Entangling ansatz.
 
+            Length of flattened vector must be n_qubits*6
+
             Args:
                 w (np.ndarray): weight vector of size n_layers*(n_qubits*6)
                 n_qubits (int): number of qubits
@@ -1488,7 +1491,7 @@ class Ansaetze:
             int
                 Number of parameters per layer
             """
-            return n_qubits * 3
+            return n_qubits*3
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
