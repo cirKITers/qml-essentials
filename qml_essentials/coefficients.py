@@ -1,15 +1,15 @@
 from __future__ import annotations
-from qml_essentials.model import Model
 import numpy as np
-from typing import List, Tuple, Optional, Any, Dict
-import pennylane as qml
+import math
 from collections import defaultdict
 from dataclasses import dataclass
 import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.tape import QuantumScript
-import math
 import pennylane.ops.op_math as qml_op
+from typing import List, Tuple, Optional, Any, Dict
+
+from qml_essentials.model import Model
 
 
 class Coefficients:

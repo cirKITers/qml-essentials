@@ -107,8 +107,8 @@ def test_coefficients_tree() -> None:
 
         fft_coeffs, fft_freqs = Coefficients.get_spectrum(model, shift=True)
 
-        coeff_tree = FourierTree(model)
-        analytical_freqs, analytical_coeffs = coeff_tree(inputs=1.0).get_spectrum()
+        coeff_tree = FourierTree(model)(inputs=1.0)
+        analytical_freqs, analytical_coeffs = coeff_tree.get_spectrum()
 
         assert len(analytical_freqs[0]) == len(
             analytical_freqs[0]
