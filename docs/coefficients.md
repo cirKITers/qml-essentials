@@ -123,3 +123,10 @@ psd = Coefficients.get_psd(coeffs)
 
 ![Model PSD](model_psd_light.png#only-light)
 ![Model PSD](model_psd_dark.png#only-dark)
+
+## Analytic Coefficients
+
+All of the calculations above were performed by applying a Fast Fourier Transform to the output of our Model.
+However, we can also calculate the coefficients analytically.
+
+<!-- TODO: add example and description -->
