@@ -1,11 +1,10 @@
 from __future__ import annotations
 from qml_essentials.model import Model
 import numpy as np
-from typing import Optional, Any, Dict
+from typing import List, Tuple, Optional, Any, Dict
 import pennylane as qml
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import List, Tuple, Optional, Dict
 import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.tape import QuantumScript
