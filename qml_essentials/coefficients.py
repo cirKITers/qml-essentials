@@ -141,180 +141,180 @@ class Coefficients:
         return np.real_if_close(exp)
 
 
-class CoefficientsTreeNode:
-    """
-    Representation of a node in the coefficients tree for the algorithm by
-    Nemkov et al.
-    """
-
-    def __init__(
-        self,
-        parameter_idx: Optional[int],
-        observable: Operator,
-        is_sine_factor: bool,
-        is_cosine_factor: bool,
-        left: Optional[CoefficientsTreeNode] = None,
-        right: Optional[CoefficientsTreeNode] = None,
-    ):
-        """
-        Coefficient tree node initialisation. Each node has information about
-        its creation context and it's children, i.e.:
-
-        Args:
-            parameter_idx (Optional[int]): Index of the corresponding parameter index i.
-            observable (Operator): The nodes observable to obtain the
-                expectation value that contributes to the constant term.
-            is_sine_factor (bool): If this node belongs to a sine coefficient.
-            is_cosine_factor (bool): If this node belongs to a cosine coefficient.
-            left (Optional[CoefficientsTreeNode]): left child (if any).
-            right (Optional[CoefficientsTreeNode]): right child (if any).
-        """
-        self.parameter_idx = parameter_idx
-
-        assert not (
-            is_sine_factor and is_cosine_factor
-        ), "Cannot be sine and cosine at the same time"
-        self.is_sine_factor = is_sine_factor
-        self.is_cosine_factor = is_cosine_factor
-
-        if isinstance(observable, qml_op.SProd):
-            term = observable.terms()[0][0]
-            observable = observable.terms()[1][0]
-        else:
-            term = 1.0
-
-        # If the observable does not constist of only Z and I, the
-        # expectation (and therefore the constant node term) is zero
-        if (
-            isinstance(observable, qml_op.Prod)
-            and any([isinstance(p, (qml.X, qml.Y)) for p in observable])
-            or isinstance(observable, (qml.PauliX, qml.PauliY))
-        ):
-            self.term = 0.0
-        else:
-            self.term = term
-
-        self.observable = observable
-
-        self.left = left
-        self.right = right
-
-    def evaluate(self, parameters: list[float]) -> float:
-        """
-        Recursive function to evaluate the expectation of the coefficient tree,
-        starting from the current node.
-
-        Args:
-            parameters (list[float]): The parameters, by which the circuit (and
-                therefore the tree) is parametrised.
-
-        Returns:
-            float: The expectation for the current node and it's children.
-        """
-        factor = (
-            parameters[self.parameter_idx] if self.parameter_idx is not None else 1.0
-        )
-        if self.is_sine_factor:
-            factor = 1j * np.sin(factor)
-        elif self.is_cosine_factor:
-            factor = np.cos(factor)
-        if not (self.left or self.right):  # leaf
-            return factor * self.term
-
-        sum_children = 0.0
-        if self.left:
-            left = self.left.evaluate(parameters)
-            sum_children = sum_children + left
-        if self.right:
-            right = self.right.evaluate(parameters)
-            sum_children = sum_children + right
-
-        return factor * sum_children
-
-    def get_leafs(
-        self,
-        sin_list: List[int],
-        cos_list: List[int],
-        existing_leafs: List[TreeLeaf] = [],
-    ) -> List[TreeLeaf]:
-        """
-        Traverse the tree starting from the current node, to obtain the tree
-        leafs only.
-        The leafs correspond to the terms in the sine-cosine tree
-        representation that eventually are used to obtain coefficients and
-        frequencies.
-        Sine and cosine lists are recursively passed to the children until a
-        leaf is reached (top to bottom).
-        Leafs are then passed bottom to top to the caller.
-
-        Args:
-            sin_list (List[int]): Current number of sine contributions for each
-                parameter. Has the same length as the parameters, as each
-                position corresponds to one parameter.
-            cos_list (List[int]):  Current number of cosine contributions for
-                each parameter. Has the same length as the parameters, as each
-                position corresponds to one parameter.
-            existing_leafs (List[TreeLeaf]): Current list of leaf nodes from
-                parents.
-
-        Returns:
-            List[TreeLeaf]: Updated list of leaf nodes.
-        """
-
-        if self.is_sine_factor:
-            sin_list[self.parameter_idx] += 1
-        if self.is_cosine_factor:
-            cos_list[self.parameter_idx] += 1
-
-        if not (self.left or self.right):  # leaf
-            if self.term != 0.0:
-                return [TreeLeaf(sin_list, cos_list, self.term)]
-            else:
-                return []
-
-        if self.left:
-            leafs_left = self.left.get_leafs(
-                sin_list.copy(), cos_list.copy(), existing_leafs.copy()
-            )
-        else:
-            leafs_left = []
-
-        if self.right:
-            leafs_right = self.right.get_leafs(
-                sin_list.copy(), cos_list.copy(), existing_leafs.copy()
-            )
-        else:
-            leafs_right = []
-
-        existing_leafs.extend(leafs_left)
-        existing_leafs.extend(leafs_right)
-        return existing_leafs
-
-
-@dataclass
-class TreeLeaf:
-    """
-    Coefficient tree leafs according to the algorithm by Nemkov et al., which
-    correspond to the terms in the sine-cosine tree representation that
-    eventually are used to obtain coefficients and frequencies.
-
-        Attributes:
-            sin_indices (List[int]): Current number of sine contributions for each
-                parameter. Has the same length as the parameters, as each
-                position corresponds to one parameter.
-            cos_list (List[int]):  Current number of cosine contributions for
-                each parameter. Has the same length as the parameters, as each
-                position corresponds to one parameter.
-            term (np.complex): Constant factor of the leaf, depending on the
-                expectation value of the observable, and a phase.
-    """
-
-    sin_indices: List[int]
-    cos_indices: List[int]
-    term: np.complex128
-
-
 class FourierTree:
+    class CoefficientsTreeNode:
+        """
+        Representation of a node in the coefficients tree for the algorithm by
+        Nemkov et al.
+        """
+
+        def __init__(
+            self,
+            parameter_idx: Optional[int],
+            observable: Operator,
+            is_sine_factor: bool,
+            is_cosine_factor: bool,
+            left: Optional[FourierTree.CoefficientsTreeNode] = None,
+            right: Optional[FourierTree.CoefficientsTreeNode] = None,
+        ):
+            """
+            Coefficient tree node initialisation. Each node has information about
+            its creation context and it's children, i.e.:
+
+            Args:
+                parameter_idx (Optional[int]): Index of the corresponding parameter index i.
+                observable (Operator): The nodes observable to obtain the
+                    expectation value that contributes to the constant term.
+                is_sine_factor (bool): If this node belongs to a sine coefficient.
+                is_cosine_factor (bool): If this node belongs to a cosine coefficient.
+                left (Optional[CoefficientsTreeNode]): left child (if any).
+                right (Optional[CoefficientsTreeNode]): right child (if any).
+            """
+            self.parameter_idx = parameter_idx
+
+            assert not (
+                is_sine_factor and is_cosine_factor
+            ), "Cannot be sine and cosine at the same time"
+            self.is_sine_factor = is_sine_factor
+            self.is_cosine_factor = is_cosine_factor
+
+            if isinstance(observable, qml_op.SProd):
+                term = observable.terms()[0][0]
+                observable = observable.terms()[1][0]
+            else:
+                term = 1.0
+
+            # If the observable does not constist of only Z and I, the
+            # expectation (and therefore the constant node term) is zero
+            if (
+                isinstance(observable, qml_op.Prod)
+                and any([isinstance(p, (qml.X, qml.Y)) for p in observable])
+                or isinstance(observable, (qml.PauliX, qml.PauliY))
+            ):
+                self.term = 0.0
+            else:
+                self.term = term
+
+            self.observable = observable
+
+            self.left = left
+            self.right = right
+
+        def evaluate(self, parameters: list[float]) -> float:
+            """
+            Recursive function to evaluate the expectation of the coefficient tree,
+            starting from the current node.
+
+            Args:
+                parameters (list[float]): The parameters, by which the circuit (and
+                    therefore the tree) is parametrised.
+
+            Returns:
+                float: The expectation for the current node and it's children.
+            """
+            factor = (
+                parameters[self.parameter_idx]
+                if self.parameter_idx is not None
+                else 1.0
+            )
+            if self.is_sine_factor:
+                factor = 1j * np.sin(factor)
+            elif self.is_cosine_factor:
+                factor = np.cos(factor)
+            if not (self.left or self.right):  # leaf
+                return factor * self.term
+
+            sum_children = 0.0
+            if self.left:
+                left = self.left.evaluate(parameters)
+                sum_children = sum_children + left
+            if self.right:
+                right = self.right.evaluate(parameters)
+                sum_children = sum_children + right
+
+            return factor * sum_children
+
+        def get_leafs(
+            self,
+            sin_list: List[int],
+            cos_list: List[int],
+            existing_leafs: List[FourierTree.TreeLeaf] = [],
+        ) -> List[FourierTree.TreeLeaf]:
+            """
+            Traverse the tree starting from the current node, to obtain the tree
+            leafs only.
+            The leafs correspond to the terms in the sine-cosine tree
+            representation that eventually are used to obtain coefficients and
+            frequencies.
+            Sine and cosine lists are recursively passed to the children until a
+            leaf is reached (top to bottom).
+            Leafs are then passed bottom to top to the caller.
+
+            Args:
+                sin_list (List[int]): Current number of sine contributions for each
+                    parameter. Has the same length as the parameters, as each
+                    position corresponds to one parameter.
+                cos_list (List[int]):  Current number of cosine contributions for
+                    each parameter. Has the same length as the parameters, as each
+                    position corresponds to one parameter.
+                existing_leafs (List[TreeLeaf]): Current list of leaf nodes from
+                    parents.
+
+            Returns:
+                List[TreeLeaf]: Updated list of leaf nodes.
+            """
+
+            if self.is_sine_factor:
+                sin_list[self.parameter_idx] += 1
+            if self.is_cosine_factor:
+                cos_list[self.parameter_idx] += 1
+
+            if not (self.left or self.right):  # leaf
+                if self.term != 0.0:
+                    return [FourierTree.TreeLeaf(sin_list, cos_list, self.term)]
+                else:
+                    return []
+
+            if self.left:
+                leafs_left = self.left.get_leafs(
+                    sin_list.copy(), cos_list.copy(), existing_leafs.copy()
+                )
+            else:
+                leafs_left = []
+
+            if self.right:
+                leafs_right = self.right.get_leafs(
+                    sin_list.copy(), cos_list.copy(), existing_leafs.copy()
+                )
+            else:
+                leafs_right = []
+
+            existing_leafs.extend(leafs_left)
+            existing_leafs.extend(leafs_right)
+            return existing_leafs
+
+    @dataclass
+    class TreeLeaf:
+        """
+        Coefficient tree leafs according to the algorithm by Nemkov et al., which
+        correspond to the terms in the sine-cosine tree representation that
+        eventually are used to obtain coefficients and frequencies.
+
+            Attributes:
+                sin_indices (List[int]): Current number of sine contributions for each
+                    parameter. Has the same length as the parameters, as each
+                    position corresponds to one parameter.
+                cos_list (List[int]):  Current number of cosine contributions for
+                    each parameter. Has the same length as the parameters, as each
+                    position corresponds to one parameter.
+                term (np.complex): Constant factor of the leaf, depending on the
+                    expectation value of the observable, and a phase.
+        """
+
+        sin_indices: List[int]
+        cos_indices: List[int]
+        term: np.complex128
+
     """
     Sine-cosine tree representation for the algorithm by Nemkov et al.
     This tree can be used to obtain analytical Fourier coefficients for a given
@@ -401,7 +401,7 @@ class FourierTree:
                 "Currently, noise is not supported when building FourierTree."
             )
         self.tree_roots = self.build_tree()
-        self.leafs: List[List[TreeLeaf]] = self._get_tree_leafs()
+        self.leafs: List[List[FourierTree.TreeLeaf]] = self._get_tree_leafs()
 
         return self
 
@@ -621,7 +621,9 @@ class FourierTree:
             idx -= 1
 
         if idx < 0:  # leaf
-            return CoefficientsTreeNode(parameter_idx, observable, is_sine, is_cosine)
+            return FourierTree.CoefficientsTreeNode(
+                parameter_idx, observable, is_sine, is_cosine
+            )
 
         next_pauli_rotation_indices = pauli_rotation_indices[:idx]
         last_pauli_idx = pauli_rotation_indices[idx]
@@ -644,7 +646,7 @@ class FourierTree:
             is_sine=True,
         )
 
-        return CoefficientsTreeNode(
+        return FourierTree.CoefficientsTreeNode(
             parameter_idx,
             observable,
             is_sine,
