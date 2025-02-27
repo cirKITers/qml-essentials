@@ -1,5 +1,5 @@
 from qml_essentials.model import Model
-from qml_essentials.coefficients import Coefficients
+from qml_essentials.coefficients import Coefficients, FourierTree
 from pennylane.fourier import coefficients as pcoefficients
 
 import numpy as np
@@ -47,9 +47,7 @@ def test_coefficients() -> None:
 
         coeffs, _ = Coefficients.get_spectrum(model)
 
-        assert (
-            len(coeffs) == model.degree * 2 + 1
-        ), "Wrong number of coefficients"
+        assert len(coeffs) == model.degree * 2 + 1, "Wrong number of coefficients"
         assert np.isclose(
             np.sum(coeffs).imag, 0.0, rtol=1.0e-5
         ), "Imaginary part is not zero"
@@ -109,13 +107,8 @@ def test_coefficients_tree() -> None:
 
         fft_coeffs, fft_freqs = Coefficients.get_spectrum(model, shift=True)
 
-        coeff_tree = model.build_coefficients_tree(
-            pnp.tensor(model.params),
-            inputs=1.0,  # we need a non zero input.
-            force_mean=True,
-            execution_type="expval",
-        )
-        analytical_freqs, analytical_coeffs = coeff_tree.get_spectrum()
+        coeff_tree = FourierTree(model)
+        analytical_freqs, analytical_coeffs = coeff_tree(inputs=1.0).get_spectrum()
 
         assert len(analytical_freqs[0]) == len(
             analytical_freqs[0]
@@ -125,9 +118,7 @@ def test_coefficients_tree() -> None:
         ), "Imaginary part is not zero"
 
         if len(fft_coeffs) == len(analytical_coeffs[0]):
-            assert all(
-                np.isclose(fft_coeffs, analytical_coeffs[0], atol=1.0e-5)
-            ), (
+            assert all(np.isclose(fft_coeffs, analytical_coeffs[0], atol=1.0e-5)), (
                 "FFT and analytical coefficients are not equal, despite same"
                 "frequencies."
             )
