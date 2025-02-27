@@ -1,14 +1,12 @@
 site_name: QML Essentials
 nav:
   - index.md
-  - setup.md
   - usage.md
-  - Advanced:
-      - ansaetze.md
-      - coefficients.md
-      - entanglement.md
-      - expressibility.md
-      - training.md
+  - ansaetze.md
+  - coefficients.md
+  - entanglement.md
+  - expressibility.md
+  - training.md
   - references.md
 theme:
   name: material
@@ -43,6 +41,7 @@ theme:
 plugins:
   - search
   - mkdocstrings
+  - social
 markdown_extensions:
   - markdown_include.include:
       base_path: .
@@ -68,7 +67,7 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/cirKITers/qml-essentials
-      name: Github
+      name: CirKITers @ Github
 
 extra_javascript:
   - javascripts/mathjax.js
