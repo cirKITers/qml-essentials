@@ -8,7 +8,8 @@ from autograd.numpy import numpy_boxes
 from copy import deepcopy
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
-from qml_essentials.utils import PauliCircuit, FourierTree
+from qml_essentials.utils import PauliCircuit
+
 
 import logging
 
@@ -19,6 +20,8 @@ class Model:
     """
     A quantum circuit model.
     """
+
+    lightning_threshold = 12
 
     def __init__(
         self,
@@ -96,8 +99,6 @@ class Model:
         self.n_layers: int = n_layers
         self.data_reupload: bool = data_reupload
 
-        lightning_threshold = 12
-
         # Initialize ansatz
         # only weak check for str. We trust the user to provide sth useful
         if isinstance(circuit_type, str):
@@ -154,12 +155,27 @@ class Model:
         # Initialize two circuits, one with the default device and
         # one with the mixed device
         # which allows us to later route depending on the state_vector flag
+        self.as_pauli_circuit = as_pauli_circuit
+
+        self.circuit_mixed: qml.QNode = qml.QNode(
+            self._circuit,
+            qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
+        )
+
+    @property
+    def as_pauli_circuit(self) -> bool:
+        return self._as_pauli_circuit
+
+    @as_pauli_circuit.setter
+    def as_pauli_circuit(self, value: bool) -> None:
+        self._as_pauli_circuit = value
+
         self.circuit: qml.QNode = qml.QNode(
             self._circuit,
             qml.device(
                 (
                     "default.qubit"
-                    if self.n_qubits < lightning_threshold
+                    if self.n_qubits < self.lightning_threshold
                     else "lightning.qubit"
                 ),
                 shots=self.shots,
@@ -168,13 +184,8 @@ class Model:
             interface="autograd" if self.shots is not None else "auto",
             diff_method="parameter-shift" if self.shots is not None else "best",
         )
-        self.circuit_mixed: qml.QNode = qml.QNode(
-            self._circuit,
-            qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
-        )
 
-        self.as_pauli_circuit = as_pauli_circuit
-        if self.as_pauli_circuit:
+        if value:
             pauli_circuit_transform = qml.transform(
                 PauliCircuit.from_parameterised_circuit
             )
@@ -635,68 +646,7 @@ class Model:
             force_mean=force_mean,
         )
 
-    def build_coefficients_tree(
-        self,
-        params: Optional[np.ndarray] = None,
-        inputs: Optional[np.ndarray] = None,
-        noise_params: Optional[Dict[str, float]] = None,
-        execution_type: Optional[str] = None,
-        force_mean: bool = False,
-    ) -> FourierTree:
-        """
-        Builds a Fourier coefficient tree for the circuit, build with the same
-        parameters as the callable model.
-
-        Args:
-            params (Optional[np.ndarray]): Weight vector of shape
-                [n_layers, n_qubits*n_params_per_layer].
-                If None, model internal parameters are used.
-            inputs (Optional[np.ndarray]): Input vector of shape [1].
-                If None, zeros are used.
-            noise_params (Optional[Dict[str, float]], optional): The noise parameters.
-                Defaults to None which results in the last
-                set noise parameters being used.
-            execution_type (str, optional): The type of execution.
-                Must be one of 'expval', 'density', or 'probs'.
-                Defaults to None which results in the last set execution type
-                being used.
-            force_mean (bool, optional): If the average over multiple
-                expectation values for each observable should be returned,
-                instead of individual values. Defaults to False
-
-        Returns:
-            FourierTree: The fourier tree constructed from the circuit.
-        """
-        if input is None or input == 0.0:
-            raise ValueError("When building Fourier Tree, we need a non zero input.")
-        if self.as_pauli_circuit:
-            circuit = self.circuit
-        else:
-            pauli_circuit_transform = qml.transform(
-                PauliCircuit.from_parameterised_circuit
-            )
-            circuit = pauli_circuit_transform(self.circuit)
-
-        # set the parameters as object attributes
-        if noise_params is not None:
-            raise NotImplementedError(
-                "Currently, noise is not supported when building FourierTree."
-            )
-        if execution_type != "expval":
-            raise NotImplementedError(
-                f'Currently, only "expval" execution type is supported when '
-                f"building FourierTree. Got {execution_type}."
-            )
-
-        params = self._set_call_params(params)
-        inputs = self._inputs_validation(inputs)
-        inputs.requires_grad = False
-
-        tape = qml.workflow.construct_tape(circuit)(params=params, inputs=inputs)
-
-        return FourierTree(tape, force_mean)
-
-    def _set_call_params(self, params) -> np.ndarray:
+    def _params_validation(self, params) -> np.ndarray:
         """
         Sets the parameters when calling the quantum circuit
 
@@ -793,7 +743,7 @@ class Model:
         if execution_type is not None:
             self.execution_type = execution_type
 
-        params = self._set_call_params(params)
+        params = self._params_validation(params)
         inputs = self._inputs_validation(inputs)
 
         # the qasm representation contains the bound parameters,
