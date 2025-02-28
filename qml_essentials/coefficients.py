@@ -321,10 +321,7 @@ class FourierTree:
     Pauli-Clifford circuit.
     """
 
-    def __init__(
-        self,
-        model: Model,
-    ):
+    def __init__(self, model: Model, inputs=1.0):
         """
         The tree can be initialised with the operation tape of a Pauli-Clifford
         circuit.
@@ -359,6 +356,27 @@ class FourierTree:
         if not model.as_pauli_circuit:
             model.as_pauli_circuit = True
 
+        inputs = (
+            self.model._inputs_validation(inputs)
+            if inputs is not None
+            else self.model._inputs_validation(1.0)
+        )
+        inputs.requires_grad = False
+
+        self.quantum_tape = qml.workflow.construct_tape(self.model.circuit)(
+            params=model.params, inputs=inputs
+        )
+        self.parameters = [np.squeeze(p) for p in self.quantum_tape.get_parameters()]
+        self.input_indices = [
+            i for (i, p) in enumerate(self.parameters) if not p.requires_grad
+        ]
+
+        self.observables = self.quantum_tape.observables
+        self.pauli_rotations = self.quantum_tape.operations
+
+        self.tree_roots = self.build()
+        self.leafs: List[List[FourierTree.TreeLeaf]] = self._get_tree_leafs()
+
     def __call__(self, params=None, inputs=None, **kwargs):
         params = (
             self.model._params_validation(params)
@@ -368,20 +386,10 @@ class FourierTree:
         inputs = (
             self.model._inputs_validation(inputs)
             if inputs is not None
-            else self.model.inputs
+            else self.model._inputs_validation(1.0)
         )
         inputs.requires_grad = False
-        self.quantum_tape = qml.workflow.construct_tape(self.model.circuit)(
-            params=params, inputs=inputs
-        )
-        self.parameters = [np.squeeze(p) for p in self.quantum_tape.get_parameters()]
-        self.input_indices = [
-            i for (i, p) in enumerate(self.parameters) if not p.requires_grad
-        ]
 
-        self.observables = self.quantum_tape.observables
-        self.pauli_rotations = self.quantum_tape.operations
-        self.force_mean = kwargs.get("force_mean", False)
         if kwargs.get("execution_type", "expval") != "expval":
             raise NotImplementedError(
                 f'Currently, only "expval" execution type is supported when '
@@ -391,12 +399,25 @@ class FourierTree:
             raise NotImplementedError(
                 "Currently, noise is not supported when building FourierTree."
             )
-        self.tree_roots = self.build_tree()
-        self.leafs: List[List[FourierTree.TreeLeaf]] = self._get_tree_leafs()
 
-        return self
+        self.quantum_tape = qml.workflow.construct_tape(self.model.circuit)(
+            params=self.model.params, inputs=inputs
+        )
+        self.parameters = [np.squeeze(p) for p in self.quantum_tape.get_parameters()]
+        self.input_indices = [
+            i for (i, p) in enumerate(self.parameters) if not p.requires_grad
+        ]
 
-    def build_tree(self) -> List[CoefficientsTreeNode]:
+        results = np.zeros(len(self.tree_roots))
+        for i, root in enumerate(self.tree_roots):
+            results[i] = np.real_if_close(root.evaluate(self.parameters))
+
+        if kwargs.get("force_mean", False):
+            return np.mean(results)
+        else:
+            return results
+
+    def build(self) -> List[CoefficientsTreeNode]:
         """
         Creates the coefficient tree, i.e. it creates and initialises the tree
         nodes.
@@ -412,7 +433,7 @@ class FourierTree:
             pauli_rotation_indices = np.arange(
                 len(self.pauli_rotations), dtype=np.int16
             )
-            root = self.create_tree_node(obs, pauli_rotation_indices)
+            root = self._create_tree_node(obs, pauli_rotation_indices)
             tree_roots.append(root)
         return tree_roots
 
@@ -431,7 +452,9 @@ class FourierTree:
             leafs.append(root.get_leafs(sin_list, cos_list, []))
         return leafs
 
-    def spectrum(self) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    def get_spectrum(
+        self, force_mean=False
+    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
         Computes the Fourier spectrum for the tree, consisting of the
         frequencies and its corresponding coefficinets.
@@ -461,11 +484,11 @@ class FourierTree:
 
             coeffs.append(freq_terms)
 
-        frequencies, coefficients = self._freq_terms_to_coeffs(coeffs)
+        frequencies, coefficients = self._freq_terms_to_coeffs(coeffs, force_mean)
         return frequencies, coefficients
 
     def _freq_terms_to_coeffs(
-        self, coeffs: List[Dict[int, np.ndarray]]
+        self, coeffs: List[Dict[int, np.ndarray]], force_mean: bool
     ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
         Given a list of dictionaries of the form:
@@ -511,7 +534,7 @@ class FourierTree:
         """
         frequencies = []
         coefficients = []
-        if self.force_mean:
+        if force_mean:
             all_freqs = sorted(set([f for c in coeffs for f in c.keys()]))
             coefficients.append(
                 np.array([np.mean([c.get(f, 0.0) for c in coeffs]) for f in all_freqs])
@@ -559,43 +582,7 @@ class FourierTree:
 
         return leaf_factor, s, c
 
-    def evaluate(self, inputs=None) -> np.ndarray:
-        """
-        Evaluate the expectation value of the corresponding circuit, based on
-        the sine and cosine representation of the tree.
-        If force_mean was set in the constructor, the mean for all observables
-        is returned.
-
-        Returns:
-            np.ndarray: the expectation values (one for each observable/root).
-        """
-        if inputs is not None:
-            inputs = (
-                self.model._inputs_validation(inputs)
-                if inputs is not None
-                else self.model.inputs
-            )
-            inputs.requires_grad = False
-            self.quantum_tape = qml.workflow.construct_tape(self.model.circuit)(
-                params=self.model.params, inputs=inputs
-            )
-            self.parameters = [
-                np.squeeze(p) for p in self.quantum_tape.get_parameters()
-            ]
-            self.input_indices = [
-                i for (i, p) in enumerate(self.parameters) if not p.requires_grad
-            ]
-
-        results = np.zeros(len(self.tree_roots))
-        for i, root in enumerate(self.tree_roots):
-            results[i] = np.real_if_close(root.evaluate(self.parameters))
-
-        if self.force_mean:
-            return np.mean(results)
-        else:
-            return results
-
-    def create_tree_node(
+    def _create_tree_node(
         self,
         observable: Operator,
         pauli_rotation_indices: List[int],
@@ -637,7 +624,7 @@ class FourierTree:
         last_pauli_idx = pauli_rotation_indices[idx]
         last_pauli = self.pauli_rotations[last_pauli_idx]
 
-        left = self.create_tree_node(
+        left = self._create_tree_node(
             observable,
             next_pauli_rotation_indices,
             last_pauli_idx,
@@ -647,7 +634,7 @@ class FourierTree:
         next_observable = self._create_new_observable(
             last_pauli.generator(), observable
         )
-        right = self.create_tree_node(
+        right = self._create_tree_node(
             next_observable,
             next_pauli_rotation_indices,
             last_pauli_idx,
