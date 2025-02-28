@@ -108,7 +108,7 @@ def test_coefficients_tree() -> None:
         fft_coeffs, fft_freqs = Coefficients.get_spectrum(model, shift=True)
 
         coeff_tree = FourierTree(model)(inputs=1.0)
-        analytical_freqs, analytical_coeffs = coeff_tree.get_spectrum()
+        analytical_freqs, analytical_coeffs = coeff_tree.spectrum()
 
         assert len(analytical_freqs[0]) == len(
             analytical_freqs[0]
@@ -134,9 +134,15 @@ def test_coefficients_tree() -> None:
                 frequencies=analytical_freqs[0],
             )
 
+            exp_tree = coeff_tree.evaluate(inputs=ref_input)
+
             assert np.isclose(
                 exp_fourier_fft, exp_fourier, atol=1.0e-5
             ), "FFT and analytical Fourier series do not match"
+
+            assert np.isclose(
+                exp_tree, exp_fourier, atol=1.0e-5
+            ), "Analytic Fourier series evaluation not working"
 
 
 @pytest.mark.unittest
