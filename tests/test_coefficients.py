@@ -117,16 +117,11 @@ def test_coefficients_tree() -> None:
             np.sum(analytical_coeffs[0]).imag, 0.0, rtol=1.0e-5
         ), "Imaginary part is not zero"
 
-        if len(fft_coeffs) == len(analytical_coeffs[0]):
-            assert all(np.isclose(fft_coeffs, analytical_coeffs[0], atol=1.0e-5)), (
-                "FFT and analytical coefficients are not equal, despite same"
-                "frequencies."
-            )
-        else:
-            logger.warning(
-                "FFT and analytical coefficients are not equal, despite same"
-                "frequencies."
-            )
+        # Filter fft_coeffs for only the frequencies that occur in the spectrum
+        sel_fft_coeffs = np.take(fft_coeffs, analytical_freqs[0] + int(max(fft_freqs)))
+        assert all(
+            np.isclose(sel_fft_coeffs, analytical_coeffs[0], atol=1.0e-5)
+        ), "FFT and analytical coefficients are not equal."
 
         for ref_input in reference_inputs:
             exp_fourier_fft = Coefficients.evaluate_Fourier_series(
