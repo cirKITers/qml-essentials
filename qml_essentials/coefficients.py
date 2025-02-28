@@ -142,6 +142,12 @@ class Coefficients:
 
 
 class FourierTree:
+    """
+    Sine-cosine tree representation for the algorithm by Nemkov et al.
+    This tree can be used to obtain analytical Fourier coefficients for a given
+    Pauli-Clifford circuit.
+    """
+
     class CoefficientsTreeNode:
         """
         Representation of a node in the coefficients tree for the algorithm by
@@ -315,12 +321,6 @@ class FourierTree:
         cos_indices: List[int]
         term: np.complex128
 
-    """
-    Sine-cosine tree representation for the algorithm by Nemkov et al.
-    This tree can be used to obtain analytical Fourier coefficients for a given
-    Pauli-Clifford circuit.
-    """
-
     def __init__(self, model: Model, inputs=1.0):
         """
         The tree can be initialised with the operation tape of a Pauli-Clifford
@@ -485,7 +485,7 @@ class FourierTree:
             coeffs.append(freq_terms)
 
         frequencies, coefficients = self._freq_terms_to_coeffs(coeffs, force_mean)
-        return frequencies, coefficients
+        return coefficients, frequencies
 
     def _freq_terms_to_coeffs(
         self, coeffs: List[Dict[int, np.ndarray]], force_mean: bool
