@@ -108,7 +108,7 @@ def test_coefficients_tree() -> None:
         fft_coeffs, fft_freqs = Coefficients.get_spectrum(model, shift=True)
 
         coeff_tree = FourierTree(model)
-        analytical_freqs, analytical_coeffs = coeff_tree.get_spectrum(force_mean=True)
+        analytical_coeffs, analytical_freqs = coeff_tree.get_spectrum(force_mean=True)
 
         assert len(analytical_freqs[0]) == len(
             analytical_freqs[0]
@@ -119,6 +119,11 @@ def test_coefficients_tree() -> None:
 
         if len(fft_coeffs) == len(analytical_coeffs[0]):
             assert all(np.isclose(fft_coeffs, analytical_coeffs[0], atol=1.0e-5)), (
+                "FFT and analytical coefficients are not equal, despite same"
+                "frequencies."
+            )
+        else:
+            logger.warning(
                 "FFT and analytical coefficients are not equal, despite same"
                 "frequencies."
             )
