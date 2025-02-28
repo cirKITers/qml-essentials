@@ -162,7 +162,7 @@ class FourierTree:
             its creation context and it's children, i.e.:
 
             Args:
-                parameter_idx (Optional[int]): Index of the corresponding parameter index i.
+                parameter_idx (Optional[int]): Index of the corresp. param. index i.
                 observable (Operator): The nodes observable to obtain the
                     expectation value that contributes to the constant term.
                 is_sine_factor (bool): If this node belongs to a sine coefficient.
