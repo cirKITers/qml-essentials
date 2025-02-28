@@ -129,4 +129,19 @@ psd = Coefficients.get_psd(coeffs)
 All of the calculations above were performed by applying a Fast Fourier Transform to the output of our Model.
 However, we can also calculate the coefficients analytically.
 
-<!-- TODO: add example and description -->
+This can be achieved by the so called `FourierTree` class:
+```python
+from qml_essentials.coefficients import FourierTree
+
+fourier_tree = FourierTree(model)
+an_coeffs, an_freqs = fourier_tree.get_spectrum(force_mean=True)
+``` 
+
+Note that while this takes significantly longer to compute, it gives us the precise coefficients, solely depending on the parameters.
+We can verify this by comparing it to the previous results:
+
+
+
+### Technical Details
+
+We use an approach developed by [Nemkov et al.](https://doi.org/10.48550/arXiv.2304.03787) which works by separting Clifford and non-Clifford gates.
