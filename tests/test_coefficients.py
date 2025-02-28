@@ -1,8 +1,9 @@
 from qml_essentials.model import Model
-from qml_essentials.coefficients import Coefficients
+from qml_essentials.coefficients import Coefficients, FourierTree
 from pennylane.fourier import coefficients as pcoefficients
 
 import numpy as np
+import pennylane.numpy as pnp
 import logging
 import pytest
 
@@ -32,9 +33,9 @@ def test_coefficients() -> None:
             "n_qubits": 5,
             "n_layers": 1,
             "output_qubit": 0,
-            "force_mean": True,
         },
     ]
+    reference_inputs = np.linspace(-np.pi, np.pi, 10)
 
     for test_case in test_cases:
         model = Model(
@@ -57,6 +58,91 @@ def test_coefficients() -> None:
         assert np.allclose(
             coeffs, ref_coeffs, rtol=1.0e-5
         ), "Coefficients don't match the pennylane reference"
+
+        for ref_input in reference_inputs:
+            exp_model = model(params=None, inputs=ref_input)
+
+            exp_fourier = Coefficients.evaluate_Fourier_series(
+                coefficients=np.fft.fftshift(coeffs),
+                input=ref_input,
+            )
+
+            assert np.isclose(
+                exp_model, exp_fourier, atol=1.0e-5
+            ), "Fourier series does not match model expectation"
+
+
+@pytest.mark.unittest
+def test_coefficients_tree() -> None:
+    test_cases = [
+        {
+            "circuit_type": "Circuit_1",
+            "n_qubits": 3,
+            "n_layers": 1,
+            "output_qubit": [0, 1],
+        },
+        {
+            "circuit_type": "Circuit_9",
+            "n_qubits": 4,
+            "n_layers": 1,
+            "output_qubit": 0,
+        },
+        {
+            "circuit_type": "Circuit_19",
+            "n_qubits": 3,
+            "n_layers": 1,
+            "output_qubit": 0,
+        },
+    ]
+
+    reference_inputs = np.linspace(-np.pi, np.pi, 10)
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=test_case["n_qubits"],
+            n_layers=test_case["n_layers"],
+            circuit_type=test_case["circuit_type"],
+            output_qubit=test_case["output_qubit"],
+            as_pauli_circuit=False,
+        )
+
+        fft_coeffs, fft_freqs = Coefficients.get_spectrum(model, shift=True)
+
+        coeff_tree = FourierTree(model)
+        analytical_coeffs, analytical_freqs = coeff_tree.get_spectrum(force_mean=True)
+
+        assert len(analytical_freqs[0]) == len(
+            analytical_freqs[0]
+        ), "Wrong number of frequencies"
+        assert np.isclose(
+            np.sum(analytical_coeffs[0]).imag, 0.0, rtol=1.0e-5
+        ), "Imaginary part is not zero"
+
+        # Filter fft_coeffs for only the frequencies that occur in the spectrum
+        sel_fft_coeffs = np.take(fft_coeffs, analytical_freqs[0] + int(max(fft_freqs)))
+        assert all(
+            np.isclose(sel_fft_coeffs, analytical_coeffs[0], atol=1.0e-5)
+        ), "FFT and analytical coefficients are not equal."
+
+        for ref_input in reference_inputs:
+            exp_fourier_fft = Coefficients.evaluate_Fourier_series(
+                coefficients=fft_coeffs, input=ref_input, frequencies=fft_freqs
+            )
+
+            exp_fourier = Coefficients.evaluate_Fourier_series(
+                coefficients=analytical_coeffs[0],
+                input=ref_input,
+                frequencies=analytical_freqs[0],
+            )
+
+            exp_tree = coeff_tree(inputs=ref_input)
+
+            assert np.isclose(
+                exp_fourier_fft, exp_fourier, atol=1.0e-5
+            ), "FFT and analytical Fourier series do not match"
+
+            assert np.isclose(
+                exp_tree, exp_fourier, atol=1.0e-5
+            ), "Analytic Fourier series evaluation not working"
 
 
 @pytest.mark.unittest

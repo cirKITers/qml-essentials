@@ -8,6 +8,8 @@ from autograd.numpy import numpy_boxes
 from copy import deepcopy
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
+from qml_essentials.utils import PauliCircuit
+
 
 import logging
 
@@ -18,6 +20,8 @@ class Model:
     """
     A quantum circuit model.
     """
+
+    lightning_threshold = 12
 
     def __init__(
         self,
@@ -31,6 +35,7 @@ class Model:
         output_qubit: Union[List[int], int] = -1,
         shots: Optional[int] = None,
         random_seed: int = 1000,
+        as_pauli_circuit: bool = False,
     ) -> None:
         """
         Initialize the quantum circuit model.
@@ -68,6 +73,11 @@ class Model:
             random_seed (int, optional): seed for the random number generator
                 in initialization is "random" and for random noise parameters.
                 Defaults to 1000.
+            as_pauli_circuit (bool, optional): whether the circuit is
+                transformed to a Pauli-Clifford circuit as described by Nemkov
+                et al. (https://doi.org/10.1103/PhysRevA.108.032406), which is
+                required for analytical Fourier coefficient computation.
+                Defaults to False.
 
         Returns:
             None
@@ -88,8 +98,6 @@ class Model:
         self.n_qubits: int = n_qubits
         self.n_layers: int = n_layers
         self.data_reupload: bool = data_reupload
-
-        lightning_threshold = 12
 
         # Initialize ansatz
         # only weak check for str. We trust the user to provide sth useful
@@ -147,12 +155,27 @@ class Model:
         # Initialize two circuits, one with the default device and
         # one with the mixed device
         # which allows us to later route depending on the state_vector flag
+        self.as_pauli_circuit = as_pauli_circuit
+
+        self.circuit_mixed: qml.QNode = qml.QNode(
+            self._circuit,
+            qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
+        )
+
+    @property
+    def as_pauli_circuit(self) -> bool:
+        return self._as_pauli_circuit
+
+    @as_pauli_circuit.setter
+    def as_pauli_circuit(self, value: bool) -> None:
+        self._as_pauli_circuit = value
+
         self.circuit: qml.QNode = qml.QNode(
             self._circuit,
             qml.device(
                 (
                     "default.qubit"
-                    if self.n_qubits < lightning_threshold
+                    if self.n_qubits < self.lightning_threshold
                     else "lightning.qubit"
                 ),
                 shots=self.shots,
@@ -161,10 +184,12 @@ class Model:
             interface="autograd" if self.shots is not None else "auto",
             diff_method="parameter-shift" if self.shots is not None else "best",
         )
-        self.circuit_mixed: qml.QNode = qml.QNode(
-            self._circuit,
-            qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
-        )
+
+        if value:
+            pauli_circuit_transform = qml.transform(
+                PauliCircuit.from_parameterised_circuit
+            )
+            self.circuit = pauli_circuit_transform(self.circuit)
 
     @property
     def noise_params(self) -> Optional[Dict[str, Union[float, Dict[str, float]]]]:
@@ -287,12 +312,14 @@ class Model:
 
         if value == "probs" and self.shots is None:
             warnings.warn(
-                "Setting execution_type to probs without specifying shots.", UserWarning
+                "Setting execution_type to probs without specifying shots.",
+                UserWarning,
             )
 
         if value == "density" and self.shots is not None:
             warnings.warn(
-                "Setting execution_type to density with specified shots.", UserWarning
+                "Setting execution_type to density with specified shots.",
+                UserWarning,
             )
 
         self._execution_type = value
@@ -485,12 +512,9 @@ class Model:
                 return qml.expval(qml.PauliZ(self.output_qubit))
             # parity measurenment
             elif isinstance(self.output_qubit, list):
-                obs = qml.simplify(
-                    qml.Hamiltonian(
-                        [1.0] * len(self.output_qubit),
-                        [qml.PauliZ(q) for q in self.output_qubit],
-                    )
-                )
+                obs = qml.PauliZ(self.output_qubit[0])
+                for out_qubit in self.output_qubit[1:]:
+                    obs = obs @ qml.PauliZ(out_qubit)
                 return qml.expval(obs)
             else:
                 raise ValueError(
@@ -577,7 +601,7 @@ class Model:
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
-        force_mean: Optional[bool] = False,
+        force_mean: bool = False,
     ) -> np.ndarray:
         """
         Perform a forward pass of the quantum circuit.
@@ -597,7 +621,7 @@ class Model:
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
-            force_mean (Optional[bool], optional): Whether to average
+            force_mean (bool, optional): Whether to average
                 when performing n-local measurements.
                 Defaults to False.
 
@@ -621,6 +645,22 @@ class Model:
             execution_type=execution_type,
             force_mean=force_mean,
         )
+
+    def _params_validation(self, params) -> np.ndarray:
+        """
+        Sets the parameters when calling the quantum circuit
+
+        Args:
+            params (np.ndarray): The parameters used for the call
+        """
+        if params is None:
+            params = self.params
+        else:
+            if numpy_boxes.ArrayBox == type(params):
+                self.params = params._value
+            else:
+                self.params = params
+        return params
 
     def _inputs_validation(
         self, inputs: Union[None, List, float, int, np.ndarray]
@@ -658,7 +698,7 @@ class Model:
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
-        force_mean: Optional[bool] = False,
+        force_mean: bool = False,
     ) -> np.ndarray:
         """
         Perform a forward pass of the quantum circuit.
@@ -678,7 +718,7 @@ class Model:
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
                 being used.
-            force_mean (Optional[bool], optional): Whether to average
+            force_mean (bool, optional): Whether to average
                 when performing n-local measurements.
                 Defaults to False.
 
@@ -703,14 +743,7 @@ class Model:
         if execution_type is not None:
             self.execution_type = execution_type
 
-        if params is None:
-            params = self.params
-        else:
-            if numpy_boxes.ArrayBox == type(params):
-                self.params = params._value
-            else:
-                self.params = params
-
+        params = self._params_validation(params)
         inputs = self._inputs_validation(inputs)
 
         # the qasm representation contains the bound parameters,
