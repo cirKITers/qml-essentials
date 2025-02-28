@@ -323,7 +323,7 @@ class FourierTree:
 
     def __init__(
         self,
-        model: QuantumScript,
+        model: Model,
     ):
         """
         The tree can be initialised with the operation tape of a Pauli-Clifford
@@ -332,20 +332,11 @@ class FourierTree:
 
         **Usage**:
         ```
-        # initialise some QNode
-        circuit = qml.QNode(
-            circuit_fkt,  # function for your circuit definition
-            qml.device("default.qubit", wires=5),
-        )
+        # initialise a model
+        model = Model(...)
 
-        # Obtain the Pauli-Clifford circuit representation and it's tape
-        pauli_circuit = PauliCircuit.from_parameterised_circuit(circuit)
-        tape = qml.workflow.construct_tape(circuit)(
-            params=params, inputs=inputs
-        )
-
-        # initialise FourierTree
-        tree = FourierTree(tape)
+        # initialise and build FourierTree
+        tree = FourierTree(model)(params, inputs)
 
         # get expectaion value
         exp = tree.evaluate()
@@ -363,6 +354,7 @@ class FourierTree:
                 be taken. Defaults to False.
         """
         self.model = model
+        self.tree_roots = None
 
         if not model.as_pauli_circuit:
             model.as_pauli_circuit = True
@@ -379,15 +371,14 @@ class FourierTree:
             else self.model.inputs
         )
         inputs.requires_grad = False
-
         self.quantum_tape = qml.workflow.construct_tape(self.model.circuit)(
             params=params, inputs=inputs
         )
-
         self.parameters = [np.squeeze(p) for p in self.quantum_tape.get_parameters()]
         self.input_indices = [
             i for (i, p) in enumerate(self.parameters) if not p.requires_grad
         ]
+
         self.observables = self.quantum_tape.observables
         self.pauli_rotations = self.quantum_tape.operations
         self.force_mean = kwargs.get("force_mean", False)
@@ -440,7 +431,7 @@ class FourierTree:
             leafs.append(root.get_leafs(sin_list, cos_list, []))
         return leafs
 
-    def get_spectrum(self) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    def spectrum(self) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
         Computes the Fourier spectrum for the tree, consisting of the
         frequencies and its corresponding coefficinets.
@@ -568,7 +559,7 @@ class FourierTree:
 
         return leaf_factor, s, c
 
-    def evaluate(self) -> np.ndarray:
+    def evaluate(self, inputs=None) -> np.ndarray:
         """
         Evaluate the expectation value of the corresponding circuit, based on
         the sine and cosine representation of the tree.
@@ -578,6 +569,23 @@ class FourierTree:
         Returns:
             np.ndarray: the expectation values (one for each observable/root).
         """
+        if inputs is not None:
+            inputs = (
+                self.model._inputs_validation(inputs)
+                if inputs is not None
+                else self.model.inputs
+            )
+            inputs.requires_grad = False
+            self.quantum_tape = qml.workflow.construct_tape(self.model.circuit)(
+                params=self.model.params, inputs=inputs
+            )
+            self.parameters = [
+                np.squeeze(p) for p in self.quantum_tape.get_parameters()
+            ]
+            self.input_indices = [
+                i for (i, p) in enumerate(self.parameters) if not p.requires_grad
+            ]
+
         results = np.zeros(len(self.tree_roots))
         for i, root in enumerate(self.tree_roots):
             results[i] = np.real_if_close(root.evaluate(self.parameters))
