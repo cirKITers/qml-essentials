@@ -123,3 +123,34 @@ psd = Coefficients.get_psd(coeffs)
 
 ![Model PSD](model_psd_light.png#only-light)
 ![Model PSD](model_psd_dark.png#only-dark)
+
+## Analytic Coefficients
+
+All of the calculations above were performed by applying a Fast Fourier Transform to the output of our Model.
+However, we can also calculate the coefficients analytically.
+
+This can be achieved by the so called `FourierTree` class:
+```python
+from qml_essentials.coefficients import FourierTree
+
+fourier_tree = FourierTree(model)
+an_coeffs, an_freqs = fourier_tree.get_spectrum(force_mean=True)
+``` 
+
+Note that while this takes significantly longer to compute, it gives us the precise coefficients, solely depending on the parameters.
+We can verify this by comparing it to the previous results:
+
+![Model Analytic Coefficients](model_psd_an.png#only-light)
+![Model Analytic Coefficients](model_psd_an_dark.png#only-dark)
+
+### Technical Details
+
+We use an approach developed by [Nemkov et al.](https://arxiv.org/pdf/2304.03787), which was later extended by [Wiedmann et al.](https://arxiv.org/pdf/2411.03450).
+The implementation is also inspired by the corresponding [code](https://github.com/idnm/FourierVQA) for Nemkov et al.'s paper.
+
+In Nemkov et al.'s algorithm the first step is to separate Clifford and non-Clifford gates, such that all Clifford gates can be regarded as part of the observable, and the actual circuit only consists of Pauli rotations (cf. qml_essentials.utils.PauliCircuit).
+The main idea is then to split each Pauli rotation into sine and cosine product terms to obtain the coefficients, which are only dependent on the parameters of the circuit.
+
+Currently, our implementation supports only one input feature, albeit more are theoretical possible.
+
+
