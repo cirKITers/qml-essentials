@@ -5,7 +5,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 import pennylane as qml
 from pennylane.operation import Operator
-from pennylane.tape import QuantumScript
 import pennylane.ops.op_math as qml_op
 from typing import List, Tuple, Optional, Any, Dict
 
