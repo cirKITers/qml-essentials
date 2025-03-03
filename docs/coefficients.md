@@ -145,4 +145,12 @@ We can verify this by comparing it to the previous results:
 
 ### Technical Details
 
-We use an approach developed by [Nemkov et al.](https://doi.org/10.48550/arXiv.2304.03787) which works by separting Clifford and non-Clifford gates.
+We use an approach developed by [Nemkov et al.](https://arxiv.org/pdf/2304.03787), which was later extended by [Wiedmann et al.](https://arxiv.org/pdf/2411.03450).
+The implementation is also inspired by the corresponding [code](https://github.com/idnm/FourierVQA) for Nemkov et al.'s paper.
+
+In Nemkov et al.'s algorithm the first step is to separate Clifford and non-Clifford gates, such that all Clifford gates can be regarded as part of the observable, and the actual circuit only consists of Pauli rotations (cf. qml_essentials.utils.PauliCircuit).
+The main idea is then to split each Pauli rotation into sine and cosine product terms to obtain the coefficients, which are only dependent on the parameters of the circuit.
+
+Currently, our implementation supports only one input feature, albeit more are theoretical possible.
+
+
