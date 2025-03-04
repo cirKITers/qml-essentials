@@ -33,7 +33,6 @@ class Entanglement:
             float: Entangling capacity of the given circuit. It is guaranteed
                 to be between 0.0 and 1.0.
         """
-        model = deepcopy(model)
         rng = np.random.default_rng(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
@@ -84,7 +83,6 @@ class Entanglement:
 
     @staticmethod
     def bell_measurements(model: Model, n_samples, seed, **kwargs: Any) -> float:
-        model = deepcopy(model)
 
         def _circuit(params, inputs):
             model._variational(params, inputs)
@@ -98,7 +96,11 @@ class Entanglement:
                 qml.CNOT(wires=[q, q + model.n_qubits])
                 qml.H(q)
 
-            return [qml.expval(qml.PauliZ(q)) for q in range(2 * model.n_qubits)]
+            obss = []
+            for q in range(model.n_qubits):
+                obss.append(qml.PauliZ(q) @ qml.PauliZ(q + model.n_qubits))
+
+            return [qml.probs(op=obs) for obs in obss]
 
         model.circuit = qml.QNode(
             _circuit,
@@ -133,9 +135,8 @@ class Entanglement:
             kwargs.setdefault("inputs", None)
             exp = model(params=params[:, :, i], execution_type="expval", **kwargs)
 
-            res = np.abs(exp[: model.n_qubits] - exp[model.n_qubits :])
-            mw_measure[i] = 2 * (1 - (1 - 2 * res).mean())
-
+            exp = 1 - 2 * exp[:, model.n_qubits - 1]
+            mw_measure[i] = 2 * (1 - exp.mean())
         entangling_capability = min(max(mw_measure.mean(), 0.0), 1.0)
         log.debug(f"Variance of measure: {mw_measure.var()}")
 
