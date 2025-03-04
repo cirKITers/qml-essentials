@@ -475,6 +475,10 @@ class Model:
                 of the circuit if state_vector is False and expval is True,
                 otherwise the density matrix of all qubits.
         """
+        self._variational(params=params, inputs=inputs)
+        return self._observable()
+
+    def _variational(self, params, inputs):
         if self.noise_params is not None:
             self._apply_state_prep_noise()
 
@@ -497,6 +501,7 @@ class Model:
         if self.noise_params is not None:
             self._apply_general_noise()
 
+    def _observable(self):
         # run mixed simualtion and get density matrix
         if self.execution_type == "density":
             return qml.density_matrix(wires=list(range(self.n_qubits)))
