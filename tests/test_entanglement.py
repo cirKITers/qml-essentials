@@ -167,11 +167,14 @@ def test_bell_measurements() -> None:
         initialization="random",
     )
 
-    ent_cap = Entanglement.meyer_wallach(model, n_samples=5000, seed=1000, cache=False)
-
     ent_cap_bell = Entanglement.bell_measurements(
         model, n_samples=5000, seed=1000, cache=False
     )
 
+    ent_cap = Entanglement.meyer_wallach(model, n_samples=5000, seed=1000, cache=False)
+
     print(f"Bell: {ent_cap_bell} | Reference: {ent_cap}")
-    pass
+
+
+if __name__ == "__main__":
+    test_bell_measurements()

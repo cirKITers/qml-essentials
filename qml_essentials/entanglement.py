@@ -1,6 +1,7 @@
 from typing import Optional, Any
 import pennylane as qml
 import pennylane.numpy as np
+from copy import deepcopy
 
 from qml_essentials.model import Model
 import logging
@@ -32,6 +33,7 @@ class Entanglement:
             float: Entangling capacity of the given circuit. It is guaranteed
                 to be between 0.0 and 1.0.
         """
+        model = deepcopy(model)
         rng = np.random.default_rng(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
@@ -82,6 +84,8 @@ class Entanglement:
 
     @staticmethod
     def bell_measurements(model: Model, n_samples, seed, **kwargs: Any) -> float:
+        model = deepcopy(model)
+
         def _circuit(params, inputs):
             model._variational(params, inputs)
 
