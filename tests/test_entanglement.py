@@ -156,3 +156,22 @@ def test_no_sampling() -> None:
     )
 
     _ = Entanglement.meyer_wallach(model, n_samples=-1, seed=1000, cache=False)
+
+
+def test_bell_measurements() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        data_reupload=True,
+        initialization="random",
+    )
+
+    ent_cap = Entanglement.meyer_wallach(model, n_samples=5000, seed=1000, cache=False)
+
+    ent_cap_bell = Entanglement.bell_measurements(
+        model, n_samples=5000, seed=1000, cache=False
+    )
+
+    print(f"Bell: {ent_cap_bell} | Reference: {ent_cap}")
+    pass
