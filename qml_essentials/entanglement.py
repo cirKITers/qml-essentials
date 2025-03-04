@@ -131,10 +131,10 @@ class Entanglement:
         for i in range(n_samples):
             # implicitly set input to none in case it's not needed
             kwargs.setdefault("inputs", None)
-            exp = model(params=params[:, :, i], **kwargs)
+            exp = model(params=params[:, :, i], execution_type="expval", **kwargs)
 
-            res = exp[: model.n_qubits] * exp[model.n_qubits :]
-            mw_measure[i] = res.sum()
+            res = np.abs(exp[: model.n_qubits] - exp[model.n_qubits :])
+            mw_measure[i] = 2 * (1 - (1 - 2 * res).mean())
 
         entangling_capability = min(max(mw_measure.mean(), 0.0), 1.0)
         log.debug(f"Variance of measure: {mw_measure.var()}")
