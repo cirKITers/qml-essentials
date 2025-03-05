@@ -133,7 +133,7 @@ class Entanglement:
         for i in range(n_samples):
             # implicitly set input to none in case it's not needed
             kwargs.setdefault("inputs", None)
-            exp = model(params=params[:, :, i], execution_type="expval", **kwargs)
+            exp = model(params=params[:, :, i], execution_type="probs", **kwargs)
 
             exp = 1 - 2 * exp[:, model.n_qubits - 1]
             mw_measure[i] = 2 * (1 - exp.mean())
