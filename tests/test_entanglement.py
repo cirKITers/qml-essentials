@@ -132,7 +132,7 @@ def test_mw_measure() -> None:
             error < tolerance
         ), f"Entangling-capability of circuit {test_case['circuit_type']} is not\
             {test_case['result']} but {ent_cap} instead.\
-            Deviation {(error*100):.1f}%>{tolerance*100}%"
+            Deviation {(error * 100):.1f}%>{tolerance * 100}%"
 
     references = sorted(
         [
@@ -231,7 +231,7 @@ def test_bell_measure() -> None:
             error < tolerance
         ), f"Entangling-capability of circuit {test_case['circuit_type']} is not\
             {test_case['result']} but {ent_cap} instead.\
-            Deviation {(error*100):.1f}%>{tolerance*100}%"
+            Deviation {(error * 100):.1f}%>{tolerance * 100}%"
 
     references = sorted(
         [
@@ -250,3 +250,33 @@ def test_bell_measure() -> None:
     assert [circuit for circuit, _ in actuals] == [
         circuit for circuit, _ in references
     ], f"Order of circuits does not match: {actuals} != {references}"
+
+
+@pytest.mark.unittest
+def test_entangling_measures() -> None:
+    test_cases = [
+        {"circuit_type": "Strongly_Entangling", "n_qubits": 3, "n_layers": 1},
+        {"circuit_type": "Circuit9", "n_qubits": 3, "n_layers": 1},
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=test_case["n_qubits"],
+            n_layers=test_case["n_layers"],
+            circuit_type=test_case["circuit_type"],
+            data_reupload=False,
+            initialization="random",
+        )
+
+        mw_meas = Entanglement.meyer_wallach(
+            model, n_samples=1000, seed=1000, cache=False
+        )
+
+        bell_meas = Entanglement.bell_measurements(
+            model, n_samples=1000, seed=1000, cache=False
+        )
+
+        assert math.isclose(mw_meas, bell_meas, abs_tol=1e-3), (
+            f"Meyer-Wallach and Bell-measurement are not the same. Got {mw_meas} "
+            f"and {bell_meas}, respectively."
+        )
