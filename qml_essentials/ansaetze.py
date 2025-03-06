@@ -590,11 +590,6 @@ class Ansaetze:
             Length of flattened vector must be n_qubits*3
             because for >1 qubits there are three gates
 
-            Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3)
-                n_qubits (int): number of qubits
-
-
             Parameters
             ----------
             w : np.ndarray
