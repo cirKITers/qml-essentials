@@ -96,11 +96,8 @@ class Entanglement:
                 qml.CNOT(wires=[q, q + model.n_qubits])
                 qml.H(q)
 
-            obss = []
-            for q in range(model.n_qubits):
-                obss.append(qml.PauliZ(q) @ qml.PauliZ(q + model.n_qubits))
-
-            return [qml.probs(op=obs) for obs in obss]
+            obs_wires = [(q, q + model.n_qubits) for q in range(model.n_qubits)]
+            return [qml.probs(wires=w) for w in obs_wires]
 
         model.circuit = qml.QNode(
             _circuit,
