@@ -503,11 +503,14 @@ class Ansaetze:
             Creates a Hardware-Efficient ansatz, as proposed in
             https://arxiv.org/pdf/2309.03279
 
-            Length of flattened vector must be n_qubits*3
-
-            Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3)
-                n_qubits (int): number of qubits
+            Parameters
+            ----------
+            w : np.ndarray
+                Weight vector of size n_layers*(n_qubits*3)
+            n_qubits : int
+                Number of qubits
+            noise_params : Optional[Dict[str, float]], optional
+                Dictionary of noise parameters to apply to the gates
             """
             w_idx = 0
             for q in range(n_qubits):
@@ -590,6 +593,16 @@ class Ansaetze:
             Args:
                 w (np.ndarray): weight vector of size n_layers*(n_qubits*3)
                 n_qubits (int): number of qubits
+
+
+            Parameters
+            ----------
+            w : np.ndarray
+                Weight vector of size n_layers*(n_qubits*3)
+            n_qubits : int
+                Number of qubits
+            noise_params : Optional[Dict[str, float]], optional
+                Dictionary of noise parameters to apply to the gates
             """
             w_idx = 0
             for q in range(n_qubits):
@@ -664,9 +677,14 @@ class Ansaetze:
 
             Length of flattened vector must be n_qubits*3
 
-            Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3)
-                n_qubits (int): number of qubits
+            Parameters
+            ----------
+            w : np.ndarray
+                Weight vector of size n_layers*(n_qubits*3)
+            n_qubits : int
+                Number of qubits
+            noise_params : Optional[Dict[str, float]], optional
+                Dictionary of noise parameters to apply to the gates
             """
             w_idx = 0
             for q in range(n_qubits):
@@ -735,9 +753,14 @@ class Ansaetze:
             Length of flattened vector must be n_qubits*2
             because for >1 qubits there are three gates
 
-            Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*2)
-                n_qubits (int): number of qubits
+            Parameters
+            ----------
+            w : np.ndarray
+                Weight vector of size n_layers*(n_qubits*2)
+            n_qubits : int
+                Number of qubits
+            noise_params : Optional[Dict[str, float]], optional
+                Dictionary of noise parameters to apply to the gates
             """
             w_idx = 0
             for q in range(n_qubits):
@@ -807,9 +830,14 @@ class Ansaetze:
 
             Length of flattened vector must be n_qubits
 
-            Args:
-                w (np.ndarray): weight vector of size n_layers*n_qubits
-                n_qubits (int): number of qubits
+            Parameters
+            ----------
+            w : np.ndarray
+                Weight vector of size n_layers*n_qubits
+            n_qubits : int
+                Number of qubits
+            noise_params : Optional[Dict[str, float]], optional
+                Dictionary of noise parameters to apply to the gates
             """
             w_idx = 0
             for q in range(n_qubits):
@@ -887,10 +915,15 @@ class Ansaetze:
                 n_qubits * 4 + n_qubits * (n_qubits - 1) =
                 n_qubits*3 + n_qubits**2
 
-            Args:
-                w (np.ndarray): weight vector of size
+            Parameters
+            ----------
+            w : np.ndarray
+                Weight vector of size
                     n_layers * (n_qubits*3 + n_qubits**2)
-                n_qubits (int): number of qubits
+            n_qubits : int
+                Number of qubits
+            noise_params : Optional[Dict[str, float]], optional
+                Dictionary of noise parameters to apply to the gates
             """
             w_idx = 0
             for q in range(n_qubits):
@@ -963,9 +996,14 @@ class Ansaetze:
 
             Length of flattened vector must be n_qubits*2
 
-            Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*2)
-                n_qubits (int): number of qubits
+            Parameters
+            ----------
+            w : np.ndarray
+                Weight vector of size n_layers*(n_qubits*2)
+            n_qubits : int
+                Number of qubits
+            noise_params : Optional[Dict[str, float]], optional
+                Dictionary of noise parameters to apply to the gates
             """
             w_idx = 0
             for q in range(n_qubits):
@@ -1020,9 +1058,14 @@ class Ansaetze:
 
             Length of flattened vector must be n_qubits*2
 
-            Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*2)
-                n_qubits (int): number of qubits
+            Parameters
+            ----------
+            w : np.ndarray
+                Weight vector of size n_layers*(n_qubits*2)
+            n_qubits : int
+                Number of qubits
+            noise_params : Optional[Dict[str, float]], optional
+                Dictionary of noise parameters to apply to the gates
             """
             w_idx = 0
             for q in range(n_qubits):
@@ -1085,9 +1128,14 @@ class Ansaetze:
 
             Length of flattened vector must be n_qubits*3-1
 
-            Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
-                n_qubits (int): number of qubits
+            Parameters
+            ----------
+            w : np.ndarray
+                Weight vector of size n_layers*(n_qubits*3-1)
+            n_qubits : int
+                Number of qubits
+            noise_params : Optional[Dict[str, float]], optional
+                Dictionary of noise parameters to apply to the gates
             """
             w_idx = 0
             for q in range(n_qubits):
@@ -1150,9 +1198,14 @@ class Ansaetze:
 
             Length of flattened vector must be n_qubits*3-1
 
-            Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3-1)
-                n_qubits (int): number of qubits
+            Parameters
+            ----------
+            w : np.ndarray
+                Weight vector of size n_layers*(n_qubits*3-1)
+            n_qubits : int
+                Number of qubits
+            noise_params : Optional[Dict[str, float]], optional
+                Dictionary of noise parameters to apply to the gates
             """
             w_idx = 0
             for q in range(n_qubits):
@@ -1215,9 +1268,14 @@ class Ansaetze:
 
             Length of flattened vector must be n_qubits*2
 
-            Args:
-                w (np.ndarray): weight vector of size n_layers*n_qubits
-                n_qubits (int): number of qubits
+            Parameters
+            ----------
+            w : np.ndarray
+                Weight vector of size n_layers*n_qubits
+            n_qubits : int
+                Number of qubits
+            noise_params : Optional[Dict[str, float]], optional
+                Dictionary of noise parameters to apply to the gates
             """
             w_idx = 0
             # constant gates, independent of layers. has to be fixed
@@ -1287,9 +1345,14 @@ class Ansaetze:
 
             Length of flattened vector must be n_qubits*3-1
 
-            Args:
-                w (np.ndarray): weight vector of size n_layers*n_qubits*3-1
-                n_qubits (int): number of qubits
+            Parameters
+            ----------
+            w : np.ndarray
+                Weight vector of size n_layers*n_qubits*3-1
+            n_qubits : int
+                Number of qubits
+            noise_params : Optional[Dict[str, float]], optional
+                Dictionary of noise parameters to apply to the gates
             """
             w_idx = 0
             for q in range(n_qubits):
@@ -1361,9 +1424,14 @@ class Ansaetze:
 
             Length of flattened vector must be n_qubits*3-1
 
-            Args:
-                w (np.ndarray): weight vector of size n_layers*n_qubits*3-1
-                n_qubits (int): number of qubits
+            Parameters
+            ----------
+            w : np.ndarray
+                Weight vector of size n_layers*n_qubits*3-1
+            n_qubits : int
+                Number of qubits
+            noise_params : Optional[Dict[str, float]], optional
+                Dictionary of noise parameters to apply to the gates
             """
             w_idx = 0
             for q in range(n_qubits):
@@ -1437,9 +1505,14 @@ class Ansaetze:
 
             Length of flattened vector must be n_qubits*6
 
-            Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*6)
-                n_qubits (int): number of qubits
+            Parameters
+            ----------
+            w : np.ndarray
+                Weight vector of size n_layers*(n_qubits*6)
+            n_qubits : int
+                Number of qubits
+            noise_params : Optional[Dict[str, float]], optional
+                Dictionary of noise parameters to apply to the gates
             """
             w_idx = 0
             for q in range(n_qubits):
@@ -1518,9 +1591,14 @@ class Ansaetze:
 
             Length of flattened vector must be n_qubits*3
 
-            Args:
-                w (np.ndarray): weight vector of size n_layers*(n_qubits*3)
-                n_qubits (int): number of qubits
+            Parameters
+            ----------
+            w : np.ndarray
+                Weight vector of size n_layers*(n_qubits*3)
+            n_qubits : int
+                Number of qubits
+            noise_params : Optional[Dict[str, float]], optional
+                Dictionary of noise parameters to apply to the gates
             """
             w_idx = 0
             for q in range(n_qubits):
