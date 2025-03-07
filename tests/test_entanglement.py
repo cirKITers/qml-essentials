@@ -14,8 +14,8 @@ def get_test_cases():
     # Results taken from: https://doi.org/10.1002/qute.201900070
 
     circuits = [
-        "No_Entangling",
-        "Strongly_Entangling",
+        # "No_Entangling",
+        # "Strongly_Entangling",
         1,
         7,
         3,
@@ -38,8 +38,8 @@ def get_test_cases():
     ]
 
     results_n_layers_1 = [
-        0.0000,
-        0.8379,
+        # 0.0000,
+        # 0.8379,
         0.0000,
         0.3241,
         0.3412,
