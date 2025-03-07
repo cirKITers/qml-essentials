@@ -9,43 +9,11 @@ import pytest
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.unittest
-def test_divergence() -> None:
-    test_cases = [
-        {
-            "n_qubits": 2,
-            "n_bins": 10,
-            "result": 0.000,
-        },
-    ]
-
-    for test_case in test_cases:
-        _, y_haar_a = Expressibility.haar_integral(
-            n_qubits=test_case["n_qubits"],
-            n_bins=test_case["n_bins"],
-            cache=True,
-        )
-
-        # We also test here the chache functionality
-        _, y_haar_b = Expressibility.haar_integral(
-            n_qubits=test_case["n_qubits"],
-            n_bins=test_case["n_bins"],
-            cache=False,
-        )
-
-        # Calculate the mean (over all inputs, if required)
-        kl_dist = Expressibility.kullback_leibler_divergence(y_haar_a, y_haar_b).mean()
-
-        assert math.isclose(
-            kl_dist.mean(), test_case["result"], abs_tol=1e-3
-        ), "Distance between two identical haar measures not equal."
-
-
-@pytest.mark.unittest
-@pytest.mark.expensive
-def test_expressibility() -> None:
+def get_test_cases():
     # Results taken from: https://doi.org/10.1002/qute.201900070
+
     circuits = [9, 1, 2, 16, 3, 18, 10, 12, 15, 17, 4, 11, 7, 8, 19, 5, 13, 14, 6]
+
     results_n_layers_1 = [
         0.6773,
         0.2999,
@@ -96,6 +64,47 @@ def test_expressibility() -> None:
     # Circuit 10 excluded because implementation with current setup not possible
     skip_indices = [5, 7, 8, 11, 12, 13, 14, 10]
     skip_indices += [16, 2, 3]  # exclude these for now as order is failing
+
+    return circuits, results_n_layers_1, results_n_layers_3, skip_indices
+
+
+@pytest.mark.unittest
+def test_divergence() -> None:
+    test_cases = [
+        {
+            "n_qubits": 2,
+            "n_bins": 10,
+            "result": 0.000,
+        },
+    ]
+
+    for test_case in test_cases:
+        _, y_haar_a = Expressibility.haar_integral(
+            n_qubits=test_case["n_qubits"],
+            n_bins=test_case["n_bins"],
+            cache=True,
+        )
+
+        # We also test here the chache functionality
+        _, y_haar_b = Expressibility.haar_integral(
+            n_qubits=test_case["n_qubits"],
+            n_bins=test_case["n_bins"],
+            cache=False,
+        )
+
+        # Calculate the mean (over all inputs, if required)
+        kl_dist = Expressibility.kullback_leibler_divergence(y_haar_a, y_haar_b).mean()
+
+        assert math.isclose(
+            kl_dist.mean(), test_case["result"], abs_tol=1e-3
+        ), "Distance between two identical haar measures not equal."
+
+
+@pytest.mark.unittest
+@pytest.mark.expensive
+def test_expressibility() -> None:
+    circuits, results_n_layers_1, results_n_layers_3, skip_indices = get_test_cases()
+
     test_cases = []
     for circuit_id, res_1l, res_3l in zip(
         circuits, results_n_layers_1, results_n_layers_3

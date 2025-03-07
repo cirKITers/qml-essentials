@@ -90,16 +90,18 @@ def get_test_cases():
     skip_indices = [5, 7, 8, 11, 12, 13, 14, 10]
     skip_indices += [2, 3]  # exclude these for now as order is failing
 
-    return circuits, results_n_layers_1, skip_indices
+    return circuits, results_n_layers_1, results_n_layers_3, skip_indices
 
 
 @pytest.mark.expensive
 @pytest.mark.unittest
 def test_mw_measure() -> None:
-    circuits, results_n_layers_1, skip_indices = get_test_cases()
+    circuits, results_n_layers_1, results_n_layers_3, skip_indices = get_test_cases()
 
     test_cases = []
-    for circuit_id, res_1l in zip(circuits, results_n_layers_1):
+    for circuit_id, res_1l, res_3l in zip(
+        circuits, results_n_layers_1, results_n_layers_3
+    ):
         if circuit_id in skip_indices:
             continue
         if isinstance(circuit_id, int):
@@ -195,7 +197,7 @@ def test_no_sampling() -> None:
 @pytest.mark.expensive
 @pytest.mark.unittest
 def test_bell_measure() -> None:
-    circuits, results_n_layers_1, skip_indices = get_test_cases()
+    circuits, results_n_layers_1, results_n_layers_3, skip_indices = get_test_cases()
 
     test_cases = []
     for circuit_id, res_1l in zip(circuits, results_n_layers_1):
