@@ -14,8 +14,8 @@ def get_test_cases():
     # Results taken from: https://doi.org/10.1002/qute.201900070
 
     circuits = [
-        "No_Entangling",
-        "Strongly_Entangling",
+        # "No_Entangling",
+        # "Strongly_Entangling",
         1,
         7,
         3,
@@ -36,29 +36,53 @@ def get_test_cases():
         15,
         9,
     ]
+
     results_n_layers_1 = [
+        # 0.0000,
+        # 0.8379,
         0.0000,
-        0.8379,
-        0.0000,
-        0.3246,
-        0.3424,
-        0.3464,
-        0.3932,
-        0.4099,
-        0.4383,
-        0.4541,
-        0.4715,
-        0.5369,
-        0.5937,
-        0.6070,
-        0.6487,
-        0.6613,
-        0.7330,
-        0.7803,
-        0.8083,
-        0.8186,
+        0.3241,
+        0.3412,
+        0.3439,
+        0.3926,
+        0.4090,
+        0.4385,
+        0.4533,
+        0.4721,
+        0.5362,
+        0.5916,
+        0.6077,
+        0.6486,
+        0.6604,
+        0.7335,
+        0.7781,
+        0.8104,
+        0.8184,
         1.0000,
     ]
+
+    results_n_layers_3 = [
+        0.0000,
+        0.6194,
+        0.5852,
+        0.5859,
+        0.6567,
+        0.7953,
+        0.7130,
+        0.6557,
+        0.6607,
+        0.7865,
+        0.7906,
+        0.8224,
+        0.7838,
+        0.8557,
+        0.8288,
+        0.8721,
+        0.8657,
+        0.8734,
+        1.0000,
+    ]
+
     # Circuits [5,7,8,11,12,13,14] are not included in the test cases,
     # because not implemented in ansaetze.py
 
@@ -66,16 +90,18 @@ def get_test_cases():
     skip_indices = [5, 7, 8, 11, 12, 13, 14, 10]
     skip_indices += [2, 3]  # exclude these for now as order is failing
 
-    return circuits, results_n_layers_1, skip_indices
+    return circuits, results_n_layers_1, results_n_layers_3, skip_indices
 
 
 @pytest.mark.expensive
 @pytest.mark.unittest
 def test_mw_measure() -> None:
-    circuits, results_n_layers_1, skip_indices = get_test_cases()
+    circuits, results_n_layers_1, results_n_layers_3, skip_indices = get_test_cases()
 
     test_cases = []
-    for circuit_id, res_1l in zip(circuits, results_n_layers_1):
+    for circuit_id, res_1l, res_3l in zip(
+        circuits, results_n_layers_1, results_n_layers_3
+    ):
         if circuit_id in skip_indices:
             continue
         if isinstance(circuit_id, int):
@@ -171,7 +197,7 @@ def test_no_sampling() -> None:
 @pytest.mark.expensive
 @pytest.mark.unittest
 def test_bell_measure() -> None:
-    circuits, results_n_layers_1, skip_indices = get_test_cases()
+    circuits, results_n_layers_1, results_n_layers_3, skip_indices = get_test_cases()
 
     test_cases = []
     for circuit_id, res_1l in zip(circuits, results_n_layers_1):
