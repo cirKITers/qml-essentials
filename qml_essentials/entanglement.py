@@ -1,6 +1,7 @@
 from typing import Optional, Any
 import pennylane as qml
 import pennylane.numpy as np
+from copy import deepcopy
 
 from qml_essentials.model import Model
 import logging
@@ -75,6 +76,64 @@ class Entanglement:
 
         # Average all iterated states
         # catch floating point errors
+        entangling_capability = min(max(mw_measure.mean(), 0.0), 1.0)
+        log.debug(f"Variance of measure: {mw_measure.var()}")
+
+        return float(entangling_capability)
+
+    @staticmethod
+    def bell_measurements(model: Model, n_samples, seed, **kwargs: Any) -> float:
+
+        def _circuit(params, inputs):
+            model._variational(params, inputs)
+
+            qml.map_wires(
+                model._variational,
+                {i: i + model.n_qubits for i in range(model.n_qubits)},
+            )(params, inputs)
+
+            for q in range(model.n_qubits):
+                qml.CNOT(wires=[q, q + model.n_qubits])
+                qml.H(q)
+
+            obs_wires = [(q, q + model.n_qubits) for q in range(model.n_qubits)]
+            return [qml.probs(wires=w) for w in obs_wires]
+
+        model.circuit = qml.QNode(
+            _circuit,
+            qml.device(
+                "default.qubit",
+                shots=model.shots,
+                wires=model.n_qubits * 2,
+            ),
+        )
+
+        rng = np.random.default_rng(seed)
+        if n_samples is not None and n_samples > 0:
+            assert seed is not None, "Seed must be provided when samples > 0"
+            # TODO: maybe switch to JAX rng
+            model.initialize_params(rng=rng, repeat=n_samples)
+            params = model.params
+        else:
+            if seed is not None:
+                log.warning("Seed is ignored when samples is 0")
+
+            if len(model.params.shape) <= 2:
+                params = model.params.reshape(*model.params.shape, 1)
+            else:
+                log.info(f"Using sample size of model params: {model.params.shape[-1]}")
+                params = model.params
+
+        n_samples = params.shape[-1]
+        mw_measure = np.zeros(n_samples)
+
+        for i in range(n_samples):
+            # implicitly set input to none in case it's not needed
+            kwargs.setdefault("inputs", None)
+            exp = model(params=params[:, :, i], **kwargs)
+
+            exp = 1 - 2 * exp[:, -1]
+            mw_measure[i] = 2 * (1 - exp.mean())
         entangling_capability = min(max(mw_measure.mean(), 0.0), 1.0)
         log.debug(f"Variance of measure: {mw_measure.var()}")
 
