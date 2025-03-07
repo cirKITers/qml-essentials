@@ -257,8 +257,10 @@ def test_bell_measure() -> None:
 @pytest.mark.unittest
 def test_entangling_measures() -> None:
     test_cases = [
+        {"circuit_type": "Circuit_4", "n_qubits": 2, "n_layers": 1},
+        {"circuit_type": "Circuit_4", "n_qubits": 3, "n_layers": 1},
         {"circuit_type": "Circuit_4", "n_qubits": 4, "n_layers": 1},
-        {"circuit_type": "Circuit_9", "n_qubits": 4, "n_layers": 1},
+        {"circuit_type": "Circuit_4", "n_qubits": 5, "n_layers": 1},
     ]
 
     for test_case in test_cases:
@@ -271,14 +273,14 @@ def test_entangling_measures() -> None:
         )
 
         mw_meas = Entanglement.meyer_wallach(
-            deepcopy(model), n_samples=5000, seed=1000, cache=False
+            deepcopy(model), n_samples=2000, seed=1000, cache=False
         )
 
         bell_meas = Entanglement.bell_measurements(
-            model, n_samples=5000, seed=1000, cache=False
+            model, n_samples=2000, seed=1000, cache=False
         )
 
-        assert math.isclose(mw_meas, bell_meas, abs_tol=1e-3), (
+        assert math.isclose(mw_meas, bell_meas, abs_tol=1e-5), (
             f"Meyer-Wallach and Bell-measurement are not the same. Got {mw_meas} "
             f"and {bell_meas}, respectively."
         )
