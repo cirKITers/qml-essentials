@@ -99,9 +99,9 @@ class Gates:
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
             supported:
-            - BitFlip: Applies a bit flip error to the given wires.
-            - PhaseFlip: Applies a phase flip error to the given wires.
-            - Depolarizing: Applies a depolarizing channel error to the
+           -BitFlip: Applies a bit flip error to the given wires.
+           -PhaseFlip: Applies a phase flip error to the given wires.
+           -Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -131,7 +131,7 @@ class Gates:
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
             supported:
-            - GateError: Applies a normal distribution error to the rotation
+           -GateError: Applies a normal distribution error to the rotation
             angle(s). The standard deviation of the noise is specified by
             the "GateError" key in the dictionary.
 
@@ -164,9 +164,9 @@ class Gates:
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
             supported:
-            - BitFlip: Applies a bit flip error to the given wires.
-            - PhaseFlip: Applies a phase flip error to the given wires.
-            - Depolarizing: Applies a depolarizing channel error to the
+           -BitFlip: Applies a bit flip error to the given wires.
+           -PhaseFlip: Applies a phase flip error to the given wires.
+           -Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -192,9 +192,9 @@ class Gates:
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
             supported:
-            - BitFlip: Applies a bit flip error to the given wires.
-            - PhaseFlip: Applies a phase flip error to the given wires.
-            - Depolarizing: Applies a depolarizing channel error to the
+           -BitFlip: Applies a bit flip error to the given wires.
+           -PhaseFlip: Applies a phase flip error to the given wires.
+           -Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -216,9 +216,9 @@ class Gates:
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
             supported:
-            - BitFlip: Applies a bit flip error to the given wires.
-            - PhaseFlip: Applies a phase flip error to the given wires.
-            - Depolarizing: Applies a depolarizing channel error to the
+           -BitFlip: Applies a bit flip error to the given wires.
+           -PhaseFlip: Applies a phase flip error to the given wires.
+           -Depolarizing: Applies a depolarizing channel error to the
             given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -241,9 +241,9 @@ class Gates:
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
             supported:
-            - BitFlip: Applies a bit flip error to the given wires.
-            - PhaseFlip: Applies a phase flip error to the given wires.
-            - Depolarizing: Applies a depolarizing channel error to the
+           -BitFlip: Applies a bit flip error to the given wires.
+           -PhaseFlip: Applies a phase flip error to the given wires.
+           -Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -266,9 +266,9 @@ class Gates:
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
             supported:
-            - BitFlip: Applies a bit flip error to the given wires.
-            - PhaseFlip: Applies a phase flip error to the given wires.
-            - Depolarizing: Applies a depolarizing channel error to the
+           -BitFlip: Applies a bit flip error to the given wires.
+           -PhaseFlip: Applies a phase flip error to the given wires.
+           -Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -292,9 +292,9 @@ class Gates:
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
             supported:
-            - BitFlip: Applies a bit flip error to the given wires.
-            - PhaseFlip: Applies a phase flip error to the given wires.
-            - Depolarizing: Applies a depolarizing channel error to the
+           -BitFlip: Applies a bit flip error to the given wires.
+           -PhaseFlip: Applies a phase flip error to the given wires.
+           -Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -318,9 +318,9 @@ class Gates:
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
             supported:
-            - BitFlip: Applies a bit flip error to the given wires.
-            - PhaseFlip: Applies a phase flip error to the given wires.
-            - Depolarizing: Applies a depolarizing channel error to the
+           -BitFlip: Applies a bit flip error to the given wires.
+           -PhaseFlip: Applies a phase flip error to the given wires.
+           -Depolarizing: Applies a depolarizing channel error to the
             given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -341,9 +341,9 @@ class Gates:
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
             supported:
-            - BitFlip: Applies a bit flip error to the given wires.
-            - PhaseFlip: Applies a phase flip error to the given wires.
-            - Depolarizing: Applies a depolarizing channel error to the
+           -BitFlip: Applies a bit flip error to the given wires.
+           -PhaseFlip: Applies a phase flip error to the given wires.
+           -Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -363,9 +363,9 @@ class Gates:
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
             supported:
-            - BitFlip: Applies a bit flip error to the given wires.
-            - PhaseFlip: Applies a phase flip error to the given wires.
-            - Depolarizing: Applies a depolarizing channel error to the
+           -BitFlip: Applies a bit flip error to the given wires.
+           -PhaseFlip: Applies a phase flip error to the given wires.
+           -Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -385,9 +385,9 @@ class Gates:
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
             supported:
-            - BitFlip: Applies a bit flip error to the given wires.
-            - PhaseFlip: Applies a phase flip error to the given wires.
-            - Depolarizing: Applies a depolarizing channel error to the
+           -BitFlip: Applies a bit flip error to the given wires.
+           -PhaseFlip: Applies a phase flip error to the given wires.
+           -Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -407,9 +407,9 @@ class Gates:
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
             supported:
-            - BitFlip: Applies a bit flip error to the given wires.
-            - PhaseFlip: Applies a phase flip error to the given wires.
-            - Depolarizing: Applies a depolarizing channel error to the
+           -BitFlip: Applies a bit flip error to the given wires.
+           -PhaseFlip: Applies a phase flip error to the given wires.
+           -Depolarizing: Applies a depolarizing channel error to the
               given wires.
 
             All parameters are optional and default to 0.0 if not provided.
@@ -506,7 +506,7 @@ class Ansaetze:
             Parameters
             ----------
             w : np.ndarray
-                Weight vector of size n_layers*(n_qubits*3)
+                Weight vector of size n_qubits*3
             n_qubits : int
                 Number of qubits
             noise_params : Optional[Dict[str, float]], optional
@@ -593,7 +593,7 @@ class Ansaetze:
             Parameters
             ----------
             w : np.ndarray
-                Weight vector of size n_layers*(n_qubits*3)
+                Weight vector of size n_qubits*3
             n_qubits : int
                 Number of qubits
             noise_params : Optional[Dict[str, float]], optional
@@ -675,7 +675,7 @@ class Ansaetze:
             Parameters
             ----------
             w : np.ndarray
-                Weight vector of size n_layers*(n_qubits*3)
+                Weight vector of size n_qubits*3
             n_qubits : int
                 Number of qubits
             noise_params : Optional[Dict[str, float]], optional
@@ -751,7 +751,7 @@ class Ansaetze:
             Parameters
             ----------
             w : np.ndarray
-                Weight vector of size n_layers*(n_qubits*2)
+                Weight vector of size n_qubits*2
             n_qubits : int
                 Number of qubits
             noise_params : Optional[Dict[str, float]], optional
@@ -828,7 +828,7 @@ class Ansaetze:
             Parameters
             ----------
             w : np.ndarray
-                Weight vector of size n_layers*n_qubits
+                Weight vector of size n_qubits
             n_qubits : int
                 Number of qubits
             noise_params : Optional[Dict[str, float]], optional
@@ -855,9 +855,9 @@ class Ansaetze:
             """
             Returns the number of parameters per layer for Circuit_6.
 
-            The total number of parameters is n_qubits*3 + n_qubits**2, which is
-            the number of rotations (n_qubits*3) plus the number of entangling gates
-            (n_qubits**2).
+            The total number of parameters is n_qubits*3+n_qubits**2, which is
+            the number of rotations n_qubits*3 plus the number of entangling gates
+            n_qubits**2.
 
             If n_qubits is 1, the number of parameters is 4, and a warning is logged
             since no entanglement is possible.
@@ -907,14 +907,14 @@ class Ansaetze:
             Creates a Circuit6 ansatz.
 
             Length of flattened vector must be
-                n_qubits * 4 + n_qubits * (n_qubits - 1) =
-                n_qubits*3 + n_qubits**2
+                n_qubits*4+n_qubits*(n_qubits-1) =
+                n_qubits*3+n_qubits**2
 
             Parameters
             ----------
             w : np.ndarray
                 Weight vector of size
-                    n_layers * (n_qubits*3 + n_qubits**2)
+                    n_layers*(n_qubits*3+n_qubits**2)
             n_qubits : int
                 Number of qubits
             noise_params : Optional[Dict[str, float]], optional
@@ -994,7 +994,7 @@ class Ansaetze:
             Parameters
             ----------
             w : np.ndarray
-                Weight vector of size n_layers*(n_qubits*2)
+                Weight vector of size n_qubits*2
             n_qubits : int
                 Number of qubits
             noise_params : Optional[Dict[str, float]], optional
@@ -1056,7 +1056,7 @@ class Ansaetze:
             Parameters
             ----------
             w : np.ndarray
-                Weight vector of size n_layers*(n_qubits*2)
+                Weight vector of size n_qubits*2
             n_qubits : int
                 Number of qubits
             noise_params : Optional[Dict[str, float]], optional
@@ -1126,7 +1126,7 @@ class Ansaetze:
             Parameters
             ----------
             w : np.ndarray
-                Weight vector of size n_layers*(n_qubits*3-1)
+                Weight vector of size n_qubits*3-1
             n_qubits : int
                 Number of qubits
             noise_params : Optional[Dict[str, float]], optional
@@ -1196,7 +1196,7 @@ class Ansaetze:
             Parameters
             ----------
             w : np.ndarray
-                Weight vector of size n_layers*(n_qubits*3-1)
+                Weight vector of size n_qubits*3-1
             n_qubits : int
                 Number of qubits
             noise_params : Optional[Dict[str, float]], optional
@@ -1266,7 +1266,7 @@ class Ansaetze:
             Parameters
             ----------
             w : np.ndarray
-                Weight vector of size n_layers*n_qubits
+                Weight vector of size n_qubits*2
             n_qubits : int
                 Number of qubits
             noise_params : Optional[Dict[str, float]], optional
@@ -1343,7 +1343,7 @@ class Ansaetze:
             Parameters
             ----------
             w : np.ndarray
-                Weight vector of size n_layers*n_qubits*3-1
+                Weight vector of size n_qubits*3-1
             n_qubits : int
                 Number of qubits
             noise_params : Optional[Dict[str, float]], optional
@@ -1422,7 +1422,7 @@ class Ansaetze:
             Parameters
             ----------
             w : np.ndarray
-                Weight vector of size n_layers*n_qubits*3-1
+                Weight vector of size n_qubits*3-1
             n_qubits : int
                 Number of qubits
             noise_params : Optional[Dict[str, float]], optional
@@ -1503,7 +1503,7 @@ class Ansaetze:
             Parameters
             ----------
             w : np.ndarray
-                Weight vector of size n_layers*(n_qubits*6)
+                Weight vector of size n_qubits*6
             n_qubits : int
                 Number of qubits
             noise_params : Optional[Dict[str, float]], optional
@@ -1589,7 +1589,7 @@ class Ansaetze:
             Parameters
             ----------
             w : np.ndarray
-                Weight vector of size n_layers*(n_qubits*3)
+                Weight vector of size n_qubits*3
             n_qubits : int
                 Number of qubits
             noise_params : Optional[Dict[str, float]], optional
