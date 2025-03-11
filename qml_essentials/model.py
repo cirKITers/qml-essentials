@@ -86,6 +86,7 @@ class Model:
         self.noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None
         self.execution_type: Optional[str] = "expval"
         self.shots = shots
+        self.remove_zero_encoding = remove_zero_encoding
 
         if isinstance(output_qubit, list):
             assert (
@@ -440,7 +441,7 @@ class Model:
             None
         """
         # check for zero, because due to input validation, input cannot be none
-        if not inputs.any():
+        if self.remove_zero_encoding and not inputs.any():
             return
 
         if data_reupload:
