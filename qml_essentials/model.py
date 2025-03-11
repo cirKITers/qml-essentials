@@ -28,7 +28,7 @@ class Model:
         n_qubits: int,
         n_layers: int,
         circuit_type: Union[str, Circuit],
-        data_reupload: bool = True,
+        data_reupload: Union[bool, List] = True,
         encoding: Union[str, Callable, List[str], List[Callable]] = Gates.RX,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
@@ -36,6 +36,7 @@ class Model:
         shots: Optional[int] = None,
         random_seed: int = 1000,
         as_pauli_circuit: bool = False,
+        remove_zero_encoding=False,
     ) -> None:
         """
         Initialize the quantum circuit model.
@@ -98,7 +99,30 @@ class Model:
         # Copy the parameters
         self.n_qubits: int = n_qubits
         self.n_layers: int = n_layers
-        self.data_reupload: bool = data_reupload
+
+        # Process data reuploading strategy and set degree
+        if not isinstance(data_reupload, bool):
+            if not isinstance(data_reupload, np.ndarray):
+                data_reupload = np.array(data_reupload)
+            assert data_reupload.shape == (n_layers, n_qubits)
+        else:
+            if data_reupload:
+                impl_n_layers: int = (
+                    n_layers + 1
+                )  # we need L+1 according to Schuld et al.
+                data_reupload = np.ones((n_layers, n_qubits))
+            else:
+                impl_n_layers: int = n_layers
+                data_reupload = np.zeros((n_layers, n_qubits))
+                data_reupload[0][0] = 1
+
+        self.degree = np.count_nonzero(data_reupload)
+        self.data_reupload = data_reupload
+
+        if self.degree > 1:
+            impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
+        else:
+            impl_n_layers = n_layers
 
         # Initialize ansatz
         # only weak check for str. We trust the user to provide sth useful
@@ -131,13 +155,6 @@ class Model:
             self._enc = encoding
 
         log.info(f"Using {circuit_type} circuit.")
-
-        if data_reupload:
-            impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
-            self.degree = n_layers * n_qubits
-        else:
-            impl_n_layers: int = n_layers
-            self.degree = 1
 
         log.info(f"Number of implicit layers set to {impl_n_layers}.")
         # calculate the shape of the parameter vector here, we will re-use this in init.
@@ -444,20 +461,15 @@ class Model:
         if self.remove_zero_encoding and not inputs.any():
             return
 
-        if data_reupload:
-            if inputs.shape[1] == 1:
-                for q in range(self.n_qubits):
+        if inputs.shape[1] == 1:
+            for q in range(self.n_qubits):
+                if data_reupload[q]:
                     enc(inputs[:, 0], wires=q, noise_params=noise_params)
-            else:
-                for q in range(self.n_qubits):
+        else:
+            for q in range(self.n_qubits):
+                if data_reupload[q]:
                     for idx in range(inputs.shape[1]):
                         enc[idx](inputs[:, idx], wires=q, noise_params=noise_params)
-        else:
-            if inputs.shape[1] == 1:
-                enc(inputs[:, 0], wires=0, noise_params=noise_params)
-            else:
-                for idx in range(inputs.shape[1]):
-                    enc[idx](inputs[:, idx], wires=0, noise_params=noise_params)
 
     def _circuit(
         self,
@@ -486,17 +498,16 @@ class Model:
         for layer in range(0, self.n_layers):
             self.pqc(params[layer], self.n_qubits, noise_params=self.noise_params)
 
-            if self.data_reupload or layer == 0:
-                self._iec(
-                    inputs,
-                    data_reupload=self.data_reupload,
-                    enc=self._enc,
-                    noise_params=self.noise_params,
-                )
+            self._iec(
+                inputs,
+                data_reupload=self.data_reupload[layer],
+                enc=self._enc,
+                noise_params=self.noise_params,
+            )
 
             qml.Barrier(wires=list(range(self.n_qubits)), only_visual=True)
 
-        if self.data_reupload:
+        if self.degree > 1:  # same check as in init
             self.pqc(params[-1], self.n_qubits, noise_params=self.noise_params)
 
         if self.noise_params is not None:

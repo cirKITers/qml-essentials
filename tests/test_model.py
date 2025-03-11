@@ -466,20 +466,37 @@ def test_multi_input() -> None:
             assert len(out.shape) == 0, "expected one elemental output for empty input"
 
 
-@pytest.mark.smoketest
+@pytest.mark.unittest
 def test_dru() -> None:
-    dru_cases = [False, True]
+    test_cases = [
+        {
+            "dru": False,
+            "degree": 1,
+        },
+        {
+            "dru": True,
+            "degree": 4,
+        },
+        {
+            "dru": [[True, False], [False, True]],
+            "degree": 2,
+        },
+    ]
 
-    for dru in dru_cases:
+    for test_case in test_cases:
         model = Model(
             n_qubits=2,
-            n_layers=1,
+            n_layers=2,
             circuit_type="Circuit_19",
-            data_reupload=dru,
+            data_reupload=test_case["dru"],
             initialization="random",
             output_qubit=0,
             shots=1024,
         )
+
+        assert (
+            model.degree == test_case["degree"]
+        ), f"Expected degree {test_case['degree']} but got {model.degree} for dru {test_case['dru']}"
 
         _ = model(
             model.params,
@@ -580,7 +597,7 @@ def test_local_and_global_meas() -> None:
             "execution_type": "expval",
             "output_qubit": -1,
             "shots": None,
-            "out_shape": (2,),
+            "out_shape": (2, 1),
             "warning": False,
         },
         {
