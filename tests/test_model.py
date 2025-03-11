@@ -496,7 +496,8 @@ def test_dru() -> None:
 
         assert (
             model.degree == test_case["degree"]
-        ), f"Expected degree {test_case['degree']} but got {model.degree} for dru {test_case['dru']}"
+        ), f"Expected degree {test_case['degree']} but got {model.degree}\
+            for dru {test_case['dru']}"
 
         _ = model(
             model.params,
