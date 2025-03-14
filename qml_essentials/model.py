@@ -36,7 +36,7 @@ class Model:
         shots: Optional[int] = None,
         random_seed: int = 1000,
         as_pauli_circuit: bool = False,
-        remove_zero_encoding=False,
+        remove_zero_encoding=True,
     ) -> None:
         """
         Initialize the quantum circuit model.
