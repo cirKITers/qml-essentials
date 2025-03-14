@@ -28,7 +28,7 @@ class Model:
         n_qubits: int,
         n_layers: int,
         circuit_type: Union[str, Circuit],
-        data_reupload: Union[bool, List] = True,
+        data_reupload: Union[bool, List[int]] = True,
         encoding: Union[str, Callable, List[str], List[Callable]] = Gates.RX,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
@@ -36,7 +36,7 @@ class Model:
         shots: Optional[int] = None,
         random_seed: int = 1000,
         as_pauli_circuit: bool = False,
-        remove_zero_encoding=True,
+        remove_zero_encoding: bool = True,
     ) -> None:
         """
         Initialize the quantum circuit model.
@@ -79,6 +79,8 @@ class Model:
                 et al. (https://doi.org/10.1103/PhysRevA.108.032406), which is
                 required for analytical Fourier coefficient computation.
                 Defaults to False.
+            remove_zero_encoding (bool, optional): whether to
+                remove the zero encoding from the circuit. Defaults to True.
 
         Returns:
             None
