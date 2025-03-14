@@ -92,7 +92,7 @@ X_shift, X_freq_shift = Coefficients.get_spectrum(model_fct, mfs=2, mts=3, shift
 
 Note that, as the frequencies change with the `mts` argument, we have to take that into account when calculating the frequencies with the last call.
 
-Feel free to checkout our [jupyter notebook](https://github.com/quantum-machine-learning/qml_essentials/blob/main/docs/notebooks/coefficients.ipynb) if you would like to play around with this.
+Feel free to checkout our [jupyter notebook](https://github.com/cirKITers/qml-essentials/blob/main/docs/coefficients.ipynb) if you would like to play around with this.
 
 A sidenote on the performance; Increasing the `mts` value effectively increases the input lenght that goes into the model.
 This means that `mts=2` will require twice the time to compute, which will be very noticable when running noisy simulations.

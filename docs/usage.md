@@ -36,6 +36,29 @@ You can calculate the [Expressibility](expressibility.md) or [Entangling Capabil
 You can also provide a custom circuit, by instantiating from the `Circuit` class in `qml_essentials.ansaetze.Circuit`.
 See page [*Ansaetze*](ansaetze.md) for more details and a list of available Ansatzes that we provide with this package.
 
+## Data-Reuploading
+
+This idea is one of the core features of our framework and builds upon the work by [*Schuld et al. (2020)*](https://arxiv.org/abs/2008.08605).
+Essentially it allows us to represent a quantum circuit as a truncated Fourier series which is a powerfull feature that enables the model to mimic arbitrary non-linear functions.
+The number of frequencies that the model can represent is constrained by the number of data encoding steps within the circuit.
+
+Typically, there is a reuploading step after each layer and on each qubit (`data_reupload=True`).
+However, our package also allows you to specify and array with the number of rows representing the qubits and number of columns representing the layers.
+Then a `1` means that encoding is applied at the corresponding position within the circuit.
+
+In the following example, the model has two reuploading steps (`model.degree` = 2) although it would be capable of representing four frequencies:
+
+```python
+model = Model(
+    n_qubits=2,
+    n_layers=2,
+    circuit_type="Hardware_Efficient",
+    data_reupload=[[1, 0], [0, 1]],
+)
+```
+
+Checkout the [*Coefficients*](coefficients.md) page for more details on how you can visualize such a model using tools from signal analysis.
+
 ## Parameter Initialization
 
 The initialization strategy can be set when instantiating the model with the `initialization` argument.
@@ -64,6 +87,8 @@ Other options are:
 See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
 Otherwise multiple inputs are treated as batches of inputs.
+
+If you want to visualize zero-valued encoding gates in the model, set `remove_zero_encoding` to `False` on instantiation.
 
 ## Output Shape
 
