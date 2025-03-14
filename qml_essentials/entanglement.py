@@ -97,7 +97,8 @@ class Entanglement:
             model (Model): The quantum circuit model.
             n_samples (int): The number of samples to compute the measure for.
             seed (int): The seed for the random number generator.
-            scale (bool): Whether to scale the number of samples according to the number of qubits.
+            scale (bool): Whether to scale the number of samples
+            according to the number of qubits.
             **kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
