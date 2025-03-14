@@ -295,7 +295,6 @@ def test_entangling_measures() -> None:
             n_layers=test_case["n_layers"],
             circuit_type=test_case["circuit_type"],
             data_reupload=False,
-            initialization="random",
         )
 
         mw_meas = Entanglement.meyer_wallach(
@@ -303,7 +302,7 @@ def test_entangling_measures() -> None:
         )
 
         bell_meas = Entanglement.bell_measurements(
-            model, n_samples=2000, seed=1000, cache=False
+            deepcopy(model), n_samples=2000, seed=1000, cache=False
         )
 
         assert math.isclose(mw_meas, bell_meas, abs_tol=1e-5), (
