@@ -8,7 +8,7 @@ from autograd.numpy import numpy_boxes
 from copy import deepcopy
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
-from qml_essentials.utils import PauliCircuit
+from qml_essentials.utils import PauliCircuit, QuanTikz
 
 
 import logging
@@ -590,22 +590,27 @@ class Model:
                 tg = circuit_depth * t_factor
                 qml.ThermalRelaxationError(1.0, t1, t2, tg, q)
 
-    def _draw(self, inputs=None, figure=False) -> None:
+    def _draw(self, inputs=None, figure=False, tikz=False) -> None:
         if not isinstance(self.circuit, qml.QNode):
             # TODO: throws strange argument error if not catched
             return ""
+
+        if figure and tikz:
+            raise ValueError("Cannot draw tikz and figure at the same time.")
 
         inputs = self._inputs_validation(inputs)
 
         if figure:
             result = qml.draw_mpl(self.circuit)(params=self.params, inputs=inputs)
+        elif tikz:
+            result = QuanTikz.export(self.circuit, params=self.params, inputs=inputs)
         else:
             result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
         return result
 
-    def draw(self, inputs=None, figure=False) -> None:
+    def draw(self, *args, **kwargs) -> None:
 
-        return self._draw(inputs, figure)
+        return self._draw(*args, **kwargs)
 
     def __repr__(self) -> str:
         return self._draw(figure=False)
