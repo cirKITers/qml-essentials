@@ -6,6 +6,7 @@ from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
 from pennylane.typing import PostprocessingFn
 import pennylane.numpy as pnp
 import pennylane.ops.op_math as qml_op
+from pennylane.drawer import drawable_layers, tape_text
 
 CLIFFORD_GATES = (
     qml.PauliX,
@@ -411,3 +412,64 @@ class PauliCircuit:
             clifford_obs = PauliCircuit._evolve_cliffords_list(operations, ob)
             observables.append(clifford_obs)
         return observables
+
+
+class QuanTikz:
+    @staticmethod
+    def ground_state():
+        return "\lstick{\ket{0}} & "
+
+    @staticmethod
+    def measure():
+        return "\meter{}"
+
+    @staticmethod
+    def gate(op, index=None):
+        if index is None:
+            return f"\gate{{{op.name}}}"
+        else:
+            return f"\gate{{{op.name}(\theta_{index})}}"
+
+    @staticmethod
+    def cgate(op, index=None):
+        distance = op.wires[1] - op.wires[0]
+        if index is None:
+            return f"\ctrl{{{distance}}}", "\targ{}"
+        else:
+            return f"\ctrl{{{op.name}(\theta_{index})}}", "\targ{}"
+
+    @staticmethod
+    def export(circuit: qml.QNode, params, inputs) -> callable:
+        quantum_tape = qml.workflow.construct_tape(circuit)(
+            params=params, inputs=inputs
+        )
+        circuit_tikz = [[] for _ in range(quantum_tape.num_wires)]
+
+        index = iter(range(10 * quantum_tape.num_params))
+        for op in quantum_tape.circuit:
+            if op._queue_category == "_measurements":
+                pass
+            elif op._queue_category == "_ops":
+                if op.name == "Barrier":
+                    continue
+                if len(op.wires) == 1:
+                    circuit_tikz[op.wires[0]].append(
+                        QuanTikz.gate(op, index=next(index))
+                    )
+                else:
+                    ctrl, targ = QuanTikz.cgate(op)
+                    circuit_tikz[op.wires[0]].append(ctrl)
+                    circuit_tikz[op.wires[1]].append(targ)
+
+        quantikz_str = ""
+
+        for wire_ops in circuit_tikz:
+            for op_idx, op in enumerate(wire_ops):
+                if op_idx < len(wire_ops) - 1:
+                    quantikz_str += f"{op} & "
+                else:
+                    quantikz_str += f"{op} \n"
+
+        pass
+        # get number of layers
+        # iterate layers and get wires
