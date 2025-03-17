@@ -156,6 +156,9 @@ class Model:
             # default to callable
             self._enc = encoding
 
+        # Number of possible inputs
+        self.n_input_feat = len(encoding) if isinstance(encoding, List) else 1
+
         log.info(f"Using {circuit_type} circuit.")
 
         log.info(f"Number of implicit layers set to {impl_n_layers}.")
@@ -695,18 +698,33 @@ class Model:
         """
         if inputs is None:
             # initialize to zero
-            inputs = np.array([[0]])
+            inputs = np.array([[0] * self.n_input_feat])
         elif isinstance(inputs, List):
             inputs = np.stack(inputs)
         elif isinstance(inputs, float) or isinstance(inputs, int):
             inputs = np.array([inputs])
 
         if len(inputs.shape) == 1:
-            if isinstance(self._enc, List):
-                inputs = inputs.reshape(-1, 1)
-            else:
+            if self.n_input_feat == 1:
                 # add a batch dimension
                 inputs = inputs.reshape(inputs.shape[0], 1)
+            else:
+                if inputs.shape[0] == self.n_input_feat:
+                    inputs = inputs.reshape(1, -1)
+                else:
+                    inputs = inputs.reshape(-1, 1)
+                    inputs = inputs.repeat(self.n_input_feat, axis=1)
+                    warnings.warn(
+                        f"Expected {self.n_input_feat} inputs, but {inputs.shape[0]} "
+                        "was provided, replicating input for all input features.",
+                        UserWarning,
+                    )
+        else:
+            if inputs.shape[1] != self.n_input_feat:
+                raise ValueError(
+                    f"Wrong number of inputs provided. Expected {self.n_input_feat} "
+                    f"inputs, but input has shape {inputs.shape}."
+                )
 
         return inputs
 
