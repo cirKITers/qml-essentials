@@ -28,7 +28,7 @@ class Model:
         n_qubits: int,
         n_layers: int,
         circuit_type: Union[str, Circuit],
-        data_reupload: bool = True,
+        data_reupload: Union[bool, List[int]] = True,
         encoding: Union[str, Callable, List[str], List[Callable]] = Gates.RX,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
@@ -36,6 +36,7 @@ class Model:
         shots: Optional[int] = None,
         random_seed: int = 1000,
         as_pauli_circuit: bool = False,
+        remove_zero_encoding: bool = True,
     ) -> None:
         """
         Initialize the quantum circuit model.
@@ -78,6 +79,8 @@ class Model:
                 et al. (https://doi.org/10.1103/PhysRevA.108.032406), which is
                 required for analytical Fourier coefficient computation.
                 Defaults to False.
+            remove_zero_encoding (bool, optional): whether to
+                remove the zero encoding from the circuit. Defaults to True.
 
         Returns:
             None
@@ -86,6 +89,7 @@ class Model:
         self.noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None
         self.execution_type: Optional[str] = "expval"
         self.shots = shots
+        self.remove_zero_encoding = remove_zero_encoding
 
         if isinstance(output_qubit, list):
             assert (
@@ -97,7 +101,30 @@ class Model:
         # Copy the parameters
         self.n_qubits: int = n_qubits
         self.n_layers: int = n_layers
-        self.data_reupload: bool = data_reupload
+
+        # Process data reuploading strategy and set degree
+        if not isinstance(data_reupload, bool):
+            if not isinstance(data_reupload, np.ndarray):
+                data_reupload = np.array(data_reupload)
+            assert data_reupload.shape == (n_layers, n_qubits)
+        else:
+            if data_reupload:
+                impl_n_layers: int = (
+                    n_layers + 1
+                )  # we need L+1 according to Schuld et al.
+                data_reupload = np.ones((n_layers, n_qubits))
+            else:
+                impl_n_layers: int = n_layers
+                data_reupload = np.zeros((n_layers, n_qubits))
+                data_reupload[0][0] = 1
+
+        self.degree = np.count_nonzero(data_reupload)
+        self.data_reupload = data_reupload
+
+        if self.degree > 1:
+            impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
+        else:
+            impl_n_layers = n_layers
 
         # Initialize ansatz
         # only weak check for str. We trust the user to provide sth useful
@@ -129,14 +156,10 @@ class Model:
             # default to callable
             self._enc = encoding
 
-        log.info(f"Using {circuit_type} circuit.")
+        # Number of possible inputs
+        self.n_input_feat = len(encoding) if isinstance(encoding, List) else 1
 
-        if data_reupload:
-            impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
-            self.degree = n_layers * n_qubits
-        else:
-            impl_n_layers: int = n_layers
-            self.degree = 1
+        log.info(f"Using {circuit_type} circuit.")
 
         log.info(f"Number of implicit layers set to {impl_n_layers}.")
         # calculate the shape of the parameter vector here, we will re-use this in init.
@@ -440,23 +463,18 @@ class Model:
             None
         """
         # check for zero, because due to input validation, input cannot be none
-        if not inputs.any():
+        if self.remove_zero_encoding and not inputs.any():
             return
 
-        if data_reupload:
-            if inputs.shape[1] == 1:
-                for q in range(self.n_qubits):
+        if inputs.shape[1] == 1:
+            for q in range(self.n_qubits):
+                if data_reupload[q]:
                     enc(inputs[:, 0], wires=q, noise_params=noise_params)
-            else:
-                for q in range(self.n_qubits):
+        else:
+            for q in range(self.n_qubits):
+                if data_reupload[q]:
                     for idx in range(inputs.shape[1]):
                         enc[idx](inputs[:, idx], wires=q, noise_params=noise_params)
-        else:
-            if inputs.shape[1] == 1:
-                enc(inputs[:, 0], wires=0, noise_params=noise_params)
-            else:
-                for idx in range(inputs.shape[1]):
-                    enc[idx](inputs[:, idx], wires=0, noise_params=noise_params)
 
     def _circuit(
         self,
@@ -485,17 +503,16 @@ class Model:
         for layer in range(0, self.n_layers):
             self.pqc(params[layer], self.n_qubits, noise_params=self.noise_params)
 
-            if self.data_reupload or layer == 0:
-                self._iec(
-                    inputs,
-                    data_reupload=self.data_reupload,
-                    enc=self._enc,
-                    noise_params=self.noise_params,
-                )
+            self._iec(
+                inputs,
+                data_reupload=self.data_reupload[layer],
+                enc=self._enc,
+                noise_params=self.noise_params,
+            )
 
             qml.Barrier(wires=list(range(self.n_qubits)), only_visual=True)
 
-        if self.data_reupload:
+        if self.degree > 1:  # same check as in init
             self.pqc(params[-1], self.n_qubits, noise_params=self.noise_params)
 
         if self.noise_params is not None:
@@ -681,18 +698,33 @@ class Model:
         """
         if inputs is None:
             # initialize to zero
-            inputs = np.array([[0]])
+            inputs = np.array([[0] * self.n_input_feat])
         elif isinstance(inputs, List):
             inputs = np.stack(inputs)
         elif isinstance(inputs, float) or isinstance(inputs, int):
             inputs = np.array([inputs])
 
         if len(inputs.shape) == 1:
-            if isinstance(self._enc, List):
-                inputs = inputs.reshape(-1, 1)
-            else:
+            if self.n_input_feat == 1:
                 # add a batch dimension
                 inputs = inputs.reshape(inputs.shape[0], 1)
+            else:
+                if inputs.shape[0] == self.n_input_feat:
+                    inputs = inputs.reshape(1, -1)
+                else:
+                    inputs = inputs.reshape(-1, 1)
+                    inputs = inputs.repeat(self.n_input_feat, axis=1)
+                    warnings.warn(
+                        f"Expected {self.n_input_feat} inputs, but {inputs.shape[0]} "
+                        "was provided, replicating input for all input features.",
+                        UserWarning,
+                    )
+        else:
+            if inputs.shape[1] != self.n_input_feat:
+                raise ValueError(
+                    f"Wrong number of inputs provided. Expected {self.n_input_feat} "
+                    f"inputs, but input has shape {inputs.shape}."
+                )
 
         return inputs
 

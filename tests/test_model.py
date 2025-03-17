@@ -144,14 +144,26 @@ def test_parameters() -> None:
 @pytest.mark.smoketest
 def test_encoding() -> None:
     test_cases = [
-        {"encoding_unitary": Gates.RX, "type": Callable, "input": [0]},
+        {
+            "encoding_unitary": Gates.RX,
+            "type": Callable,
+            "input": [0],
+            "warning": False,
+        },
         {
             "encoding_unitary": [Gates.RX, Gates.RY],
             "type": List,
             "input": [[0, 0]],
+            "warning": False,
         },
-        {"encoding_unitary": "RX", "type": Callable, "input": [0]},
-        {"encoding_unitary": ["RX", "RY"], "type": List, "input": [[0, 0]]},
+        {"encoding_unitary": "RX", "type": Callable, "input": [0], "warning": False},
+        {
+            "encoding_unitary": ["RX", "RY"],
+            "type": List,
+            "input": [[0, 0]],
+            "warning": False,
+        },
+        {"encoding_unitary": ["RX", "RY"], "type": List, "input": [0], "warning": True},
     ]
 
     for test_case in test_cases:
@@ -160,12 +172,20 @@ def test_encoding() -> None:
             n_layers=1,
             circuit_type="Circuit_19",
             encoding=test_case["encoding_unitary"],
-        )
-        _ = model(
-            model.params,
-            inputs=test_case["input"],
+            remove_zero_encoding=False,
         )
 
+        if test_case["warning"]:
+            with pytest.warns(UserWarning):
+                _ = model(
+                    model.params,
+                    inputs=test_case["input"],
+                )
+        else:
+            _ = model(
+                model.params,
+                inputs=test_case["input"],
+            )
         assert isinstance(model._enc, test_case["type"])
 
 
@@ -335,7 +355,7 @@ def test_ansaetze() -> None:
                 "AmplitudeDamping": 0.3,
                 "PhaseDamping": 0.4,
                 "Depolarizing": 0.5,
-                "ThermalRelaxation": {"T1": 2000.0, "T2": 1000.0, "t_factor": 1},
+                "ThermalRelaxation": {"t1": 2000.0, "t2": 1000.0, "t_factor": 1},
                 "StatePreparation": 0.1,
                 "Measurement": 0.1,
             },
@@ -466,20 +486,38 @@ def test_multi_input() -> None:
             assert len(out.shape) == 0, "expected one elemental output for empty input"
 
 
-@pytest.mark.smoketest
+@pytest.mark.unittest
 def test_dru() -> None:
-    dru_cases = [False, True]
+    test_cases = [
+        {
+            "dru": False,
+            "degree": 1,
+        },
+        {
+            "dru": True,
+            "degree": 4,
+        },
+        {
+            "dru": [[True, False], [False, True]],
+            "degree": 2,
+        },
+    ]
 
-    for dru in dru_cases:
+    for test_case in test_cases:
         model = Model(
             n_qubits=2,
-            n_layers=1,
+            n_layers=2,
             circuit_type="Circuit_19",
-            data_reupload=dru,
+            data_reupload=test_case["dru"],
             initialization="random",
             output_qubit=0,
             shots=1024,
         )
+
+        assert (
+            model.degree == test_case["degree"]
+        ), f"Expected degree {test_case['degree']} but got {model.degree}\
+            for dru {test_case['dru']}"
 
         _ = model(
             model.params,
