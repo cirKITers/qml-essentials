@@ -246,6 +246,7 @@ def test_draw() -> None:
 
     repr(model)
     _ = model.draw(figure=True)
+    _ = model.draw(tikz=True)
 
 
 @pytest.mark.smoketest
