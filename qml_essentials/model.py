@@ -603,7 +603,7 @@ class Model:
         if figure:
             result = qml.draw_mpl(self.circuit)(params=self.params, inputs=inputs)
         elif tikz:
-            result = QuanTikz.export(self.circuit, params=self.params, inputs=inputs)
+            result = QuanTikz.build(self.circuit, params=self.params, inputs=inputs)
         else:
             result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
         return result
