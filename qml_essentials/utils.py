@@ -417,59 +417,125 @@ class PauliCircuit:
 class QuanTikz:
     @staticmethod
     def ground_state():
-        return "\lstick{\ket{0}} & "
+        return "\lstick{\ket{0}}"
 
     @staticmethod
-    def measure():
-        return "\meter{}"
+    def measure(op):
+        if len(op.wires) > 1:
+            raise NotImplementedError("Multi-wire measurements are not supported yet")
+        else:
+            return "\meter{}"
 
     @staticmethod
     def gate(op, index=None):
         if index is None:
-            return f"\gate{{{op.name}}}"
+            return f"\\gate{{{op.name}}}"
         else:
-            return f"\gate{{{op.name}(\theta_{index})}}"
+            return f"\\gate{{{op.name}(\\theta_{{{index}}})}}"
 
     @staticmethod
     def cgate(op, index=None):
         distance = op.wires[1] - op.wires[0]
         if index is None:
-            return f"\ctrl{{{distance}}}", "\targ{}"
+            return f"\\ctrl{{{distance}}}", "\\targ{}"
         else:
-            return f"\ctrl{{{op.name}(\theta_{index})}}", "\targ{}"
+            return f"\\ctrl{{{op.name}(\\theta_{{{index}}})}}", "\\targ{}"
 
     @staticmethod
-    def export(circuit: qml.QNode, params, inputs) -> callable:
+    def barrier(op):
+        raise NotImplementedError("Barriers are not supported yet")
+
+    @staticmethod
+    def build(circuit: qml.QNode, params, inputs) -> callable:
         quantum_tape = qml.workflow.construct_tape(circuit)(
             params=params, inputs=inputs
         )
-        circuit_tikz = [[] for _ in range(quantum_tape.num_wires)]
+        circuit_tikz = [
+            [QuanTikz.ground_state()] for _ in range(quantum_tape.num_wires)
+        ]
 
         index = iter(range(10 * quantum_tape.num_params))
         for op in quantum_tape.circuit:
+            # catch measurement operations
             if op._queue_category == "_measurements":
-                pass
+                circuit_tikz[op.wires[0]].append(QuanTikz.measure(op))
+            # process all gates
             elif op._queue_category == "_ops":
+                # catch barriers
                 if op.name == "Barrier":
                     continue
+                # single qubit gate?
                 if len(op.wires) == 1:
+                    # build and append standard gate
                     circuit_tikz[op.wires[0]].append(
                         QuanTikz.gate(op, index=next(index))
                     )
-                else:
+                # controlled gate?
+                elif len(op.wires) == 2:
+                    # build the controlled gate
                     ctrl, targ = QuanTikz.cgate(op)
+
+                    # get the wires that this cgate spans over
+                    crossing_wires = [
+                        i for i in range(min(op.wires), max(op.wires) + 1)
+                    ]
+                    # get the maximum length of all operations currently on this wire
+                    max_len = max([len(circuit_tikz[cw]) for cw in crossing_wires])
+
+                    # extend the affected wires by the number of missing operations
+                    for ow in op.wires:
+                        circuit_tikz[ow].extend(
+                            "" for _ in range(max_len - len(circuit_tikz[ow]))
+                        )
+
+                    # finally append the cgate operation
                     circuit_tikz[op.wires[0]].append(ctrl)
                     circuit_tikz[op.wires[1]].append(targ)
 
+                    # extend the non-affected wires by the number of missing operations
+                    for cw in crossing_wires - op.wires:
+                        circuit_tikz[cw].append("")
+                else:
+                    raise NotImplementedError(">2-wire gates are not supported yet")
+
         quantikz_str = ""
 
-        for wire_ops in circuit_tikz:
+        for wire_idx, wire_ops in enumerate(circuit_tikz):
             for op_idx, op in enumerate(wire_ops):
+                # if not last operation on wire
                 if op_idx < len(wire_ops) - 1:
                     quantikz_str += f"{op} & "
                 else:
-                    quantikz_str += f"{op} \n"
+                    quantikz_str += f"{op}"
+                    # if not last wire
+                    if wire_idx < len(circuit_tikz) - 1:
+                        quantikz_str += " \\\\\n"
 
-        pass
+        return quantikz_str
         # get number of layers
         # iterate layers and get wires
+
+    @staticmethod
+    def export(quantikz_str: str, destination: str, figure=False):
+        latex_code = f"""
+\\documentclass{{article}}
+\\usepackage{{quantikz}}
+\\usepackage{{tikz}}   
+\\usetikzlibrary{{quantikz2}}
+\\usepackage{{quantikz}}
+\\begin{{document}}
+\\begin{{figure}}
+    \\centering
+    \\begin{{tikzpicture}}
+        \\node[scale=0.85] {{
+            \\begin{{quantikz}}
+                {quantikz_str}
+            \\end{{quantikz}}
+        }};
+    \\end{{tikzpicture}}
+\\end{{figure}}
+\\end{{document}}
+"""
+
+        with open(destination, "w") as f:
+            f.write(latex_code)
