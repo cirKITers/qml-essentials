@@ -29,6 +29,7 @@ class Model:
         n_layers: int,
         circuit_type: Union[str, Circuit],
         data_reupload: Union[bool, List[int]] = True,
+        state_preparation: Union[str, Callable, List[str], List[Callable]] = None,
         encoding: Union[str, Callable, List[str], List[Callable]] = Gates.RX,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
@@ -137,6 +138,26 @@ class Model:
 
         # Initialize rng in Gates
         Gates.init_rng(random_seed)
+
+        # Initialize state preparation
+        # first check if we have a str, list or callable
+        if isinstance(state_preparation, str):
+            # if str, use the pennylane fct
+            self._sp = getattr(Gates, f"{state_preparation}")
+        elif isinstance(state_preparation, list):
+            # if list, check if str or callable
+            if isinstance(state_preparation[0], str):
+                self._sp = [getattr(Gates, f"{sp}") for sp in state_preparation]
+            else:
+                self._sp = state_preparation
+
+            if len(self._enc) == 1:
+                self._sp = self._sp[0]
+        elif state_preparation is None:
+            state_preparation = lambda *args, **kwargs: None
+        else:
+            # default to callable
+            self._enc = state_preparation
 
         # Initialize encoding
         # first check if we have a str, list or callable
@@ -493,6 +514,7 @@ class Model:
                 of the circuit if state_vector is False and expval is True,
                 otherwise the density matrix of all qubits.
         """
+        self._sp(noise_params=self.noise_params)
         self._variational(params=params, inputs=inputs)
         return self._observable()
 
