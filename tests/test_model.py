@@ -142,6 +142,40 @@ def test_parameters() -> None:
 
 
 @pytest.mark.smoketest
+def test_state_preparation() -> None:
+    test_cases = [
+        {
+            "state_preparation_unitary": Gates.H,
+        },
+        {
+            "state_preparation_unitary": [Gates.H, Gates.H],
+        },
+        {
+            "state_preparation_unitary": "H",
+        },
+        {
+            "state_preparation_unitary": ["H", "H"],
+        },
+        {
+            "state_preparation_unitary": None,
+        },
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            state_preparation=test_case["state_preparation_unitary"],
+            remove_zero_encoding=False,
+        )
+
+        _ = model(
+            model.params,
+        )
+
+
+@pytest.mark.smoketest
 def test_encoding() -> None:
     test_cases = [
         {
