@@ -143,21 +143,18 @@ class Model:
         # first check if we have a str, list or callable
         if isinstance(state_preparation, str):
             # if str, use the pennylane fct
-            self._sp = getattr(Gates, f"{state_preparation}")
+            self._sp = [getattr(Gates, f"{state_preparation}")]
         elif isinstance(state_preparation, list):
             # if list, check if str or callable
             if isinstance(state_preparation[0], str):
                 self._sp = [getattr(Gates, f"{sp}") for sp in state_preparation]
             else:
                 self._sp = state_preparation
-
-            if len(self._enc) == 1:
-                self._sp = self._sp[0]
         elif state_preparation is None:
-            state_preparation = lambda *args, **kwargs: None
+            self._sp = [lambda *args, **kwargs: None]
         else:
             # default to callable
-            self._enc = state_preparation
+            self._sp = [state_preparation]
 
         # Initialize encoding
         # first check if we have a str, list or callable
@@ -514,13 +511,16 @@ class Model:
                 of the circuit if state_vector is False and expval is True,
                 otherwise the density matrix of all qubits.
         """
-        self._sp(noise_params=self.noise_params)
         self._variational(params=params, inputs=inputs)
         return self._observable()
 
     def _variational(self, params, inputs):
         if self.noise_params is not None:
             self._apply_state_prep_noise()
+
+        for q in range(self.n_qubits):
+            for _sp in self._sp:
+                _sp(wires=q, noise_params=self.noise_params)
 
         for layer in range(0, self.n_layers):
             self.pqc(params[layer], self.n_qubits, noise_params=self.noise_params)
