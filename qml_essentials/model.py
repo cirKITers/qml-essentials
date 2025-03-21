@@ -590,7 +590,7 @@ class Model:
                 tg = circuit_depth * t_factor
                 qml.ThermalRelaxationError(1.0, t1, t2, tg, q)
 
-    def _draw(self, inputs=None, figure=False, tikz=False) -> None:
+    def _draw(self, inputs=None, figure=False, tikz=False, gate_values=False) -> None:
         if not isinstance(self.circuit, qml.QNode):
             # TODO: throws strange argument error if not catched
             return ""
@@ -603,7 +603,12 @@ class Model:
         if figure:
             result = qml.draw_mpl(self.circuit)(params=self.params, inputs=inputs)
         elif tikz:
-            result = QuanTikz.build(self.circuit, params=self.params, inputs=inputs)
+            result = QuanTikz.build(
+                self.circuit,
+                params=self.params,
+                inputs=inputs,
+                gate_values=gate_values,
+            )
         else:
             result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
         return result

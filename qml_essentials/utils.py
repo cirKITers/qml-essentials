@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import List, Tuple
+import numpy as np
 import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
@@ -7,6 +8,7 @@ from pennylane.typing import PostprocessingFn
 import pennylane.numpy as pnp
 import pennylane.ops.op_math as qml_op
 from pennylane.drawer import drawable_layers, tape_text
+from fractions import Fraction
 
 CLIFFORD_GATES = (
     qml.PauliX,
@@ -427,16 +429,34 @@ class QuanTikz:
             return "\meter{}"
 
     @staticmethod
-    def gate(op, index=None):
-        if index is None:
+    def gate(op, index=None, w=None):
+        if w is not None:
+            w_pi = Fraction(float(w / np.pi)).limit_denominator(100)
+            if w_pi.denominator == 1 and w_pi.numerator == 1:
+                return f"\\gate{{{op.name}(\\pi)}}"
+            else:
+                return f"\\gate{{{op.name}\\left(\\frac{{{w_pi.numerator}}}{{{w_pi.denominator}\\pi}}\\right)}}"
+        elif index is None:
             return f"\\gate{{{op.name}}}"
         else:
             return f"\\gate{{{op.name}(\\theta_{{{index}}})}}"
 
     @staticmethod
-    def cgate(op, index=None):
+    def cgate(op, index=None, w=None):
         distance = op.wires[1] - op.wires[0]
-        if index is None:
+        if w is not None:
+            w_pi = Fraction(float(w / np.pi)).limit_denominator(100)
+            if w_pi.denominator == 1 and w_pi.numerator == 1:
+                return (
+                    f"\\ctrl{{{distance}(\\pi}}",
+                    "\\targ{}",
+                )
+            else:
+                return (
+                    f"\\ctrl{{{distance}\\left(\\frac{{{w_pi.numerator}}}{{{w_pi.denominator}\\pi}}\\right)}}",
+                    "\\targ{}",
+                )
+        elif index is None:
             return f"\\ctrl{{{distance}}}", "\\targ{}"
         else:
             return f"\\ctrl{{{op.name}(\\theta_{{{index}}})}}", "\\targ{}"
@@ -446,7 +466,7 @@ class QuanTikz:
         raise NotImplementedError("Barriers are not supported yet")
 
     @staticmethod
-    def build(circuit: qml.QNode, params, inputs) -> callable:
+    def build(circuit: qml.QNode, params, inputs, gate_values=False) -> callable:
         quantum_tape = qml.workflow.construct_tape(circuit)(
             params=params, inputs=inputs
         )
@@ -468,12 +488,19 @@ class QuanTikz:
                 if len(op.wires) == 1:
                     # build and append standard gate
                     circuit_tikz[op.wires[0]].append(
-                        QuanTikz.gate(op, index=next(index))
+                        QuanTikz.gate(
+                            op,
+                            index=next(index),
+                            w=op.parameters[0] if gate_values else None,
+                        )
                     )
                 # controlled gate?
                 elif len(op.wires) == 2:
                     # build the controlled gate
-                    ctrl, targ = QuanTikz.cgate(op)
+                    if gate_values and isinstance(op, (qml.CRX, qml.CRY, qml.CRZ)):
+                        ctrl, targ = QuanTikz.cgate(op, w=op.parameters[0])
+                    else:
+                        ctrl, targ = QuanTikz.cgate(op)
 
                     # get the wires that this cgate spans over
                     crossing_wires = [
