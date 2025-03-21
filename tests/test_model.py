@@ -239,24 +239,27 @@ def test_lightning() -> None:
 
 @pytest.mark.smoketest
 def test_draw() -> None:
-    model = Model(
-        n_qubits=4,
-        n_layers=1,
-        circuit_type="Hardware_Efficient",
-        output_qubit=-1,
-        # initialization="pi",  # Initialize all parameters to pi
-    )
 
-    # Set specific parameter values for better visualization
-    # model.params = np.array(
-    #     [[np.pi / 2, np.pi / 4, np.pi / 3, np.pi / 6] * 3]
-    # )  # 3 parameters per qubit in Hardware_Efficient
+    quantikz_strs = []
+    for ansatz in Ansaetze.get_available():
+        # for ansatz in [Ansaetze.Circuit_10]:
+        model = Model(
+            n_qubits=4,
+            n_layers=1,
+            circuit_type=ansatz.__name__,
+            output_qubit=-1,
+        )
+        # model.params = np.array(
+        #     [[np.pi / 2, np.pi / 4, np.pi / 3, np.pi / 6] * 3]
+        # )  # 3 parameters per qubit in Hardware_Efficient
 
-    repr(model)
-    _ = model.draw(figure=True)
-    quantikz_str = model.draw(tikz=True, gate_values=True)
-    QuanTikz.export(quantikz_str=quantikz_str, destination="./tikz_test.tex")
-    model.draw(figure=True)[0].savefig("circuit.png")
+        repr(model)
+        # _ = model.draw(figure=True)
+        quantikz_str = model.draw(tikz=True, gate_values=True)
+        quantikz_strs.append(quantikz_str)
+        # model.draw(figure=True)[0].savefig(f"circuit_{ansatz.__name__}.png")
+
+    QuanTikz.export_multiple(quantikz_strs, destination=f"./tikz_test.tex")
 
 
 @pytest.mark.smoketest

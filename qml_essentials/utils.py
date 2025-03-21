@@ -429,8 +429,9 @@ class QuanTikz:
             return "\meter{}"
 
     @staticmethod
-    def gate(op, index=None, w=None):
-        if w is not None:
+    def gate(op, index=None, gate_values=False):
+        if gate_values and len(op.parameters) > 0:
+            w = op.parameters[0]
             w_pi = Fraction(float(w / np.pi)).limit_denominator(100)
             if w_pi.denominator == 1 and w_pi.numerator == 1:
                 return f"\\gate{{{op.name}(\\pi)}}"
@@ -442,27 +443,29 @@ class QuanTikz:
             return f"\\gate{{{op.name}(\\theta_{{{index}}})}}"
 
     @staticmethod
-    def cgate(op, index=None, w=None):
-        distance = op.wires[1] - op.wires[0]
-        if w is not None:
-            w_pi = Fraction(float(w / np.pi)).limit_denominator(100)
-            if w_pi.denominator == 1 and w_pi.numerator == 1:
-                return (
-                    f"\\ctrl{{{distance}(\\pi}}",
-                    "\\targ{}",
-                )
+    def cgate(op, index=None, gate_values=False):
+        targ = "\\targ{}"
+        if op.name in ["CRX", "CRY", "CRZ"]:
+            if gate_values and len(op.parameters) > 0:
+                w = op.parameters[0]
+                w_pi = Fraction(float(w / np.pi)).limit_denominator(100)
+                if w_pi.denominator == 1 and w_pi.numerator == 1:
+                    targ = f"\\gate{{{op.name[1:]}(\\pi)}}"
+                else:
+                    targ = f"\\gate{{{op.name[1:]}\\left(\\frac{{{w_pi.numerator}}}{{{w_pi.denominator}\\pi}}\\right)}}"
+            elif index is None:
+                targ = f"\\gate{{{op.name[1:]}}}"
             else:
-                return (
-                    f"\\ctrl{{{distance}\\left(\\frac{{{w_pi.numerator}}}{{{w_pi.denominator}\\pi}}\\right)}}",
-                    "\\targ{}",
-                )
-        elif index is None:
-            return f"\\ctrl{{{distance}}}", "\\targ{}"
-        else:
-            return f"\\ctrl{{{op.name}(\\theta_{{{index}}})}}", "\\targ{}"
+                targ = f"\\gate{{{op.name[1:]}(\\theta_{{{index}}})}}"
+        elif op.name in ["CX", "CY", "CZ"]:
+            targ = "\\control{}"
+
+        distance = op.wires[1] - op.wires[0]
+        return f"\\ctrl{{{distance}}}", targ
 
     @staticmethod
     def barrier(op):
+
         raise NotImplementedError("Barriers are not supported yet")
 
     @staticmethod
@@ -470,6 +473,7 @@ class QuanTikz:
         quantum_tape = qml.workflow.construct_tape(circuit)(
             params=params, inputs=inputs
         )
+        print(quantum_tape.circuit, "\n")
         circuit_tikz = [
             [QuanTikz.ground_state()] for _ in range(quantum_tape.num_wires)
         ]
@@ -491,14 +495,16 @@ class QuanTikz:
                         QuanTikz.gate(
                             op,
                             index=next(index),
-                            w=op.parameters[0] if gate_values else None,
+                            gate_values=gate_values,
                         )
                     )
                 # controlled gate?
                 elif len(op.wires) == 2:
                     # build the controlled gate
-                    if gate_values and isinstance(op, (qml.CRX, qml.CRY, qml.CRZ)):
-                        ctrl, targ = QuanTikz.cgate(op, w=op.parameters[0])
+                    if op.name in ["CRX", "CRY", "CRZ"]:
+                        ctrl, targ = QuanTikz.cgate(
+                            op, index=next(index), gate_values=gate_values
+                        )
                     else:
                         ctrl, targ = QuanTikz.cgate(op)
 
@@ -510,7 +516,7 @@ class QuanTikz:
                     max_len = max([len(circuit_tikz[cw]) for cw in crossing_wires])
 
                     # extend the affected wires by the number of missing operations
-                    for ow in op.wires:
+                    for ow in [i for i in range(min(op.wires), max(op.wires) + 1)]:
                         circuit_tikz[ow].extend(
                             "" for _ in range(max_len - len(circuit_tikz[ow]))
                         )
@@ -563,6 +569,38 @@ class QuanTikz:
 \\end{{figure}}
 \\end{{document}}
 """
+
+        with open(destination, "w") as f:
+            f.write(latex_code)
+
+    @staticmethod
+    def export_multiple(quantikz_strs: list[str], destination: str, figure=False):
+        concat_tikz = "".join(
+            f"""
+\\begin{{figure}}
+\\centering
+\\begin{{tikzpicture}}
+\\node[scale=0.85] {{
+\\begin{{quantikz}}
+{quantikz_str}
+\\end{{quantikz}}
+}};
+\\end{{tikzpicture}}
+\\end{{figure}}
+"""
+            for quantikz_str in quantikz_strs
+        )
+
+        latex_code = f"""
+\\documentclass{{article}}
+\\usepackage{{quantikz}}
+\\usepackage{{tikz}}   
+\\usetikzlibrary{{quantikz2}}
+\\usepackage{{quantikz}}
+\\usepackage[a3paper, landscape, margin=0.5cm]{{geometry}}
+\\begin{{document}}
+{concat_tikz}
+\\end{{document}}"""
 
         with open(destination, "w") as f:
             f.write(latex_code)
