@@ -2,6 +2,7 @@ from typing import Optional, Any, List
 import pennylane as qml
 import pennylane.numpy as np
 from copy import deepcopy
+from scipy.linalg import logm
 
 from qml_essentials.model import Model
 import logging
@@ -169,5 +170,87 @@ class Entanglement:
             mw_measure[i] = 2 * (1 - exp.mean())
         entangling_capability = min(max(mw_measure.mean(), 0.0), 1.0)
         log.debug(f"Variance of measure: {mw_measure.var()}")
+
+        return float(entangling_capability)
+
+    @staticmethod
+    def relative_entropy(
+        model: Model,
+        n_samples: Optional[int | None],
+        seed: Optional[int],
+        scale: bool = False,
+        **kwargs: Any,
+    ) -> float:
+        """
+        Calculates the relative entropy of entanglement of a given quantum
+        circuit. This measure is also applicable to mixed state, albeit it
+        might me not fully accurate in this simplified case.
+
+        As the relative entropy is generally defined as the smallest relative
+        entropy from the state in question to the set of separable states.
+        However, as computing the nearest separable state is NP-hard, we select
+        the maximally mixed state as the separable state to compute the
+        distance to, which is not necessarily the nearest.
+        Thus, this measure of entanglement presents an upper limit of
+        entanglement.
+
+        Args:
+            model (Model): The quantum circuit model.
+            n_samples (Optional[int]): Number of samples per qubit.
+                If None or < 0, the current parameters of the model are used.
+            seed (Optional[int]): Seed for the random number generator.
+            scale (bool): Whether to scale the number of samples.
+            kwargs (Any): Additional keyword arguments for the model function.
+
+        Returns:
+            float: Entangling capacity of the given circuit, guaranteed
+                to be between 0.0 and 1.0. TODO check
+        """
+        dim = np.power(2, model.n_qubits)
+        if scale:
+            n_samples = dim * n_samples
+
+        rng = np.random.default_rng(seed)
+
+        log_2 = np.log(2)
+
+        # Maximally mixed state
+        sigma = np.eye(dim, dtype=np.complex128) / dim
+        log_sigma = logm(sigma) / log_2
+
+        if n_samples is not None and n_samples > 0:
+            assert seed is not None, "Seed must be provided when samples > 0"
+            # TODO: maybe switch to JAX rng
+            model.initialize_params(rng=rng, repeat=n_samples)
+            params: np.ndarray = model.params
+        else:
+            if seed is not None:
+                log.warning("Seed is ignored when samples is 0")
+
+            if len(model.params.shape) <= 2:
+                params = model.params.reshape(*model.params.shape, 1)
+            else:
+                log.info(f"Using sample size of model params: {model.params.shape[-1]}")
+                params = model.params
+
+        n_samples = params.shape[-1]
+        rel_entropies = np.zeros(n_samples)
+
+        for i in range(n_samples):
+            # implicitly set input to none in case it's not needed
+            kwargs.setdefault("inputs", None)
+            # explicitly set execution type because everything else won't work
+            rho = model(params=params[:, :, i], execution_type="density", **kwargs)
+            log_rho = logm(rho) / log_2
+
+            # Formula 38 in https://arxiv.org/pdf/quant-ph/0504163
+            # ---
+            rel_entr = np.trace(rho @ (log_rho - log_sigma)) / model.n_qubits
+            rel_entropies[i] = rel_entr
+
+        # Average all iterated states
+        # catch floating point errors
+        entangling_capability = min(max(rel_entropies.mean(), 0.0), 1.0)
+        log.debug(f"Variance of measure: {rel_entropies.var()}")
 
         return float(entangling_capability)
