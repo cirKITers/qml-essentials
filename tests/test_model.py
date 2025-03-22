@@ -1,5 +1,6 @@
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Circuit, Gates
+from qml_essentials.utils import QuanTikz
 import pytest
 import logging
 import inspect
@@ -292,14 +293,24 @@ def test_lightning() -> None:
 
 @pytest.mark.smoketest
 def test_draw() -> None:
-    model = Model(
-        n_qubits=2,
-        n_layers=1,
-        circuit_type="Hardware_Efficient",
-    )
 
-    repr(model)
-    _ = model.draw(figure=True)
+    quantikz_strs = []
+    for ansatz in Ansaetze.get_available():
+        # for ansatz in [Ansaetze.Circuit_2]:
+        model = Model(
+            n_qubits=4,
+            n_layers=1,
+            circuit_type=ansatz.__name__,
+            output_qubit=-1,
+        )
+        print(ansatz.__name__, "\n")
+        repr(model)
+        _ = model.draw(figure=True)
+        quantikz_str = model.draw(tikz=True, gate_values=True)
+        quantikz_strs.append(quantikz_str)
+        # model.draw(figure=True)[0].savefig(f"circuit_{ansatz.__name__}.png")
+
+    QuanTikz.export(quantikz_strs, destination=f"./tikz_test.tex")
 
 
 @pytest.mark.smoketest

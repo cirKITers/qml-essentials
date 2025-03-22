@@ -1,11 +1,14 @@
 from __future__ import annotations
 from typing import List, Tuple
+import numpy as np
 import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
 from pennylane.typing import PostprocessingFn
 import pennylane.numpy as pnp
 import pennylane.ops.op_math as qml_op
+from pennylane.drawer import drawable_layers, tape_text
+from fractions import Fraction
 
 CLIFFORD_GATES = (
     qml.PauliX,
@@ -411,3 +414,307 @@ class PauliCircuit:
             clifford_obs = PauliCircuit._evolve_cliffords_list(operations, ob)
             observables.append(clifford_obs)
         return observables
+
+
+class QuanTikz:
+    @staticmethod
+    def ground_state() -> str:
+        """
+        Generate the LaTeX representation of the |0⟩ ground state in stick notation.
+
+        Returns
+        -------
+        str
+            LaTeX string for the |0⟩ state.
+        """
+        return "\lstick{\ket{0}}"
+
+    @staticmethod
+    def measure(op):
+        if len(op.wires) > 1:
+            raise NotImplementedError("Multi-wire measurements are not supported yet")
+        else:
+            return "\meter{}"
+
+    @staticmethod
+    def gate(op, index=None, gate_values=False) -> str:
+        """
+        Generate LaTeX for a quantum gate in stick notation.
+
+        Parameters
+        ----------
+        op : qml.Operation
+            The quantum gate to represent.
+        index : int, optional
+            Gate index in the circuit.
+        gate_values : bool, optional
+            Include gate values in the representation.
+
+        Returns
+        -------
+        str
+            LaTeX string for the gate.
+        """
+        op_name = op.name
+        match op.name:
+            case "Hadamard":
+                op_name = "H"
+            case "RX" | "RY" | "RZ":
+                pass
+            case "Rot":
+                op_name = "R"
+
+        if gate_values and len(op.parameters) > 0:
+            w = op.parameters[0]
+            w_pi = Fraction(float(w / np.pi))
+            # Not a small nice Fraction
+            if w_pi.denominator > 12:
+                return f"\\gate{{{op_name}({w:.2f})}}"
+            # Pi
+            elif w_pi.denominator == 1 and w_pi.numerator == 1:
+                return f"\\gate{{{op_name}(\\pi)}}"
+            # Multiple of Pi
+            elif w_pi.denominator == 1:
+                return f"\\gate{{{op_name}({w_pi.numerator}\\pi)}}"
+            # Small nice Fraction
+            else:
+                return f"\\gate{{{op_name}\\left(\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}\\right)}}"
+        elif index is None:
+            return f"\\gate{{{op_name}}}"
+        else:
+            return f"\\gate{{{op_name}(\\theta_{{{index}}})}}"
+
+    @staticmethod
+    def cgate(op, index=None, gate_values=False) -> Tuple[str, str]:
+        """
+        Generate LaTeX for a controlled quantum gate in stick notation.
+
+        Parameters
+        ----------
+        op : qml.Operation
+            The quantum gate operation to represent.
+        index : int, optional
+            Gate index in the circuit.
+        gate_values : bool, optional
+            Include gate values in the representation.
+
+        Returns
+        -------
+        Tuple[str, str]
+            - LaTeX string for the control gate
+            - LaTeX string for the target gate
+        """
+        match op.name:
+            case "CRX" | "CRY" | "CRZ" | "CX" | "CY" | "CZ":
+                op_name = op.name[1:]
+            case _:
+                pass
+        targ = "\\targ{}"
+        if op.name in ["CRX", "CRY", "CRZ"]:
+            if gate_values and len(op.parameters) > 0:
+                w = op.parameters[0]
+                w_pi = Fraction(float(w / np.pi))
+                # Not a small nice Fraction
+                if w_pi.denominator > 12:
+                    targ = f"\\gate{{{op_name}({w:.2f})}}"
+                # Pi
+                elif w_pi.denominator == 1 and w_pi.numerator == 1:
+                    targ = f"\\gate{{{op_name}(\\pi)}}"
+                # Multiple of Pi
+                elif w_pi.denominator == 1:
+                    targ = f"\\gate{{{op_name}({w_pi.numerator}\\pi)}}"
+                # Small nice Fraction
+                else:
+                    targ = f"\\gate{{{op_name}\\left(\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}\\right)}}"
+            elif index is None:
+                targ = f"\\gate{{{op_name}}}"
+            else:
+                targ = f"\\gate{{{op_name}(\\theta_{{{index}}})}}"
+        elif op.name in ["CX", "CY", "CZ"]:
+            targ = "\\control{}"
+
+        distance = op.wires[1] - op.wires[0]
+        return f"\\ctrl{{{distance}}}", targ
+
+    @staticmethod
+    def barrier(op) -> str:
+        """
+        Generate LaTeX for a barrier in stick notation.
+
+        Parameters
+        ----------
+        op : qml.Operation
+            The barrier operation to represent.
+
+        Returns
+        -------
+        str
+            LaTeX string for the barrier.
+        """
+        return "\\slice[style={{draw=black, solid, double distance=2pt, line width=0.5pt}}]{{}}"
+
+    @staticmethod
+    def build(circuit: qml.QNode, params, inputs, gate_values=False) -> str:
+        """
+        Generate LaTeX for a quantum circuit in stick notation.
+
+        Parameters
+        ----------
+        circuit : qml.QNode
+            The quantum circuit to represent.
+        params : array
+            Weight parameters for the circuit.
+        inputs : array
+            Inputs for the circuit.
+        gate_values : bool, optional
+            Toggle for gate values or theta variables in the representation.
+
+        Returns
+        -------
+        str
+            LaTeX string for the circuit.
+        """
+        quantum_tape = qml.workflow.construct_tape(circuit)(
+            params=params, inputs=inputs
+        )
+        print(quantum_tape.circuit, "\n")
+        circuit_tikz = [
+            [QuanTikz.ground_state()] for _ in range(quantum_tape.num_wires)
+        ]
+
+        index = iter(range(10 * quantum_tape.num_params))
+        for op in quantum_tape.circuit:
+            # catch measurement operations
+            if op._queue_category == "_measurements":
+                # get the maximum length of all wires
+                max_len = max(len(circuit_tikz[cw]) for cw in range(len(circuit_tikz)))
+                if op.wires[0] != 0:
+                    max_len -= 1
+                # extend the wire by the number of missing operations
+                circuit_tikz[op.wires[0]].extend(
+                    "" for _ in range(max_len - len(circuit_tikz[op.wires[0]]))
+                )
+                circuit_tikz[op.wires[0]].append(QuanTikz.measure(op))
+            # process all gates
+            elif op._queue_category == "_ops":
+                # catch barriers
+                if op.name == "Barrier":
+
+                    # get the maximum length of all wires
+                    max_len = max(
+                        len(circuit_tikz[cw]) for cw in range(len(circuit_tikz))
+                    )
+
+                    # extend the wires by the number of missing operations
+                    for ow in [i for i in range(len(circuit_tikz))]:
+                        circuit_tikz[ow].extend(
+                            "" for _ in range(max_len - len(circuit_tikz[ow]))
+                        )
+
+                    circuit_tikz[op.wires[0]][-1] += QuanTikz.barrier(op)
+                # single qubit gate?
+                elif len(op.wires) == 1:
+                    # build and append standard gate
+                    circuit_tikz[op.wires[0]].append(
+                        QuanTikz.gate(
+                            op,
+                            index=next(index),
+                            gate_values=gate_values,
+                        )
+                    )
+                # controlled gate?
+                elif len(op.wires) == 2:
+                    # build the controlled gate
+                    if op.name in ["CRX", "CRY", "CRZ"]:
+                        ctrl, targ = QuanTikz.cgate(
+                            op, index=next(index), gate_values=gate_values
+                        )
+                    else:
+                        ctrl, targ = QuanTikz.cgate(op)
+
+                    # get the wires that this cgate spans over
+                    crossing_wires = [
+                        i for i in range(min(op.wires), max(op.wires) + 1)
+                    ]
+                    # get the maximum length of all operations currently on this wire
+                    max_len = max([len(circuit_tikz[cw]) for cw in crossing_wires])
+
+                    # extend the affected wires by the number of missing operations
+                    for ow in [i for i in range(min(op.wires), max(op.wires) + 1)]:
+                        circuit_tikz[ow].extend(
+                            "" for _ in range(max_len - len(circuit_tikz[ow]))
+                        )
+
+                    # finally append the cgate operation
+                    circuit_tikz[op.wires[0]].append(ctrl)
+                    circuit_tikz[op.wires[1]].append(targ)
+
+                    # extend the non-affected wires by the number of missing operations
+                    for cw in crossing_wires - op.wires:
+                        circuit_tikz[cw].append("")
+                else:
+                    raise NotImplementedError(">2-wire gates are not supported yet")
+
+        quantikz_str = ""
+
+        for wire_idx, wire_ops in enumerate(circuit_tikz):
+            for op_idx, op in enumerate(wire_ops):
+                # if not last operation on wire
+                if op_idx < len(wire_ops) - 1:
+                    quantikz_str += f"{op} & "
+                else:
+                    quantikz_str += f"{op}"
+                    # if not last wire
+                    if wire_idx < len(circuit_tikz) - 1:
+                        quantikz_str += " \\\\\n"
+
+        return quantikz_str
+        # get number of layers
+        # iterate layers and get wires
+
+    @staticmethod
+    def export(quantikz_strs: str | list[str], destination: str, figure=False) -> None:
+        """
+        Export a LaTeX document with a quantum circuit in stick notation.
+
+        Parameters
+        ----------
+        quantikz_strs : str or list[str]
+            LaTeX string for the quantum circuit or a list of LaTeX strings.
+        destination : str
+            Path to the destination file.
+        figure : bool, optional
+            ?
+        """
+        if isinstance(quantikz_strs, str):
+            quantikz_strs = [quantikz_strs]  # Convert to list if it's a single string
+
+        concat_tikz = "".join(
+            f"""
+\\begin{{figure}}
+    \\centering
+    \\begin{{tikzpicture}}
+        \\node[scale=0.85] {{
+            \\begin{{quantikz}}
+                {quantikz_str}
+            \\end{{quantikz}}
+        }};
+    \\end{{tikzpicture}}
+\\end{{figure}}
+"""
+            for quantikz_str in quantikz_strs
+        )
+
+        latex_code = f"""
+\\documentclass{{article}}
+\\usepackage{{quantikz}}
+\\usepackage{{tikz}}   
+\\usetikzlibrary{{quantikz2}}
+\\usepackage{{quantikz}}
+\\usepackage[a3paper, landscape, margin=0.5cm]{{geometry}}
+\\begin{{document}}
+{concat_tikz}
+\\end{{document}}"""
+
+        with open(destination, "w") as f:
+            f.write(latex_code)
