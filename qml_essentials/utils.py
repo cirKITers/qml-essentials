@@ -504,6 +504,11 @@ class QuanTikz:
             - LaTeX string for the control gate
             - LaTeX string for the target gate
         """
+        match op.name:
+            case "CRX" | "CRY" | "CRZ" | "CX" | "CY" | "CZ":
+                op_name = op.name[1:]
+            case _:
+                pass
         targ = "\\targ{}"
         if op.name in ["CRX", "CRY", "CRZ"]:
             if gate_values and len(op.parameters) > 0:
@@ -511,20 +516,20 @@ class QuanTikz:
                 w_pi = Fraction(float(w / np.pi))
                 # Not a small nice Fraction
                 if w_pi.denominator > 12:
-                    targ = f"\\gate{{{op.name}({w:.2f})}}"
+                    targ = f"\\gate{{{op_name}({w:.2f})}}"
                 # Pi
                 elif w_pi.denominator == 1 and w_pi.numerator == 1:
-                    targ = f"\\gate{{{op.name}(\\pi)}}"
+                    targ = f"\\gate{{{op_name}(\\pi)}}"
                 # Multiple of Pi
                 elif w_pi.denominator == 1:
-                    targ = f"\\gate{{{op.name}({w_pi.numerator}\\pi)}}"
+                    targ = f"\\gate{{{op_name}({w_pi.numerator}\\pi)}}"
                 # Small nice Fraction
                 else:
-                    targ = f"\\gate{{{op.name}\\left(\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}\\right)}}"
+                    targ = f"\\gate{{{op_name}\\left(\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}\\right)}}"
             elif index is None:
-                targ = f"\\gate{{{op.name[1:]}}}"
+                targ = f"\\gate{{{op_name}}}"
             else:
-                targ = f"\\gate{{{op.name[1:]}(\\theta_{{{index}}})}}"
+                targ = f"\\gate{{{op_name}(\\theta_{{{index}}})}}"
         elif op.name in ["CX", "CY", "CZ"]:
             targ = "\\control{}"
 
@@ -572,6 +577,7 @@ class QuanTikz:
         quantum_tape = qml.workflow.construct_tape(circuit)(
             params=params, inputs=inputs
         )
+        print(quantum_tape.circuit, "\n")
         circuit_tikz = [
             [QuanTikz.ground_state()] for _ in range(quantum_tape.num_wires)
         ]
@@ -580,11 +586,31 @@ class QuanTikz:
         for op in quantum_tape.circuit:
             # catch measurement operations
             if op._queue_category == "_measurements":
+                # get the maximum length of all wires
+                max_len = max(len(circuit_tikz[cw]) for cw in range(len(circuit_tikz)))
+                if op.wires[0] != 0:
+                    max_len -= 1
+                # extend the wire by the number of missing operations
+                circuit_tikz[op.wires[0]].extend(
+                    "" for _ in range(max_len - len(circuit_tikz[op.wires[0]]))
+                )
                 circuit_tikz[op.wires[0]].append(QuanTikz.measure(op))
             # process all gates
             elif op._queue_category == "_ops":
                 # catch barriers
                 if op.name == "Barrier":
+
+                    # get the maximum length of all wires
+                    max_len = max(
+                        len(circuit_tikz[cw]) for cw in range(len(circuit_tikz))
+                    )
+
+                    # extend the wires by the number of missing operations
+                    for ow in [i for i in range(len(circuit_tikz))]:
+                        circuit_tikz[ow].extend(
+                            "" for _ in range(max_len - len(circuit_tikz[ow]))
+                        )
+
                     circuit_tikz[op.wires[0]][-1] += QuanTikz.barrier(op)
                 # single qubit gate?
                 elif len(op.wires) == 1:
