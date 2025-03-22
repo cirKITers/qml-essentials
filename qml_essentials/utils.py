@@ -432,11 +432,19 @@ class QuanTikz:
     def gate(op, index=None, gate_values=False):
         if gate_values and len(op.parameters) > 0:
             w = op.parameters[0]
-            w_pi = Fraction(float(w / np.pi)).limit_denominator(100)
-            if w_pi.denominator == 1 and w_pi.numerator == 1:
+            w_pi = Fraction(float(w / np.pi))
+            # Not a small nice Fraction
+            if w_pi.denominator > 12:
+                return f"\\gate{{{op.name}({w:.2f})}}"
+            # Pi
+            elif w_pi.denominator == 1 and w_pi.numerator == 1:
                 return f"\\gate{{{op.name}(\\pi)}}"
+            # Multiple of Pi
+            elif w_pi.denominator == 1:
+                return f"\\gate{{{op.name}({w_pi.numerator}\\pi)}}"
+            # Small nice Fraction
             else:
-                return f"\\gate{{{op.name}\\left(\\frac{{{w_pi.numerator}}}{{{w_pi.denominator}\\pi}}\\right)}}"
+                return f"\\gate{{{op.name}\\left(\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}\\right)}}"
         elif index is None:
             return f"\\gate{{{op.name}}}"
         else:
@@ -448,11 +456,19 @@ class QuanTikz:
         if op.name in ["CRX", "CRY", "CRZ"]:
             if gate_values and len(op.parameters) > 0:
                 w = op.parameters[0]
-                w_pi = Fraction(float(w / np.pi)).limit_denominator(100)
-                if w_pi.denominator == 1 and w_pi.numerator == 1:
-                    targ = f"\\gate{{{op.name[1:]}(\\pi)}}"
+                w_pi = Fraction(float(w / np.pi))
+                # Not a small nice Fraction
+                if w_pi.denominator > 12:
+                    targ = f"\\gate{{{op.name}({w:.2f})}}"
+                # Pi
+                elif w_pi.denominator == 1 and w_pi.numerator == 1:
+                    targ = f"\\gate{{{op.name}(\\pi)}}"
+                # Multiple of Pi
+                elif w_pi.denominator == 1:
+                    targ = f"\\gate{{{op.name}({w_pi.numerator}\\pi)}}"
+                # Small nice Fraction
                 else:
-                    targ = f"\\gate{{{op.name[1:]}\\left(\\frac{{{w_pi.numerator}}}{{{w_pi.denominator}\\pi}}\\right)}}"
+                    targ = f"\\gate{{{op.name}\\left(\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}\\right)}}"
             elif index is None:
                 targ = f"\\gate{{{op.name[1:]}}}"
             else:
@@ -577,14 +593,14 @@ class QuanTikz:
         concat_tikz = "".join(
             f"""
 \\begin{{figure}}
-\\centering
-\\begin{{tikzpicture}}
-\\node[scale=0.85] {{
-\\begin{{quantikz}}
-{quantikz_str}
-\\end{{quantikz}}
-}};
-\\end{{tikzpicture}}
+    \\centering
+    \\begin{{tikzpicture}}
+        \\node[scale=0.85] {{
+            \\begin{{quantikz}}
+                {quantikz_str}
+            \\end{{quantikz}}
+        }};
+    \\end{{tikzpicture}}
 \\end{{figure}}
 """
             for quantikz_str in quantikz_strs

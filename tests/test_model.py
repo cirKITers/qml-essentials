@@ -249,12 +249,8 @@ def test_draw() -> None:
             circuit_type=ansatz.__name__,
             output_qubit=-1,
         )
-        # model.params = np.array(
-        #     [[np.pi / 2, np.pi / 4, np.pi / 3, np.pi / 6] * 3]
-        # )  # 3 parameters per qubit in Hardware_Efficient
-
         repr(model)
-        # _ = model.draw(figure=True)
+        _ = model.draw(figure=True)
         quantikz_str = model.draw(tikz=True, gate_values=True)
         quantikz_strs.append(quantikz_str)
         # model.draw(figure=True)[0].savefig(f"circuit_{ansatz.__name__}.png")
