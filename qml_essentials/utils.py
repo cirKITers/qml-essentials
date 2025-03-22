@@ -418,7 +418,15 @@ class PauliCircuit:
 
 class QuanTikz:
     @staticmethod
-    def ground_state():
+    def ground_state() -> str:
+        """
+        Generate the LaTeX representation of the |0⟩ ground state in stick notation.
+
+        Returns
+        -------
+        str
+            LaTeX string for the |0⟩ state.
+        """
         return "\lstick{\ket{0}}"
 
     @staticmethod
@@ -429,29 +437,73 @@ class QuanTikz:
             return "\meter{}"
 
     @staticmethod
-    def gate(op, index=None, gate_values=False):
+    def gate(op, index=None, gate_values=False) -> str:
+        """
+        Generate LaTeX for a quantum gate in stick notation.
+
+        Parameters
+        ----------
+        op : qml.Operation
+            The quantum gate to represent.
+        index : int, optional
+            Gate index in the circuit.
+        gate_values : bool, optional
+            Include gate values in the representation.
+
+        Returns
+        -------
+        str
+            LaTeX string for the gate.
+        """
+        op_name = op.name
+        match op.name:
+            case "Hadamard":
+                op_name = "H"
+            case "RX" | "RY" | "RZ":
+                pass
+            case "Rot":
+                op_name = "R"
+
         if gate_values and len(op.parameters) > 0:
             w = op.parameters[0]
             w_pi = Fraction(float(w / np.pi))
             # Not a small nice Fraction
             if w_pi.denominator > 12:
-                return f"\\gate{{{op.name}({w:.2f})}}"
+                return f"\\gate{{{op_name}({w:.2f})}}"
             # Pi
             elif w_pi.denominator == 1 and w_pi.numerator == 1:
-                return f"\\gate{{{op.name}(\\pi)}}"
+                return f"\\gate{{{op_name}(\\pi)}}"
             # Multiple of Pi
             elif w_pi.denominator == 1:
-                return f"\\gate{{{op.name}({w_pi.numerator}\\pi)}}"
+                return f"\\gate{{{op_name}({w_pi.numerator}\\pi)}}"
             # Small nice Fraction
             else:
-                return f"\\gate{{{op.name}\\left(\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}\\right)}}"
+                return f"\\gate{{{op_name}\\left(\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}\\right)}}"
         elif index is None:
-            return f"\\gate{{{op.name}}}"
+            return f"\\gate{{{op_name}}}"
         else:
-            return f"\\gate{{{op.name}(\\theta_{{{index}}})}}"
+            return f"\\gate{{{op_name}(\\theta_{{{index}}})}}"
 
     @staticmethod
-    def cgate(op, index=None, gate_values=False):
+    def cgate(op, index=None, gate_values=False) -> Tuple[str, str]:
+        """
+        Generate LaTeX for a controlled quantum gate in stick notation.
+
+        Parameters
+        ----------
+        op : qml.Operation
+            The quantum gate operation to represent.
+        index : int, optional
+            Gate index in the circuit.
+        gate_values : bool, optional
+            Include gate values in the representation.
+
+        Returns
+        -------
+        Tuple[str, str]
+            - LaTeX string for the control gate
+            - LaTeX string for the target gate
+        """
         targ = "\\targ{}"
         if op.name in ["CRX", "CRY", "CRZ"]:
             if gate_values and len(op.parameters) > 0:
@@ -480,15 +532,46 @@ class QuanTikz:
         return f"\\ctrl{{{distance}}}", targ
 
     @staticmethod
-    def barrier(op):
+    def barrier(op) -> str:
+        """
+        Generate LaTeX for a barrier in stick notation.
+
+        Parameters
+        ----------
+        op : qml.Operation
+            The barrier operation to represent.
+
+        Returns
+        -------
+        str
+            LaTeX string for the barrier.
+        """
         return "\\slice[style={{draw=black, solid, double distance=2pt, line width=0.5pt}}]{{}}"
 
     @staticmethod
-    def build(circuit: qml.QNode, params, inputs, gate_values=False) -> callable:
+    def build(circuit: qml.QNode, params, inputs, gate_values=False) -> str:
+        """
+        Generate LaTeX for a quantum circuit in stick notation.
+
+        Parameters
+        ----------
+        circuit : qml.QNode
+            The quantum circuit to represent.
+        params : array
+            Weight parameters for the circuit.
+        inputs : array
+            Inputs for the circuit.
+        gate_values : bool, optional
+            Toggle for gate values or theta variables in the representation.
+
+        Returns
+        -------
+        str
+            LaTeX string for the circuit.
+        """
         quantum_tape = qml.workflow.construct_tape(circuit)(
             params=params, inputs=inputs
         )
-        print(quantum_tape.circuit, "\n")
         circuit_tikz = [
             [QuanTikz.ground_state()] for _ in range(quantum_tape.num_wires)
         ]
@@ -564,32 +647,22 @@ class QuanTikz:
         # iterate layers and get wires
 
     @staticmethod
-    def export(quantikz_str: str, destination: str, figure=False):
-        latex_code = f"""
-\\documentclass{{article}}
-\\usepackage{{quantikz}}
-\\usepackage{{tikz}}   
-\\usetikzlibrary{{quantikz2}}
-\\usepackage{{quantikz}}
-\\begin{{document}}
-\\begin{{figure}}
-    \\centering
-    \\begin{{tikzpicture}}
-        \\node[scale=0.85] {{
-            \\begin{{quantikz}}
-                {quantikz_str}
-            \\end{{quantikz}}
-        }};
-    \\end{{tikzpicture}}
-\\end{{figure}}
-\\end{{document}}
-"""
+    def export(quantikz_strs: str | list[str], destination: str, figure=False) -> None:
+        """
+        Export a LaTeX document with a quantum circuit in stick notation.
 
-        with open(destination, "w") as f:
-            f.write(latex_code)
+        Parameters
+        ----------
+        quantikz_strs : str or list[str]
+            LaTeX string for the quantum circuit or a list of LaTeX strings.
+        destination : str
+            Path to the destination file.
+        figure : bool, optional
+            ?
+        """
+        if isinstance(quantikz_strs, str):
+            quantikz_strs = [quantikz_strs]  # Convert to list if it's a single string
 
-    @staticmethod
-    def export_multiple(quantikz_strs: list[str], destination: str, figure=False):
         concat_tikz = "".join(
             f"""
 \\begin{{figure}}
