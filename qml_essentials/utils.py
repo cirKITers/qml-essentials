@@ -465,8 +465,7 @@ class QuanTikz:
 
     @staticmethod
     def barrier(op):
-
-        raise NotImplementedError("Barriers are not supported yet")
+        return "\\slice[style={{draw=black, solid, double distance=2pt, line width=0.5pt}}]{{}}"
 
     @staticmethod
     def build(circuit: qml.QNode, params, inputs, gate_values=False) -> callable:
@@ -487,9 +486,9 @@ class QuanTikz:
             elif op._queue_category == "_ops":
                 # catch barriers
                 if op.name == "Barrier":
-                    continue
+                    circuit_tikz[op.wires[0]][-1] += QuanTikz.barrier(op)
                 # single qubit gate?
-                if len(op.wires) == 1:
+                elif len(op.wires) == 1:
                     # build and append standard gate
                     circuit_tikz[op.wires[0]].append(
                         QuanTikz.gate(
