@@ -427,14 +427,14 @@ class QuanTikz:
         str
             LaTeX string for the |0⟩ state.
         """
-        return "\lstick{\ket{0}}"
+        return "\\lstick{\\ket{0}}"
 
     @staticmethod
     def measure(op):
         if len(op.wires) > 1:
             raise NotImplementedError("Multi-wire measurements are not supported yet")
         else:
-            return "\meter{}"
+            return "\\meter{}"
 
     @staticmethod
     def gate(op, index=None, gate_values=False) -> str:
@@ -691,7 +691,7 @@ class QuanTikz:
         # iterate layers and get wires
 
     @staticmethod
-    def export(quantikz_strs: str | list[str], destination: str, figure=False) -> None:
+    def export(quantikz_strs: str | list[str], destination: str) -> None:
         """
         Export a LaTeX document with a quantum circuit in stick notation.
 
@@ -701,8 +701,6 @@ class QuanTikz:
             LaTeX string for the quantum circuit or a list of LaTeX strings.
         destination : str
             Path to the destination file.
-        figure : bool, optional
-            ?
         """
         if isinstance(quantikz_strs, str):
             quantikz_strs = [quantikz_strs]  # Convert to list if it's a single string
