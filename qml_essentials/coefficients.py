@@ -74,19 +74,27 @@ class Coefficients:
         # oversampled by nfs
         n_freqs: int = 2 * mfs * model.degree + 1
 
+        start, stop, step = 0, 2 * mts * np.pi, 2 * np.pi / n_freqs
         # Stretch according to the number of frequencies
-        inputs: np.ndarray = np.arange(0, 2 * mts * np.pi, 2 * np.pi / n_freqs) % (
-            2 * np.pi
-        )
+        inputs: np.ndarray = np.arange(start, stop, step) % (2 * np.pi)
+
+        # permute with input dimensionality
+        nd_inputs = np.array(
+            np.meshgrid(*[inputs for _ in range(model.n_input_feat)])
+        ).T.reshape(-1, model.n_input_feat)
 
         # Output vector is not necessarily the same length as input
-        outputs: np.ndarray = np.zeros((mts * n_freqs))
+        outputs = model(inputs=nd_inputs, **kwargs).reshape(
+            inputs.shape * model.n_input_feat
+        )
 
-        outputs = model(inputs=inputs, **kwargs)
+        coeffs = np.fft.fftn(outputs)
 
-        coeffs = np.fft.fft(outputs)
+        assert (
+            mts * n_freqs,
+        ) * model.n_input_feat == coeffs.shape, f"Expected shape {(mts * n_freqs,) * model.n_input_feat} but got {coeffs.shape}"
 
-        freqs = np.fft.fftfreq(coeffs.size, mts / coeffs.size)
+        freqs = np.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
 
         # Run the fft and rearrange + normalize the output
         return coeffs / outputs.size, freqs
