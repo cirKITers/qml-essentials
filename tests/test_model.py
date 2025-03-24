@@ -242,7 +242,7 @@ def test_draw() -> None:
 
     quantikz_strs = []
     for ansatz in Ansaetze.get_available():
-        # for ansatz in [Ansaetze.Circuit_2]:
+        # for ansatz in [Ansaetze.Circuit_9]:
         model = Model(
             n_qubits=4,
             n_layers=1,
@@ -250,12 +250,20 @@ def test_draw() -> None:
             output_qubit=-1,
             remove_zero_encoding=False,
         )
+        model_true = Model(
+            n_qubits=4,
+            n_layers=1,
+            circuit_type=ansatz.__name__,
+            output_qubit=-1,
+        )
         print(ansatz.__name__, "\n")
         repr(model)
         _ = model.draw(figure=True)
-        quantikz_str = model.draw(inputs=1.0, tikz=True, gate_values=True)
+        quantikz_str = model.draw(inputs=1.0, tikz=True, gate_values=False)
         quantikz_strs.append(quantikz_str)
-        quantikz_str = model.draw(tikz=True, gate_values=False)
+        # quantikz_str = model_true.draw(tikz=True, gate_values=True)
+        # quantikz_strs.append(quantikz_str)
+        quantikz_str = model.draw(tikz=True, gate_values=True)
         quantikz_strs.append(quantikz_str)
         # model.draw(figure=True)[0].savefig(f"circuit_{ansatz.__name__}.png")
 

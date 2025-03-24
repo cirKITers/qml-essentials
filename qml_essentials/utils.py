@@ -465,24 +465,33 @@ class QuanTikz:
                 op_name = "R"
 
         if gate_values and len(op.parameters) > 0:
-            w = op.parameters[0]
-            w_pi = Fraction(float(w / np.pi))
+            w = float(op.parameters[0].item())
+            w_pi = Fraction(w / np.pi)
             # Not a small nice Fraction
             if w_pi.denominator > 12:
                 return f"\\gate{{{op_name}({w:.2f})}}"
             # Pi
             elif w_pi.denominator == 1 and w_pi.numerator == 1:
                 return f"\\gate{{{op_name}(\\pi)}}"
+            # 0
+            elif w_pi.denominator == 1 and w_pi.numerator == 0:
+                return f"\\gate{{{op_name}(0)}}"
             # Multiple of Pi
             elif w_pi.denominator == 1:
                 return f"\\gate{{{op_name}({w_pi.numerator}\\pi)}}"
             # Small nice Fraction
             else:
                 return f"\\gate{{{op_name}\\left(\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}\\right)}}"
-        elif index is None:
-            return f"\\gate{{{op_name}}}"
         else:
-            return f"\\gate{{{op_name}(\\theta_{{{index}}})}}"
+            # Is gate with parameter
+            if op.parameters == [] or op.parameters[0].shape == ():
+                if index is None:
+                    return f"\\gate{{{op_name}}}"
+                else:
+                    return f"\\gate{{{op_name}(\\theta_{{{index}}})}}"
+            # Is gate with input
+            elif op.parameters[0].shape == (1,):
+                return f"\\gate{{{op_name}(x)}}"
 
     @staticmethod
     def cgate(op, index=None, gate_values=False) -> Tuple[str, str]:
@@ -512,24 +521,33 @@ class QuanTikz:
         targ = "\\targ{}"
         if op.name in ["CRX", "CRY", "CRZ"]:
             if gate_values and len(op.parameters) > 0:
-                w = op.parameters[0]
-                w_pi = Fraction(float(w / np.pi))
+                w = float(op.parameters[0].item())
+                w_pi = Fraction(w / np.pi)
                 # Not a small nice Fraction
                 if w_pi.denominator > 12:
                     targ = f"\\gate{{{op_name}({w:.2f})}}"
                 # Pi
                 elif w_pi.denominator == 1 and w_pi.numerator == 1:
                     targ = f"\\gate{{{op_name}(\\pi)}}"
+                # 0
+                elif w_pi.denominator == 1 and w_pi.numerator == 0:
+                    targ = f"\\gate{{{op_name}(0)}}"
                 # Multiple of Pi
                 elif w_pi.denominator == 1:
                     targ = f"\\gate{{{op_name}({w_pi.numerator}\\pi)}}"
                 # Small nice Fraction
                 else:
                     targ = f"\\gate{{{op_name}\\left(\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}\\right)}}"
-            elif index is None:
-                targ = f"\\gate{{{op_name}}}"
             else:
-                targ = f"\\gate{{{op_name}(\\theta_{{{index}}})}}"
+                # Is gate with parameter
+                if op.parameters[0].shape == ():
+                    if index is None:
+                        targ = f"\\gate{{{op_name}}}"
+                    else:
+                        targ = f"\\gate{{{op_name}(\\theta_{{{index}}})}}"
+                # Is gate with input
+                elif op.parameters[0].shape == (1,):
+                    targ = f"\\gate{{{op_name}(x)}}"
         elif op.name in ["CX", "CY", "CZ"]:
             targ = "\\control{}"
 
