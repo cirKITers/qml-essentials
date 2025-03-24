@@ -140,7 +140,7 @@ an_coeffs, an_freqs = fourier_tree.get_spectrum(force_mean=True)
 Note that while this takes significantly longer to compute, it gives us the precise coefficients, solely depending on the parameters.
 We can verify this by comparing it to the previous results:
 
-![Model Analytic Coefficients](model_psd_an.png#only-light)
+![Model Analytic Coefficients](model_psd_an_light.png#only-light)
 ![Model Analytic Coefficients](model_psd_an_dark.png#only-dark)
 
 ### Technical Details

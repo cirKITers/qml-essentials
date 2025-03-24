@@ -393,7 +393,7 @@ class Model:
 
     def initialize_params(
         self,
-        rng,
+        rng: np.random.Generator,
         repeat: int = None,
         initialization: str = None,
         initialization_domain: List[float] = None,
