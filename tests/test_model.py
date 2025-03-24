@@ -253,7 +253,9 @@ def test_draw() -> None:
         print(ansatz.__name__, "\n")
         repr(model)
         _ = model.draw(figure=True)
-        quantikz_str = model.draw(tikz=True, gate_values=True)
+        quantikz_str = model.draw(inputs=1.0, tikz=True, gate_values=True)
+        quantikz_strs.append(quantikz_str)
+        quantikz_str = model.draw(tikz=True, gate_values=False)
         quantikz_strs.append(quantikz_str)
         # model.draw(figure=True)[0].savefig(f"circuit_{ansatz.__name__}.png")
 
