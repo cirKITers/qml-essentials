@@ -92,7 +92,8 @@ class Coefficients:
 
         assert (
             mts * n_freqs,
-        ) * model.n_input_feat == coeffs.shape, f"Expected shape {(mts * n_freqs,) * model.n_input_feat} but got {coeffs.shape}"
+        ) * model.n_input_feat == coeffs.shape, f"Expected shape\
+            {(mts * n_freqs,) * model.n_input_feat} but got {coeffs.shape}"
 
         freqs = np.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
 
