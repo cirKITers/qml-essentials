@@ -73,6 +73,19 @@ def test_coefficients() -> None:
 
 
 @pytest.mark.unittest
+def test_multi_dim_input() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        output_qubit=-1,
+        encoding=["RX", "RX"],
+    )
+
+    coeffs, _ = Coefficients.get_spectrum(model)
+
+
+@pytest.mark.unittest
 def test_coefficients_tree() -> None:
     test_cases = [
         {
