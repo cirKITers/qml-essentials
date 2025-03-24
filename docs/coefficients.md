@@ -157,7 +157,7 @@ Currently, our implementation supports only one input feature, albeit more are t
 ## Multi-Dimensional Coefficients
 
 The `get_spectrum` method can also be used to calculate the coefficients of a model with multiple input dimensions.
-This feature can be enabled, by explicitly providing an encoding that supports multi-dimensional input, e.g. a list of single encodings (see [*Usage*](usage.md) for details). 
+This feature can be enabled, by explicitly providing an encoding that supports multi-dimensional input, e.g. a list of single encodings (see [*Usage*](usage.md) for details on how encodings are applied). 
 Currently, only the FFT-based method supports this.
 
 ```python
@@ -179,3 +179,5 @@ Using a logarithmic color bar, one obtains the following 2d-spectrum:
 
 ![2D Model Coefficients](model_2d_psd_light.png#only-light)
 ![2D Model Coefficients](model_2d_psd_dark.png#only-dark)
+
+Note that "X1" refers to the "RX" encoding and "X2" to the "RY" encoding.

@@ -80,7 +80,7 @@ The default encoding is "RX" which will result in a single RX rotation per qubit
 Other options are:
 
 - A string such as `"RX"` that will result in a single RX rotation per qubit
-- A list of strings such as `["RX", "RY"]` that will result in a RX and RY rotation per qubit
+- A list of strings such as `["RX", "RY"]` that will result in a sequential RX and RY rotation per qubit
 - Any callable such as `Gates.RX`
 - A list of callables such as `[Gates.RX, Gates.RY]`
 
