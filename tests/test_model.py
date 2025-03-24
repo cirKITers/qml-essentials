@@ -248,6 +248,7 @@ def test_draw() -> None:
             n_layers=1,
             circuit_type=ansatz.__name__,
             output_qubit=-1,
+            remove_zero_encoding=False,
         )
         print(ansatz.__name__, "\n")
         repr(model)
