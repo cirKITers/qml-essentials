@@ -754,7 +754,7 @@ class QuanTikz:
         latex_code = f"""
 \\documentclass{{article}}
 \\usepackage{{quantikz}}
-\\usepackage{{tikz}}   
+\\usepackage{{tikz}}
 \\usetikzlibrary{{quantikz2}}
 \\usepackage{{quantikz}}
 \\usepackage[a3paper, landscape, margin=0.5cm]{{geometry}}
