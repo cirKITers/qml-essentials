@@ -177,5 +177,5 @@ psd = Coefficients.get_psd(coeffs)
 
 Using a logarithmic color bar, one obtains the following 2d-spectrum:
 
-![2D Model Coefficients](model_2d_psd.png#only-light)
+![2D Model Coefficients](model_2d_psd_light.png#only-light)
 ![2D Model Coefficients](model_2d_psd_dark.png#only-dark)
