@@ -1,3 +1,4 @@
+import random
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Circuit, Gates
 from qml_essentials.utils import QuanTikz
@@ -243,28 +244,55 @@ def test_draw() -> None:
     quantikz_strs = []
     for ansatz in Ansaetze.get_available():
         # for ansatz in [Ansaetze.Circuit_9]:
+        # No inputs
         model = Model(
             n_qubits=4,
             n_layers=1,
             circuit_type=ansatz.__name__,
+            initialization="random",
             output_qubit=-1,
             remove_zero_encoding=False,
         )
-        model_true = Model(
+        model_output_qubit_0 = Model(
             n_qubits=4,
             n_layers=1,
             circuit_type=ansatz.__name__,
-            output_qubit=-1,
+            output_qubit=0,
         )
+
+        if model.params.size >= 4:
+            rest_pi = int((model.params.size - 4) / 2)
+            rest = int(model.params.size - rest_pi - 4)
+
+            test_params = np.array(
+                [
+                    np.pi,  # Exactly pi
+                    0,  # Zero
+                    2 * np.pi,  # denominator=1
+                    np.pi / 2,  # numerator=1
+                ]
+                + [
+                    random.randint(1, 24) * np.pi / random.randint(1, 12)
+                    for _ in range(rest_pi)
+                ]
+                + [np.random.uniform(0, 2 * np.pi) for _ in range(rest)]
+            ).reshape(model.params.shape)
+            model.params = test_params
         print(ansatz.__name__, "\n")
         repr(model)
         _ = model.draw(figure=True)
-        quantikz_str = model.draw(inputs=1.0, tikz=True, gate_values=False)
-        quantikz_strs.append(quantikz_str)
-        # quantikz_str = model_true.draw(tikz=True, gate_values=True)
-        # quantikz_strs.append(quantikz_str)
+        # No inputs and gate values
         quantikz_str = model.draw(tikz=True, gate_values=True)
         quantikz_strs.append(quantikz_str)
+        # Inputs and gate values
+        quantikz_str = model.draw(inputs=1.0, tikz=True, gate_values=True)
+        quantikz_strs.append(quantikz_str)
+        # No gate values and output_qubit=0
+        quantikz_str = model_output_qubit_0.draw(
+            inputs=1.0, tikz=True, gate_values=False
+        )
+        quantikz_strs.append(quantikz_str)
+
         # model.draw(figure=True)[0].savefig(f"circuit_{ansatz.__name__}.png")
 
     QuanTikz.export(quantikz_strs, destination=f"./tikz_test.tex")

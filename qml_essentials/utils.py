@@ -466,7 +466,7 @@ class QuanTikz:
 
         if gate_values and len(op.parameters) > 0:
             w = float(op.parameters[0].item())
-            w_pi = Fraction(w / np.pi)
+            w_pi = Fraction(w / np.pi).limit_denominator(100)
             # Not a small nice Fraction
             if w_pi.denominator > 12:
                 return f"\\gate{{{op_name}({w:.2f})}}"
@@ -474,14 +474,24 @@ class QuanTikz:
             elif w_pi.denominator == 1 and w_pi.numerator == 1:
                 return f"\\gate{{{op_name}(\\pi)}}"
             # 0
-            elif w_pi.denominator == 1 and w_pi.numerator == 0:
+            elif w_pi.numerator == 0:
                 return f"\\gate{{{op_name}(0)}}"
             # Multiple of Pi
             elif w_pi.denominator == 1:
                 return f"\\gate{{{op_name}({w_pi.numerator}\\pi)}}"
+            # Nice Fraction of pi
+            elif w_pi.numerator == 1:
+                return (
+                    f"\\gate{{{op_name}\\left("
+                    f"\\frac{{\\pi}}{{{w_pi.denominator}}}\\right)}}"
+                )
             # Small nice Fraction
             else:
-                return f"\\gate{{{op_name}\\left(\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}\\right)}}"
+                return (
+                    f"\\gate{{{op_name}\\left("
+                    f"\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}"
+                    f"\\right)}}"
+                )
         else:
             # Is gate with parameter
             if op.parameters == [] or op.parameters[0].shape == ():
@@ -522,7 +532,7 @@ class QuanTikz:
         if op.name in ["CRX", "CRY", "CRZ"]:
             if gate_values and len(op.parameters) > 0:
                 w = float(op.parameters[0].item())
-                w_pi = Fraction(w / np.pi)
+                w_pi = Fraction(w / np.pi).limit_denominator(100)
                 # Not a small nice Fraction
                 if w_pi.denominator > 12:
                     targ = f"\\gate{{{op_name}({w:.2f})}}"
@@ -535,9 +545,19 @@ class QuanTikz:
                 # Multiple of Pi
                 elif w_pi.denominator == 1:
                     targ = f"\\gate{{{op_name}({w_pi.numerator}\\pi)}}"
+                # Nice Fraction of pi
+                elif w_pi.numerator == 1:
+                    targ = (
+                        f"\\gate{{{op_name}\\left("
+                        f"\\frac{{\\pi}}{{{w_pi.denominator}}}\\right)}}"
+                    )
                 # Small nice Fraction
                 else:
-                    targ = f"\\gate{{{op_name}\\left(\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}\\right)}}"
+                    targ = (
+                        f"\\gate{{{op_name}\\left("
+                        f"\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}"
+                        f"\\right)}}"
+                    )
             else:
                 # Is gate with parameter
                 if op.parameters[0].shape == ():
@@ -569,7 +589,10 @@ class QuanTikz:
         str
             LaTeX string for the barrier.
         """
-        return "\\slice[style={{draw=black, solid, double distance=2pt, line width=0.5pt}}]{{}}"
+        return (
+            "\\slice[style={{draw=black, solid, double distance=2pt, "
+            "line width=0.5pt}}]{{}}"
+        )
 
     @staticmethod
     def build(circuit: qml.QNode, params, inputs, gate_values=False) -> str:
@@ -674,6 +697,13 @@ class QuanTikz:
                     raise NotImplementedError(">2-wire gates are not supported yet")
 
         quantikz_str = ""
+
+        # get the maximum length of all wires
+        max_len = max(len(circuit_tikz[cw]) for cw in range(len(circuit_tikz)))
+
+        # extend the wires by the number of missing operations
+        for ow in [i for i in range(len(circuit_tikz))]:
+            circuit_tikz[ow].extend("" for _ in range(max_len - len(circuit_tikz[ow])))
 
         for wire_idx, wire_ops in enumerate(circuit_tikz):
             for op_idx, op in enumerate(wire_ops):
