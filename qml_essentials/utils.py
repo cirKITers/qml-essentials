@@ -437,6 +437,35 @@ class QuanTikz:
             return "\\meter{}"
 
     @staticmethod
+    def search_pi_fraction(w, op_name):
+        w_pi = Fraction(w / np.pi).limit_denominator(100)
+        # Not a small nice Fraction
+        if w_pi.denominator > 12:
+            return f"\\gate{{{op_name}({w:.2f})}}"
+        # Pi
+        elif w_pi.denominator == 1 and w_pi.numerator == 1:
+            return f"\\gate{{{op_name}(\\pi)}}"
+        # 0
+        elif w_pi.numerator == 0:
+            return f"\\gate{{{op_name}(0)}}"
+        # Multiple of Pi
+        elif w_pi.denominator == 1:
+            return f"\\gate{{{op_name}({w_pi.numerator}\\pi)}}"
+        # Nice Fraction of pi
+        elif w_pi.numerator == 1:
+            return (
+                f"\\gate{{{op_name}\\left("
+                f"\\frac{{\\pi}}{{{w_pi.denominator}}}\\right)}}"
+            )
+        # Small nice Fraction
+        else:
+            return (
+                f"\\gate{{{op_name}\\left("
+                f"\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}"
+                f"\\right)}}"
+            )
+
+    @staticmethod
     def gate(op, index=None, gate_values=False) -> str:
         """
         Generate LaTeX for a quantum gate in stick notation.
@@ -466,32 +495,7 @@ class QuanTikz:
 
         if gate_values and len(op.parameters) > 0:
             w = float(op.parameters[0].item())
-            w_pi = Fraction(w / np.pi).limit_denominator(100)
-            # Not a small nice Fraction
-            if w_pi.denominator > 12:
-                return f"\\gate{{{op_name}({w:.2f})}}"
-            # Pi
-            elif w_pi.denominator == 1 and w_pi.numerator == 1:
-                return f"\\gate{{{op_name}(\\pi)}}"
-            # 0
-            elif w_pi.numerator == 0:
-                return f"\\gate{{{op_name}(0)}}"
-            # Multiple of Pi
-            elif w_pi.denominator == 1:
-                return f"\\gate{{{op_name}({w_pi.numerator}\\pi)}}"
-            # Nice Fraction of pi
-            elif w_pi.numerator == 1:
-                return (
-                    f"\\gate{{{op_name}\\left("
-                    f"\\frac{{\\pi}}{{{w_pi.denominator}}}\\right)}}"
-                )
-            # Small nice Fraction
-            else:
-                return (
-                    f"\\gate{{{op_name}\\left("
-                    f"\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}"
-                    f"\\right)}}"
-                )
+            return QuanTikz.search_pi_fraction(w, op_name)
         else:
             # Is gate with parameter
             if op.parameters == [] or op.parameters[0].shape == ():
@@ -532,32 +536,7 @@ class QuanTikz:
         if op.name in ["CRX", "CRY", "CRZ"]:
             if gate_values and len(op.parameters) > 0:
                 w = float(op.parameters[0].item())
-                w_pi = Fraction(w / np.pi).limit_denominator(100)
-                # Not a small nice Fraction
-                if w_pi.denominator > 12:
-                    targ = f"\\gate{{{op_name}({w:.2f})}}"
-                # Pi
-                elif w_pi.denominator == 1 and w_pi.numerator == 1:
-                    targ = f"\\gate{{{op_name}(\\pi)}}"
-                # 0
-                elif w_pi.denominator == 1 and w_pi.numerator == 0:
-                    targ = f"\\gate{{{op_name}(0)}}"
-                # Multiple of Pi
-                elif w_pi.denominator == 1:
-                    targ = f"\\gate{{{op_name}({w_pi.numerator}\\pi)}}"
-                # Nice Fraction of pi
-                elif w_pi.numerator == 1:
-                    targ = (
-                        f"\\gate{{{op_name}\\left("
-                        f"\\frac{{\\pi}}{{{w_pi.denominator}}}\\right)}}"
-                    )
-                # Small nice Fraction
-                else:
-                    targ = (
-                        f"\\gate{{{op_name}\\left("
-                        f"\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}"
-                        f"\\right)}}"
-                    )
+                targ = QuanTikz.search_pi_fraction(w, op_name)
             else:
                 # Is gate with parameter
                 if op.parameters[0].shape == ():
