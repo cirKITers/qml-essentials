@@ -84,6 +84,10 @@ def test_multi_dim_input() -> None:
 
     coeffs, _ = Coefficients.get_spectrum(model)
 
+    assert (
+        coeffs.shape == (model.degree * 2 + 1,) * model.n_input_feat
+    ), f"Wrong shape of coefficients: {coeffs.shape}, expected {(model.degree*2+1,)*model.n_input_feat}"
+
 
 @pytest.mark.unittest
 def test_coefficients_tree() -> None:
