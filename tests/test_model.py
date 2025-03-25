@@ -294,7 +294,6 @@ def test_lightning() -> None:
 
 @pytest.mark.smoketest
 def test_basic_draw() -> None:
-    first = True
     for ansatz in Ansaetze.get_available():
         # for ansatz in [Ansaetze.Circuit_9]:
         # No inputs
@@ -305,12 +304,6 @@ def test_basic_draw() -> None:
             initialization="random",
             output_qubit=-1,
             remove_zero_encoding=False,
-        )
-        model_output_qubit_0 = Model(
-            n_qubits=4,
-            n_layers=1,
-            circuit_type=ansatz.__name__,
-            output_qubit=0,
         )
 
         if model.params.size >= 4:
