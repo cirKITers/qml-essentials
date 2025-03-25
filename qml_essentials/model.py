@@ -590,19 +590,41 @@ class Model:
                 tg = circuit_depth * t_factor
                 qml.ThermalRelaxationError(1.0, t1, t2, tg, q)
 
-    def _draw(self, inputs=None, figure=False, tikz=False, gate_values=False) -> None:
+    def draw(self, inputs=None, figure="text", gate_values=True):
+        """
+        Draws the quantum circuit using the specified visualization method.
+
+        Args:
+            inputs (Optional[np.ndarray]): Input vector for the circuit. If None,
+                the default inputs are used.
+            figure (str, optional): The type of figure to generate. Must be one of
+                'text', 'mpl', or 'tikz'. Defaults to 'text'.
+            gate_values (bool, optional): Whether to display gate values or theta
+                variables in the representation. Defaults to True.
+
+        Returns:
+            Either a string, matplotlib figure or TikzFigure object (similar to string)
+            depending on the chosen visualization.
+
+        Raises:
+            AssertionError: If the 'figure' argument is not one of the accepted values.
+        """
+
         if not isinstance(self.circuit, qml.QNode):
             # TODO: throws strange argument error if not catched
             return ""
 
-        if figure and tikz:
-            raise ValueError("Cannot draw tikz and figure at the same time.")
+        assert figure in [
+            "text",
+            "mpl",
+            "tikz",
+        ], f"Invalid figure: {figure}. Must be 'text', 'mpl' or 'tikz'."
 
         inputs = self._inputs_validation(inputs)
 
-        if figure:
+        if figure == "mpl":
             result = qml.draw_mpl(self.circuit)(params=self.params, inputs=inputs)
-        elif tikz:
+        elif figure == "tikz":
             result = QuanTikz.build(
                 self.circuit,
                 params=self.params,
@@ -613,15 +635,11 @@ class Model:
             result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
         return result
 
-    def draw(self, *args, **kwargs) -> None:
-
-        return self._draw(*args, **kwargs)
-
     def __repr__(self) -> str:
-        return self._draw(figure=False)
+        return self.draw(figure="text")
 
     def __str__(self) -> str:
-        return self._draw(figure=False)
+        return self.draw(figure="text")
 
     def __call__(
         self,
