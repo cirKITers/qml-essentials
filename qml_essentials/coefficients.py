@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import pennylane as qml
 from pennylane.operation import Operator
 import pennylane.ops.op_math as qml_op
-from typing import List, Tuple, Optional, Any, Dict
+from typing import List, Tuple, Optional, Any, Dict, Union
 
 from qml_essentials.model import Model
 
@@ -122,29 +122,32 @@ class Coefficients:
     @staticmethod
     def evaluate_Fourier_series(
         coefficients: np.ndarray,
-        input: float,
-        frequencies: Optional[np.ndarray] = None,
+        frequencies: np.ndarray,
+        inputs: Union[np.ndarray, list, float],
     ) -> float:
         """
         Evaluate the function value of a Fourier series at one point.
 
         Args:
             coefficients (np.ndarray): Coefficients of the Fourier series.
-            input (float): Point at which to evaluate the function.
-            frequencies (Optional[np.ndarray]): Corresponding frequencies in
-                the form [-n_freq, ..., 0, ..., n_freq]. If None, the number of
-                coefficients is to obtain sequential frequencies.
-
+            frequencies (np.ndarray): Corresponding frequencies.
+            inputs (np.ndarray): Point at which to evaluate the function.
         Returns:
             float: The function value at the input point.
         """
-        n_freq = len(coefficients) // 2
-        if frequencies is None:
-            frequencies = np.arange(-n_freq, n_freq + 1)
+        dims = len(coefficients.shape)
+
+        if not isinstance(inputs, (np.ndarray, list)):
+            inputs = [inputs]
+
+        frequencies = np.stack(np.meshgrid(*[frequencies] * dims)).T.reshape(-1, dims)
+        freq_inputs = np.einsum("...j,j->...", frequencies, inputs)
+        coeffs = coefficients.flatten()
+        freq_inputs = freq_inputs.flatten()
 
         exp = 0.0
-        for omega, c in zip(frequencies, coefficients):
-            exp += c * np.exp(1j * omega * input)
+        for omega_x, c in zip(freq_inputs, coeffs):
+            exp += c * np.exp(1j * omega_x)
 
         return np.real_if_close(exp)
 
