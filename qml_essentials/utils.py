@@ -9,6 +9,7 @@ import pennylane.numpy as pnp
 import pennylane.ops.op_math as qml_op
 from pennylane.drawer import drawable_layers, tape_text
 from fractions import Fraction
+from itertools import cycle
 
 CLIFFORD_GATES = (
     qml.PauliX,
@@ -659,6 +660,17 @@ class QuanTikz:
         quantum_tape = qml.workflow.construct_tape(circuit)(
             params=params, inputs=inputs
         )
+        if isinstance(inputs_symbol, str) and inputs.size > 1:
+            inputs_symbol = cycle([f"{inputs_symbol}_{i}" for i in range(inputs.size)])
+        elif isinstance(inputs_symbol, list):
+            assert (
+                len(inputs_symbol) == inputs.size
+            ), f"The number of input symbols {len(inputs_symbol)} \
+                must match the number of inputs {inputs.size}."
+            inputs_symbol = cycle(inputs_symbol)
+        else:
+            inputs_symbol = cycle([inputs_symbol])
+
         circuit_tikz = [
             [QuanTikz.ground_state()] for _ in range(quantum_tape.num_wires)
         ]
@@ -701,7 +713,7 @@ class QuanTikz:
                             op,
                             index=next(index),
                             gate_values=gate_values,
-                            inputs_symbol=inputs_symbol,
+                            inputs_symbol=next(inputs_symbol),
                         )
                     )
                 # controlled gate?
@@ -712,7 +724,7 @@ class QuanTikz:
                             op,
                             index=next(index),
                             gate_values=gate_values,
-                            inputs_symbol=inputs_symbol,
+                            inputs_symbol=next(inputs_symbol),
                         )
                     else:
                         ctrl, targ = QuanTikz.cgate(op)
