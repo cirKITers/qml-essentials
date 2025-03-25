@@ -176,7 +176,8 @@ class Entanglement:
     @staticmethod
     def relative_entropy(
         model: Model,
-        n_samples: Optional[int | None],
+        n_samples: Optional[int],
+        n_sigmas: int,
         seed: Optional[int],
         scale: bool = False,
         **kwargs: Any,
@@ -198,6 +199,7 @@ class Entanglement:
             model (Model): The quantum circuit model.
             n_samples (Optional[int]): Number of samples per qubit.
                 If None or < 0, the current parameters of the model are used.
+            n_sigmas (int): Number of random separable pure states to compare against.
             seed (Optional[int]): Seed for the random number generator.
             scale (bool): Whether to scale the number of samples.
             kwargs (Any): Additional keyword arguments for the model function.
@@ -211,12 +213,12 @@ class Entanglement:
             n_samples = dim * n_samples
 
         rng = np.random.default_rng(seed)
-
         log_2 = np.log(2)
 
-        # Maximally mixed state
-        sigma = np.eye(dim, dtype=np.complex128) / dim
-        log_sigma = logm(sigma) / log_2
+        # Random separable states
+        log_sigmas = sample_random_pure_states(
+            model.n_qubits, n_samples=n_sigmas, rng=rng, take_log=True
+        )
 
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
@@ -234,7 +236,7 @@ class Entanglement:
                 params = model.params
 
         n_samples = params.shape[-1]
-        rel_entropies = np.zeros(n_samples)
+        rel_entropies = np.zeros(n_samples, dtype=np.complex128)
 
         for i in range(n_samples):
             # implicitly set input to none in case it's not needed
@@ -245,8 +247,12 @@ class Entanglement:
 
             # Formula 38 in https://arxiv.org/pdf/quant-ph/0504163
             # ---
-            rel_entr = np.trace(rho @ (log_rho - log_sigma)) / model.n_qubits
-            rel_entropies[i] = rel_entr
+            min_rel_entr = np.inf
+            for log_sigma in log_sigmas:
+                rel_entr = np.trace(rho @ (log_rho - log_sigma)) / 4
+                if rel_entr < min_rel_entr:
+                    min_rel_entr = rel_entr
+            rel_entropies[i] = min_rel_entr
 
         # Average all iterated states
         # catch floating point errors
@@ -254,3 +260,21 @@ class Entanglement:
         log.debug(f"Variance of measure: {rel_entropies.var()}")
 
         return float(entangling_capability)
+
+
+def sample_random_pure_states(
+    n_qubits: int, n_samples: int, rng: np.random.Generator, take_log: bool = False
+) -> np.ndarray:
+    log_2 = np.log(2)
+    model = Model(n_qubits, 1, "No_Entangling")
+    density_matrices = np.zeros((n_samples, 2**n_qubits, 2**n_qubits))
+    model.initialize_params(rng=rng, repeat=n_samples)
+    params = model.params
+    for i in range(n_samples):
+        # explicitly set execution type because everything else won't work
+        sigma = model(params=params[:, :, i], execution_type="density", inputs=None)
+        if take_log:
+            sigma = logm(sigma) / log_2
+        density_matrices[i] = sigma
+
+    return density_matrices
