@@ -590,7 +590,7 @@ class Model:
                 tg = circuit_depth * t_factor
                 qml.ThermalRelaxationError(1.0, t1, t2, tg, q)
 
-    def draw(self, inputs=None, figure="text", gate_values=True):
+    def draw(self, inputs=None, figure="text", *args, **kwargs):
         """
         Draws the quantum circuit using the specified visualization method.
 
@@ -599,8 +599,8 @@ class Model:
                 the default inputs are used.
             figure (str, optional): The type of figure to generate. Must be one of
                 'text', 'mpl', or 'tikz'. Defaults to 'text'.
-            gate_values (bool, optional): Whether to display gate values or theta
-                variables in the representation. Defaults to True.
+            *args, **kwargs (optional): Additional arguments to the specific
+                visualization methods
 
         Returns:
             Either a string, matplotlib figure or TikzFigure object (similar to string)
@@ -623,13 +623,12 @@ class Model:
         inputs = self._inputs_validation(inputs)
 
         if figure == "mpl":
-            result = qml.draw_mpl(self.circuit)(params=self.params, inputs=inputs)
+            result = qml.draw_mpl(self.circuit)(
+                params=self.params, inputs=inputs, *args, **kwargs
+            )
         elif figure == "tikz":
             result = QuanTikz.build(
-                self.circuit,
-                params=self.params,
-                inputs=inputs,
-                gate_values=gate_values,
+                self.circuit, params=self.params, inputs=inputs, *args, **kwargs
             )
         else:
             result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
