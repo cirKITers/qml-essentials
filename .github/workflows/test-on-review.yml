@@ -8,7 +8,7 @@ permissions:
 jobs:
   test-approved:
     if: github.event.review.state == 'approved'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
     # - name: Install Act dependencies
     #   if: ${{ env.ACT }}
