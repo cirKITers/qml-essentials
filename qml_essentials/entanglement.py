@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Optional, Any, List
 import pennylane as qml
 import pennylane.numpy as np
 from copy import deepcopy
@@ -16,6 +16,7 @@ class Entanglement:
         model: Model,
         n_samples: Optional[int | None],
         seed: Optional[int],
+        scale: bool = False,
         **kwargs: Any,
     ) -> float:
         """
@@ -23,22 +24,26 @@ class Entanglement:
         using Meyer-Wallach measure.
 
         Args:
-            model (Callable): Function that models the quantum circuit.
-            n_samples (int): Number of samples per qubit.
-                If None or < 0, the current parameters of the model are used
+            model (Model): The quantum circuit model.
+            n_samples (Optional[int]): Number of samples per qubit.
+                If None or < 0, the current parameters of the model are used.
             seed (Optional[int]): Seed for the random number generator.
+            scale (bool): Whether to scale the number of samples.
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
-            float: Entangling capacity of the given circuit. It is guaranteed
+            float: Entangling capacity of the given circuit, guaranteed
                 to be between 0.0 and 1.0.
         """
+        if scale:
+            n_samples = np.power(2, model.n_qubits) * n_samples
+
         rng = np.random.default_rng(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             # TODO: maybe switch to JAX rng
             model.initialize_params(rng=rng, repeat=n_samples)
-            params = model.params
+            params: np.ndarray = model.params
         else:
             if seed is not None:
                 log.warning("Seed is ignored when samples is 0")
@@ -82,9 +87,37 @@ class Entanglement:
         return float(entangling_capability)
 
     @staticmethod
-    def bell_measurements(model: Model, n_samples, seed, **kwargs: Any) -> float:
+    def bell_measurements(
+        model: Model, n_samples: int, seed: int, scale: bool = False, **kwargs: Any
+    ) -> float:
+        """
+        Compute the Bell measurement for a given model.
 
-        def _circuit(params, inputs):
+        Args:
+            model (Model): The quantum circuit model.
+            n_samples (int): The number of samples to compute the measure for.
+            seed (int): The seed for the random number generator.
+            scale (bool): Whether to scale the number of samples
+            according to the number of qubits.
+            **kwargs (Any): Additional keyword arguments for the model function.
+
+        Returns:
+            float: The Bell measurement value.
+        """
+        if scale:
+            n_samples = np.power(2, model.n_qubits) * n_samples
+
+        def _circuit(params: np.ndarray, inputs: np.ndarray) -> List[np.ndarray]:
+            """
+            Compute the Bell measurement circuit.
+
+            Args:
+                params (np.ndarray): The model parameters.
+                inputs (np.ndarray): The input to the model.
+
+            Returns:
+                List[np.ndarray]: The probabilities of the Bell measurement.
+            """
             model._variational(params, inputs)
 
             qml.map_wires(

@@ -79,16 +79,28 @@ The encoding can be set when instantiating the model with the `encoding` argumen
 The default encoding is "RX" which will result in a single RX rotation per qubit.
 Other options are:
 
-- Any callable such as `Gates.RX`
-- A list of callables such as `[Gates.RX, Gates.RY]`
 - A string such as `"RX"` that will result in a single RX rotation per qubit
 - A list of strings such as `["RX", "RY"]` that will result in a RX and RY rotation per qubit
+- Any callable such as `Gates.RX`
+- A list of callables such as `[Gates.RX, Gates.RY]`
 
 See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
 Otherwise multiple inputs are treated as batches of inputs.
 
 If you want to visualize zero-valued encoding gates in the model, set `remove_zero_encoding` to `False` on instantiation.
+
+## State Preparation
+
+While the encoding is applied in each data-reuploading step, the state preparation is only applied at the beginning of the circuit, but after the `StatePreparation` noise (see [below](#Noise) for details).
+The default is no state preparation. Similar to the encoding, you can provide the `state_preparation` argument as
+
+- A string such as `"H"` that will result in a single Hadamard per qubit
+- A list of strings such as `["H", "H"]` that will result in two consecutive Hadamards per qubit
+- Any callable such as `Gates.H`
+- A list of callables such as `[Gates.H, Gates.H]`
+
+See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
 
 ## Output Shape
 

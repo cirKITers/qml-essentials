@@ -309,3 +309,21 @@ def test_entangling_measures() -> None:
             f"Meyer-Wallach and Bell-measurement are not the same. Got {mw_meas} "
             f"and {bell_meas}, respectively."
         )
+
+
+@pytest.mark.smoketest
+@pytest.mark.expensive
+def test_scaling() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_1",
+    )
+
+    _ = Entanglement.meyer_wallach(
+        deepcopy(model), n_samples=10, seed=1000, cache=False, scale=True
+    )
+
+    _ = Entanglement.bell_measurements(
+        model, n_samples=10, seed=1000, cache=False, scale=True
+    )

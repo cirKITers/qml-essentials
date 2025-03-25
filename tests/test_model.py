@@ -144,16 +144,62 @@ def test_parameters() -> None:
 
 
 @pytest.mark.smoketest
+def test_state_preparation() -> None:
+    test_cases = [
+        {
+            "state_preparation_unitary": Gates.H,
+        },
+        {
+            "state_preparation_unitary": [Gates.H, Gates.H],
+        },
+        {
+            "state_preparation_unitary": "H",
+        },
+        {
+            "state_preparation_unitary": ["H", "H"],
+        },
+        {
+            "state_preparation_unitary": None,
+        },
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            state_preparation=test_case["state_preparation_unitary"],
+            remove_zero_encoding=False,
+        )
+
+        _ = model(
+            model.params,
+        )
+
+
+@pytest.mark.smoketest
 def test_encoding() -> None:
     test_cases = [
-        {"encoding_unitary": Gates.RX, "type": Callable, "input": [0]},
+        {
+            "encoding_unitary": Gates.RX,
+            "type": Callable,
+            "input": [0],
+            "warning": False,
+        },
         {
             "encoding_unitary": [Gates.RX, Gates.RY],
             "type": List,
             "input": [[0, 0]],
+            "warning": False,
         },
-        {"encoding_unitary": "RX", "type": Callable, "input": [0]},
-        {"encoding_unitary": ["RX", "RY"], "type": List, "input": [[0, 0]]},
+        {"encoding_unitary": "RX", "type": Callable, "input": [0], "warning": False},
+        {
+            "encoding_unitary": ["RX", "RY"],
+            "type": List,
+            "input": [[0, 0]],
+            "warning": False,
+        },
+        {"encoding_unitary": ["RX", "RY"], "type": List, "input": [0], "warning": True},
     ]
 
     for test_case in test_cases:
@@ -162,12 +208,20 @@ def test_encoding() -> None:
             n_layers=1,
             circuit_type="Circuit_19",
             encoding=test_case["encoding_unitary"],
-        )
-        _ = model(
-            model.params,
-            inputs=test_case["input"],
+            remove_zero_encoding=False,
         )
 
+        if test_case["warning"]:
+            with pytest.warns(UserWarning):
+                _ = model(
+                    model.params,
+                    inputs=test_case["input"],
+                )
+        else:
+            _ = model(
+                model.params,
+                inputs=test_case["input"],
+            )
         assert isinstance(model._enc, test_case["type"])
 
 
@@ -386,7 +440,7 @@ def test_ansaetze() -> None:
                 "AmplitudeDamping": 0.3,
                 "PhaseDamping": 0.4,
                 "Depolarizing": 0.5,
-                "ThermalRelaxation": {"T1": 2000.0, "T2": 1000.0, "t_factor": 1},
+                "ThermalRelaxation": {"t1": 2000.0, "t2": 1000.0, "t_factor": 1},
                 "StatePreparation": 0.1,
                 "Measurement": 0.1,
             },
