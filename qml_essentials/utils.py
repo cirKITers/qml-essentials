@@ -525,7 +525,7 @@ class QuanTikz:
             )
 
     @staticmethod
-    def gate(op, index=None, gate_values=False, inputs_symbol="X") -> str:
+    def gate(op, index=None, gate_values=False, inputs_symbols="x") -> str:
         """
         Generate LaTeX for a quantum gate in stick notation.
 
@@ -567,7 +567,7 @@ class QuanTikz:
                 return f"\\gate{{{op_name}({inputs_symbol})}}"
 
     @staticmethod
-    def cgate(op, index=None, gate_values=False, inputs_symbol="X") -> Tuple[str, str]:
+    def cgate(op, index=None, gate_values=False, inputs_symbols="x") -> Tuple[str, str]:
         """
         Generate LaTeX for a controlled quantum gate in stick notation.
 
@@ -633,44 +633,7 @@ class QuanTikz:
         )
 
     @staticmethod
-    def build(
-        circuit: qml.QNode, params, inputs, gate_values=False, inputs_symbol="x"
-    ) -> str:
-        """
-        Generate LaTeX for a quantum circuit in stick notation.
-
-        Parameters
-        ----------
-        circuit : qml.QNode
-            The quantum circuit to represent.
-        params : array
-            Weight parameters for the circuit.
-        inputs : array
-            Inputs for the circuit.
-        gate_values : bool, optional
-            Toggle for gate values or theta variables in the representation.
-        inputs_symbol : str, optional
-            Symbols for the inputs in the representation.
-
-        Returns
-        -------
-        str
-            LaTeX string for the circuit.
-        """
-        quantum_tape = qml.workflow.construct_tape(circuit)(
-            params=params, inputs=inputs
-        )
-        if isinstance(inputs_symbol, str) and inputs.size > 1:
-            inputs_symbol = cycle([f"{inputs_symbol}_{i}" for i in range(inputs.size)])
-        elif isinstance(inputs_symbol, list):
-            assert (
-                len(inputs_symbol) == inputs.size
-            ), f"The number of input symbols {len(inputs_symbol)} \
-                must match the number of inputs {inputs.size}."
-            inputs_symbol = cycle(inputs_symbol)
-        else:
-            inputs_symbol = cycle([inputs_symbol])
-
+    def _build_tikz_circuit(quantum_tape, gate_values=False, inputs_symbol="x"):
         circuit_tikz = [
             [QuanTikz.ground_state()] for _ in range(quantum_tape.num_wires)
         ]
@@ -752,6 +715,48 @@ class QuanTikz:
                 else:
                     raise NotImplementedError(">2-wire gates are not supported yet")
 
+    @staticmethod
+    def build(
+        circuit: qml.QNode, params, inputs, gate_values=False, inputs_symbol="x"
+    ) -> str:
+        """
+        Generate LaTeX for a quantum circuit in stick notation.
+
+        Parameters
+        ----------
+        circuit : qml.QNode
+            The quantum circuit to represent.
+        params : array
+            Weight parameters for the circuit.
+        inputs : array
+            Inputs for the circuit.
+        gate_values : bool, optional
+            Toggle for gate values or theta variables in the representation.
+        inputs_symbol : str, optional
+            Symbols for the inputs in the representation.
+
+        Returns
+        -------
+        str
+            LaTeX string for the circuit.
+        """
+        quantum_tape = qml.workflow.construct_tape(circuit)(
+            params=params, inputs=inputs
+        )
+        if isinstance(inputs_symbol, str) and inputs.size > 1:
+            inputs_symbol = cycle([f"{inputs_symbol}_{i}" for i in range(inputs.size)])
+        elif isinstance(inputs_symbol, list):
+            assert (
+                len(inputs_symbol) == inputs.size
+            ), f"The number of input symbols {len(inputs_symbol)} \
+                must match the number of inputs {inputs.size}."
+            inputs_symbol = cycle(inputs_symbol)
+        else:
+            inputs_symbol = cycle([inputs_symbol])
+
+        circuit_tikz = QuanTikz._build_tikz_circuit(
+            quantum_tape, gate_values=gate_values, inputs_symbol=inputs_symbol
+        )
         quantikz_str = ""
 
         # get the maximum length of all wires
@@ -773,5 +778,3 @@ class QuanTikz:
                         quantikz_str += " \\\\\n"
 
         return QuanTikz.TikzFigure(quantikz_str)
-        # get number of layers
-        # iterate layers and get wires
