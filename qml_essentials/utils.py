@@ -524,7 +524,7 @@ class QuanTikz:
             )
 
     @staticmethod
-    def gate(op, index=None, gate_values=False, inputs_symbols="X") -> str:
+    def gate(op, index=None, gate_values=False, inputs_symbol="X") -> str:
         """
         Generate LaTeX for a quantum gate in stick notation.
 
@@ -563,10 +563,10 @@ class QuanTikz:
                     return f"\\gate{{{op_name}(\\theta_{{{index}}})}}"
             # Is gate with input
             elif op.parameters[0].shape == (1,):
-                return f"\\gate{{{op_name}({inputs_symbols})}}"
+                return f"\\gate{{{op_name}({inputs_symbol})}}"
 
     @staticmethod
-    def cgate(op, index=None, gate_values=False, inputs_symbols="X") -> Tuple[str, str]:
+    def cgate(op, index=None, gate_values=False, inputs_symbol="X") -> Tuple[str, str]:
         """
         Generate LaTeX for a controlled quantum gate in stick notation.
 
@@ -604,7 +604,7 @@ class QuanTikz:
                         targ = f"\\gate{{{op_name}(\\theta_{{{index}}})}}"
                 # Is gate with input
                 elif op.parameters[0].shape == (1,):
-                    targ = f"\\gate{{{op_name}({inputs_symbols})}}"
+                    targ = f"\\gate{{{op_name}({inputs_symbol})}}"
         elif op.name in ["CX", "CY", "CZ"]:
             targ = "\\control{}"
 
@@ -633,7 +633,7 @@ class QuanTikz:
 
     @staticmethod
     def build(
-        circuit: qml.QNode, params, inputs, gate_values=False, inputs_symbols="x"
+        circuit: qml.QNode, params, inputs, gate_values=False, inputs_symbol="x"
     ) -> str:
         """
         Generate LaTeX for a quantum circuit in stick notation.
@@ -648,7 +648,7 @@ class QuanTikz:
             Inputs for the circuit.
         gate_values : bool, optional
             Toggle for gate values or theta variables in the representation.
-        inputs_symbols : str, optional
+        inputs_symbol : str, optional
             Symbols for the inputs in the representation.
 
         Returns
@@ -701,7 +701,7 @@ class QuanTikz:
                             op,
                             index=next(index),
                             gate_values=gate_values,
-                            inputs_symbols=inputs_symbols,
+                            inputs_symbol=inputs_symbol,
                         )
                     )
                 # controlled gate?
@@ -712,7 +712,7 @@ class QuanTikz:
                             op,
                             index=next(index),
                             gate_values=gate_values,
-                            inputs_symbols=inputs_symbols,
+                            inputs_symbol=inputs_symbol,
                         )
                     else:
                         ctrl, targ = QuanTikz.cgate(op)

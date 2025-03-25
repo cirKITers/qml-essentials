@@ -294,7 +294,7 @@ def test_draw() -> None:
 
         # No gate values and output_qubit=0
         quantikz_str = model_output_qubit_0.draw(
-            inputs=1.0, figure="tikz", gate_values=False
+            inputs=1.0, figure="tikz", gate_values=False, inputs_symbol="y"
         )
         quantikz_str.export("./tikz_test.tex", full_document=False, mode="a")
 
