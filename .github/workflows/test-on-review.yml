@@ -16,14 +16,14 @@ jobs:
     #     apt update -qq > /dev/null
     #     apt install apt-utils -y -qq > /dev/null
     #     apt remove python3
-    #     apt install python3.11 python3-venv pipx -y
+    #     apt install python3.12 python3-venv pipx -y
     - uses: actions/checkout@v4
     - name: Install poetry
       run: pipx install poetry
-    - name: Set up Python 3.11
+    - name: Set up Python 3.12
       uses: actions/setup-python@v5
       with:
-        python-version: "3.11"
+        python-version: "3.12"
         cache: 'poetry'
     - name: Install dependencies
       run: poetry install --with dev
