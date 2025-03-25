@@ -16,7 +16,7 @@ model = Model(
 
 You can take a look at your model, by simply calling
 ```python
-model.draw(figure=True)
+model.draw(figure="mpl")
 ```
 
 ![Hardware Efficient Ansatz](hae_light.png#only-light)
@@ -161,3 +161,21 @@ Each result is being identified by a md5 hash that is a representation of the fo
 - execution type
 - inputs
 - output qubit(s)
+
+## Quantikz Export
+
+In addition to the printing the model to console and into a figure using matplotlib (thanks to Pennylane); our framework extends this functionality by allowing you to create nice [Quantikz](https://doi.org/10.48550/arXiv.1809.03842) figures that you can embedd in a Latex document :heart_eyes:.
+This can be achieved by 
+
+```python
+fig = model.draw(figure="tikz", inputs_symbols="x", gate_values=False)
+fig.export("tikz_circuit.tex", full_document=True)
+```
+
+![Tikz Circuit](circuit_tikz_light.png#only-light)
+![Tikz Circuit](circuit_tikz_dark.png#only-dark)
+
+Inputs are represented with "x" by default, which can be changed by adjusting the optional parameter `inputs_symbols`.
+If you want to see the actual gate values instead of variables, simply set `gate_values=True` which is also the default option.
+The returned `fig` variable is a `TikzFigure` object that stores the Latex string and allows exporting to a specified file.
+To create a document that can be compiled, simply pass `full_document=True` when calling `export`.

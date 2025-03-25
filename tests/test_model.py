@@ -1,5 +1,7 @@
+import random
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Circuit, Gates
+from qml_essentials.utils import QuanTikz
 import pytest
 import logging
 import inspect
@@ -291,15 +293,93 @@ def test_lightning() -> None:
 
 
 @pytest.mark.smoketest
-def test_draw() -> None:
+def test_basic_draw() -> None:
+    for ansatz in Ansaetze.get_available():
+        # for ansatz in [Ansaetze.Circuit_9]:
+        # No inputs
+        model = Model(
+            n_qubits=4,
+            n_layers=1,
+            circuit_type=ansatz.__name__,
+            initialization="random",
+            output_qubit=-1,
+            remove_zero_encoding=False,
+        )
+
+        if model.params.size >= 4:
+            rest_pi = int((model.params.size - 4) / 2)
+            rest = int(model.params.size - rest_pi - 4)
+
+            test_params = np.array(
+                [
+                    np.pi,  # Exactly pi
+                    0,  # Zero
+                    2 * np.pi,  # denominator=1
+                    np.pi / 2,  # numerator=1
+                ]
+                + [
+                    random.randint(1, 24) * np.pi / random.randint(1, 12)
+                    for _ in range(rest_pi)
+                ]
+                + [np.random.uniform(0, 2 * np.pi) for _ in range(rest)]
+            ).reshape(model.params.shape)
+            model.params = test_params
+        print(ansatz.__name__, "\n")
+        repr(model)
+        _ = model.draw(figure="mpl")
+        _ = model.draw(figure="tikz")
+
+
+@pytest.mark.smoketest
+def test_advanced_draw() -> None:
     model = Model(
-        n_qubits=2,
+        n_qubits=4,
         n_layers=1,
-        circuit_type="Hardware_Efficient",
+        circuit_type="Circuit_19",
+        initialization="random",
+        output_qubit=0,
+        encoding=["RX", "RY"],
+        remove_zero_encoding=False,
     )
 
+    if model.params.size >= 4:
+        rest_pi = int((model.params.size - 4) / 2)
+        rest = int(model.params.size - rest_pi - 4)
+
+        test_params = np.array(
+            [
+                np.pi,  # Exactly pi
+                0,  # Zero
+                2 * np.pi,  # denominator=1
+                np.pi / 2,  # numerator=1
+            ]
+            + [
+                random.randint(1, 24) * np.pi / random.randint(1, 12)
+                for _ in range(rest_pi)
+            ]
+            + [np.random.uniform(0, 2 * np.pi) for _ in range(rest)]
+        ).reshape(model.params.shape)
+        model.params = test_params
     repr(model)
-    _ = model.draw(figure=True)
+    _ = model.draw(figure="mpl")
+
+    # No inputs and gate values
+    quantikz_str = model.draw(figure="tikz", gate_values=True)
+    quantikz_str.export("./tikz_test.tex", full_document=False, mode="w")
+
+    # Inputs and gate values
+    quantikz_str = model.draw(inputs=1.0, figure="tikz", gate_values=True)
+    quantikz_str.export("./tikz_test.tex", full_document=False, mode="a")
+
+    # No gate values, default input symbols
+    quantikz_str = model.draw(figure="tikz", gate_values=False)
+    quantikz_str.export("./tikz_test.tex", full_document=False, mode="a")
+
+    # No gate values, custom input symbols
+    quantikz_str = model.draw(
+        figure="tikz", gate_values=False, inputs_symbols=["x", "y"]
+    )
+    quantikz_str.export("./tikz_test.tex", full_document=False, mode="a")
 
 
 @pytest.mark.smoketest
