@@ -140,7 +140,7 @@ an_coeffs, an_freqs = fourier_tree.get_spectrum(force_mean=True)
 Note that while this takes significantly longer to compute, it gives us the precise coefficients, solely depending on the parameters.
 We can verify this by comparing it to the previous results:
 
-![Model Analytic Coefficients](model_psd_an.png#only-light)
+![Model Analytic Coefficients](model_psd_an_light.png#only-light)
 ![Model Analytic Coefficients](model_psd_an_dark.png#only-dark)
 
 ### Technical Details
@@ -154,3 +154,30 @@ The main idea is then to split each Pauli rotation into sine and cosine product 
 Currently, our implementation supports only one input feature, albeit more are theoretical possible.
 
 
+## Multi-Dimensional Coefficients
+
+The `get_spectrum` method can also be used to calculate the coefficients of a model with multiple input dimensions.
+This feature can be enabled, by explicitly providing an encoding that supports multi-dimensional input, e.g. a list of single encodings (see [*Usage*](usage.md) for details on how encodings are applied). 
+Currently, only the FFT-based method supports this.
+
+```python
+model = Model(
+    n_qubits=4,
+    n_layers=1,
+    circuit_type="Circuit_19",
+    random_seed=1000,
+    encoding=["RX", "RY"]
+)
+
+coeffs, freqs = Coefficients.get_spectrum(model, mfs=1, mts=1
+, shift=True)
+
+psd = Coefficients.get_psd(coeffs)
+```
+
+Using a logarithmic color bar, one obtains the following 2d-spectrum:
+
+![2D Model Coefficients](model_2d_psd_light.png#only-light)
+![2D Model Coefficients](model_2d_psd_dark.png#only-dark)
+
+Note that "X1" refers to the "RX" encoding and "X2" to the "RY" encoding.

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import pennylane as qml
 from pennylane.operation import Operator
 import pennylane.ops.op_math as qml_op
-from typing import List, Tuple, Optional, Any, Dict
+from typing import List, Tuple, Optional, Any, Dict, Union
 
 from qml_essentials.model import Model
 
@@ -74,19 +74,28 @@ class Coefficients:
         # oversampled by nfs
         n_freqs: int = 2 * mfs * model.degree + 1
 
+        start, stop, step = 0, 2 * mts * np.pi, 2 * np.pi / n_freqs
         # Stretch according to the number of frequencies
-        inputs: np.ndarray = np.arange(0, 2 * mts * np.pi, 2 * np.pi / n_freqs) % (
-            2 * np.pi
-        )
+        inputs: np.ndarray = np.arange(start, stop, step) % (2 * np.pi)
+
+        # permute with input dimensionality
+        nd_inputs = np.array(
+            np.meshgrid(*[inputs] * model.n_input_feat)
+        ).T.reshape(-1, model.n_input_feat)
 
         # Output vector is not necessarily the same length as input
-        outputs: np.ndarray = np.zeros((mts * n_freqs))
+        outputs = model(inputs=nd_inputs, **kwargs).reshape(
+            inputs.shape * model.n_input_feat
+        )
 
-        outputs = model(inputs=inputs, **kwargs)
+        coeffs = np.fft.fftn(outputs)
 
-        coeffs = np.fft.fft(outputs)
+        assert (
+            mts * n_freqs,
+        ) * model.n_input_feat == coeffs.shape, f"Expected shape\
+            {(mts * n_freqs,) * model.n_input_feat} but got {coeffs.shape}"
 
-        freqs = np.fft.fftfreq(coeffs.size, mts / coeffs.size)
+        freqs = np.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
 
         # Run the fft and rearrange + normalize the output
         return coeffs / outputs.size, freqs
@@ -113,29 +122,32 @@ class Coefficients:
     @staticmethod
     def evaluate_Fourier_series(
         coefficients: np.ndarray,
-        input: float,
-        frequencies: Optional[np.ndarray] = None,
+        frequencies: np.ndarray,
+        inputs: Union[np.ndarray, list, float],
     ) -> float:
         """
         Evaluate the function value of a Fourier series at one point.
 
         Args:
             coefficients (np.ndarray): Coefficients of the Fourier series.
-            input (float): Point at which to evaluate the function.
-            frequencies (Optional[np.ndarray]): Corresponding frequencies in
-                the form [-n_freq, ..., 0, ..., n_freq]. If None, the number of
-                coefficients is to obtain sequential frequencies.
-
+            frequencies (np.ndarray): Corresponding frequencies.
+            inputs (np.ndarray): Point at which to evaluate the function.
         Returns:
             float: The function value at the input point.
         """
-        n_freq = len(coefficients) // 2
-        if frequencies is None:
-            frequencies = np.arange(-n_freq, n_freq + 1)
+        dims = len(coefficients.shape)
+
+        if not isinstance(inputs, (np.ndarray, list)):
+            inputs = [inputs]
+
+        frequencies = np.stack(np.meshgrid(*[frequencies] * dims)).T.reshape(-1, dims)
+        freq_inputs = np.einsum("...j,j->...", frequencies, inputs)
+        coeffs = coefficients.flatten()
+        freq_inputs = freq_inputs.flatten()
 
         exp = 0.0
-        for omega, c in zip(frequencies, coefficients):
-            exp += c * np.exp(1j * omega * input)
+        for omega_x, c in zip(freq_inputs, coeffs):
+            exp += c * np.exp(1j * omega_x)
 
         return np.real_if_close(exp)
 
