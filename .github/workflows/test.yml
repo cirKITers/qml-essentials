@@ -37,7 +37,7 @@ jobs:
         name: coverage-report
         path: htmlcov/
   test-approved:
-    if: github.event.review.state == 'approved'
+    if: ${{ (github.event.review.state == 'approved') || (github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     steps:
     # - name: Install Act dependencies
