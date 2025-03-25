@@ -240,8 +240,7 @@ def test_lightning() -> None:
 
 @pytest.mark.smoketest
 def test_draw() -> None:
-
-    quantikz_strs = []
+    first = True
     for ansatz in Ansaetze.get_available():
         # for ansatz in [Ansaetze.Circuit_9]:
         # No inputs
@@ -280,22 +279,24 @@ def test_draw() -> None:
             model.params = test_params
         print(ansatz.__name__, "\n")
         repr(model)
-        _ = model.draw(figure=True)
+        _ = model.draw(figure="mpl")
+
         # No inputs and gate values
-        quantikz_str = model.draw(tikz=True, gate_values=True)
-        quantikz_strs.append(quantikz_str)
+        quantikz_str = model.draw(figure="tikz", gate_values=True)
+        quantikz_str.export(
+            "./tikz_test.tex", full_document=False, mode="w" if first else "a"
+        )
+        first = False
+
         # Inputs and gate values
-        quantikz_str = model.draw(inputs=1.0, tikz=True, gate_values=True)
-        quantikz_strs.append(quantikz_str)
+        quantikz_str = model.draw(inputs=1.0, figure="tikz", gate_values=True)
+        quantikz_str.export("./tikz_test.tex", full_document=False, mode="a")
+
         # No gate values and output_qubit=0
         quantikz_str = model_output_qubit_0.draw(
-            inputs=1.0, tikz=True, gate_values=False
+            inputs=1.0, figure="tikz", gate_values=False
         )
-        quantikz_strs.append(quantikz_str)
-
-        # model.draw(figure=True)[0].savefig(f"circuit_{ansatz.__name__}.png")
-
-    QuanTikz.export(quantikz_strs, destination="./tikz_test.tex", full_document=True)
+        quantikz_str.export("./tikz_test.tex", full_document=False, mode="a")
 
 
 @pytest.mark.smoketest
