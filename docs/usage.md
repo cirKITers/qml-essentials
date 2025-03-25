@@ -156,10 +156,13 @@ In addition to the printing the model to console and into a figure using matplot
 This can be achieved by 
 
 ```python
-model.draw(figure="tikz", gate_values=False)
+fig = model.draw(figure="tikz", gate_values=False)
+fig.export("tikz_circuit.tex", full_document=True)
 ```
 
 ![Tikz Circuit](circuit_tikz_light.png#only-light)
 ![Tikz Circuit](circuit_tikz_dark.png#only-dark)
 
 If you want to see the actual gate values instead of variables, simply set `gate_values=True` which is also the default option.
+The returned `fig` variable is a `TikzFigure` object that stores the Latex string and allows exporting to a specified file.
+To create a document that can be compiled, simply pass `full_document=True` when calling `export`.
