@@ -700,7 +700,9 @@ class QuanTikz:
         # iterate layers and get wires
 
     @staticmethod
-    def export(quantikz_strs: str | list[str], destination: str) -> None:
+    def export(
+        quantikz_strs: str | list[str], destination: str, full_document=False
+    ) -> None:
         """
         Export a LaTeX document with a quantum circuit in stick notation.
 
@@ -714,8 +716,9 @@ class QuanTikz:
         if isinstance(quantikz_strs, str):
             quantikz_strs = [quantikz_strs]  # Convert to list if it's a single string
 
-        concat_tikz = "".join(
-            f"""
+        if full_document:
+            concat_tikz = "".join(
+                f"""
 \\begin{{figure}}
     \\centering
     \\begin{{tikzpicture}}
@@ -727,10 +730,9 @@ class QuanTikz:
     \\end{{tikzpicture}}
 \\end{{figure}}
 """
-            for quantikz_str in quantikz_strs
-        )
-
-        latex_code = f"""
+                for quantikz_str in quantikz_strs
+            )
+            latex_code = f"""
 \\documentclass{{article}}
 \\usepackage{{quantikz}}
 \\usepackage{{tikz}}
@@ -740,6 +742,8 @@ class QuanTikz:
 \\begin{{document}}
 {concat_tikz}
 \\end{{document}}"""
+        else:
+            latex_code = "\n\n".join(quantikz_strs)
 
         with open(destination, "w") as f:
             f.write(latex_code)
