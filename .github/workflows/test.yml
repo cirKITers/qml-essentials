@@ -21,7 +21,7 @@ jobs:
       run: poetry install --with dev
     - name: Test with pytest
       run: |
-        pytest -m "not expensive"
+        poetry run pytest -m "not expensive"
   test-approved:
     if: ${{ (github.event.review.state == 'approved') || (github.ref == 'refs/heads/main') }}
     runs-on: self-hosted
