@@ -655,7 +655,6 @@ class QuanTikz:
         quantum_tape = qml.workflow.construct_tape(circuit)(
             params=params, inputs=inputs
         )
-        print(quantum_tape.circuit, "\n")
         circuit_tikz = [
             [QuanTikz.ground_state()] for _ in range(quantum_tape.num_wires)
         ]
