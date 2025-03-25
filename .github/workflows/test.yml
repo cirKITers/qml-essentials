@@ -28,14 +28,7 @@ jobs:
       run: poetry install --with dev
     - name: Test with pytest
       run: |
-        poetry run coverage run -m pytest -m "not expensive"
-        poetry run coverage report -m
-        poetry run coverage html
-    - name: Share coverage report
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-report
-        path: htmlcov/
+        pytest -m "not expensive"
   test-approved:
     if: ${{ (github.event.review.state == 'approved') || (github.ref == 'refs/heads/main') }}
     runs-on: self-hosted
