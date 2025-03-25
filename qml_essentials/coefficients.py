@@ -80,7 +80,7 @@ class Coefficients:
 
         # permute with input dimensionality
         nd_inputs = np.array(
-            np.meshgrid(*[inputs for _ in range(model.n_input_feat)])
+            np.meshgrid(*[inputs] * model.n_input_feat)
         ).T.reshape(-1, model.n_input_feat)
 
         # Output vector is not necessarily the same length as input
