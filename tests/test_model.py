@@ -295,7 +295,7 @@ def test_draw() -> None:
 
         # model.draw(figure=True)[0].savefig(f"circuit_{ansatz.__name__}.png")
 
-    QuanTikz.export(quantikz_strs, destination=f"./tikz_test.tex")
+    QuanTikz.export(quantikz_strs, destination="./tikz_test.tex", full_document=True)
 
 
 @pytest.mark.smoketest
