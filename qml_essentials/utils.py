@@ -417,6 +417,64 @@ class PauliCircuit:
 
 
 class QuanTikz:
+    class TikzFigure:
+        def __init__(self, quantikz_str: str):
+            self.quantikz_str = quantikz_str
+
+        def __repr__(self):
+            return self.quantikz_str
+
+        def __str__(self):
+            return self.quantikz_str
+
+        def wrap_figure(self):
+            """
+            Wraps the quantikz string in a LaTeX figure environment.
+
+            Returns:
+                str: A formatted LaTeX string representing the TikZ figure containing
+                the quantum circuit diagram.
+            """
+            return f"""
+\\begin{{figure}}
+    \\centering
+    \\begin{{tikzpicture}}
+        \\node[scale=0.85] {{
+            \\begin{{quantikz}}
+                {self.quantikz_str}
+            \\end{{quantikz}}
+        }};
+    \\end{{tikzpicture}}
+\\end{{figure}}"""
+
+        def export(self, destination: str, full_document=False, mode="w") -> None:
+            """
+            Export a LaTeX document with a quantum circuit in stick notation.
+
+            Parameters
+            ----------
+            quantikz_strs : str or list[str]
+                LaTeX string for the quantum circuit or a list of LaTeX strings.
+            destination : str
+                Path to the destination file.
+            """
+            if full_document:
+                latex_code = f"""
+\\documentclass{{article}}
+\\usepackage{{quantikz}}
+\\usepackage{{tikz}}
+\\usetikzlibrary{{quantikz2}}
+\\usepackage{{quantikz}}
+\\usepackage[a3paper, landscape, margin=0.5cm]{{geometry}}
+\\begin{{document}}
+{self.wrap_figure()}
+\\end{{document}}"""
+            else:
+                latex_code = self.quantikz_str + "\n"
+
+            with open(destination, mode) as f:
+                f.write(latex_code)
+
     @staticmethod
     def ground_state() -> str:
         """
@@ -695,55 +753,6 @@ class QuanTikz:
                     if wire_idx < len(circuit_tikz) - 1:
                         quantikz_str += " \\\\\n"
 
-        return quantikz_str
+        return QuanTikz.TikzFigure(quantikz_str)
         # get number of layers
         # iterate layers and get wires
-
-    @staticmethod
-    def export(
-        quantikz_strs: str | list[str], destination: str, full_document=False
-    ) -> None:
-        """
-        Export a LaTeX document with a quantum circuit in stick notation.
-
-        Parameters
-        ----------
-        quantikz_strs : str or list[str]
-            LaTeX string for the quantum circuit or a list of LaTeX strings.
-        destination : str
-            Path to the destination file.
-        """
-        if isinstance(quantikz_strs, str):
-            quantikz_strs = [quantikz_strs]  # Convert to list if it's a single string
-
-        if full_document:
-            concat_tikz = "".join(
-                f"""
-\\begin{{figure}}
-    \\centering
-    \\begin{{tikzpicture}}
-        \\node[scale=0.85] {{
-            \\begin{{quantikz}}
-                {quantikz_str}
-            \\end{{quantikz}}
-        }};
-    \\end{{tikzpicture}}
-\\end{{figure}}
-"""
-                for quantikz_str in quantikz_strs
-            )
-            latex_code = f"""
-\\documentclass{{article}}
-\\usepackage{{quantikz}}
-\\usepackage{{tikz}}
-\\usetikzlibrary{{quantikz2}}
-\\usepackage{{quantikz}}
-\\usepackage[a3paper, landscape, margin=0.5cm]{{geometry}}
-\\begin{{document}}
-{concat_tikz}
-\\end{{document}}"""
-        else:
-            latex_code = "\n\n".join(quantikz_strs)
-
-        with open(destination, "w") as f:
-            f.write(latex_code)
