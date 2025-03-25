@@ -537,6 +537,8 @@ class QuanTikz:
             Gate index in the circuit.
         gate_values : bool, optional
             Include gate values in the representation.
+        inputs_symbols : str, optional
+            Symbols for the inputs in the representation.
 
         Returns
         -------
@@ -564,7 +566,7 @@ class QuanTikz:
                     return f"\\gate{{{op_name}(\\theta_{{{index}}})}}"
             # Is gate with input
             elif op.parameters[0].shape == (1,):
-                return f"\\gate{{{op_name}({inputs_symbol})}}"
+                return f"\\gate{{{op_name}({inputs_symbols})}}"
 
     @staticmethod
     def cgate(op, index=None, gate_values=False, inputs_symbols="x") -> Tuple[str, str]:
@@ -579,6 +581,8 @@ class QuanTikz:
             Gate index in the circuit.
         gate_values : bool, optional
             Include gate values in the representation.
+        inputs_symbols : str, optional
+            Symbols for the inputs in the representation.
 
         Returns
         -------
@@ -605,7 +609,7 @@ class QuanTikz:
                         targ = f"\\gate{{{op_name}(\\theta_{{{index}}})}}"
                 # Is gate with input
                 elif op.parameters[0].shape == (1,):
-                    targ = f"\\gate{{{op_name}({inputs_symbol})}}"
+                    targ = f"\\gate{{{op_name}({inputs_symbols})}}"
         elif op.name in ["CX", "CY", "CZ"]:
             targ = "\\control{}"
 
@@ -633,7 +637,31 @@ class QuanTikz:
         )
 
     @staticmethod
-    def _build_tikz_circuit(quantum_tape, gate_values=False, inputs_symbol="x"):
+    def _build_tikz_circuit(quantum_tape, gate_values=False, inputs_symbols="x"):
+        """
+        Builds a LaTeX representation of a quantum circuit in TikZ format.
+
+        This static method constructs a TikZ circuit diagram from a given quantum
+        tape. It processes the operations in the tape, including gates, controlled
+        gates, barriers, and measurements. The resulting structure is a list of
+        LaTeX strings, each representing a wire in the circuit.
+
+        Parameters
+        ----------
+        quantum_tape : QuantumTape
+            The quantum tape containing the operations of the circuit.
+        gate_values : bool, optional
+            If True, include gate parameter values in the representation.
+        inputs_symbols : str, optional
+            Symbols to represent the inputs in the circuit.
+
+        Returns
+        -------
+        circuit_tikz : list of list of str
+            A nested list where each inner list contains LaTeX strings representing
+            the operations on a single wire of the circuit.
+        """
+
         circuit_tikz = [
             [QuanTikz.ground_state()] for _ in range(quantum_tape.num_wires)
         ]
@@ -676,7 +704,7 @@ class QuanTikz:
                             op,
                             index=next(index),
                             gate_values=gate_values,
-                            inputs_symbol=next(inputs_symbol),
+                            inputs_symbols=next(inputs_symbols),
                         )
                     )
                 # controlled gate?
@@ -687,7 +715,7 @@ class QuanTikz:
                             op,
                             index=next(index),
                             gate_values=gate_values,
-                            inputs_symbol=next(inputs_symbol),
+                            inputs_symbols=next(inputs_symbols),
                         )
                     else:
                         ctrl, targ = QuanTikz.cgate(op)
@@ -715,9 +743,11 @@ class QuanTikz:
                 else:
                     raise NotImplementedError(">2-wire gates are not supported yet")
 
+        return circuit_tikz
+
     @staticmethod
     def build(
-        circuit: qml.QNode, params, inputs, gate_values=False, inputs_symbol="x"
+        circuit: qml.QNode, params, inputs, gate_values=False, inputs_symbols="x"
     ) -> str:
         """
         Generate LaTeX for a quantum circuit in stick notation.
@@ -732,7 +762,7 @@ class QuanTikz:
             Inputs for the circuit.
         gate_values : bool, optional
             Toggle for gate values or theta variables in the representation.
-        inputs_symbol : str, optional
+        inputs_symbols : str, optional
             Symbols for the inputs in the representation.
 
         Returns
@@ -743,19 +773,21 @@ class QuanTikz:
         quantum_tape = qml.workflow.construct_tape(circuit)(
             params=params, inputs=inputs
         )
-        if isinstance(inputs_symbol, str) and inputs.size > 1:
-            inputs_symbol = cycle([f"{inputs_symbol}_{i}" for i in range(inputs.size)])
-        elif isinstance(inputs_symbol, list):
+        if isinstance(inputs_symbols, str) and inputs.size > 1:
+            inputs_symbols = cycle(
+                [f"{inputs_symbols}_{i}" for i in range(inputs.size)]
+            )
+        elif isinstance(inputs_symbols, list):
             assert (
-                len(inputs_symbol) == inputs.size
-            ), f"The number of input symbols {len(inputs_symbol)} \
+                len(inputs_symbols) == inputs.size
+            ), f"The number of input symbols {len(inputs_symbols)} \
                 must match the number of inputs {inputs.size}."
-            inputs_symbol = cycle(inputs_symbol)
+            inputs_symbols = cycle(inputs_symbols)
         else:
-            inputs_symbol = cycle([inputs_symbol])
+            inputs_symbols = cycle([inputs_symbols])
 
         circuit_tikz = QuanTikz._build_tikz_circuit(
-            quantum_tape, gate_values=gate_values, inputs_symbol=inputs_symbol
+            quantum_tape, gate_values=gate_values, inputs_symbols=inputs_symbols
         )
         quantikz_str = ""
 

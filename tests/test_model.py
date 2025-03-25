@@ -384,7 +384,7 @@ def test_advanced_draw() -> None:
 
     # No gate values, custom input symbols
     quantikz_str = model.draw(
-        figure="tikz", gate_values=False, inputs_symbol=["x", "y"]
+        figure="tikz", gate_values=False, inputs_symbols=["x", "y"]
     )
     quantikz_str.export("./tikz_test.tex", full_document=False, mode="a")
 
