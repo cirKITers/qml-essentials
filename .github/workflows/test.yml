@@ -38,7 +38,7 @@ jobs:
       run: poetry install --with dev
     - name: Test with pytest
       run: |
-        poetry run coverage run -m pytest -n 3
+        poetry run coverage run -m pytest
         poetry run coverage report -m
         poetry run coverage html
     - name: Share coverage report
