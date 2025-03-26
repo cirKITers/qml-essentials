@@ -21,7 +21,7 @@ jobs:
     needs: [test, quality, documentation]
     name: Release
     if: github.ref == 'refs/heads/main'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
       with:
