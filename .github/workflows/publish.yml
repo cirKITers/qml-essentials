@@ -21,7 +21,7 @@ jobs:
     needs: [test, quality, documentation]
     name: Release
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
     - uses: actions/checkout@v4
       with:
@@ -29,10 +29,10 @@ jobs:
         ssh-key: ${{ secrets.DEPLOY_KEY }}
     - name: Install poetry
       run: pipx install poetry
-    - name: Set up Python 3.11
+    - name: Set up Python 3.12
       uses: actions/setup-python@v5
       with:
-        python-version: "3.11"
+        python-version: "3.12"
         cache: 'poetry'
     - name: Compare tag and version
       run: |
