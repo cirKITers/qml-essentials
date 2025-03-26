@@ -45,7 +45,7 @@ def test_coefficients() -> None:
             output_qubit=test_case["output_qubit"],
         )
 
-        coeffs, _ = Coefficients.get_spectrum(model)
+        coeffs, freqs = Coefficients.get_spectrum(model)
 
         assert len(coeffs) == model.degree * 2 + 1, "Wrong number of coefficients"
         assert np.isclose(
@@ -63,13 +63,44 @@ def test_coefficients() -> None:
             exp_model = model(params=None, inputs=ref_input)
 
             exp_fourier = Coefficients.evaluate_Fourier_series(
-                coefficients=np.fft.fftshift(coeffs),
-                input=ref_input,
+                coefficients=coeffs,
+                frequencies=freqs,
+                inputs=ref_input,
             )
 
             assert np.isclose(
                 exp_model, exp_fourier, atol=1.0e-5
             ), "Fourier series does not match model expectation"
+
+
+@pytest.mark.unittest
+def test_multi_dim_input() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        output_qubit=-1,
+        encoding=["RX", "RX"],
+    )
+
+    coeffs, freqs = Coefficients.get_spectrum(model)
+
+    assert (
+        coeffs.shape == (model.degree * 2 + 1,) * model.n_input_feat
+    ), f"Wrong shape of coefficients: {coeffs.shape}, \
+        expected {(model.degree*2+1,)*model.n_input_feat}"
+
+    ref_input = [1, 2]
+    exp_model = model(params=None, inputs=ref_input, force_mean=True)[0]
+    exp_fourier = Coefficients.evaluate_Fourier_series(
+        coefficients=coeffs,
+        frequencies=freqs,
+        inputs=ref_input,
+    )
+
+    assert np.isclose(
+        exp_model, exp_fourier, atol=1.0e-5
+    ), "Fourier series does not match model expectation"
 
 
 @pytest.mark.unittest
@@ -125,13 +156,15 @@ def test_coefficients_tree() -> None:
 
         for ref_input in reference_inputs:
             exp_fourier_fft = Coefficients.evaluate_Fourier_series(
-                coefficients=fft_coeffs, input=ref_input, frequencies=fft_freqs
+                coefficients=fft_coeffs,
+                frequencies=fft_freqs,
+                inputs=ref_input,
             )
 
             exp_fourier = Coefficients.evaluate_Fourier_series(
                 coefficients=analytical_coeffs[0],
-                input=ref_input,
                 frequencies=analytical_freqs[0],
+                inputs=ref_input,
             )
 
             exp_tree = coeff_tree(inputs=ref_input)

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "qml-essentials"
-version = "0.1.27"
+version = "0.1.28"
 description = "A toolbox to make working with QML models easier."
 authors = ["Melvin Strobl <melvin.strobl@kit.edu>", "Maja Franz <maja.franz@oth-regensburg.de>"]
 maintainers = ["Melvin Strobl <melvin.strobl@kit.edu>"]
@@ -26,6 +26,7 @@ pre-commit = "^4.0.1"
 coverage = "^7.6.10"
 licensecheck = "^2024.3"
 matplotlib = "^3.10.0"
+pytest-xdist = "^3.6.1"
 
 [tool.poetry.group.docs]
 optional = true

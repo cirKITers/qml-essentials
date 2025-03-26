@@ -11,16 +11,16 @@ permissions:
   contents: write
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: github.ref != 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - name: Install poetry
         run: pipx install poetry
-      - name: Set up Python 3.11
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: 'poetry'
       - name: Install dependencies
         run: poetry install --with docs
@@ -35,7 +35,7 @@ jobs:
       - name: Build Docs
         run: poetry run mkdocs build
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
@@ -45,10 +45,10 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
       - name: Install poetry
         run: pipx install poetry
-      - name: Set up Python 3.11
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: 'poetry'
       - name: Install dependencies
         run: poetry install --with docs

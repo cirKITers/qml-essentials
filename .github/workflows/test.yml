@@ -7,59 +7,38 @@ permissions:
   contents: write
 jobs:
   test-created:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
-    # - name: Install Act dependencies
-    #   if: ${{ env.ACT }}
-    #   run: |
-    #     apt update -qq > /dev/null
-    #     apt install apt-utils -y -qq > /dev/null
-    #     apt remove python3
-    #     apt install python3.11 python3-venv pipx -y
     - uses: actions/checkout@v4
     - name: Install poetry
       run: pipx install poetry
-    - name: Set up Python 3.11
+    - name: Set up Python 3.12
       uses: actions/setup-python@v5
       with:
-        python-version: "3.11"
+        python-version: "3.12"
         cache: 'poetry'
     - name: Install dependencies
       run: poetry install --with dev
     - name: Test with pytest
       run: |
-        poetry run coverage run -m pytest -m "not expensive"
-        poetry run coverage report -m
-        poetry run coverage html
-    - name: Share coverage report
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-report
-        path: htmlcov/
+        poetry run pytest -m "not expensive" -n 3
   test-approved:
-    if: github.event.review.state == 'approved'
-    runs-on: ubuntu-latest
+    if: ${{ (github.event.review.state == 'approved') || (github.ref == 'refs/heads/main') }}
+    runs-on: self-hosted
     steps:
-    # - name: Install Act dependencies
-    #   if: ${{ env.ACT }}
-    #   run: |
-    #     apt update -qq > /dev/null
-    #     apt install apt-utils -y -qq > /dev/null
-    #     apt remove python3
-    #     apt install python3.11 python3-venv pipx -y
     - uses: actions/checkout@v4
     - name: Install poetry
       run: pipx install poetry
-    - name: Set up Python 3.11
+    - name: Set up Python 3.12
       uses: actions/setup-python@v5
       with:
-        python-version: "3.11"
+        python-version: "3.12"
         cache: 'poetry'
     - name: Install dependencies
       run: poetry install --with dev
     - name: Test with pytest
       run: |
-        poetry run coverage run -m pytest
+        poetry run coverage run -m pytest -n 3
         poetry run coverage report -m
         poetry run coverage html
     - name: Share coverage report
