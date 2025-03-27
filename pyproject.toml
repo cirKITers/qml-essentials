@@ -23,8 +23,8 @@ black = "^24.10.0"
 pytest = "^8.3.4"
 flake8 = "^7.1.1"
 pre-commit = "^4.0.1"
-coverage = "^7.6.10"
-licensecheck = "^2024.3"
+pytest-cov = "^6.0.0"
+licensecheck = "^2025.1.0"
 matplotlib = "^3.10.0"
 pytest-xdist = "^3.6.1"
 
@@ -37,6 +37,9 @@ mkdocs-material = {extras = ["imaging"], version = "^9.6.4"}
 mkdocstrings-python = "^1.15.0"
 markdown-include = "^0.8.1"
 ipykernel = "^6.29.5"
+
+[tool.licensecheck]
+fail_packages = ["typing_extensions"]
 
 [build-system]
 requires = ["poetry-core"]
