@@ -41,3 +41,16 @@ ent_cap = Entanglement.bell_measurements(
     model, n_samples=1000, seed=1000
 )
 ```
+
+## Relative Entropy
+
+While calculating entanglement using the Meyer-Wallach or Bell-Measurements method works great for noiseless circuits, it won't result in the correct values when being used together with incoherent noise.
+To account for this, you can use the relative entropy method as follows: 
+
+```python
+ent_cap = Entanglement.relative_entropy(
+    model, n_samples=1000, n_sigmas=10, seed=1000, noise_params={"BitFlip": 0.1}
+)
+```
+
+Note that this method takes an additional parameter `n_sigmas`, which is the number of density matrices of the next separable state that we use to compare against.
