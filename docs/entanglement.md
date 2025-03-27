@@ -56,4 +56,6 @@ ent_cap = Entanglement.relative_entropy(
 Note that this method takes an additional parameter `n_sigmas`, which is the number of density matrices of the next separable state that we use for comparison.
 The runtime scales with `n_sigmas`$\times$`n_samples`.
 
+Internally, we compare the states, obtained from the PQC, against those from a [GHZ state](https://en.wikipedia.org/wiki/Greenberger%E2%80%93Horne%E2%80%93Zeilinger_state) of the same size (which we consider the next separable state).
+This approach is explained in detail in [this paper](https://doi.org/10.48550/arXiv.quant-ph/0504163) and illustrated in the following figure:
 ![Relative Entropy](rel-entropy.svg)
