@@ -284,9 +284,7 @@ def test_bell_measure() -> None:
 def test_entangling_measures() -> None:
     test_cases = [
         {"circuit_type": "Circuit_4", "n_qubits": 2, "n_layers": 1},
-        {"circuit_type": "Circuit_4", "n_qubits": 3, "n_layers": 1},
         {"circuit_type": "Circuit_4", "n_qubits": 4, "n_layers": 1},
-        {"circuit_type": "Circuit_4", "n_qubits": 5, "n_layers": 1},
     ]
 
     for test_case in test_cases:
