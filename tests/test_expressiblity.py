@@ -141,7 +141,7 @@ def test_expressibility_1l() -> None:
         _, y_haar = Expressibility.haar_integral(
             n_qubits=test_case["n_qubits"],
             n_bins=75,
-            cache=False,
+            cache=True,
             scale=False,
         )
 
@@ -228,7 +228,7 @@ def test_expressibility_3l() -> None:
         _, y_haar = Expressibility.haar_integral(
             n_qubits=test_case["n_qubits"],
             n_bins=75,
-            cache=False,
+            cache=True,
             scale=False,
         )
 
