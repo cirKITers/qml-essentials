@@ -362,3 +362,41 @@ def test_relative_entropy() -> None:
         0.0 < separable_ent < entangled_ent < ghz_ent == 1.0
     ), "Order of entanglement should be 0 < Circuit_1 < Strongly Entangling < GHZ = 1,\
         but got values 0 < {separable_ent} < {entangled_ent} < {ghz_ent} < 1"
+
+
+@pytest.mark.smoketest
+@pytest.mark.expensive
+def test_relative_entropy_order() -> None:
+
+    circuits = [
+        "Circuit_1",
+        "Circuit_16",
+        "Circuit_19",
+        "Circuit_15",
+        "Strongly_Entangling",
+    ]
+
+    ghz_model = Model(
+        n_qubits=3,
+        n_layers=1,
+        circuit_type="GHZ",
+        data_reupload=False,
+    )
+
+    entanglement = [0.0]
+    for circuit in circuits:
+        model = Model(n_qubits=3, n_layers=1, circuit_type=circuit)
+
+        ent = Entanglement.relative_entropy(
+            model, n_samples=50, n_sigmas=100, seed=1000, cache=False, scale=False
+        )
+        entanglement.append(ent)
+
+    ghz_entanglement = Entanglement.relative_entropy(
+        ghz_model, n_samples=1, n_sigmas=100, seed=1000, cache=False, scale=False
+    )
+    entanglement.append(ghz_entanglement)
+
+    assert all(
+        entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
+    ), "Order of entanglement should be {circuits}."
