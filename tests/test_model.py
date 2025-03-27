@@ -143,6 +143,28 @@ def test_parameters() -> None:
             str(model)
 
 
+@pytest.mark.unittest
+def test_batching() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+
+    n_samples = 2
+    model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
+    params = model.params
+
+    res = np.zeros((n_samples, 4, 4))
+    for i in range(n_samples):
+        res[i] = model(params=params[:, :, i], execution_type="density")
+
+    assert res.shape == (n_samples, 4, 4), "Shape of batching is not correct"
+    assert (
+        res == model(params=params, execution_type="density")
+    ).all(), "Content of batching is not equal"
+
+
 @pytest.mark.smoketest
 def test_state_preparation() -> None:
     test_cases = [
