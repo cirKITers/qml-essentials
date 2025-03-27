@@ -182,6 +182,17 @@ jupyter = ["ipython (>=7.8.0)", "tokenize-rt (>=3.2.0)"]
 uvloop = ["uvloop (>=0.15.2)"]
 
 [[package]]
+name = "boolean-py"
+version = "4.0"
+description = "Define boolean algebras, create and parse boolean expressions and create custom boolean DSL."
+optional = false
+python-versions = "*"
+files = [
+    {file = "boolean.py-4.0-py3-none-any.whl", hash = "sha256:2876f2051d7d6394a531d82dc6eb407faa0b01a0a0b3083817ccd7323b8d96bd"},
+    {file = "boolean.py-4.0.tar.gz", hash = "sha256:17b9a181630e43dde1851d42bef546d616d5d9b4480357514597e78b203d06e4"},
+]
+
+[[package]]
 name = "cachetools"
 version = "5.5.2"
 description = "Extensible memoizing collections and decorators"
@@ -1254,28 +1265,47 @@ files = [
 ]
 
 [[package]]
-name = "licensecheck"
-version = "2024.3"
-description = "Output the licenses used by dependencies and check if these are compatible with the project license"
+name = "license-expression"
+version = "30.4.1"
+description = "license-expression is a comprehensive utility library to parse, compare, simplify and normalize license expressions (such as SPDX license expressions) using boolean logic."
 optional = false
-python-versions = "<4.0,>=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "licensecheck-2024.3-py3-none-any.whl", hash = "sha256:0baef4c1865e0325a35ff25ed12a0c7094035b7dcfbab9a1abfe43d7735adebe"},
-    {file = "licensecheck-2024.3.tar.gz", hash = "sha256:e838e1c87a7ede553df376ad35a69d7c4b02676df0fba9dd1c6a6866eb0e0ee5"},
+    {file = "license_expression-30.4.1-py3-none-any.whl", hash = "sha256:679646bc3261a17690494a3e1cada446e5ee342dbd87dcfa4a0c24cc5dce13ee"},
+    {file = "license_expression-30.4.1.tar.gz", hash = "sha256:9f02105f9e0fcecba6a85dfbbed7d94ea1c3a70cf23ddbfb5adf3438a6f6fce0"},
 ]
 
 [package.dependencies]
-appdirs = ">=1.4.4,<2"
-fhconfparser = ">=2024.1,<2026"
-loguru = ">=0.7.2,<2"
-markdown = ">=3.6,<4"
-packaging = ">=24.0,<25"
-requests = ">=2.31.0,<3"
-requests-cache = ">=1.2.0,<2"
-requirements-parser = ">=0.11.0,<2"
-rich = ">=13.7.1,<14"
-tomli = ">=2.0.1,<3"
-uv = ">=0.3.3,<2"
+"boolean.py" = ">=4.0"
+
+[package.extras]
+docs = ["Sphinx (>=5.0.2)", "doc8 (>=0.11.2)", "sphinx-autobuild", "sphinx-copybutton", "sphinx-reredirects (>=0.1.2)", "sphinx-rtd-dark-mode (>=1.3.0)", "sphinx-rtd-theme (>=1.0.0)", "sphinxcontrib-apidoc (>=0.4.0)"]
+testing = ["black", "isort", "pytest (>=6,!=7.0.0)", "pytest-xdist (>=2)", "twine"]
+
+[[package]]
+name = "licensecheck"
+version = "2025.1.0"
+description = "Output the licenses used by dependencies and check if these are compatible with the project license"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "licensecheck-2025.1.0-py3-none-any.whl", hash = "sha256:eb20131cd8f877e5396958fd7b00cdb2225436c37a59dba4cf36d36079133a17"},
+    {file = "licensecheck-2025.1.0.tar.gz", hash = "sha256:411a1d81606b8be695794c1e7e79cc899b51fe5c501164155361cd2d6f3c5969"},
+]
+
+[package.dependencies]
+appdirs = ">=1.4.4"
+fhconfparser = ">=2024.1"
+license-expression = ">=30.4.1"
+loguru = ">=0.7.3"
+markdown = ">=3.7"
+packaging = ">=24.2"
+requests = ">=2.32.3"
+requests-cache = ">=1.2.1"
+requirements-parser = ">=0.11.0"
+rich = ">=13.9.4"
+tomli = ">=2.2.1"
+uv = ">=0.6.8"
 
 [[package]]
 name = "loguru"
@@ -3034,4 +3064,4 @@ dev = ["black (>=19.3b0)", "pytest (>=4.6.2)"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.13"
-content-hash = "59689ac29308f7c365ac87a23660adb0fa180a9fccd3050d82c58c2defd1a9c2"
+content-hash = "e63b774c857d468312aa5b229c44389e24d0441fda254120a2de48773fb5aa36"
