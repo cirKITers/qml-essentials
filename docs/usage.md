@@ -19,8 +19,8 @@ You can take a look at your model, by simply calling
 model.draw(figure="mpl")
 ```
 
-![Hardware Efficient Ansatz](hae_light.png#only-light)
-![Hardware Efficient Ansatz](hae_dark.png#only-dark)
+![Hardware Efficient Ansatz](figures/hae_light.png#only-light)
+![Hardware Efficient Ansatz](figures/hae_dark.png#only-dark)
 
 Looks good to you? :eyes: Head over to the [*Training*](training.md) page for **getting started** with an easy example :rocket:
 
@@ -172,8 +172,8 @@ fig = model.draw(figure="tikz", inputs_symbols="x", gate_values=False)
 fig.export("tikz_circuit.tex", full_document=True)
 ```
 
-![Tikz Circuit](circuit_tikz_light.png#only-light)
-![Tikz Circuit](circuit_tikz_dark.png#only-dark)
+![Tikz Circuit](figures/circuit_tikz_light.png#only-light)
+![Tikz Circuit](figures/circuit_tikz_dark.png#only-dark)
 
 Inputs are represented with "x" by default, which can be changed by adjusting the optional parameter `inputs_symbols`.
 If you want to see the actual gate values instead of variables, simply set `gate_values=True` which is also the default option.

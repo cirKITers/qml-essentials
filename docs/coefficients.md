@@ -57,16 +57,16 @@ X_freq_shift = np.fft.fftshift(X_freq)
 ```
 Note that calling `np.fft.fftshift` is not required from a technical point of view, but makes our spectrum nicely zero-centered and projected correctly.
 
-![Model Fct Spectr](model_fct_spectr_light.png#only-light)
-![Model Fct Spectr](model_fct_spectr_dark.png#only-dark)
+![Model Fct Spectr](figures/model_fct_spectr_light.png#only-light)
+![Model Fct Spectr](figures/model_fct_spectr_dark.png#only-dark)
 
 The same can be done with our framework, with a neat one-liner:
 ```python
 X_shift, X_freq_shift = Coefficients.get_spectrum(model_fct, shift=True)
 ```
 
-![Model Fct Spectr Ours](model_fct_spectr_ours_light.png#only-light)
-![Model Fct Spectr Ours](model_fct_spectr_ours_dark.png#only-dark)
+![Model Fct Spectr Ours](figures/model_fct_spectr_ours_light.png#only-light)
+![Model Fct Spectr Ours](figures/model_fct_spectr_ours_dark.png#only-dark)
 
 Note, that applying the shift can be controlled with the optional `shift` argument.
 
@@ -87,8 +87,8 @@ Therefore, two additional arguments exist in the `get_spectrum` method:
 X_shift, X_freq_shift = Coefficients.get_spectrum(model_fct, mfs=2, mts=3, shift=True)
 ```
 
-![Model Fct Spectr OS](model_fct_spectr_os_light.png#only-light)
-![Model Fct Spectr OS](model_fct_spectr_os_dark.png#only-dark)
+![Model Fct Spectr OS](figures/model_fct_spectr_os_light.png#only-light)
+![Model Fct Spectr OS](figures/model_fct_spectr_os_dark.png#only-dark)
 
 Note that, as the frequencies change with the `mts` argument, we have to take that into account when calculating the frequencies with the last call.
 
@@ -121,8 +121,8 @@ coeffs, freqs = Coefficients.get_spectrum(model, mfs=1, mts=1, shift=True)
 psd = Coefficients.get_psd(coeffs)
 ```
 
-![Model PSD](model_psd_light.png#only-light)
-![Model PSD](model_psd_dark.png#only-dark)
+![Model PSD](figures/model_psd_light.png#only-light)
+![Model PSD](figures/model_psd_dark.png#only-dark)
 
 ## Analytic Coefficients
 
@@ -140,8 +140,8 @@ an_coeffs, an_freqs = fourier_tree.get_spectrum(force_mean=True)
 Note that while this takes significantly longer to compute, it gives us the precise coefficients, solely depending on the parameters.
 We can verify this by comparing it to the previous results:
 
-![Model Analytic Coefficients](model_psd_an_light.png#only-light)
-![Model Analytic Coefficients](model_psd_an_dark.png#only-dark)
+![Model Analytic Coefficients](figures/model_psd_an_light.png#only-light)
+![Model Analytic Coefficients](figures/model_psd_an_dark.png#only-dark)
 
 ### Technical Details
 
@@ -177,7 +177,7 @@ psd = Coefficients.get_psd(coeffs)
 
 Using a logarithmic color bar, one obtains the following 2d-spectrum:
 
-![2D Model Coefficients](model_2d_psd_light.png#only-light)
-![2D Model Coefficients](model_2d_psd_dark.png#only-dark)
+![2D Model Coefficients](figures/model_2d_psd_light.png#only-light)
+![2D Model Coefficients](figures/model_2d_psd_dark.png#only-dark)
 
 Note that "X1" refers to the "RX" encoding and "X2" to the "RY" encoding.
