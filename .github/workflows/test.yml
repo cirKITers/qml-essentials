@@ -10,6 +10,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   test-created:
+    if: ${{ (github.actor != 'github-actions[bot]') }}
     runs-on: self-hosted
     steps:
     - uses: actions/checkout@v4
@@ -25,7 +26,7 @@ jobs:
     - name: Test with pytest
       run: poetry run pytest --cov=qml_essentials --dist load -m "not expensive" -n auto
   test-approved:
-    if: ${{ (github.event.review.state == 'approved') || (github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]') }}
+    if: ${{ (github.event.review.state == 'approved') || ((github.ref == 'refs/heads/main') && (github.actor != 'github-actions[bot]')) }}
     runs-on: self-hosted
     steps:
     - uses: actions/checkout@v4
