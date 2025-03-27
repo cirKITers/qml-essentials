@@ -330,7 +330,6 @@ def test_scaling() -> None:
 
 
 @pytest.mark.smoketest
-@pytest.mark.expensive
 def test_relative_entropy() -> None:
     separable_model = Model(
         n_qubits=3,
