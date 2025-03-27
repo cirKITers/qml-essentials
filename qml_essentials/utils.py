@@ -10,6 +10,7 @@ import pennylane.ops.op_math as qml_op
 from pennylane.drawer import drawable_layers, tape_text
 from fractions import Fraction
 from itertools import cycle
+from scipy.linalg import logm
 
 CLIFFORD_GATES = (
     qml.PauliX,
@@ -31,6 +32,18 @@ PAULI_ROTATION_GATES = (
 )
 
 SKIPPABLE_OPERATIONS = (qml.Barrier,)
+
+
+def logm_v(A, **kwargs):
+    if len(A.shape) == 2:
+        return logm(A, **kwargs)
+    elif len(A.shape) == 3:
+        AV = np.zeros(A.shape, dtype=A.dtype)
+        for i in range(A.shape[0]):
+            AV[i] = logm(A[i], **kwargs)
+        return AV
+    else:
+        raise NotImplementedError("Unsupported shape of input matrix")
 
 
 class PauliCircuit:

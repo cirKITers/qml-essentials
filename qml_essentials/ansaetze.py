@@ -438,6 +438,7 @@ class Ansaetze:
             Ansaetze.No_Entangling,
             Ansaetze.Strongly_Entangling,
             Ansaetze.Hardware_Efficient,
+            Ansaetze.GHZ,
         ]
 
     class No_Ansatz(Circuit):
@@ -452,6 +453,22 @@ class Ansaetze:
         @staticmethod
         def build(w: np.ndarray, n_qubits: int, noise_params=None):
             pass
+
+    class GHZ(Circuit):
+        @staticmethod
+        def n_params_per_layer(n_qubits: int) -> int:
+            return 0
+
+        @staticmethod
+        def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
+            return None
+
+        @staticmethod
+        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+            Gates.H(0, noise_params=noise_params)
+
+            for q in range(n_qubits - 1):
+                Gates.CX([q, q + 1], noise_params=noise_params)
 
     class Hardware_Efficient(Circuit):
         @staticmethod

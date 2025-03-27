@@ -92,7 +92,7 @@ If you want to visualize zero-valued encoding gates in the model, set `remove_ze
 
 ## State Preparation
 
-While the encoding is applied in each data-reuploading step, the state preparation is only applied at the beginning of the circuit, but after the `StatePreparation` noise (see [below](#Noise) for details).
+While the encoding is applied in each data-reuploading step, the state preparation is only applied at the beginning of the circuit, but after the `StatePreparation` noise (see [below](#noise) for details).
 The default is no state preparation. Similar to the encoding, you can provide the `state_preparation` argument as
 
 - A string such as `"H"` that will result in a single Hadamard per qubit

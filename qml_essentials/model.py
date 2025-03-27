@@ -624,12 +624,13 @@ class Model:
                 the default inputs are used.
             figure (str, optional): The type of figure to generate. Must be one of
                 'text', 'mpl', or 'tikz'. Defaults to 'text'.
-            *args, **kwargs (optional): Additional arguments to the specific
-                visualization methods
-
         Returns:
             Either a string, matplotlib figure or TikzFigure object (similar to string)
             depending on the chosen visualization.
+        *args:
+            Additional arguments to be passed to the visualization method.
+        **kwargs:
+            Additional keyword arguments to be passed to the visualization method.
 
         Raises:
             AssertionError: If the 'figure' argument is not one of the accepted values.
