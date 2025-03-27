@@ -48,6 +48,8 @@
     
       <link rel="stylesheet" href="../assets/_mkdocstrings.css">
     
+      <link rel="stylesheet" href="../style.css">
+    
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
@@ -403,6 +405,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#relative_entropy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Relative Entropy
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -509,6 +520,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#relative_entropy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Relative Entropy
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -556,6 +576,18 @@ We can utilize this by</p>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">model</span><span class="p">,</span> <span class="n">n_samples</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">1000</span>
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="p">)</span>
 </span></code></pre></div>
+<h2 id="relative_entropy">Relative Entropy<a class="headerlink" href="#relative_entropy" title="Permanent link">#</a></h2>
+<p>While calculating entanglement using the Meyer-Wallach or Bell-Measurements method works great for noiseless circuits, it won't result in the correct values when being used together with incoherent noise.
+To account for this, you can use the relative entropy method as follows: </p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">ent_cap</span> <span class="o">=</span> <span class="n">Entanglement</span><span class="o">.</span><span class="n">relative_entropy</span><span class="p">(</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">model</span><span class="p">,</span> <span class="n">n_samples</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">n_sigmas</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">noise_params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;BitFlip&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">}</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Note that this method takes an additional parameter <code>n_sigmas</code>, which is the number of density matrices of the next separable state that we use for comparison.
+The runtime scales with <code>n_sigmas</code><span class="arithmatex">\(\times\)</span><code>n_samples</code> and both increase exponentially if <code>scale=True</code> is set.</p>
+<p>Internally, we compare the states, obtained from the PQC, against those from a <a href="https://en.wikipedia.org/wiki/Greenberger%E2%80%93Horne%E2%80%93Zeilinger_state">GHZ state</a> of the same size (which we consider the next separable state).
+This approach is explained in detail in <a href="https://doi.org/10.48550/arXiv.quant-ph/0504163">this paper</a> and illustrated in the following figure:</p>
+<p><img alt="Relative Entropy" src="../rel-entropy.svg#center" /></p>
 
 
 

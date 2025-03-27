@@ -48,6 +48,8 @@
     
       <link rel="stylesheet" href="../assets/_mkdocstrings.css">
     
+      <link rel="stylesheet" href="../style.css">
+    
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
@@ -752,7 +754,7 @@ If a list of encodings is provided, the input is assumed to be multi-dimensional
 Otherwise multiple inputs are treated as batches of inputs.</p>
 <p>If you want to visualize zero-valued encoding gates in the model, set <code>remove_zero_encoding</code> to <code>False</code> on instantiation.</p>
 <h2 id="state_preparation">State Preparation<a class="headerlink" href="#state_preparation" title="Permanent link">#</a></h2>
-<p>While the encoding is applied in each data-reuploading step, the state preparation is only applied at the beginning of the circuit, but after the <code>StatePreparation</code> noise (see <a href="#Noise">below</a> for details).
+<p>While the encoding is applied in each data-reuploading step, the state preparation is only applied at the beginning of the circuit, but after the <code>StatePreparation</code> noise (see <a href="#noise">below</a> for details).
 The default is no state preparation. Similar to the encoding, you can provide the <code>state_preparation</code> argument as</p>
 <ul>
 <li>A string such as <code>"H"</code> that will result in a single Hadamard per qubit</li>
