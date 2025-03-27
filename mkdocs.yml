@@ -1,4 +1,5 @@
 site_name: QML Essentials
+site_url: https://cirkiters.github.io/qml-essentials/
 nav:
   - index.md
   - usage.md
