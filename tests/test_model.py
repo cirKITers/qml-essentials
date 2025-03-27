@@ -151,11 +151,11 @@ def test_batching() -> None:
         circuit_type="Circuit_19",
     )
 
-    n_samples = 2
+    n_samples = 3
     model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
     params = model.params
 
-    res = np.zeros((n_samples, 4, 4))
+    res = np.zeros((n_samples, 4, 4), dtype=np.complex128)
     for i in range(n_samples):
         res[i] = model(params=params[:, :, i], execution_type="density")
 
