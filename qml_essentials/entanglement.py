@@ -2,8 +2,7 @@ from typing import Optional, Any, List
 import pennylane as qml
 import pennylane.numpy as np
 from copy import deepcopy
-from scipy.linalg import logm
-
+from qml_essentials.utils import logm_v
 from qml_essentials.model import Model
 import logging
 
@@ -242,7 +241,7 @@ class Entanglement:
 
             # Entropy of GHZ states should be maximal
             ghz_entropy = Entanglement._compute_rel_entropies(
-                ghz_model, 1, log_sigma, params=None
+                ghz_model, 1, log_sigma, None
             )
 
             rel_entropy = Entanglement._compute_rel_entropies(
@@ -278,17 +277,15 @@ class Entanglement:
         Returns:
             np.ndarray: Relative Entropy for each sample
         """
-        log_2 = np.log(2)
         rel_entropies = np.zeros(n_samples)
-        for i in range(n_samples):
-            # implicitly set input to none in case it's not needed
-            kwargs.setdefault("inputs", None)
-            # explicitly set execution type because everything else won't work
-            p = params[:, :, i] if params is not None else None
-            rho = model(params=p, execution_type="density", **kwargs)
-            log_rho = logm(rho) / log_2
+        # implicitly set input to none in case it's not needed
+        kwargs.setdefault("inputs", None)
+        # explicitly set execution type because everything else won't work
+        rho = model(params=params, execution_type="density", **kwargs)
+        rho = rho.reshape(n_samples, 2**model.n_qubits, 2**model.n_qubits)
+        log_rho = logm_v(rho) / np.log(2)
 
-            rel_entropies[i] = np.abs(np.trace(rho @ (log_rho - log_sigma)))
+        rel_entropies = np.abs(np.trace(rho @ (log_rho - log_sigma), axis1=1, axis2=2))
 
         return rel_entropies
 
@@ -313,11 +310,10 @@ def sample_random_separable_states(
     density_matrices = np.zeros((n_samples, 2**n_qubits, 2**n_qubits))
     model.initialize_params(rng=rng, repeat=n_samples)
     params = model.params
-    for i in range(n_samples):
-        # explicitly set execution type because everything else won't work
-        sigma = model(params=params[:, :, i], execution_type="density", inputs=None)
-        if take_log:
-            sigma = logm(sigma) / log_2
-        density_matrices[i] = sigma
+    # explicitly set execution type because everything else won't work
+    sigma = model(params=params, execution_type="density", inputs=None)
+    if take_log:
+        sigma = logm_v(sigma) / log_2
+    density_matrices = sigma
 
     return density_matrices
