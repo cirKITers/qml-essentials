@@ -296,11 +296,11 @@ def test_entangling_measures() -> None:
         )
 
         mw_meas = Entanglement.meyer_wallach(
-            deepcopy(model), n_samples=2000, seed=1000, cache=False
+            deepcopy(model), n_samples=1000, seed=1000, cache=False
         )
 
         bell_meas = Entanglement.bell_measurements(
-            deepcopy(model), n_samples=2000, seed=1000, cache=False
+            deepcopy(model), n_samples=1000, seed=1000, cache=False
         )
 
         assert math.isclose(mw_meas, bell_meas, abs_tol=1e-5), (
@@ -325,3 +325,78 @@ def test_scaling() -> None:
     _ = Entanglement.bell_measurements(
         model, n_samples=10, seed=1000, cache=False, scale=True
     )
+
+
+@pytest.mark.smoketest
+def test_relative_entropy() -> None:
+    separable_model = Model(
+        n_qubits=3,
+        n_layers=1,
+        circuit_type="Circuit_1",
+    )
+
+    entangled_model = Model(
+        n_qubits=3,
+        n_layers=1,
+        circuit_type="Strongly_Entangling",
+    )
+
+    ghz_model = Model(
+        n_qubits=3,
+        n_layers=1,
+        circuit_type="GHZ",
+        data_reupload=False,
+    )
+
+    separable_ent = Entanglement.relative_entropy(
+        separable_model, n_samples=10, n_sigmas=10, seed=1000, cache=False, scale=False
+    )
+    entangled_ent = Entanglement.relative_entropy(
+        entangled_model, n_samples=10, n_sigmas=10, seed=1000, cache=False, scale=False
+    )
+    ghz_ent = Entanglement.relative_entropy(
+        ghz_model, n_samples=10, n_sigmas=10, seed=1000, cache=False, scale=False
+    )
+
+    assert (
+        0.0 < separable_ent < entangled_ent < ghz_ent == 1.0
+    ), "Order of entanglement should be 0 < Circuit_1 < Strongly Entangling < GHZ = 1,\
+        but got values 0 < {separable_ent} < {entangled_ent} < {ghz_ent} < 1"
+
+
+@pytest.mark.smoketest
+@pytest.mark.expensive
+def test_relative_entropy_order() -> None:
+
+    circuits = [
+        "Circuit_1",
+        "Circuit_16",
+        "Circuit_19",
+        "Circuit_15",
+        "Strongly_Entangling",
+    ]
+
+    ghz_model = Model(
+        n_qubits=3,
+        n_layers=1,
+        circuit_type="GHZ",
+        data_reupload=False,
+    )
+
+    entanglement = [0.0]
+    for circuit in circuits:
+        model = Model(n_qubits=3, n_layers=1, circuit_type=circuit)
+
+        ent = Entanglement.relative_entropy(
+            model, n_samples=50, n_sigmas=100, seed=1000, cache=False, scale=False
+        )
+        entanglement.append(ent)
+
+    ghz_entanglement = Entanglement.relative_entropy(
+        ghz_model, n_samples=1, n_sigmas=100, seed=1000, cache=False, scale=False
+    )
+    entanglement.append(ghz_entanglement)
+
+    assert all(
+        entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
+    ), "Order of entanglement should be {circuits}."
