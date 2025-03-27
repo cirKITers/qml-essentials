@@ -102,13 +102,11 @@ def test_divergence() -> None:
 
 @pytest.mark.unittest
 @pytest.mark.expensive
-def test_expressibility() -> None:
-    circuits, results_n_layers_1, results_n_layers_3, skip_indices = get_test_cases()
+def test_expressibility_1l() -> None:
+    circuits, results, _, skip_indices = get_test_cases()
 
     test_cases = []
-    for circuit_id, res_1l, res_3l in zip(
-        circuits, results_n_layers_1, results_n_layers_3
-    ):
+    for circuit_id, result in zip(circuits, results):
         if circuit_id in skip_indices:
             continue
         test_cases.append(
@@ -116,15 +114,9 @@ def test_expressibility() -> None:
                 "circuit_type": f"Circuit_{circuit_id}",
                 "n_qubits": 4,
                 "n_layers": 1,
-                "result": res_1l,
+                "result": result,
             }
         )
-        # test_cases.append({
-        #     "circuit_type": f"Circuit_{circuit_id}",
-        #     "n_qubits": 4,
-        #     "n_layers": 3,
-        #     "result": res_3l,
-        # })
 
     tolerance = 0.35  # FIXME: reduce when reason for discrepancy is found
     kl_distances: list[tuple[int, float]] = []
@@ -149,7 +141,7 @@ def test_expressibility() -> None:
         _, y_haar = Expressibility.haar_integral(
             n_qubits=test_case["n_qubits"],
             n_bins=75,
-            cache=False,
+            cache=True,
             scale=False,
         )
 
@@ -179,7 +171,95 @@ def test_expressibility() -> None:
     references = sorted(
         [
             (circuit, result)
-            for circuit, result in zip(circuits, results_n_layers_1)
+            for circuit, result in zip(circuits, results)
+            if circuit not in skip_indices
+        ],
+        key=lambda x: x[1],
+    )
+
+    actuals = sorted(kl_distances, key=lambda x: x[1])
+
+    print("Expected \t| Actual")
+    for reference, actual in zip(references, actuals):
+        print(f"{reference[0]}, {reference[1]} \t| {actual[0]}, {actual[1]}")
+    assert [circuit for circuit, _ in references] == [
+        circuit for circuit, _ in actuals
+    ], f"Order of circuits does not match: {actuals} != {references}"
+
+
+@pytest.mark.unittest
+@pytest.mark.expensive
+def test_expressibility_3l() -> None:
+    return  # TODO remove when we found a suitable runner
+    circuits, _, results, skip_indices = get_test_cases()
+
+    test_cases = []
+    for circuit_id, result in zip(circuits, results):
+        if circuit_id in skip_indices:
+            continue
+        test_cases.append(
+            {
+                "circuit_type": f"Circuit_{circuit_id}",
+                "n_qubits": 4,
+                "n_layers": 3,
+                "result": result,
+            }
+        )
+
+    tolerance = 0.35  # FIXME: reduce when reason for discrepancy is found
+    kl_distances: list[tuple[int, float]] = []
+    for test_case in test_cases:
+        print(f"--- Running Expressibility test for {test_case['circuit_type']} ---")
+        model = Model(
+            n_qubits=test_case["n_qubits"],
+            n_layers=test_case["n_layers"],
+            circuit_type=test_case["circuit_type"],
+            initialization_domain=[0, 2 * np.pi],
+            data_reupload=False,
+        )
+
+        _, _, z = Expressibility.state_fidelities(
+            seed=1000,
+            n_bins=75,
+            n_samples=5000,
+            model=model,
+            scale=False,
+        )
+
+        _, y_haar = Expressibility.haar_integral(
+            n_qubits=test_case["n_qubits"],
+            n_bins=75,
+            cache=True,
+            scale=False,
+        )
+
+        # Calculate the mean (over all inputs, if required)
+        kl_dist = Expressibility.kullback_leibler_divergence(z, y_haar).mean()
+
+        circuit_number = int(test_case["circuit_type"].split("_")[1])
+        kl_distances.append((circuit_number, kl_dist.item()))
+
+        difference = abs(kl_dist - test_case["result"])
+        if math.isclose(difference, 0.0, abs_tol=1e-10):
+            error = 0
+        else:
+            error = abs(kl_dist - test_case["result"]) / (test_case["result"])
+
+        print(
+            f"KL Divergence: {kl_dist},\t"
+            + f"Expected Result: {test_case['result']},\t"
+            + f"Error: {error}"
+        )
+        assert (
+            error < tolerance
+        ), f"Expressibility of circuit {test_case['circuit_type']} is not\
+            {test_case['result']} but {kl_dist} instead.\
+            Deviation {(error*100):.1f}>{tolerance*100}%"
+
+    references = sorted(
+        [
+            (circuit, result)
+            for circuit, result in zip(circuits, results)
             if circuit not in skip_indices
         ],
         key=lambda x: x[1],

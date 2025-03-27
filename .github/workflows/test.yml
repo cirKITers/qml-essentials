@@ -22,7 +22,7 @@ jobs:
     - name: Test with pytest
       run: poetry run pytest --cov=qml_essentials --dist load -m "not expensive" -n auto
   test-approved:
-    if: ${{ (github.event.review.state == 'approved') || (github.ref == 'refs/heads/main') }}
+    if: ${{ (github.event.review.state == 'approved') || (github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]') }}
     runs-on: self-hosted
     steps:
     - uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
     - name: Install dependencies
       run: poetry install --with dev
     - name: Test with pytest
-      run: poetry run pytest --cov=qml_essentials --cov-report html --dist load -n auto
+      run: poetry run pytest --cov=qml_essentials --cov-report html --dist load -m "expensive" -n auto
     - name: Share coverage report
       uses: actions/upload-artifact@v4
       with:
