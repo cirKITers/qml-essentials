@@ -223,16 +223,14 @@ class Entanglement:
         if n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             model.initialize_params(rng=rng, repeat=n_samples)
-            params: np.ndarray = model.params
         else:
             if seed is not None:
                 log.warning("Seed is ignored when samples is 0")
 
             if len(model.params.shape) <= 2:
-                params = model.params.reshape(*model.params.shape, 1)
+                model.params = model.params.reshape(*model.params.shape, 1)
             else:
                 log.info(f"Using sample size of model params: {model.params.shape[-1]}")
-                params = model.params
 
         ghz_model = Model(model.n_qubits, 1, "GHZ", data_reupload=False)
 
@@ -241,11 +239,12 @@ class Entanglement:
 
             # Entropy of GHZ states should be maximal
             ghz_entropy = Entanglement._compute_rel_entropies(
-                ghz_model, 1, log_sigma, None
+                ghz_model,
+                log_sigma,
             )
 
             rel_entropy = Entanglement._compute_rel_entropies(
-                model, n_samples, log_sigma, params, **kwargs
+                model, log_sigma, **kwargs
             )
 
             normalised_entropies[j] = np.min(rel_entropy / ghz_entropy)
@@ -260,9 +259,7 @@ class Entanglement:
     @staticmethod
     def _compute_rel_entropies(
         model: Model,
-        n_samples: int,
         log_sigma: np.ndarray,
-        params: np.ndarray,
         **kwargs,
     ) -> np.ndarray:
         """
@@ -270,19 +267,16 @@ class Entanglement:
 
         Args:
             model (Model): The model for which to compute entanglement
-            n_samples (int): Number of samples
             log_sigma (np.ndarray): Density matrix of next separable state
-            params (np.ndarray): Model parameters of shape (n_samples, *model.params.shape)
 
         Returns:
             np.ndarray: Relative Entropy for each sample
         """
-        rel_entropies = np.zeros(n_samples)
         # implicitly set input to none in case it's not needed
         kwargs.setdefault("inputs", None)
         # explicitly set execution type because everything else won't work
-        rho = model(params=params, execution_type="density", **kwargs)
-        rho = rho.reshape(n_samples, 2**model.n_qubits, 2**model.n_qubits)
+        rho = model(execution_type="density", **kwargs)
+        rho = rho.reshape(-1, 2**model.n_qubits, 2**model.n_qubits)
         log_rho = logm_v(rho) / np.log(2)
 
         rel_entropies = np.abs(np.trace(rho @ (log_rho - log_sigma), axis1=1, axis2=2))
@@ -305,17 +299,11 @@ def sample_random_separable_states(
     Returns:
         np.ndarray: Density matrices of shape (n_samples, 2**n_qubits, 2**n_qubits)
     """
-    log_2 = np.log(2)
     model = Model(n_qubits, 1, "No_Entangling", data_reupload=False)
-    density_matrices = np.zeros(
-        (n_samples, 2**n_qubits, 2**n_qubits), dtype=np.complex128
-    )
     model.initialize_params(rng=rng, repeat=n_samples)
-    params = model.params
     # explicitly set execution type because everything else won't work
-    sigma = model(params=params, execution_type="density", inputs=None)
+    sigmas = model(execution_type="density", inputs=None)
     if take_log:
-        sigma = logm_v(sigma) / log_2
-    density_matrices = sigma
+        sigmas = logm_v(sigmas) / np.log(2)
 
-    return density_matrices
+    return sigmas
