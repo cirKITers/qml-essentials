@@ -12,27 +12,6 @@ for ansatz in all_ansaetze:
     print(ansatz.__name__)
 ```
 
-```
-No_Ansatz
-Circuit_1
-Circuit_2
-Circuit_3
-Circuit_4
-Circuit_6
-Circuit_9
-Circuit_10
-Circuit_15
-Circuit_16
-Circuit_17
-Circuit_18
-Circuit_19
-No_Entangling
-Strongly_Entangling
-Hardware_Efficient
-```
-
-*Note that Circuit 10 deviates from the original implementation!*
-
 See the [*Overview*](#overview) at the end of this document for more details.
 However, usually you just want reference to them (by name) when instantiating a model.
 To get an overview of all the available Ansaetze, checkout the [references](https://cirkiters.github.io/qml-essentials/references/).
@@ -168,6 +147,8 @@ model(
 
 ## Overview
 
+This section shows an overview of all the available Ansaetze in our package.
+*Note that Circuit 10 deviates from the original implementation!*
 
 ### No Ansatz
 ![No Ansatz](figures/No_Ansatz_light.png#circuit#only-light)
