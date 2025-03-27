@@ -358,7 +358,7 @@ def test_relative_entropy() -> None:
         ghz_model, n_samples=10, n_sigmas=10, seed=1000, cache=False, scale=False
     )
 
-    assert 0.0 < separable_ent < entangled_ent < ghz_ent == 1.0, (
-        "Order of entanglement should be 0 < Circuit_1 < Strongly Entangling < GHZ = 1, "
-        f"but got values 0 < {separable_ent} < {entangled_ent} < {ghz_ent} < 1"
-    )
+    assert (
+        0.0 < separable_ent < entangled_ent < ghz_ent == 1.0
+    ), "Order of entanglement should be 0 < Circuit_1 < Strongly Entangling < GHZ = 1,\
+        but got values 0 < {separable_ent} < {entangled_ent} < {ghz_ent} < 1"
