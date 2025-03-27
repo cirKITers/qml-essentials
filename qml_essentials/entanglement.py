@@ -212,6 +212,7 @@ class Entanglement:
         dim = np.power(2, model.n_qubits)
         if scale:
             n_samples = dim * n_samples
+            n_sigmas = dim * n_sigmas
 
         rng = np.random.default_rng(seed)
 
