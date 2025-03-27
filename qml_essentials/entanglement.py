@@ -176,7 +176,7 @@ class Entanglement:
     @staticmethod
     def relative_entropy(
         model: Model,
-        n_samples: Optional[int],
+        n_samples: int,
         n_sigmas: int,
         seed: Optional[int],
         scale: bool = False,
@@ -190,15 +190,17 @@ class Entanglement:
         As the relative entropy is generally defined as the smallest relative
         entropy from the state in question to the set of separable states.
         However, as computing the nearest separable state is NP-hard, we select
-        the maximally mixed state as the separable state to compute the
-        distance to, which is not necessarily the nearest.
-        Thus, this measure of entanglement presents an upper limit of
-        entanglement.
+        n_sigmas of random separable states to compute the distance to, which
+        is not necessarily the nearest. Thus, this measure of entanglement
+        presents an upper limit of entanglement.
+
+        As the relative entropy is not necessarily between zero and one, this
+        function also normalises by the relative entroy to the GHZ state.
 
         Args:
             model (Model): The quantum circuit model.
-            n_samples (Optional[int]): Number of samples per qubit.
-                If None or < 0, the current parameters of the model are used.
+            n_samples (int): Number of samples per qubit.
+                If <= 0, the current parameters of the model are used.
             n_sigmas (int): Number of random separable pure states to compare against.
             seed (Optional[int]): Seed for the random number generator.
             scale (bool): Whether to scale the number of samples.
@@ -213,16 +215,14 @@ class Entanglement:
             n_samples = dim * n_samples
 
         rng = np.random.default_rng(seed)
-        log_2 = np.log(2)
 
         # Random separable states
-        log_sigmas = sample_random_pure_states(
+        log_sigmas = sample_random_separable_states(
             model.n_qubits, n_samples=n_sigmas, rng=rng, take_log=True
         )
 
-        if n_samples is not None and n_samples > 0:
+        if n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
-            # TODO: maybe switch to JAX rng
             model.initialize_params(rng=rng, repeat=n_samples)
             params: np.ndarray = model.params
         else:
@@ -235,38 +235,81 @@ class Entanglement:
                 log.info(f"Using sample size of model params: {model.params.shape[-1]}")
                 params = model.params
 
-        n_samples = params.shape[-1]
-        rel_entropies = np.zeros(n_samples, dtype=np.complex128)
+        ghz_model = Model(model.n_qubits, 1, "GHZ", data_reupload=False)
 
+        normalised_entropies = np.zeros(n_sigmas)
+        for j, log_sigma in enumerate(log_sigmas):
+
+            # Entropy of GHZ states should be maximal
+            ghz_entropy = Entanglement._compute_rel_entropies(
+                ghz_model, 1, log_sigma, params=None
+            )
+
+            rel_entropy = Entanglement._compute_rel_entropies(
+                model, n_samples, log_sigma, params, **kwargs
+            )
+
+            normalised_entropies[j] = np.min(rel_entropy / ghz_entropy)
+
+        # Average all iterated states
+        # catch floating point errors
+        entangling_capability = np.mean(normalised_entropies)
+        log.debug(f"Variance of measure: {normalised_entropies.var()}")
+
+        return entangling_capability
+
+    @staticmethod
+    def _compute_rel_entropies(
+        model: Model,
+        n_samples: int,
+        log_sigma: np.ndarray,
+        params: np.ndarray,
+        **kwargs,
+    ) -> np.ndarray:
+        """
+        Compute the relative entropy for a given model.
+
+        Args:
+            model (Model): The model for which to compute entanglement
+            n_samples (int): Number of samples
+            log_sigma (np.ndarray): Density matrix of next separable state
+            params (np.ndarray): Model parameters of shape (n_samples, *model.params.shape)
+
+        Returns:
+            np.ndarray: Relative Entropy for each sample
+        """
+        log_2 = np.log(2)
+        rel_entropies = np.zeros(n_samples)
         for i in range(n_samples):
             # implicitly set input to none in case it's not needed
             kwargs.setdefault("inputs", None)
             # explicitly set execution type because everything else won't work
-            rho = model(params=params[:, :, i], execution_type="density", **kwargs)
+            p = params[:, :, i] if params is not None else None
+            rho = model(params=p, execution_type="density", **kwargs)
             log_rho = logm(rho) / log_2
 
-            # Formula 38 in https://arxiv.org/pdf/quant-ph/0504163
-            # ---
-            min_rel_entr = np.inf
-            for log_sigma in log_sigmas:
-                rel_entr = np.trace(rho @ (log_rho - log_sigma)) / 4
-                if rel_entr < min_rel_entr:
-                    min_rel_entr = rel_entr
-            rel_entropies[i] = min_rel_entr
+            rel_entropies[i] = np.abs(np.trace(rho @ (log_rho - log_sigma)))
 
-        # Average all iterated states
-        # catch floating point errors
-        entangling_capability = min(max(rel_entropies.mean(), 0.0), 1.0)
-        log.debug(f"Variance of measure: {rel_entropies.var()}")
-
-        return float(entangling_capability)
+        return rel_entropies
 
 
-def sample_random_pure_states(
+def sample_random_separable_states(
     n_qubits: int, n_samples: int, rng: np.random.Generator, take_log: bool = False
 ) -> np.ndarray:
+    """
+    Sample random separable states (density matrix).
+
+    Args:
+        n_qubits (int): number of qubits in the state
+        n_samples (int): number of states
+        rng (np.random.Generator): random number generator
+        take_log (bool): if the matrix logarithm of the density matrix should be taken.
+
+    Returns:
+        np.ndarray: Density matrices of shape (n_samples, 2**n_qubits, 2**n_qubits)
+    """
     log_2 = np.log(2)
-    model = Model(n_qubits, 1, "No_Entangling")
+    model = Model(n_qubits, 1, "No_Entangling", data_reupload=False)
     density_matrices = np.zeros((n_samples, 2**n_qubits, 2**n_qubits))
     model.initialize_params(rng=rng, repeat=n_samples)
     params = model.params
