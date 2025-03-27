@@ -53,4 +53,7 @@ ent_cap = Entanglement.relative_entropy(
 )
 ```
 
-Note that this method takes an additional parameter `n_sigmas`, which is the number of density matrices of the next separable state that we use to compare against.
+Note that this method takes an additional parameter `n_sigmas`, which is the number of density matrices of the next separable state that we use for comparison.
+The runtime scales with `n_sigmas`$\times$`n_samples`.
+
+![Relative Entropy](rel-entropy.svg)
