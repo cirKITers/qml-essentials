@@ -307,7 +307,9 @@ def sample_random_separable_states(
     """
     log_2 = np.log(2)
     model = Model(n_qubits, 1, "No_Entangling", data_reupload=False)
-    density_matrices = np.zeros((n_samples, 2**n_qubits, 2**n_qubits))
+    density_matrices = np.zeros(
+        (n_samples, 2**n_qubits, 2**n_qubits), dtype=np.complex128
+    )
     model.initialize_params(rng=rng, repeat=n_samples)
     params = model.params
     # explicitly set execution type because everything else won't work
