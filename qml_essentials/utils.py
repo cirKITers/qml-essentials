@@ -35,6 +35,7 @@ SKIPPABLE_OPERATIONS = (qml.Barrier,)
 
 
 def logm_v(A, **kwargs):
+    # TODO: check warnings
     if len(A.shape) == 2:
         return logm(A, **kwargs)
     elif len(A.shape) == 3:
