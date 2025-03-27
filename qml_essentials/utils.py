@@ -38,9 +38,10 @@ def logm_v(A, **kwargs):
     if len(A.shape) == 2:
         return logm(A, **kwargs)
     elif len(A.shape) == 3:
+        AV = np.zeros(A.shape, dtype=A.dtype)
         for i in range(A.shape[0]):
-            A[i] = logm(A[i], **kwargs)
-        return A
+            AV[i] = logm(A[i], **kwargs)
+        return AV
     else:
         raise NotImplementedError("Unsupported shape of input matrix")
 
