@@ -102,9 +102,7 @@ This means that `mts=2` will require twice the time to compute, which will be ve
 In some cases it can be useful to get the [power spectral density (PSD)](https://en.wikipedia.org/wiki/Spectral_density).
 As calculation of this metric might differ between the different research domains, we included a function to get the PSD of a given spectrum using the following formula:
 
-$$
-PSD = \frac{2 (\mathrm{Re}(F)^2+\mathrm{Im}(F)^2)}{n_\text{samples}^2}
-$$
+\[PSD = \frac{2 (\mathrm{Re}(F)^2+\mathrm{Im}(F)^2)}{n_\text{samples}^2}\]
 
 where $F$ is the spectrum and $n_\text{samples}$ the length of the input vector.
 
