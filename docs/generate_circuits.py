@@ -21,7 +21,7 @@ for ansatz in ansaetze:
     cwd = os.path.dirname(__file__)
     fig.savefig(
         f"{cwd}/figures/{ansatz.__name__}_light.png",
-        dpi=300,
+        dpi=100,
         transparent=True,
         bbox_inches="tight",
     )
