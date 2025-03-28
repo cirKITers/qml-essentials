@@ -4,17 +4,18 @@ This section describes how to use the model provided with this package, using a 
 
 We consider a Fourier series with $n$ frequencies defined as follows:
 
-$$
+\[
 f(x, \boldsymbol{\theta})=\sum_{\omega \in \boldsymbol{\Omega}} c_{\omega}(\boldsymbol{\theta}) e^{i \omega x}=\sum_{\omega \in \boldsymbol{\Omega}} c_{\omega}(\boldsymbol{\theta}) \left(\cos(\omega x) + i \sin(\omega x)\right)
-$$
+\]
 
 Here, $\omega \in \boldsymbol{\Omega}$ are the frequencies in the spectrum with the Fourier coefficients $c_{\omega}(\boldsymbol{\theta})$, parameterized by the set of trainable parameters $\boldsymbol{\theta}$.
 
 As shown by [Schuld et al. (2020)](https://arxiv.org/abs/2008.08605), a quantum circuit, parametrised by $\boldsymbol{\theta}$ and input $x$ and is equivalent to the Fourier series representation.
 Such circuits must be of the following form:
-$$
+
+\[
 f(x, \boldsymbol{\theta})=\langle 0\vert^{\otimes n} U^{\dagger}(x, \boldsymbol{\theta}) \mathcal{M} U(x, \boldsymbol{\theta})\vert 0\rangle^{\otimes n}
-$$
+\]
 
 Therefore, training such a model on a Fourier series is a proof-of-concept which we want to demonstrate here.
 
