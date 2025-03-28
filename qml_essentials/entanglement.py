@@ -35,6 +35,12 @@ class Entanglement:
             float: Entangling capacity of the given circuit, guaranteed
                 to be between 0.0 and 1.0.
         """
+        if "noise_params" in kwargs:
+            log.warning(
+                "Meyer-Wallach measure not suitable for noisy circuits.\
+                    Consider 'relative_entropy' instead."
+            )
+
         if scale:
             n_samples = np.power(2, model.n_qubits) * n_samples
 
@@ -104,6 +110,12 @@ class Entanglement:
         Returns:
             float: The Bell measurement value.
         """
+        if "noise_params" in kwargs:
+            log.warning(
+                "Bell Measurements not suitable for noisy circuits.\
+                    Consider 'relative_entropy' instead."
+            )
+
         if scale:
             n_samples = np.power(2, model.n_qubits) * n_samples
 
