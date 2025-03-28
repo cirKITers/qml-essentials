@@ -151,6 +151,10 @@ This section shows an overview of all the available Ansaetze in our package.
 Most of the circuits are implemented according to to the original paper by [Sim et al.](https://doi.org/10.48550/arXiv.1905.10876).
 *Note that Circuit 10 deviates from the original implementation!*
 
+Oh and in case you need a refresh on the rotational axes and their corresponding states, here is a Bloch sphere :innocent: :
+
+![Bloch Sphere](figures/bloch-sphere.svg#center)
+
 ### No Ansatz
 ![No Ansatz](figures/No_Ansatz_light.png#circuit#only-light)
 ![No Ansatz](figures/No_Ansatz_dark.png#circuit#only-dark)
