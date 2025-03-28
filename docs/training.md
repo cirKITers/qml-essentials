@@ -45,8 +45,8 @@ plt.ylabel("f(x)")
 plt.show()
 ```
 
-![Fourier Series](figures/fourier_series_light.png#only-light)
-![Fourier Series](figures/fourier_series_dark.png#only-dark)
+![Fourier Series](figures/fourier_series_light.png#center#only-light)
+![Fourier Series](figures/fourier_series_dark.png#center#only-dark)
 
 Note that we chose the coefficients to be all $0.5$. Play around with those values to change the magnitude of each frequency component.
 Also note that we're using the Pennylane version of Numpy, which is required because of the optimizer that we will be using later.
@@ -101,8 +101,8 @@ Epoch: 900, Cost: 0.0006
 Epoch: 1000, Cost: 0.0001
 ```
 
-![Ground Truth and Prediction](figures/trained_series_light.png#only-light)
-![Ground Truth and Prediction](figures/trained_series_dark.png#only-dark)
+![Ground Truth and Prediction](figures/trained_series_light.png#center#only-light)
+![Ground Truth and Prediction](figures/trained_series_dark.png#center#only-dark)
 
 As you can see, the model is able to learn the Fourier series with the $4$ frequencies.
 
