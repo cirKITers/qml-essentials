@@ -5,7 +5,7 @@ Central component of our package is the Fourier model which you can import with
 from qml_essentials.model import Model
 ```
 
-In the simplest scenario, one would instantiate such a model with $2$ qubits and a single layer using the "Hardware Efficient" ansatz by:
+In the simplest scenario, one would instantiate such a model with $4$ qubits and a single layer using the "Hardware Efficient" ansatz by:
 ```python
 model = Model(
     n_qubits=4,
@@ -24,7 +24,7 @@ model.draw(figure="mpl")
 
 Looks good to you? :eyes: Head over to the [*Training*](training.md) page for **getting started** with an easy example :rocket:
 
-Calling the model without any (`None`) values for the `params` and `inputs` argument, will implicitly call the model with the recently (or initial) parameters and `0`s as input.
+Note that calling the model without any (`None`) values for the `params` and `inputs` argument, will implicitly call the model with the recently (or initial) parameters and `0`s as input.
 
 In the following we will describe some concepts of the `Model` class.
 For a more detailled reference on the methods and arguments that are available, please see the [references page](https://cirkiters.github.io/qml-essentials/references/#model).
@@ -38,7 +38,7 @@ See page [*Ansaetze*](ansaetze.md) for more details and a list of available Ansa
 
 ## Data-Reuploading
 
-This idea is one of the core features of our framework and builds upon the work by [*Schuld et al. (2020)*](https://arxiv.org/abs/2008.08605).
+This idea is one of the core features of our framework and builds upon the work by [*Schuld et al. (2020)*](https://doi.org/10.48550/arXiv.2008.08605).
 Essentially it allows us to represent a quantum circuit as a truncated Fourier series which is a powerfull feature that enables the model to mimic arbitrary non-linear functions.
 The number of frequencies that the model can represent is constrained by the number of data encoding steps within the circuit.
 
