@@ -532,7 +532,8 @@ class Model:
                 noise_params=self.noise_params,
             )
 
-            qml.Barrier(wires=list(range(self.n_qubits)), only_visual=True)
+            if self.degree > 1:
+                qml.Barrier(wires=list(range(self.n_qubits)), only_visual=True)
 
         if self.degree > 1:  # same check as in init
             self.pqc(params[-1], self.n_qubits, noise_params=self.noise_params)

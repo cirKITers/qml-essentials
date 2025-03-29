@@ -37,6 +37,7 @@ mkdocs-material = {extras = ["imaging"], version = "^9.6.4"}
 mkdocstrings-python = "^1.15.0"
 markdown-include = "^0.8.1"
 ipykernel = "^6.29.5"
+mkdocs-glightbox = "^0.4.0"
 
 [tool.licensecheck]
 fail_packages = ["typing_extensions"]

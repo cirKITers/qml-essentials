@@ -12,27 +12,7 @@ for ansatz in all_ansaetze:
     print(ansatz.__name__)
 ```
 
-```
-No_Ansatz
-Circuit_1
-Circuit_2
-Circuit_3
-Circuit_4
-Circuit_6
-Circuit_9
-Circuit_10
-Circuit_15
-Circuit_16
-Circuit_17
-Circuit_18
-Circuit_19
-No_Entangling
-Strongly_Entangling
-Hardware_Efficient
-```
-
-*Note that Circuit 10 deviates from the original implementation!*
-
+See the [*Overview*](#overview) at the end of this document for more details.
 However, usually you just want reference to them (by name) when instantiating a model.
 To get an overview of all the available Ansaetze, checkout the [references](https://cirkiters.github.io/qml-essentials/references/).
 
@@ -164,3 +144,82 @@ model(
         "Depolarizing": 0.05,
 })
 ```
+
+## Overview
+
+This section shows an overview of all the available Ansaetze in our package.
+Most of the circuits are implemented according to to the original paper by [Sim et al.](https://doi.org/10.48550/arXiv.1905.10876).
+*Note that Circuit 10 deviates from the original implementation!*
+
+Oh and in case you need a refresh on the rotational axes and their corresponding states, here is a Bloch sphere :innocent: :
+
+![Bloch Sphere](figures/bloch-sphere.svg#center)
+
+### No Ansatz
+![No Ansatz](figures/No_Ansatz_light.png#circuit#only-light)
+![No Ansatz](figures/No_Ansatz_dark.png#circuit#only-dark)
+
+### Circuit 1
+![Circuit 1](figures/Circuit_1_light.png#circuit#only-light)
+![Circuit 1](figures/Circuit_1_dark.png#circuit#only-dark)
+
+### Circuit 2
+![Circuit 2](figures/Circuit_2_light.png#circuit#only-light)
+![Circuit 2](figures/Circuit_2_dark.png#circuit#only-dark)
+
+### Circuit 3
+![Circuit 3](figures/Circuit_3_light.png#circuit#only-light)
+![Circuit 3](figures/Circuit_3_dark.png#circuit#only-dark)
+
+### Circuit 4
+![Circuit 4](figures/Circuit_4_light.png#circuit#only-light)
+![Circuit 4](figures/Circuit_4_dark.png#circuit#only-dark)
+
+### Circuit 6
+![Circuit 6](figures/Circuit_6_light.png#circuit#only-light)
+![Circuit 6](figures/Circuit_6_dark.png#circuit#only-dark)
+
+### Circuit 9
+![Circuit 9](figures/Circuit_9_light.png#circuit#only-light)
+![Circuit 9](figures/Circuit_9_dark.png#circuit#only-dark)
+
+### Circuit 10
+![Circuit 10](figures/Circuit_10_light.png#circuit#only-light)
+![Circuit 10](figures/Circuit_10_dark.png#circuit#only-dark)
+
+### Circuit 15
+![Circuit 15](figures/Circuit_15_light.png#circuit#only-light)
+![Circuit 15](figures/Circuit_15_dark.png#circuit#only-dark)
+
+### Circuit 16
+![Circuit 16](figures/Circuit_16_light.png#circuit#only-light)
+![Circuit 16](figures/Circuit_16_dark.png#circuit#only-dark)
+
+### Circuit 17
+![Circuit 17](figures/Circuit_17_light.png#circuit#only-light)
+![Circuit 17](figures/Circuit_17_dark.png#circuit#only-dark)
+
+### Circuit 18
+![Circuit 18](figures/Circuit_18_light.png#circuit#only-light)
+![Circuit 18](figures/Circuit_18_dark.png#circuit#only-dark)
+
+### Circuit 19
+![Circuit 19](figures/Circuit_19_light.png#circuit#only-light)
+![Circuit 19](figures/Circuit_19_dark.png#circuit#only-dark)
+
+### No Entangling
+![No Entangling](figures/No_Entangling_light.png#circuit#only-light)
+![No Entangling](figures/No_Entangling_dark.png#circuit#only-dark)
+
+### Strongly Entangling
+![Strongly Entangling](figures/Strongly_Entangling_light.png#circuit#only-light)
+![Strongly Entangling](figures/Strongly_Entangling_dark.png#circuit#only-dark)
+
+### Hardware Efficient
+![Hardware Efficient](figures/Hardware_Efficient_light.png#circuit#only-light)
+![Hardware Efficient](figures/Hardware_Efficient_dark.png#circuit#only-dark)
+
+### GHZ
+![GHZ](figures/GHZ_light.png#circuit#only-light)
+![GHZ](figures/GHZ_dark.png#circuit#only-dark)
+

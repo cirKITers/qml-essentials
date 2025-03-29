@@ -1,4 +1,5 @@
 site_name: QML Essentials
+site_url: https://cirkiters.github.io/qml-essentials/
 nav:
   - index.md
   - usage.md
@@ -42,6 +43,9 @@ plugins:
   - search
   - mkdocstrings
   - social
+  - glightbox:
+      auto_caption: true
+      caption_position: top
 markdown_extensions:
   - markdown_include.include:
       base_path: .
