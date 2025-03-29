@@ -8,6 +8,8 @@
       
       
       
+        <link rel="canonical" href="https://cirkiters.github.io/qml-essentials/">
+      
       
       
         <link rel="next" href="usage/">
@@ -61,7 +63,7 @@
       
         <meta  property="og:description"  content="None" >
       
-        <meta  property="og:image"  content="./assets/images/social/index.png" >
+        <meta  property="og:image"  content="https://cirkiters.github.io/qml-essentials/assets/images/social/index.png" >
       
         <meta  property="og:image:type"  content="image/png" >
       
@@ -69,7 +71,7 @@
       
         <meta  property="og:image:height"  content="630" >
       
-        <meta  property="og:url"  content="None" >
+        <meta  property="og:url"  content="https://cirkiters.github.io/qml-essentials/" >
       
         <meta  name="twitter:card"  content="summary_large_image" >
       
@@ -77,11 +79,20 @@
       
         <meta  name="twitter:description"  content="None" >
       
-        <meta  name="twitter:image"  content="./assets/images/social/index.png" >
+        <meta  name="twitter:image"  content="https://cirkiters.github.io/qml-essentials/assets/images/social/index.png" >
       
     
     
-  </head>
+   <link href="assets/stylesheets/glightbox.min.css" rel="stylesheet"/><style>
+    html.glightbox-open { overflow: initial; height: 100%; }
+    .gslide-title { margin-top: 0px; user-select: text; }
+    .gslide-desc { color: #666; user-select: text; }
+    .gslide-image img { background: white; }
+    .gscrollbar-fixer { padding-right: 15px; }
+    .gdesc-inner { font-size: 0.75rem; }
+    body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color);}
+    body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color);}
+    body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color);}</style> <script src="assets/javascripts/glightbox.min.js"></script></head>
   
   
     
@@ -470,7 +481,7 @@
 
 <h1 id="_1"><a class="headerlink" href="#_1" title="Permanent link">#</a></h1>
 <p align="center">
-<img src="logo.svg" width="200" title="Logo">
+<a class="glightbox" href="logo.svg" data-type="image" data-width="auto" data-height="auto" data-desc-position="top"><img src="logo.svg" width="200" title="Logo"></a>
 </p>
 <h3 align="center">A toolbox to make working with QML models easier.</h3>
 <p><br/></p>
@@ -557,5 +568,7 @@ Please checkout the <a href="https://github.com/cirKITers/qml-essentials">github
         <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
       
     
-  </body>
+  <script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(() => { lightbox.reload() });
+</script></body>
 </html>

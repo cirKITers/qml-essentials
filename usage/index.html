@@ -8,6 +8,8 @@
       
       
       
+        <link rel="canonical" href="https://cirkiters.github.io/qml-essentials/usage/">
+      
       
         <link rel="prev" href="..">
       
@@ -63,7 +65,7 @@
       
         <meta  property="og:description"  content="None" >
       
-        <meta  property="og:image"  content="./assets/images/social/usage.png" >
+        <meta  property="og:image"  content="https://cirkiters.github.io/qml-essentials/assets/images/social/usage.png" >
       
         <meta  property="og:image:type"  content="image/png" >
       
@@ -71,7 +73,7 @@
       
         <meta  property="og:image:height"  content="630" >
       
-        <meta  property="og:url"  content="None" >
+        <meta  property="og:url"  content="https://cirkiters.github.io/qml-essentials/usage/" >
       
         <meta  name="twitter:card"  content="summary_large_image" >
       
@@ -79,11 +81,20 @@
       
         <meta  name="twitter:description"  content="None" >
       
-        <meta  name="twitter:image"  content="./assets/images/social/usage.png" >
+        <meta  name="twitter:image"  content="https://cirkiters.github.io/qml-essentials/assets/images/social/usage.png" >
       
     
     
-  </head>
+   <link href="../assets/stylesheets/glightbox.min.css" rel="stylesheet"/><style>
+    html.glightbox-open { overflow: initial; height: 100%; }
+    .gslide-title { margin-top: 0px; user-select: text; }
+    .gslide-desc { color: #666; user-select: text; }
+    .gslide-image img { background: white; }
+    .gscrollbar-fixer { padding-right: 15px; }
+    .gdesc-inner { font-size: 0.75rem; }
+    body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color);}
+    body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color);}
+    body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color);}</style> <script src="../assets/javascripts/glightbox.min.js"></script></head>
   
   
     
@@ -693,7 +704,7 @@
 <p>Central component of our package is the Fourier model which you can import with 
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.model</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span>
 </span></code></pre></div></p>
-<p>In the simplest scenario, one would instantiate such a model with <span class="arithmatex">\(2\)</span> qubits and a single layer using the "Hardware Efficient" ansatz by:
+<p>In the simplest scenario, one would instantiate such a model with <span class="arithmatex">\(4\)</span> qubits and a single layer using the "Hardware Efficient" ansatz by:
 <div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">model</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">n_qubits</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">n_layers</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
@@ -703,10 +714,10 @@
 <p>You can take a look at your model, by simply calling
 <div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">model</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">figure</span><span class="o">=</span><span class="s2">&quot;mpl&quot;</span><span class="p">)</span>
 </span></code></pre></div></p>
-<p><img alt="Hardware Efficient Ansatz" src="../hae_light.png#only-light" />
-<img alt="Hardware Efficient Ansatz" src="../hae_dark.png#only-dark" /></p>
+<p><a class="glightbox" href="../figures/hae_light.png#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Hardware Efficient Ansatz" data-desc-position="top"><img alt="Hardware Efficient Ansatz" src="../figures/hae_light.png#only-light" /></a>
+<a class="glightbox" href="../figures/hae_dark.png#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Hardware Efficient Ansatz" data-desc-position="top"><img alt="Hardware Efficient Ansatz" src="../figures/hae_dark.png#only-dark" /></a></p>
 <p>Looks good to you? <img alt="👀" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f440.svg" title=":eyes:" /> Head over to the <a href="../training/"><em>Training</em></a> page for <strong>getting started</strong> with an easy example <img alt="🚀" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f680.svg" title=":rocket:" /></p>
-<p>Calling the model without any (<code>None</code>) values for the <code>params</code> and <code>inputs</code> argument, will implicitly call the model with the recently (or initial) parameters and <code>0</code>s as input.</p>
+<p>Note that calling the model without any (<code>None</code>) values for the <code>params</code> and <code>inputs</code> argument, will implicitly call the model with the recently (or initial) parameters and <code>0</code>s as input.</p>
 <p>In the following we will describe some concepts of the <code>Model</code> class.
 For a more detailled reference on the methods and arguments that are available, please see the <a href="https://cirkiters.github.io/qml-essentials/references/#model">references page</a>.</p>
 <h2 id="the_essentials">The essentials<a class="headerlink" href="#the_essentials" title="Permanent link">#</a></h2>
@@ -715,7 +726,7 @@ You can calculate the <a href="../expressibility/">Expressibility</a> or <a href
 You can also provide a custom circuit, by instantiating from the <code>Circuit</code> class in <code>qml_essentials.ansaetze.Circuit</code>.
 See page <a href="../ansaetze/"><em>Ansaetze</em></a> for more details and a list of available Ansatzes that we provide with this package.</p>
 <h2 id="data-reuploading">Data-Reuploading<a class="headerlink" href="#data-reuploading" title="Permanent link">#</a></h2>
-<p>This idea is one of the core features of our framework and builds upon the work by <a href="https://arxiv.org/abs/2008.08605"><em>Schuld et al. (2020)</em></a>.
+<p>This idea is one of the core features of our framework and builds upon the work by <a href="https://doi.org/10.48550/arXiv.2008.08605"><em>Schuld et al. (2020)</em></a>.
 Essentially it allows us to represent a quantum circuit as a truncated Fourier series which is a powerfull feature that enables the model to mimic arbitrary non-linear functions.
 The number of frequencies that the model can represent is constrained by the number of data encoding steps within the circuit.</p>
 <p>Typically, there is a reuploading step after each layer and on each qubit (<code>data_reupload=True</code>).
@@ -820,8 +831,8 @@ This can be achieved by </p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">fig</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">figure</span><span class="o">=</span><span class="s2">&quot;tikz&quot;</span><span class="p">,</span> <span class="n">inputs_symbols</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">gate_values</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">fig</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="s2">&quot;tikz_circuit.tex&quot;</span><span class="p">,</span> <span class="n">full_document</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </span></code></pre></div>
-<p><img alt="Tikz Circuit" src="../circuit_tikz_light.png#only-light" />
-<img alt="Tikz Circuit" src="../circuit_tikz_dark.png#only-dark" /></p>
+<p><a class="glightbox" href="../figures/circuit_tikz_light.png#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Tikz Circuit" data-desc-position="top"><img alt="Tikz Circuit" src="../figures/circuit_tikz_light.png#only-light" /></a>
+<a class="glightbox" href="../figures/circuit_tikz_dark.png#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Tikz Circuit" data-desc-position="top"><img alt="Tikz Circuit" src="../figures/circuit_tikz_dark.png#only-dark" /></a></p>
 <p>Inputs are represented with "x" by default, which can be changed by adjusting the optional parameter <code>inputs_symbols</code>.
 If you want to see the actual gate values instead of variables, simply set <code>gate_values=True</code> which is also the default option.
 The returned <code>fig</code> variable is a <code>TikzFigure</code> object that stores the Latex string and allows exporting to a specified file.
@@ -897,5 +908,7 @@ To create a document that can be compiled, simply pass <code>full_document=True<
         <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
       
     
-  </body>
+  <script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(() => { lightbox.reload() });
+</script></body>
 </html>

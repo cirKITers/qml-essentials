@@ -8,6 +8,8 @@
       
       
       
+        <link rel="canonical" href="https://cirkiters.github.io/qml-essentials/entanglement/">
+      
       
         <link rel="prev" href="../coefficients/">
       
@@ -63,7 +65,7 @@
       
         <meta  property="og:description"  content="None" >
       
-        <meta  property="og:image"  content="./assets/images/social/entanglement.png" >
+        <meta  property="og:image"  content="https://cirkiters.github.io/qml-essentials/assets/images/social/entanglement.png" >
       
         <meta  property="og:image:type"  content="image/png" >
       
@@ -71,7 +73,7 @@
       
         <meta  property="og:image:height"  content="630" >
       
-        <meta  property="og:url"  content="None" >
+        <meta  property="og:url"  content="https://cirkiters.github.io/qml-essentials/entanglement/" >
       
         <meta  name="twitter:card"  content="summary_large_image" >
       
@@ -79,11 +81,20 @@
       
         <meta  name="twitter:description"  content="None" >
       
-        <meta  name="twitter:image"  content="./assets/images/social/entanglement.png" >
+        <meta  name="twitter:image"  content="https://cirkiters.github.io/qml-essentials/assets/images/social/entanglement.png" >
       
     
     
-  </head>
+   <link href="../assets/stylesheets/glightbox.min.css" rel="stylesheet"/><style>
+    html.glightbox-open { overflow: initial; height: 100%; }
+    .gslide-title { margin-top: 0px; user-select: text; }
+    .gslide-desc { color: #666; user-select: text; }
+    .gslide-image img { background: white; }
+    .gscrollbar-fixer { padding-right: 15px; }
+    .gdesc-inner { font-size: 0.75rem; }
+    body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color);}
+    body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color);}
+    body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color);}</style> <script src="../assets/javascripts/glightbox.min.js"></script></head>
   
   
     
@@ -587,7 +598,7 @@ To account for this, you can use the relative entropy method as follows: </p>
 The runtime scales with <code>n_sigmas</code><span class="arithmatex">\(\times\)</span><code>n_samples</code> and both increase exponentially if <code>scale=True</code> is set.</p>
 <p>Internally, we compare the states, obtained from the PQC, against those from a <a href="https://en.wikipedia.org/wiki/Greenberger%E2%80%93Horne%E2%80%93Zeilinger_state">GHZ state</a> of the same size (which we consider the next separable state).
 This approach is explained in detail in <a href="https://doi.org/10.48550/arXiv.quant-ph/0504163">this paper</a> and illustrated in the following figure:</p>
-<p><img alt="Relative Entropy" src="../rel-entropy.svg#center" /></p>
+<p><a class="glightbox" href="../figures/rel-entropy.svg#center" data-type="image" data-width="auto" data-height="auto" data-title="Relative Entropy" data-desc-position="top"><img alt="Relative Entropy" src="../figures/rel-entropy.svg#center" /></a></p>
 
 
 
@@ -659,5 +670,7 @@ This approach is explained in detail in <a href="https://doi.org/10.48550/arXiv.
         <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
       
     
-  </body>
+  <script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(() => { lightbox.reload() });
+</script></body>
 </html>
