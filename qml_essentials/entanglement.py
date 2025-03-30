@@ -247,7 +247,7 @@ class Entanglement:
 
         ghz_model = Model(model.n_qubits, 1, "GHZ", data_reupload=False)
 
-        normalised_entropies = np.zeros(n_sigmas)
+        normalised_entropies = np.zeros((n_sigmas, n_samples))
         for j, log_sigma in enumerate(log_sigmas):
 
             # Entropy of GHZ states should be maximal
@@ -260,11 +260,10 @@ class Entanglement:
                 model, log_sigma, **kwargs
             )
 
-            normalised_entropies[j] = np.min(rel_entropy / ghz_entropy)
+            normalised_entropies[j] = rel_entropy / ghz_entropy
 
         # Average all iterated states
-        # catch floating point errors
-        entangling_capability = np.mean(normalised_entropies)
+        entangling_capability = normalised_entropies.min(axis=0).mean()
         log.debug(f"Variance of measure: {normalised_entropies.var()}")
 
         return entangling_capability
