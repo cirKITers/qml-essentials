@@ -1,7 +1,7 @@
 name: Testing on Review
 on:
-  pull_request_review:
-    types: [ready_for_review]
+  pull_request:
+    types: [review_requested]
   workflow_call:
 permissions:
   contents: write
