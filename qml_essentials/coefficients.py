@@ -79,9 +79,9 @@ class Coefficients:
         inputs: np.ndarray = np.arange(start, stop, step) % (2 * np.pi)
 
         # permute with input dimensionality
-        nd_inputs = np.array(
-            np.meshgrid(*[inputs] * model.n_input_feat)
-        ).T.reshape(-1, model.n_input_feat)
+        nd_inputs = np.array(np.meshgrid(*[inputs] * model.n_input_feat)).T.reshape(
+            -1, model.n_input_feat
+        )
 
         # Output vector is not necessarily the same length as input
         outputs = model(inputs=nd_inputs, **kwargs).reshape(

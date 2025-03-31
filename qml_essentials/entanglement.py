@@ -216,7 +216,7 @@ class Entanglement:
 
         Returns:
             float: Entangling capacity of the given circuit, guaranteed
-                to be between 0.0 and 1.0. TODO check
+                to be between 0.0 and 1.0.
         """
         dim = np.power(2, model.n_qubits)
         if scale:
