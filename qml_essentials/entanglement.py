@@ -60,37 +60,41 @@ class Entanglement:
                 log.info(f"Using sample size of model params: {model.params.shape[-1]}")
                 params = model.params
 
-        n_samples = params.shape[-1]
-        mw_measure = np.zeros(n_samples)
-        qb = list(range(model.n_qubits))
+        # implicitly set input to none in case it's not needed
+        kwargs.setdefault("inputs", None)
+        # explicitly set execution type because everything else won't work
+        rhos = model(execution_type="density", **kwargs).reshape(
+            -1, 2**model.n_qubits, 2**model.n_qubits
+        )
 
-        # TODO: vectorize in future iterations
-        for i in range(n_samples):
-            # implicitly set input to none in case it's not needed
-            kwargs.setdefault("inputs", None)
-            # explicitly set execution type because everything else won't work
-            U = model(params=params[:, :, i], execution_type="density", **kwargs)
+        mw_measure = np.zeros(len(rhos))
 
-            # Formula 6 in https://doi.org/10.48550/arXiv.quant-ph/0305094
-            # ---
-            entropy = 0
-            for j in range(model.n_qubits):
-                density = qml.math.partial_trace(U, qb[:j] + qb[j + 1 :])
-                # only real values, because imaginary part will be separate
-                # in all following calculations anyway
-                # entropy should be 1/2 <= entropy <= 1
-                entropy += np.trace((density @ density).real)
-
-            # inverse averaged entropy and scale to [0, 1]
-            mw_measure[i] = 2 * (1 - entropy / model.n_qubits)
-            # ---
+        for i, rho in enumerate(rhos):
+            mw_measure[i] = Entanglement._compute_meyer_wallach_meas(
+                rho, model.n_qubits
+            )
 
         # Average all iterated states
-        # catch floating point errors
         entangling_capability = min(max(mw_measure.mean(), 0.0), 1.0)
         log.debug(f"Variance of measure: {mw_measure.var()}")
 
+        # catch floating point errors
         return float(entangling_capability)
+
+    @staticmethod
+    def _compute_meyer_wallach_meas(rho: np.ndarray, n_qubits: int):
+        qb = list(range(n_qubits))
+        entropy = 0
+        for j in range(n_qubits):
+            # Formula 6 in https://doi.org/10.48550/arXiv.quant-ph/0305094
+            density = qml.math.partial_trace(rho, qb[:j] + qb[j + 1 :])
+            # only real values, because imaginary part will be separate
+            # in all following calculations anyway
+            # entropy should be 1/2 <= entropy <= 1
+            entropy += np.trace((density @ density).real)
+
+        # inverse averaged entropy and scale to [0, 1]
+        return 2 * (1 - entropy / n_qubits)
 
     @staticmethod
     def bell_measurements(
