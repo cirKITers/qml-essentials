@@ -299,6 +299,93 @@ class Entanglement:
 
         return rel_entropies
 
+    @staticmethod
+    def entanglement_of_formation(
+        model: Model,
+        n_samples: int,
+        seed: Optional[int],
+        scale: bool = False,
+        **kwargs: Any,
+    ) -> float:
+        """
+        This function implements the entanglement of formation for mixed
+        quantum systems.
+        In that a mixed state gets decomposed into pure states with respective
+        probabilities using the eigendecomposition of the density matrix.
+        Then, the Meyer-Wallach measure is computed for each pure state,
+        weighted by the eigenvalue.
+        See e.g. https://arxiv.org/pdf/quant-ph/0504163
+
+        Note that the decomposition is *not unique*! Therefore, this measure
+        presents the entanglement for *some* decomposition into pure states,
+        not necessarily the one that is anticipated when applying the Kraus
+        channels.
+        If a pure state is provided, this results in the same value as the
+        Entanglement.meyer_wallach function.
+
+        Args:
+            model (Model): The quantum circuit model.
+            n_samples (int): Number of samples per qubit.
+            seed (Optional[int]): Seed for the random number generator.
+            scale (bool): Whether to scale the number of samples.
+            kwargs (Any): Additional keyword arguments for the model function.
+
+        Returns:
+            float: Entangling capacity of the given circuit, guaranteed
+                to be between 0.0 and 1.0.
+        """
+
+        if scale:
+            n_samples = np.power(2, model.n_qubits) * n_samples
+
+        rng = np.random.default_rng(seed)
+        if n_samples > 0:
+            assert seed is not None, "Seed must be provided when samples > 0"
+            model.initialize_params(rng=rng, repeat=n_samples)
+        else:
+            if seed is not None:
+                log.warning("Seed is ignored when samples is 0")
+
+            if len(model.params.shape) <= 2:
+                model.params = model.params.reshape(*model.params.shape, 1)
+            else:
+                log.info(f"Using sample size of model params: {model.params.shape[-1]}")
+
+        # implicitly set input to none in case it's not needed
+        kwargs.setdefault("inputs", None)
+        rhos = model(execution_type="density", **kwargs)
+        rhos = rhos.reshape(-1, 2**model.n_qubits, 2**model.n_qubits)
+        entanglement = np.zeros(len(rhos))
+        for i, rho in enumerate(rhos):
+            entanglement[i] = Entanglement._compute_entanglement_of_formation(
+                rho, model.n_qubits
+            )
+        entangling_capability = min(max(entanglement.mean(), 0.0), 1.0)
+        return float(entangling_capability)
+
+    @staticmethod
+    def _compute_entanglement_of_formation(rho: np.ndarray, n_qubits: int) -> float:
+        """
+        Computes the entanglement of formation for a given density matrix rho.
+
+        Args:
+            rho (np.ndarray): The density matrix
+            n_qubits (int): Number of qubits
+
+        Returns:
+            float: Entanglement for the provided state.
+        """
+        eigenvalues, eigenvectors = np.linalg.eigh(rho)
+        if any(np.isclose(eigenvalues, 1.0)):  # Pure state
+            return Entanglement._compute_meyer_wallach_meas(rho, n_qubits)
+        ent = 0
+        for prob, ev in zip(eigenvalues, eigenvectors):
+            ev = ev.reshape(-1, 1)
+            rho = ev @ np.conjugate(ev).T
+            mw_measure = Entanglement._compute_meyer_wallach_meas(rho, n_qubits)
+            ent += prob * mw_measure
+        return ent
+
 
 def sample_random_separable_states(
     n_qubits: int, n_samples: int, rng: np.random.Generator, take_log: bool = False
