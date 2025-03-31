@@ -1,12 +1,15 @@
-name: Testing on Review
+name: Testing
 on:
   pull_request:
-    types: [review_requested]
+    branches: [ "main" ]
   workflow_call:
 permissions:
   contents: write
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
-  test-expensive:
+  test-not-expensive:
     if: ${{ (github.actor != 'github-actions[bot]') }}
     runs-on: self-hosted
     steps:
@@ -21,9 +24,4 @@ jobs:
     - name: Install dependencies
       run: poetry install --with dev
     - name: Test with pytest
-      run: poetry run pytest --cov=qml_essentials --cov-report html --dist load -m "expensive" -n auto
-    - name: Share coverage report
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-report
-        path: htmlcov/
+      run: poetry run pytest --cov=qml_essentials --dist load -m "not expensive" -n auto

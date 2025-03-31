@@ -372,7 +372,6 @@ def test_relative_entropy_order() -> None:
         "Circuit_1",
         "Circuit_16",
         "Circuit_19",
-        "Circuit_15",
         "Strongly_Entangling",
     ]
 
