@@ -54,12 +54,6 @@ class Entanglement:
             if seed is not None:
                 log.warning("Seed is ignored when samples is 0")
 
-            if len(model.params.shape) <= 2:
-                params = model.params.reshape(*model.params.shape, 1)
-            else:
-                log.info(f"Using sample size of model params: {model.params.shape[-1]}")
-                params = model.params
-
         # implicitly set input to none in case it's not needed
         kwargs.setdefault("inputs", None)
         # explicitly set execution type because everything else won't work
