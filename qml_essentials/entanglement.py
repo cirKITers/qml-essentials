@@ -1,8 +1,8 @@
 from typing import Optional, Any, List
 import pennylane as qml
 import pennylane.numpy as np
-from copy import deepcopy
-from qml_essentials.utils import logm_v
+
+from qml_essentials.utils import logm_v, MultiprocessingPool
 from qml_essentials.model import Model
 import logging
 
@@ -248,25 +248,36 @@ class Entanglement:
         ghz_model = Model(model.n_qubits, 1, "GHZ", data_reupload=False)
 
         normalised_entropies = np.zeros((n_sigmas, n_samples))
-        for j, log_sigma in enumerate(log_sigmas):
 
-            # Entropy of GHZ states should be maximal
-            ghz_entropy = Entanglement._compute_rel_entropies(
-                ghz_model,
-                log_sigma,
-            )
-
-            rel_entropy = Entanglement._compute_rel_entropies(
-                model, log_sigma, **kwargs
-            )
-
-            normalised_entropies[j] = rel_entropy / ghz_entropy
+        mpp = MultiprocessingPool(
+            n_processes=n_sigmas,
+            target=Entanglement._compute_entropy_sigma,
+            log_sigmas=log_sigmas,
+            model=model,
+            ghz_model=ghz_model,
+            **kwargs,
+        )
+        normalised_entropies = mpp.spawn(normalised_entropies)
 
         # Average all iterated states
         entangling_capability = normalised_entropies.min(axis=0).mean()
         log.debug(f"Variance of measure: {normalised_entropies.var()}")
 
         return entangling_capability
+
+    @staticmethod
+    def _compute_entropy_sigma(procnum, result, log_sigmas, model, ghz_model, **kwargs):
+        # Entropy of GHZ states should be maximal
+        ghz_entropy = Entanglement._compute_rel_entropies(
+            ghz_model,
+            log_sigmas[procnum],
+        )
+
+        rel_entropy = Entanglement._compute_rel_entropies(
+            model, log_sigmas[procnum], **kwargs
+        )
+        print(f"{procnum} {rel_entropy} {ghz_entropy}")
+        result[procnum] = rel_entropy / ghz_entropy
 
     @staticmethod
     def _compute_rel_entropies(
