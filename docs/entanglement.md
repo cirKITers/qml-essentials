@@ -1,9 +1,11 @@
 # Entanglement
 
 As one of the fundamental aspects of quantum computing, entanglement plays also an important role in quantum machine learning.
-Our package offers methods for calculating the entangling capability of a particular model.
+Our package offers various methods for calculating the entangling capability of a particular model.
 
-In the simplest case, using the Meyer-Wallach measure, this could look as follows:
+## Meyer-Wallach
+
+In the simplest case, using the *Meyer-Wallach* measure, this could look as follows:
 ```python
 from qml_essentials.model import Model
 from qml_essentials.entanglement import Entanglement
@@ -33,7 +35,7 @@ If you set `n_samples=None`, we will use the currently stored parameters of the 
 
 ## Bell-Measurement
 
-An alternate method for calculating the entangling capability is the Bell-measurement method.
+An alternate method for calculating the entangling capability is the *Bell-Measurement* method.
 We can utilize this by
 
 ```python
@@ -45,7 +47,7 @@ ent_cap = Entanglement.bell_measurements(
 ## Relative Entropy
 
 While calculating entanglement using the Meyer-Wallach or Bell-Measurements method works great for noiseless circuits, it won't result in the correct values when being used together with incoherent noise.
-To account for this, you can use the relative entropy method as follows: 
+To account for this, you can use the *Relative Entropy* method as follows: 
 
 ```python
 ent_cap = Entanglement.relative_entropy(
@@ -64,8 +66,8 @@ This approach is explained in detail in [this paper](https://doi.org/10.48550/ar
 
 ## Entanglement of Formation
 
-Another possibility to compute the entanglement is the Entanglement of Formation (EF).
-As the relative entropy of entanglement, EF presents an approximation, and can be used via:
+Another possibility to compute the entanglement of a noisy circuit is the *Entanglement of Formation*.
+Similar to the relative entropy of entanglement, this measure presents an approximation, and can be used via:
 
 ```python
 ent_cap = Entanglement.entanglement_of_formation(
