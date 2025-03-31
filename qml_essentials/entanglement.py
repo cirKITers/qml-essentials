@@ -49,7 +49,6 @@ class Entanglement:
             assert seed is not None, "Seed must be provided when samples > 0"
             # TODO: maybe switch to JAX rng
             model.initialize_params(rng=rng, repeat=n_samples)
-            params: np.ndarray = model.params
         else:
             if seed is not None:
                 log.warning("Seed is ignored when samples is 0")
