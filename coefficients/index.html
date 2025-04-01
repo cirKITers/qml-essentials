@@ -8,6 +8,8 @@
       
       
       
+        <link rel="canonical" href="https://cirkiters.github.io/qml-essentials/coefficients/">
+      
       
         <link rel="prev" href="../ansaetze/">
       
@@ -63,7 +65,7 @@
       
         <meta  property="og:description"  content="None" >
       
-        <meta  property="og:image"  content="./assets/images/social/coefficients.png" >
+        <meta  property="og:image"  content="https://cirkiters.github.io/qml-essentials/assets/images/social/coefficients.png" >
       
         <meta  property="og:image:type"  content="image/png" >
       
@@ -71,7 +73,7 @@
       
         <meta  property="og:image:height"  content="630" >
       
-        <meta  property="og:url"  content="None" >
+        <meta  property="og:url"  content="https://cirkiters.github.io/qml-essentials/coefficients/" >
       
         <meta  name="twitter:card"  content="summary_large_image" >
       
@@ -79,11 +81,20 @@
       
         <meta  name="twitter:description"  content="None" >
       
-        <meta  name="twitter:image"  content="./assets/images/social/coefficients.png" >
+        <meta  name="twitter:image"  content="https://cirkiters.github.io/qml-essentials/assets/images/social/coefficients.png" >
       
     
     
-  </head>
+   <link href="../assets/stylesheets/glightbox.min.css" rel="stylesheet"/><style>
+    html.glightbox-open { overflow: initial; height: 100%; }
+    .gslide-title { margin-top: 0px; user-select: text; }
+    .gslide-desc { color: #666; user-select: text; }
+    .gslide-image img { background: white; }
+    .gscrollbar-fixer { padding-right: 15px; }
+    .gdesc-inner { font-size: 0.75rem; }
+    body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color);}
+    body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color);}
+    body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color);}</style> <script src="../assets/javascripts/glightbox.min.js"></script></head>
   
   
     
@@ -675,13 +686,13 @@ Let's try that for just two frequencies:</p>
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">X_freq_shift</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">fftshift</span><span class="p">(</span><span class="n">X_freq</span><span class="p">)</span>
 </span></code></pre></div>
 Note that calling <code>np.fft.fftshift</code> is not required from a technical point of view, but makes our spectrum nicely zero-centered and projected correctly.</p>
-<p><img alt="Model Fct Spectr" src="../model_fct_spectr_light.png#only-light" />
-<img alt="Model Fct Spectr" src="../model_fct_spectr_dark.png#only-dark" /></p>
+<p><a class="glightbox" href="../figures/model_fct_spectr_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Model Fct Spectr" data-desc-position="top"><img alt="Model Fct Spectr" src="../figures/model_fct_spectr_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/model_fct_spectr_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Model Fct Spectr" data-desc-position="top"><img alt="Model Fct Spectr" src="../figures/model_fct_spectr_dark.png#center#only-dark" /></a></p>
 <p>The same can be done with our framework, with a neat one-liner:
 <div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">X_shift</span><span class="p">,</span> <span class="n">X_freq_shift</span> <span class="o">=</span> <span class="n">Coefficients</span><span class="o">.</span><span class="n">get_spectrum</span><span class="p">(</span><span class="n">model_fct</span><span class="p">,</span> <span class="n">shift</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </span></code></pre></div></p>
-<p><img alt="Model Fct Spectr Ours" src="../model_fct_spectr_ours_light.png#only-light" />
-<img alt="Model Fct Spectr Ours" src="../model_fct_spectr_ours_dark.png#only-dark" /></p>
+<p><a class="glightbox" href="../figures/model_fct_spectr_ours_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Model Fct Spectr Ours" data-desc-position="top"><img alt="Model Fct Spectr Ours" src="../figures/model_fct_spectr_ours_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/model_fct_spectr_ours_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Model Fct Spectr Ours" data-desc-position="top"><img alt="Model Fct Spectr Ours" src="../figures/model_fct_spectr_ours_dark.png#center#only-dark" /></a></p>
 <p>Note, that applying the shift can be controlled with the optional <code>shift</code> argument.</p>
 <p>Another important point is, that the <code>force_mean</code> flag is set, and the <code>execution_type</code> is is implicitly set to <code>expval</code>.
 This is mainly because, we require a single expectation value to calculate the coefficients.</p>
@@ -695,8 +706,8 @@ Therefore, two additional arguments exist in the <code>get_spectrum</code> metho
 - <code>trim</code>: Whether to remove the Nyquist frequency if spectrum is even. This will result in a symmetric spectrum</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">X_shift</span><span class="p">,</span> <span class="n">X_freq_shift</span> <span class="o">=</span> <span class="n">Coefficients</span><span class="o">.</span><span class="n">get_spectrum</span><span class="p">(</span><span class="n">model_fct</span><span class="p">,</span> <span class="n">mfs</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">mts</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">shift</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </span></code></pre></div>
-<p><img alt="Model Fct Spectr OS" src="../model_fct_spectr_os_light.png#only-light" />
-<img alt="Model Fct Spectr OS" src="../model_fct_spectr_os_dark.png#only-dark" /></p>
+<p><a class="glightbox" href="../figures/model_fct_spectr_os_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Model Fct Spectr OS" data-desc-position="top"><img alt="Model Fct Spectr OS" src="../figures/model_fct_spectr_os_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/model_fct_spectr_os_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Model Fct Spectr OS" data-desc-position="top"><img alt="Model Fct Spectr OS" src="../figures/model_fct_spectr_os_dark.png#center#only-dark" /></a></p>
 <p>Note that, as the frequencies change with the <code>mts</code> argument, we have to take that into account when calculating the frequencies with the last call.</p>
 <p>Feel free to checkout our <a href="https://github.com/cirKITers/qml-essentials/blob/main/docs/coefficients.ipynb">jupyter notebook</a> if you would like to play around with this.</p>
 <p>A sidenote on the performance; Increasing the <code>mts</code> value effectively increases the input lenght that goes into the model.
@@ -704,9 +715,7 @@ This means that <code>mts=2</code> will require twice the time to compute, which
 <h2 id="power_spectral_density">Power spectral density<a class="headerlink" href="#power_spectral_density" title="Permanent link">#</a></h2>
 <p>In some cases it can be useful to get the <a href="https://en.wikipedia.org/wiki/Spectral_density">power spectral density (PSD)</a>.
 As calculation of this metric might differ between the different research domains, we included a function to get the PSD of a given spectrum using the following formula:</p>
-<div class="arithmatex">\[
-PSD = \frac{2 (\mathrm{Re}(F)^2+\mathrm{Im}(F)^2)}{n_\text{samples}^2}
-\]</div>
+<div class="arithmatex">\[PSD = \frac{2 (\mathrm{Re}(F)^2+\mathrm{Im}(F)^2)}{n_\text{samples}^2}\]</div>
 <p>where <span class="arithmatex">\(F\)</span> is the spectrum and <span class="arithmatex">\(n_\text{samples}\)</span> the length of the input vector.</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">model</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span>
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">n_qubits</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
@@ -719,8 +728,8 @@ PSD = \frac{2 (\mathrm{Re}(F)^2+\mathrm{Im}(F)^2)}{n_\text{samples}^2}
 </span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
 </span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="n">psd</span> <span class="o">=</span> <span class="n">Coefficients</span><span class="o">.</span><span class="n">get_psd</span><span class="p">(</span><span class="n">coeffs</span><span class="p">)</span>
 </span></code></pre></div>
-<p><img alt="Model PSD" src="../model_psd_light.png#only-light" />
-<img alt="Model PSD" src="../model_psd_dark.png#only-dark" /></p>
+<p><a class="glightbox" href="../figures/model_psd_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Model PSD" data-desc-position="top"><img alt="Model PSD" src="../figures/model_psd_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/model_psd_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Model PSD" data-desc-position="top"><img alt="Model PSD" src="../figures/model_psd_dark.png#center#only-dark" /></a></p>
 <h2 id="analytic_coefficients">Analytic Coefficients<a class="headerlink" href="#analytic_coefficients" title="Permanent link">#</a></h2>
 <p>All of the calculations above were performed by applying a Fast Fourier Transform to the output of our Model.
 However, we can also calculate the coefficients analytically.</p>
@@ -732,8 +741,8 @@ However, we can also calculate the coefficients analytically.</p>
 </span></code></pre></div></p>
 <p>Note that while this takes significantly longer to compute, it gives us the precise coefficients, solely depending on the parameters.
 We can verify this by comparing it to the previous results:</p>
-<p><img alt="Model Analytic Coefficients" src="../model_psd_an_light.png#only-light" />
-<img alt="Model Analytic Coefficients" src="../model_psd_an_dark.png#only-dark" /></p>
+<p><a class="glightbox" href="../figures/model_psd_an_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Model Analytic Coefficients" data-desc-position="top"><img alt="Model Analytic Coefficients" src="../figures/model_psd_an_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/model_psd_an_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Model Analytic Coefficients" data-desc-position="top"><img alt="Model Analytic Coefficients" src="../figures/model_psd_an_dark.png#center#only-dark" /></a></p>
 <h3 id="technical_details">Technical Details<a class="headerlink" href="#technical_details" title="Permanent link">#</a></h3>
 <p>We use an approach developed by <a href="https://arxiv.org/pdf/2304.03787">Nemkov et al.</a>, which was later extended by <a href="https://arxiv.org/pdf/2411.03450">Wiedmann et al.</a>.
 The implementation is also inspired by the corresponding <a href="https://github.com/idnm/FourierVQA">code</a> for Nemkov et al.'s paper.</p>
@@ -757,9 +766,9 @@ Currently, only the FFT-based method supports this.</p>
 </span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>
 </span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="n">psd</span> <span class="o">=</span> <span class="n">Coefficients</span><span class="o">.</span><span class="n">get_psd</span><span class="p">(</span><span class="n">coeffs</span><span class="p">)</span>
 </span></code></pre></div>
-<p>Using a logarithmic color bar, one obtains the following 2d-spectrum:</p>
-<p><img alt="2D Model Coefficients" src="../model_2d_psd_light.png#only-light" />
-<img alt="2D Model Coefficients" src="../model_2d_psd_dark.png#only-dark" /></p>
+<p>Using a logarithmic color bar, one obtains the following 2D-spectrum:</p>
+<p><a class="glightbox" href="../figures/model_2d_psd_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="2D Model Coefficients" data-desc-position="top"><img alt="2D Model Coefficients" src="../figures/model_2d_psd_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/model_2d_psd_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="2D Model Coefficients" data-desc-position="top"><img alt="2D Model Coefficients" src="../figures/model_2d_psd_dark.png#center#only-dark" /></a></p>
 <p>Note that "X1" refers to the "RX" encoding and "X2" to the "RY" encoding.</p>
 
 
@@ -832,5 +841,7 @@ Currently, only the FFT-based method supports this.</p>
         <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
       
     
-  </body>
+  <script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(() => { lightbox.reload() });
+</script></body>
 </html>

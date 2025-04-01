@@ -8,6 +8,8 @@
       
       
       
+        <link rel="canonical" href="https://cirkiters.github.io/qml-essentials/entanglement/">
+      
       
         <link rel="prev" href="../coefficients/">
       
@@ -63,7 +65,7 @@
       
         <meta  property="og:description"  content="None" >
       
-        <meta  property="og:image"  content="./assets/images/social/entanglement.png" >
+        <meta  property="og:image"  content="https://cirkiters.github.io/qml-essentials/assets/images/social/entanglement.png" >
       
         <meta  property="og:image:type"  content="image/png" >
       
@@ -71,7 +73,7 @@
       
         <meta  property="og:image:height"  content="630" >
       
-        <meta  property="og:url"  content="None" >
+        <meta  property="og:url"  content="https://cirkiters.github.io/qml-essentials/entanglement/" >
       
         <meta  name="twitter:card"  content="summary_large_image" >
       
@@ -79,11 +81,20 @@
       
         <meta  name="twitter:description"  content="None" >
       
-        <meta  name="twitter:image"  content="./assets/images/social/entanglement.png" >
+        <meta  name="twitter:image"  content="https://cirkiters.github.io/qml-essentials/assets/images/social/entanglement.png" >
       
     
     
-  </head>
+   <link href="../assets/stylesheets/glightbox.min.css" rel="stylesheet"/><style>
+    html.glightbox-open { overflow: initial; height: 100%; }
+    .gslide-title { margin-top: 0px; user-select: text; }
+    .gslide-desc { color: #666; user-select: text; }
+    .gslide-image img { background: white; }
+    .gscrollbar-fixer { padding-right: 15px; }
+    .gdesc-inner { font-size: 0.75rem; }
+    body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color);}
+    body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color);}
+    body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color);}</style> <script src="../assets/javascripts/glightbox.min.js"></script></head>
   
   
     
@@ -397,6 +408,15 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#meyer-wallach" class="md-nav__link">
+    <span class="md-ellipsis">
+      Meyer-Wallach
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#bell-measurement" class="md-nav__link">
     <span class="md-ellipsis">
       Bell-Measurement
@@ -409,6 +429,15 @@
   <a href="#relative_entropy" class="md-nav__link">
     <span class="md-ellipsis">
       Relative Entropy
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entanglement_of_formation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Entanglement of Formation
     </span>
   </a>
   
@@ -512,6 +541,15 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#meyer-wallach" class="md-nav__link">
+    <span class="md-ellipsis">
+      Meyer-Wallach
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#bell-measurement" class="md-nav__link">
     <span class="md-ellipsis">
       Bell-Measurement
@@ -524,6 +562,15 @@
   <a href="#relative_entropy" class="md-nav__link">
     <span class="md-ellipsis">
       Relative Entropy
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entanglement_of_formation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Entanglement of Formation
     </span>
   </a>
   
@@ -547,8 +594,9 @@
 
 <h1 id="entanglement">Entanglement<a class="headerlink" href="#entanglement" title="Permanent link">#</a></h1>
 <p>As one of the fundamental aspects of quantum computing, entanglement plays also an important role in quantum machine learning.
-Our package offers methods for calculating the entangling capability of a particular model.</p>
-<p>In the simplest case, using the Meyer-Wallach measure, this could look as follows:
+Our package offers various methods for calculating the entangling capability of a particular model.</p>
+<h2 id="meyer-wallach">Meyer-Wallach<a class="headerlink" href="#meyer-wallach" title="Permanent link">#</a></h2>
+<p>In the simplest case, using the <em>Meyer-Wallach</em> measure, this could look as follows:
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.model</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.entanglement</span><span class="w"> </span><span class="kn">import</span> <span class="n">Entanglement</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
@@ -570,7 +618,7 @@ Our package offers methods for calculating the entangling capability of a partic
 </span></code></pre></div>
 <p>If you set <code>n_samples=None</code>, we will use the currently stored parameters of the model to estimate the degree of entanglement.</p>
 <h2 id="bell-measurement">Bell-Measurement<a class="headerlink" href="#bell-measurement" title="Permanent link">#</a></h2>
-<p>An alternate method for calculating the entangling capability is the Bell-measurement method.
+<p>An alternate method for calculating the entangling capability is the <em>Bell-Measurement</em> method.
 We can utilize this by</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">ent_cap</span> <span class="o">=</span> <span class="n">Entanglement</span><span class="o">.</span><span class="n">bell_measurements</span><span class="p">(</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">model</span><span class="p">,</span> <span class="n">n_samples</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">1000</span>
@@ -578,7 +626,7 @@ We can utilize this by</p>
 </span></code></pre></div>
 <h2 id="relative_entropy">Relative Entropy<a class="headerlink" href="#relative_entropy" title="Permanent link">#</a></h2>
 <p>While calculating entanglement using the Meyer-Wallach or Bell-Measurements method works great for noiseless circuits, it won't result in the correct values when being used together with incoherent noise.
-To account for this, you can use the relative entropy method as follows: </p>
+To account for this, you can use the <em>Relative Entropy</em> method as follows: </p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">ent_cap</span> <span class="o">=</span> <span class="n">Entanglement</span><span class="o">.</span><span class="n">relative_entropy</span><span class="p">(</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">model</span><span class="p">,</span> <span class="n">n_samples</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">n_sigmas</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">noise_params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;BitFlip&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">}</span>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="p">)</span>
@@ -587,7 +635,22 @@ To account for this, you can use the relative entropy method as follows: </p>
 The runtime scales with <code>n_sigmas</code><span class="arithmatex">\(\times\)</span><code>n_samples</code> and both increase exponentially if <code>scale=True</code> is set.</p>
 <p>Internally, we compare the states, obtained from the PQC, against those from a <a href="https://en.wikipedia.org/wiki/Greenberger%E2%80%93Horne%E2%80%93Zeilinger_state">GHZ state</a> of the same size (which we consider the next separable state).
 This approach is explained in detail in <a href="https://doi.org/10.48550/arXiv.quant-ph/0504163">this paper</a> and illustrated in the following figure:</p>
-<p><img alt="Relative Entropy" src="../rel-entropy.svg#center" /></p>
+<p><a class="glightbox" href="../figures/rel-entropy.svg#center" data-type="image" data-width="auto" data-height="auto" data-title="Relative Entropy" data-desc-position="top"><img alt="Relative Entropy" src="../figures/rel-entropy.svg#center" /></a></p>
+<h2 id="entanglement_of_formation">Entanglement of Formation<a class="headerlink" href="#entanglement_of_formation" title="Permanent link">#</a></h2>
+<p>Another possibility to compute the entanglement of a noisy circuit is the <em>Entanglement of Formation</em>.
+Similar to the relative entropy of entanglement, this measure presents an approximation, and can be used via:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">ent_cap</span> <span class="o">=</span> <span class="n">Entanglement</span><span class="o">.</span><span class="n">entanglement_of_formation</span><span class="p">(</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">model</span><span class="p">,</span> <span class="n">n_samples</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">noise_params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;BitFlip&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">}</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>For a technical description we refer to the <a href="https://doi.org/10.48550/arXiv.quant-ph/0504163">review by Plenio and Virmani</a>.
+The general idea is that a mixed state gets decomposed into pure states with respective probabilities using the eigendecomposition of the density matrix.
+Then, entanglement is computed for each pure state, weighted by the eigenvalue.
+In our implementation, we use the Meyer-Wallach measure for this purpose.</p>
+<p>Note however, that the decomposition is <em>not unique</em>!
+Therefore, this measure presents the entanglement for <em>some</em> decomposition into pure states, not necessarily the one that is anticipated when applying the Kraus channels.
+This becomes particularly evident, when computing the entanglement of a noisy GHZ-circuit.
+To prevent unintended decompositions for pure states, the methods of EF and Meyer-Wallach are equivalent for these.</p>
 
 
 
@@ -659,5 +722,7 @@ This approach is explained in detail in <a href="https://doi.org/10.48550/arXiv.
         <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
       
     
-  </body>
+  <script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(() => { lightbox.reload() });
+</script></body>
 </html>
