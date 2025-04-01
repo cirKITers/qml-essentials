@@ -68,14 +68,15 @@ class Entanglement:
         kwargs.setdefault("inputs", None)
         # explicitly set execution type because everything else won't work
         U = model(params=params, execution_type="density", **kwargs)
-
         # TODO: vectorize in future iterations
         for i in range(n_samples):
             # Formula 6 in https://doi.org/10.48550/arXiv.quant-ph/0305094
             # ---
             entropy = 0
             for j in range(model.n_qubits):
-                density = qml.math.partial_trace(U[i], qb[:j] + qb[j + 1 :])
+                density = qml.math.partial_trace(
+                    U[i] if U.ndim == 3 else U, qb[:j] + qb[j + 1 :]
+                )
                 # only real values, because imaginary part will be separate
                 # in all following calculations anyway
                 # entropy should be 1/2 <= entropy <= 1
