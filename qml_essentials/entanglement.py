@@ -64,18 +64,18 @@ class Entanglement:
         mw_measure = np.zeros(n_samples)
         qb = list(range(model.n_qubits))
 
+        # implicitly set input to none in case it's not needed
+        kwargs.setdefault("inputs", None)
+        # explicitly set execution type because everything else won't work
+        U = model(params=params, execution_type="density", **kwargs)
+
         # TODO: vectorize in future iterations
         for i in range(n_samples):
-            # implicitly set input to none in case it's not needed
-            kwargs.setdefault("inputs", None)
-            # explicitly set execution type because everything else won't work
-            U = model(params=params[:, :, i], execution_type="density", **kwargs)
-
             # Formula 6 in https://doi.org/10.48550/arXiv.quant-ph/0305094
             # ---
             entropy = 0
             for j in range(model.n_qubits):
-                density = qml.math.partial_trace(U, qb[:j] + qb[j + 1 :])
+                density = qml.math.partial_trace(U[i], qb[:j] + qb[j + 1 :])
                 # only real values, because imaginary part will be separate
                 # in all following calculations anyway
                 # entropy should be 1/2 <= entropy <= 1
