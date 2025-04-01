@@ -751,7 +751,7 @@ class Model:
         if n_processes == 1:
             result = f(params, inputs)
         else:
-            log.debug(f"Using {n_processes} processes")
+            log.info(f"Using {n_processes} processes")
             mpp = MultiprocessingPool(
                 n_processes=n_processes,
                 target=Model._parallel_f,
@@ -916,8 +916,7 @@ class Model:
                         inputs=inputs,
                     )
                 else:
-                    result = self._mp_executor(
-                        f=self.circuit,
+                    result = self.circuit(
                         params=params,  # use arraybox params
                         inputs=inputs,
                     )
