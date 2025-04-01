@@ -83,6 +83,9 @@ class Model:
                 Defaults to False.
             remove_zero_encoding (bool, optional): whether to
                 remove the zero encoding from the circuit. Defaults to True.
+            mp_threshold (int, optional): threshold above which the parameter
+                batch dimension is split across multiple processes.
+                Defaults to -1.
 
         Returns:
             None
@@ -733,6 +736,18 @@ class Model:
 
     @staticmethod
     def _parallel_f(procnum, result, f, batch_size, params, inputs):
+        """
+        Helper function for parallelizing a function f over parameters.
+        Sices the batch dimension based on the procnum and batch size.
+
+        Args:
+            procnum: The process number.
+            result: The result array.
+            f: The function to be parallelized.
+            batch_size: The batch size.
+            params: The parameters array.
+            inputs: The inputs array.
+        """
         min_idx = max(procnum * batch_size, 0)
         max_idx = min((procnum + 1) * batch_size, params.shape[2])
 
@@ -740,6 +755,22 @@ class Model:
         result[procnum] = f(params, inputs)
 
     def _mp_executor(self, f, params, inputs):
+        """
+        Execute a function f in parallel over parameters.
+
+        Args:
+            f: A function that takes two arguments, params and inputs,
+                and returns a numpy array.
+            params: A 3D numpy array of parameters where the first dimension is
+                the layer index, the second dimension is the parameter index in
+                the layer, and the third dimension is the sample index.
+            inputs: A 2D numpy array of inputs where the first dimension is
+                the sample index and the second dimension is the input feature index.
+
+        Returns:
+            A numpy array of the output of f applied to each batch of
+            samples in params and inputs.
+        """
         n_processes = 1
         # batches available?
         if params is not None and len(params.shape) > 2:
