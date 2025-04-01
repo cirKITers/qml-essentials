@@ -1,7 +1,6 @@
 import random
-from qml_essentials.model import Model, MultiProcessingModel
+from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Circuit, Gates
-from qml_essentials.utils import QuanTikz
 import pytest
 import logging
 import inspect
@@ -171,10 +170,11 @@ def test_multiprocessing() -> None:
     # use n_samples that is not a multiple of the threshold
     n_samples = 4500
 
-    model = MultiProcessingModel(
+    model = Model(
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_19",
+        mp_threshold=1000,
     )
 
     model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
@@ -384,7 +384,6 @@ def test_basic_draw() -> None:
                 + [np.random.uniform(0, 2 * np.pi) for _ in range(rest)]
             ).reshape(model.params.shape)
             model.params = test_params
-        print(ansatz.__name__, "\n")
         repr(model)
         _ = model.draw(figure="mpl")
         _ = model.draw(figure="tikz")

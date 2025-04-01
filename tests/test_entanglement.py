@@ -133,6 +133,7 @@ def test_mw_measure() -> None:
             circuit_type=test_case["circuit_type"],
             data_reupload=False,
             initialization="random",
+            mp_threshold=1000,
         )
 
         ent_cap = Entanglement.meyer_wallach(
@@ -232,6 +233,7 @@ def test_bell_measure() -> None:
             circuit_type=test_case["circuit_type"],
             data_reupload=False,
             initialization="random",
+            mp_threshold=1000,
         )
 
         ent_cap = Entanglement.bell_measurements(
@@ -380,6 +382,7 @@ def test_relative_entropy_order() -> None:
         n_layers=1,
         circuit_type="GHZ",
         data_reupload=False,
+        mp_threshold=1000,
     )
 
     entanglement = [0.0]
