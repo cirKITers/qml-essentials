@@ -11,6 +11,9 @@ from pennylane.drawer import drawable_layers, tape_text
 from fractions import Fraction
 from itertools import cycle
 from scipy.linalg import logm
+import dill
+import multiprocessing
+import os
 
 CLIFFORD_GATES = (
     qml.PauliX,
@@ -32,6 +35,65 @@ PAULI_ROTATION_GATES = (
 )
 
 SKIPPABLE_OPERATIONS = (qml.Barrier,)
+
+
+class MultiprocessingPool:
+    class DillProcess(multiprocessing.Process):
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._target = dill.dumps(
+                self._target
+            )  # Save the target function as bytes, using dill
+
+        def run(self):
+            if self._target:
+                self._target = dill.loads(
+                    self._target
+                )  # Unpickle the target function before executing
+                return self._target(
+                    *self._args, **self._kwargs
+                )  # Execute the target function
+
+    def __init__(self, target, n_processes, *args, **kwargs):
+        self.target = target
+        self.n_processes = n_processes
+        self.args = args
+        self.kwargs = kwargs
+
+    def spawn(self, result=None):
+        manager = multiprocessing.Manager()
+        return_dict = manager.dict()
+
+        jobs = []
+        n_procs = max(len(os.sched_getaffinity(0)) // 2, 1)
+        c_procs = 0
+        for it in range(self.n_processes):
+            m = self.DillProcess(
+                target=self.target,
+                args=[it, return_dict, *self.args],
+                kwargs=self.kwargs,
+            )
+
+            # append and start job
+            jobs.append(m)
+            jobs[-1].start()
+            c_procs += 1
+
+            # if we reach the max limit of jobs
+            if c_procs > n_procs:
+                # wait for the last n_procs jobs to finish
+                for j in jobs[-c_procs:]:
+                    j.join()
+                # then continue with the next batch
+                c_procs = 0
+
+        # wait for any remaining jobs
+        for j in jobs:
+            if j.is_alive():
+                j.join()
+
+        return return_dict
 
 
 def logm_v(A, **kwargs):

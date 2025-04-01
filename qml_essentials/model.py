@@ -8,7 +8,7 @@ from autograd.numpy import numpy_boxes
 from copy import deepcopy
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
-from qml_essentials.utils import PauliCircuit, QuanTikz
+from qml_essentials.utils import PauliCircuit, QuanTikz, MultiprocessingPool
 
 
 import logging
@@ -38,6 +38,7 @@ class Model:
         random_seed: int = 1000,
         as_pauli_circuit: bool = False,
         remove_zero_encoding: bool = True,
+        mp_threshold: int = -1,
     ) -> None:
         """
         Initialize the quantum circuit model.
@@ -82,6 +83,9 @@ class Model:
                 Defaults to False.
             remove_zero_encoding (bool, optional): whether to
                 remove the zero encoding from the circuit. Defaults to True.
+            mp_threshold (int, optional): threshold above which the parameter
+                batch dimension is split across multiple processes.
+                Defaults to -1.
 
         Returns:
             None
@@ -91,6 +95,7 @@ class Model:
         self.execution_type: Optional[str] = "expval"
         self.shots = shots
         self.remove_zero_encoding = remove_zero_encoding
+        self.mp_threshold = mp_threshold
 
         if isinstance(output_qubit, list):
             assert (
@@ -211,14 +216,16 @@ class Model:
     def as_pauli_circuit(self, value: bool) -> None:
         self._as_pauli_circuit = value
 
+        if self.n_qubits < self.lightning_threshold:
+            device = "default.qubit"
+        else:
+            device = "lightning.qubit"
+            self.mp_threshold = -1
+
         self.circuit: qml.QNode = qml.QNode(
             self._circuit,
             qml.device(
-                (
-                    "default.qubit"
-                    if self.n_qubits < self.lightning_threshold
-                    else "lightning.qubit"
-                ),
+                device,
                 shots=self.shots,
                 wires=self.n_qubits,
             ),
@@ -667,58 +674,6 @@ class Model:
     def __str__(self) -> str:
         return self.draw(figure="text")
 
-    def __call__(
-        self,
-        params: Optional[np.ndarray] = None,
-        inputs: Optional[np.ndarray] = None,
-        noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
-        cache: Optional[bool] = False,
-        execution_type: Optional[str] = None,
-        force_mean: bool = False,
-    ) -> np.ndarray:
-        """
-        Perform a forward pass of the quantum circuit.
-
-        Args:
-            params (Optional[np.ndarray]): Weight vector of shape
-                [n_layers, n_qubits*n_params_per_layer].
-                If None, model internal parameters are used.
-            inputs (Optional[np.ndarray]): Input vector of shape [1].
-                If None, zeros are used.
-            noise_params (Optional[Dict[str, float]], optional): The noise parameters.
-                Defaults to None which results in the last
-                set noise parameters being used.
-            cache (Optional[bool], optional): Whether to cache the results.
-                Defaults to False.
-            execution_type (str, optional): The type of execution.
-                Must be one of 'expval', 'density', or 'probs'.
-                Defaults to None which results in the last set execution type
-                being used.
-            force_mean (bool, optional): Whether to average
-                when performing n-local measurements.
-                Defaults to False.
-
-        Returns:
-            np.ndarray: The output of the quantum circuit.
-                The shape depends on the execution_type.
-                - If execution_type is 'expval', returns an ndarray of shape
-                    (1,) if output_qubit is -1, else (len(output_qubit),).
-                - If execution_type is 'density', returns an ndarray
-                    of shape (2**n_qubits, 2**n_qubits).
-                - If execution_type is 'probs', returns an ndarray
-                    of shape (2**n_qubits,) if output_qubit is -1, else
-                    (2**len(output_qubit),).
-        """
-        # Call forward method which handles the actual caching etc.
-        return self._forward(
-            params=params,
-            inputs=inputs,
-            noise_params=noise_params,
-            cache=cache,
-            execution_type=execution_type,
-            force_mean=force_mean,
-        )
-
     def _params_validation(self, params) -> np.ndarray:
         """
         Sets the parameters when calling the quantum circuit
@@ -778,6 +733,124 @@ class Model:
                 )
 
         return inputs
+
+    @staticmethod
+    def _parallel_f(procnum, result, f, batch_size, params, inputs):
+        """
+        Helper function for parallelizing a function f over parameters.
+        Sices the batch dimension based on the procnum and batch size.
+
+        Args:
+            procnum: The process number.
+            result: The result array.
+            f: The function to be parallelized.
+            batch_size: The batch size.
+            params: The parameters array.
+            inputs: The inputs array.
+        """
+        min_idx = max(procnum * batch_size, 0)
+        max_idx = min((procnum + 1) * batch_size, params.shape[2])
+
+        params = params[:, :, min_idx:max_idx]
+        result[procnum] = f(params, inputs)
+
+    def _mp_executor(self, f, params, inputs):
+        """
+        Execute a function f in parallel over parameters.
+
+        Args:
+            f: A function that takes two arguments, params and inputs,
+                and returns a numpy array.
+            params: A 3D numpy array of parameters where the first dimension is
+                the layer index, the second dimension is the parameter index in
+                the layer, and the third dimension is the sample index.
+            inputs: A 2D numpy array of inputs where the first dimension is
+                the sample index and the second dimension is the input feature index.
+
+        Returns:
+            A numpy array of the output of f applied to each batch of
+            samples in params and inputs.
+        """
+        n_processes = 1
+        # batches available?
+        if params is not None and len(params.shape) > 2:
+            # sufficiently large for MP?
+            if self.mp_threshold > 0 and params.shape[2] > self.mp_threshold:
+                n_processes = params.shape[2] // self.mp_threshold
+
+        # check if single process
+        if n_processes == 1:
+            result = f(params, inputs)
+        else:
+            log.info(f"Using {n_processes} processes")
+            mpp = MultiprocessingPool(
+                n_processes=n_processes,
+                target=Model._parallel_f,
+                batch_size=params.shape[2] // n_processes,
+                f=f,
+                params=params,
+                inputs=inputs,
+            )
+            return_dict = mpp.spawn()
+            result = [None] * len(return_dict)
+            for k, v in return_dict.items():
+                result[k] = v
+
+            result = np.concat(result, axis=1 if self.execution_type == "expval" else 0)
+
+        return result
+
+    def __call__(
+        self,
+        params: Optional[np.ndarray] = None,
+        inputs: Optional[np.ndarray] = None,
+        noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
+        cache: Optional[bool] = False,
+        execution_type: Optional[str] = None,
+        force_mean: bool = False,
+    ) -> np.ndarray:
+        """
+        Perform a forward pass of the quantum circuit.
+
+        Args:
+            params (Optional[np.ndarray]): Weight vector of shape
+                [n_layers, n_qubits*n_params_per_layer].
+                If None, model internal parameters are used.
+            inputs (Optional[np.ndarray]): Input vector of shape [1].
+                If None, zeros are used.
+            noise_params (Optional[Dict[str, float]], optional): The noise parameters.
+                Defaults to None which results in the last
+                set noise parameters being used.
+            cache (Optional[bool], optional): Whether to cache the results.
+                Defaults to False.
+            execution_type (str, optional): The type of execution.
+                Must be one of 'expval', 'density', or 'probs'.
+                Defaults to None which results in the last set execution type
+                being used.
+            force_mean (bool, optional): Whether to average
+                when performing n-local measurements.
+                Defaults to False.
+
+        Returns:
+            np.ndarray: The output of the quantum circuit.
+                The shape depends on the execution_type.
+                - If execution_type is 'expval', returns an ndarray of shape
+                    (1,) if output_qubit is -1, else (len(output_qubit),).
+                - If execution_type is 'density', returns an ndarray
+                    of shape (2**n_qubits, 2**n_qubits).
+                - If execution_type is 'probs', returns an ndarray
+                    of shape (2**n_qubits,) if output_qubit is -1, else
+                    (2**len(output_qubit),).
+        """
+        # Call forward method which handles the actual caching etc.
+        return self._forward(
+            params=params,
+            inputs=inputs,
+            noise_params=noise_params,
+            cache=cache,
+            execution_type=execution_type,
+            force_mean=force_mean,
+        )
 
     def _forward(
         self,
@@ -868,7 +941,8 @@ class Model:
         if result is None:
             # if density matrix requested or noise params used
             if self.execution_type == "density" or self.noise_params is not None:
-                result = self.circuit_mixed(
+                result = self._mp_executor(
+                    f=self.circuit_mixed,
                     params=params,  # use arraybox params
                     inputs=inputs,
                 )
@@ -878,7 +952,8 @@ class Model:
                         inputs=inputs,
                     )
                 else:
-                    result = self.circuit(
+                    result = self._mp_executor(
+                        f=self.circuit,
                         params=params,  # use arraybox params
                         inputs=inputs,
                     )

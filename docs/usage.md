@@ -162,6 +162,28 @@ Each result is being identified by a md5 hash that is a representation of the fo
 - inputs
 - output qubit(s)
 
+## Multiprocessing
+
+Our framework can parallelise the execution of the model by providing a `mp_threshold` parameter (defaults to -1).
+This parameter effectively determines the batch size above which the model is executed in parallel.
+Given a parameter shape of `[x,y,1000]` and a `mp_threshold` of 400, three separate processes will be launched.
+If there are only two processes available on the machine, then the model will execute only two processes concurrently, wait for them to finish and then execute the remaining process.
+
+```
+n_samples = 4500
+
+model = Model(
+    n_qubits=2,
+    n_layers=1,
+    circuit_type="Circuit_19",
+    mp_threshold=1000,
+)
+```
+
+Depending on the chosen parameters and your machine, this can result in a significant speedup.
+Note however, that this is currently only available for `n_qubits<model.lightning_threshold` which is 12 by default.
+Above this threshold, Pennylane's `lightning.qubit` device is used which would interfere with an additional parallelism.
+
 ## Quantikz Export
 
 In addition to the printing the model to console and into a figure using matplotlib (thanks to Pennylane); our framework extends this functionality by allowing you to create nice [Quantikz](https://doi.org/10.48550/arXiv.1809.03842) figures that you can embedd in a Latex document :heart_eyes:.

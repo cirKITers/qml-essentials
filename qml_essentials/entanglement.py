@@ -169,13 +169,11 @@ class Entanglement:
         n_samples = params.shape[-1]
         mw_measure = np.zeros(n_samples)
 
-        for i in range(n_samples):
-            # implicitly set input to none in case it's not needed
-            kwargs.setdefault("inputs", None)
-            exp = model(params=params[:, :, i], **kwargs)
-
-            exp = 1 - 2 * exp[:, -1]
-            mw_measure[i] = 2 * (1 - exp.mean())
+        # implicitly set input to none in case it's not needed
+        kwargs.setdefault("inputs", None)
+        exp = model(params=params, **kwargs)
+        exp = 1 - 2 * exp[:, :, -1]
+        mw_measure = 2 * (1 - exp.mean(axis=0))
         entangling_capability = min(max(mw_measure.mean(), 0.0), 1.0)
         log.debug(f"Variance of measure: {mw_measure.var()}")
 

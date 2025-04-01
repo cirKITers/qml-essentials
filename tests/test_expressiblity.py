@@ -102,7 +102,7 @@ def test_divergence() -> None:
 
 @pytest.mark.unittest
 @pytest.mark.expensive
-def test_expressibility_1l() -> None:
+def test_expressibility_1l(caplog) -> None:
     circuits, results, _, skip_indices = get_test_cases()
 
     test_cases = []
@@ -128,6 +128,7 @@ def test_expressibility_1l() -> None:
             circuit_type=test_case["circuit_type"],
             initialization_domain=[0, 2 * np.pi],
             data_reupload=False,
+            mp_threshold=1000,
         )
 
         _, _, z = Expressibility.state_fidelities(

@@ -1,7 +1,6 @@
 import random
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Circuit, Gates
-from qml_essentials.utils import QuanTikz
 import pytest
 import logging
 import inspect
@@ -11,6 +10,7 @@ import hashlib
 from typing import Optional
 import pennylane as qml
 import pennylane.numpy as np
+import time
 
 from typing import List, Callable
 
@@ -163,6 +163,44 @@ def test_batching() -> None:
     assert (
         res == model(params=params, execution_type="density")
     ).all(), "Content of batching is not equal"
+
+
+@pytest.mark.unittest
+def test_multiprocessing() -> None:
+    # use n_samples that is not a multiple of the threshold
+    n_samples = 4500
+
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        mp_threshold=1000,
+    )
+
+    model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
+    params = model.params
+
+    start = time.time()
+    res_parallel = model(params=params, execution_type="density")
+    print(f"Time required for multi process: {time.time() - start}")
+
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+
+    model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
+    params = model.params
+
+    start = time.time()
+    res_single = model(params=params, execution_type="density")
+    print(f"Time required for single process: {time.time() - start}")
+
+    assert (
+        res_parallel.shape == res_single.shape
+    ), "Shape of multiprocessing is not correct"
+    assert (res_parallel == res_single).all(), "Content of multiprocessing is not equal"
 
 
 @pytest.mark.smoketest
@@ -346,7 +384,6 @@ def test_basic_draw() -> None:
                 + [np.random.uniform(0, 2 * np.pi) for _ in range(rest)]
             ).reshape(model.params.shape)
             model.params = test_params
-        print(ansatz.__name__, "\n")
         repr(model)
         _ = model.draw(figure="mpl")
         _ = model.draw(figure="tikz")
