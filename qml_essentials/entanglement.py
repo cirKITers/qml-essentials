@@ -307,7 +307,7 @@ class Entanglement:
         probabilities using the eigendecomposition of the density matrix.
         Then, the Meyer-Wallach measure is computed for each pure state,
         weighted by the eigenvalue.
-        See e.g. https://arxiv.org/pdf/quant-ph/0504163
+        See e.g. https://doi.org/10.48550/arXiv.quant-ph/0504163
 
         Note that the decomposition is *not unique*! Therefore, this measure
         presents the entanglement for *some* decomposition into pure states,
