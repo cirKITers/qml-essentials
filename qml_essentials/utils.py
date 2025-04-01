@@ -61,7 +61,7 @@ class MultiprocessingPool:
         self.args = args
         self.kwargs = kwargs
 
-    def spawn(self, result):
+    def spawn(self, result=None, concat=True):
         manager = multiprocessing.Manager()
         return_dict = manager.dict()
 
@@ -93,8 +93,12 @@ class MultiprocessingPool:
             if j.is_alive():
                 j.join()
 
+        result = [None] * len(return_dict)
         for k, v in return_dict.items():
             result[k] = v
+
+        if concat:
+            result = np.concat(result)
 
         return result
 

@@ -8,7 +8,7 @@ from autograd.numpy import numpy_boxes
 from copy import deepcopy
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
-from qml_essentials.utils import PauliCircuit, QuanTikz
+from qml_essentials.utils import PauliCircuit, QuanTikz, MultiprocessingPool
 
 
 import logging
@@ -936,3 +936,55 @@ class Model:
             int: Circuit depth (longest path of gates in circuit.)
         """
         return self.get_specs(inputs)["resources"].depth
+
+
+class MultiProcessingModel(Model):
+    def __init__(self, multiprocessing_threshold=1000, *args, **kwargs):
+        self.multiprocessing_threshold = multiprocessing_threshold
+        super().__init__(*args, **kwargs)
+
+    @staticmethod
+    def _parallel_f(procnum, result, f, batch_size, *args, **kwargs):
+
+        min_idx = max(procnum * batch_size, 0)
+        max_idx = min((procnum + 1) * batch_size, kwargs["params"].shape[2])
+
+        kwargs["params"] = kwargs["params"][:, :, min_idx:max_idx]
+        result[procnum] = f(*args, **kwargs)
+
+    def __call__(self, *args, **kwargs):
+        # get set of parameters
+        params = self._params_validation(kwargs.get("params", None))
+
+        # batches available?
+        if len(params.shape) > 2:
+            # sufficiently large for MP?
+            if params.shape[2] > self.multiprocessing_threshold:
+                n_processes = params.shape[2] // self.multiprocessing_threshold
+            else:
+                log.warning(
+                    f"Multiprocessing requested, but batch size below threshold:\
+                        {params.shape[2]} < {self.multiprocessing_threshold}"
+                )
+                n_processes = 1
+        else:
+            log.warning("Multiprocessing requested, but batch size not available")
+            n_processes = 1
+
+        # check if single process
+        if n_processes == 1 or params is None:
+            log.warning("Multiprocessing disabled, running single process instead")
+            result = super().__call__(*args, **kwargs)
+        else:
+            log.debug(f"Using {n_processes} processes")
+            mpp = MultiprocessingPool(
+                n_processes=n_processes,
+                target=MultiProcessingModel._parallel_f,
+                f=super().__call__,
+                batch_size=params.shape[2] // n_processes,
+                *args,
+                **kwargs,
+            )
+            result = mpp.spawn(concat=True)
+
+        return result
