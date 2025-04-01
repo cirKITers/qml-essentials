@@ -5,20 +5,23 @@ on:
 permissions:
   contents: write
 jobs:
-  test:
-    name: Trigger Tests
-    uses: ./.github/workflows/test.yml
+  test-not-expensive:
+    name: Trigger Not Expensive Tests
+    uses: ./.github/workflows/test-on-pr.yml
+  test-expensive:
+    name: Trigger Expensive Tests
+    uses: ./.github/workflows/test-on-review.yml
   quality:
     name: Trigger Quality
     uses: ./.github/workflows/quality.yml
   documentation:
-    needs: test
+    needs: [test-expensive, test-not-expensive]
     name: Trigger Documentation
     uses: ./.github/workflows/docs.yml
     with:
       test-run-id: ${{ github.run_id }}
   release:
-    needs: [test, quality, documentation]
+    needs: [test-expensive, test-not-expensive, quality, documentation]
     name: Release
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
