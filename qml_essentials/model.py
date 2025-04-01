@@ -791,7 +791,12 @@ class Model:
                 params=params,
                 inputs=inputs,
             )
-            result = mpp.spawn(concat=True)
+            return_dict = mpp.spawn()
+            result = [None] * len(return_dict)
+            for k, v in return_dict.items():
+                result[k] = v
+
+            result = np.concat(result, axis=1 if self.execution_type == "expval" else 0)
 
         return result
 
@@ -947,7 +952,8 @@ class Model:
                         inputs=inputs,
                     )
                 else:
-                    result = self.circuit(
+                    result = self._mp_executor(
+                        f=self.circuit,
                         params=params,  # use arraybox params
                         inputs=inputs,
                     )
