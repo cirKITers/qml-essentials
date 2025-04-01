@@ -181,7 +181,8 @@ model = Model(
 ```
 
 Depending on the chosen parameters and your machine, this can result in a significant speedup.
-Note however, that this is currently only available for density matrix calculation and for `n_qubits<model.lightning_threshold` which is 12 by default.
+Note however, that this is currently only available for `n_qubits<model.lightning_threshold` which is 12 by default.
+Above this threshold, Pennylane's `lightning.qubit` device is used which would interfere with an additional parallelism.
 
 ## Quantikz Export
 
