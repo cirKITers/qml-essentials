@@ -296,6 +296,7 @@ class Entanglement:
         n_samples: int,
         seed: Optional[int],
         scale: bool = False,
+        always_decompose: bool = False,
         **kwargs: Any,
     ) -> float:
         """
@@ -312,13 +313,16 @@ class Entanglement:
         not necessarily the one that is anticipated when applying the Kraus
         channels.
         If a pure state is provided, this results in the same value as the
-        Entanglement.meyer_wallach function.
+        Entanglement.meyer_wallach function if `always_decompose` flag is not set.
 
         Args:
             model (Model): The quantum circuit model.
             n_samples (int): Number of samples per qubit.
             seed (Optional[int]): Seed for the random number generator.
             scale (bool): Whether to scale the number of samples.
+            always_decompose (bool): Whether to explicitly compute the
+                entantlement of formation for the eigendecomposition of a pure
+                state.
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
@@ -349,25 +353,30 @@ class Entanglement:
         entanglement = np.zeros(len(rhos))
         for i, rho in enumerate(rhos):
             entanglement[i] = Entanglement._compute_entanglement_of_formation(
-                rho, model.n_qubits
+                rho, model.n_qubits, always_decompose
             )
         entangling_capability = min(max(entanglement.mean(), 0.0), 1.0)
         return float(entangling_capability)
 
     @staticmethod
-    def _compute_entanglement_of_formation(rho: np.ndarray, n_qubits: int) -> float:
+    def _compute_entanglement_of_formation(
+        rho: np.ndarray, n_qubits: int, always_decompose: bool
+    ) -> float:
         """
         Computes the entanglement of formation for a given density matrix rho.
 
         Args:
             rho (np.ndarray): The density matrix
             n_qubits (int): Number of qubits
+            always_decompose (bool): Whether to explicitly compute the
+                entantlement of formation for the eigendecomposition of a pure
+                state.
 
         Returns:
             float: Entanglement for the provided state.
         """
         eigenvalues, eigenvectors = np.linalg.eigh(rho)
-        if any(np.isclose(eigenvalues, 1.0)):  # Pure state
+        if any(np.isclose(eigenvalues, 1.0)) and not always_decompose:  # Pure state
             return Entanglement._compute_meyer_wallach_meas(rho, n_qubits)
         ent = 0
         for prob, ev in zip(eigenvalues, eigenvectors):
