@@ -426,6 +426,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#multiprocessing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Multiprocessing
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#quantikz_export" class="md-nav__link">
     <span class="md-ellipsis">
       Quantikz Export
@@ -676,6 +685,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#multiprocessing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Multiprocessing
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#quantikz_export" class="md-nav__link">
     <span class="md-ellipsis">
       Quantikz Export
@@ -825,11 +843,28 @@ Each result is being identified by a md5 hash that is a representation of the fo
 <li>inputs</li>
 <li>output qubit(s)</li>
 </ul>
+<h2 id="multiprocessing">Multiprocessing<a class="headerlink" href="#multiprocessing" title="Permanent link">#</a></h2>
+<p>Our framework can parallelise the execution of the model by providing a <code>mp_threshold</code> parameter (defaults to -1).
+This parameter effectively determines the batch size above which the model is executed in parallel.
+Given a parameter shape of <code>[x,y,1000]</code> and a <code>mp_threshold</code> of 400, three separate processes will be launched.
+If there are only two processes available on the machine, then the model will execute only two processes concurrently, wait for them to finish and then execute the remaining process.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>n_samples = 4500
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>model = Model(
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    n_qubits=2,
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    n_layers=1,
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    circuit_type=&quot;Circuit_19&quot;,
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    mp_threshold=1000,
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>)
+</span></code></pre></div>
+<p>Depending on the chosen parameters and your machine, this can result in a significant speedup.
+Note however, that this is currently only available for <code>n_qubits&lt;model.lightning_threshold</code> which is 12 by default.
+Above this threshold, Pennylane's <code>lightning.qubit</code> device is used which would interfere with an additional parallelism.</p>
 <h2 id="quantikz_export">Quantikz Export<a class="headerlink" href="#quantikz_export" title="Permanent link">#</a></h2>
 <p>In addition to the printing the model to console and into a figure using matplotlib (thanks to Pennylane); our framework extends this functionality by allowing you to create nice <a href="https://doi.org/10.48550/arXiv.1809.03842">Quantikz</a> figures that you can embedd in a Latex document <img alt="😍" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f60d.svg" title=":heart_eyes:" />.
 This can be achieved by </p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">fig</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">figure</span><span class="o">=</span><span class="s2">&quot;tikz&quot;</span><span class="p">,</span> <span class="n">inputs_symbols</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">gate_values</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">fig</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="s2">&quot;tikz_circuit.tex&quot;</span><span class="p">,</span> <span class="n">full_document</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">fig</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">figure</span><span class="o">=</span><span class="s2">&quot;tikz&quot;</span><span class="p">,</span> <span class="n">inputs_symbols</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">gate_values</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">fig</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="s2">&quot;tikz_circuit.tex&quot;</span><span class="p">,</span> <span class="n">full_document</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </span></code></pre></div>
 <p><a class="glightbox" href="../figures/circuit_tikz_light.png#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Tikz Circuit" data-desc-position="top"><img alt="Tikz Circuit" src="../figures/circuit_tikz_light.png#only-light" /></a>
 <a class="glightbox" href="../figures/circuit_tikz_dark.png#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Tikz Circuit" data-desc-position="top"><img alt="Tikz Circuit" src="../figures/circuit_tikz_dark.png#only-dark" /></a></p>
