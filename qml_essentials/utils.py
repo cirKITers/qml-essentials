@@ -61,7 +61,7 @@ class MultiprocessingPool:
         self.args = args
         self.kwargs = kwargs
 
-    def spawn(self, result=None):
+    def spawn(self):
         manager = multiprocessing.Manager()
         return_dict = manager.dict()
 

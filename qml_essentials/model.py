@@ -6,6 +6,7 @@ import os
 import warnings
 from autograd.numpy import numpy_boxes
 from copy import deepcopy
+import math
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
 from qml_essentials.utils import PauliCircuit, QuanTikz, MultiprocessingPool
@@ -190,6 +191,7 @@ class Model:
             impl_n_layers,
             self.pqc.n_params_per_layer(self.n_qubits),
         )
+        self.batch_shape = (1, 1)
         # this will also be re-used in the init method,
         # however, only if nothing is provided
         self._inialization_strategy = initialization
@@ -491,10 +493,12 @@ class Model:
         if self.remove_zero_encoding and not inputs.any():
             return
 
+        # one dimensional encoding
         if inputs.shape[1] == 1:
             for q in range(self.n_qubits):
                 if data_reupload[q]:
                     enc(inputs[:, 0], wires=q, noise_params=noise_params)
+        # multi dimensional encoding
         else:
             for q in range(self.n_qubits):
                 if data_reupload[q]:
@@ -732,10 +736,14 @@ class Model:
                     f"inputs, but input has shape {inputs.shape}."
                 )
 
+        # check if params and inputs are batched
+        # if len(self.params.shape) == 3 and inputs.shape[-1] != self.params.shape[-1]:
+        #
+
         return inputs
 
     @staticmethod
-    def _parallel_f(procnum, result, f, batch_size, params, inputs):
+    def _parallel_f(procnum, result, f, batch_size, params, inputs, batch_shape):
         """
         Helper function for parallelizing a function f over parameters.
         Sices the batch dimension based on the procnum and batch size.
@@ -751,8 +759,12 @@ class Model:
         min_idx = max(procnum * batch_size, 0)
         max_idx = min((procnum + 1) * batch_size, params.shape[2])
 
-        params = params[:, :, min_idx:max_idx]
-        result[procnum] = f(params, inputs)
+        if batch_shape is not None and batch_shape[0] is not None:
+            inputs = inputs[min_idx:max_idx, :]
+        if batch_shape is not None and batch_shape[1] is not None:
+            params = params[:, :, min_idx:max_idx]
+
+        result[procnum] = f(params=params, inputs=inputs)
 
     def _mp_executor(self, f, params, inputs):
         """
@@ -776,11 +788,11 @@ class Model:
         if params is not None and len(params.shape) > 2:
             # sufficiently large for MP?
             if self.mp_threshold > 0 and params.shape[2] > self.mp_threshold:
-                n_processes = params.shape[2] // self.mp_threshold
+                n_processes = math.ceil(params.shape[2] / self.mp_threshold)
 
         # check if single process
         if n_processes == 1:
-            result = f(params, inputs)
+            result = f(params=params, inputs=inputs)
         else:
             log.info(f"Using {n_processes} processes")
             mpp = MultiprocessingPool(
@@ -790,15 +802,32 @@ class Model:
                 f=f,
                 params=params,
                 inputs=inputs,
+                batch_shape=self.batch_shape,
             )
             return_dict = mpp.spawn()
             result = [None] * len(return_dict)
             for k, v in return_dict.items():
-                result[k] = v
+                result[k - 1] = v
 
             result = np.concat(result, axis=1 if self.execution_type == "expval" else 0)
 
         return result
+
+    def _assimilate_batch(self, inputs, params):
+        batch_shape = (
+            inputs.shape[0],
+            params.shape[2] if len(params.shape) == 3 else 1,
+        )
+
+        if (
+            batch_shape[1] != 1
+            and batch_shape[0] != batch_shape[1]
+            and batch_shape[0] > 1
+        ):
+            inputs = np.repeat(inputs, batch_shape[1], axis=0)
+            params = np.repeat(params, batch_shape[0], axis=2)
+
+        return inputs, params, batch_shape
 
     def __call__(
         self,
@@ -906,7 +935,7 @@ class Model:
 
         params = self._params_validation(params)
         inputs = self._inputs_validation(inputs)
-
+        inputs, params, self.batch_shape = self._assimilate_batch(inputs, params)
         # the qasm representation contains the bound parameters,
         # thus it is ok to hash that
         hs = hashlib.md5(
@@ -974,8 +1003,10 @@ class Model:
             else:
                 result = result[1:, ...].sum(axis=0)
 
-        if len(result.shape) == 3 and result.shape[0] == 1:
-            result = result[0]
+        if self.batch_shape[0] > 1 and self.batch_shape[1] > 1:
+            result = result.reshape(-1, *self.batch_shape)
+
+        result = result.squeeze()
 
         if cache:
             np.save(file_path, result)

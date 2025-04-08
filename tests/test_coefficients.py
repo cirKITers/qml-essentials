@@ -103,6 +103,20 @@ def test_multi_dim_input() -> None:
     ), "Fourier series does not match model expectation"
 
 
+@pytest.mark.smoketest
+def test_parallel() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        output_qubit=-1,
+        mp_threshold=1000,
+    )
+
+    model.initialize_params(rng=pnp.random.default_rng(1000), repeat=250)
+    coeffs, freqs = Coefficients.get_spectrum(model)
+
+
 @pytest.mark.unittest
 def test_coefficients_tree() -> None:
     test_cases = [
