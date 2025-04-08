@@ -84,9 +84,8 @@ class Coefficients:
         )
 
         # Output vector is not necessarily the same length as input
-        outputs = model(inputs=nd_inputs, **kwargs).reshape(
-            inputs.shape * model.n_input_feat
-        )
+        outputs = model(inputs=nd_inputs, **kwargs)
+        outputs = outputs.reshape(*(inputs.shape * model.n_input_feat), -1)
 
         coeffs = np.fft.fftn(outputs)
 
