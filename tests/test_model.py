@@ -166,7 +166,7 @@ def test_batching() -> None:
 
 
 @pytest.mark.unittest
-def test_multiprocessing() -> None:
+def test_multiprocessing_density() -> None:
     # use n_samples that is not a multiple of the threshold
     n_samples = 2500
 
@@ -201,6 +201,19 @@ def test_multiprocessing() -> None:
         res_parallel.shape == res_single.shape
     ), "Shape of multiprocessing is not correct"
     assert (res_parallel == res_single).all(), "Content of multiprocessing is not equal"
+
+
+@pytest.mark.unittest
+def test_multiprocessing_expval() -> None:
+    # use n_samples that is not a multiple of the threshold
+    n_samples = 2500
+
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        mp_threshold=500,
+    )
 
     model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
     params = model.params
