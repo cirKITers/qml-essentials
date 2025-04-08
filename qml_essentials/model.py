@@ -807,7 +807,7 @@ class Model:
             return_dict = mpp.spawn()
             result = [None] * len(return_dict)
             for k, v in return_dict.items():
-                result[k - 1] = v
+                result[k] = v
 
             result = np.concat(result, axis=1 if self.execution_type == "expval" else 0)
 
