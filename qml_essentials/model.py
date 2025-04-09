@@ -759,9 +759,9 @@ class Model:
         min_idx = max(procnum * batch_size, 0)
         max_idx = min((procnum + 1) * batch_size, params.shape[2])
 
-        if batch_shape is not None and batch_shape[0] is not None:
+        if batch_shape[0] > 1:
             inputs = inputs[min_idx:max_idx, :]
-        if batch_shape is not None and batch_shape[1] is not None:
+        if batch_shape[1] > 1:
             params = params[:, :, min_idx:max_idx]
 
         result[procnum] = f(params=params, inputs=inputs)
