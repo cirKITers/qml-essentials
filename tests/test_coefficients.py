@@ -76,14 +76,14 @@ def test_coefficients() -> None:
 @pytest.mark.unittest
 def test_multi_dim_input() -> None:
     model = Model(
-        n_qubits=2,
+        n_qubits=3,
         n_layers=1,
-        circuit_type="Circuit_19",
+        circuit_type="Hardware_Efficient",
         output_qubit=-1,
         encoding=["RX", "RX"],
     )
 
-    coeffs, freqs = Coefficients.get_spectrum(model)
+    coeffs, freqs = Coefficients.get_spectrum(model, shift=True, trim=True)
 
     assert (
         coeffs.shape == (model.degree * 2 + 1,) * model.n_input_feat
@@ -118,12 +118,12 @@ def test_batch() -> None:
 
     model.initialize_params(rng=pnp.random.default_rng(1000), repeat=n_samples)
     params = model.params
-    coeffs_parallel, _ = Coefficients.get_spectrum(model, shift=True)
+    coeffs_parallel, _ = Coefficients.get_spectrum(model, shift=True, trim=True)
 
     # TODO: once the code is ready, test frequency vector as well
     for i in range(n_samples):
         model.params = params[:, :, i]
-        coeffs_single, _ = Coefficients.get_spectrum(model, shift=True)
+        coeffs_single, _ = Coefficients.get_spectrum(model, shift=True, trim=True)
         assert np.allclose(
             coeffs_parallel[:, i], coeffs_single, rtol=1.0e-5
         ), "MP and SP coefficients don't match for 1D input"
@@ -140,11 +140,11 @@ def test_batch() -> None:
 
     model.initialize_params(rng=pnp.random.default_rng(1000), repeat=n_samples)
     params = model.params
-    coeffs_parallel, _ = Coefficients.get_spectrum(model, shift=True)
+    coeffs_parallel, _ = Coefficients.get_spectrum(model, shift=True, trim=True)
 
     for i in range(n_samples):
         model.params = params[:, :, i]
-        coeffs_single, _ = Coefficients.get_spectrum(model, shift=True)
+        coeffs_single, _ = Coefficients.get_spectrum(model, shift=True, trim=True)
         assert np.allclose(
             coeffs_parallel[:, :, i], coeffs_single, rtol=1.0e-5
         ), "MP and SP coefficients don't match for 2D input"

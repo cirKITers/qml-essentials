@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       runner_label:
-        required: false
+        required: true
         type: string
 permissions:
   contents: write

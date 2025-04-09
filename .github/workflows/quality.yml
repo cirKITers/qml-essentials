@@ -5,7 +5,7 @@ on:
   workflow_call:
     inputs:
       runner_label:
-        required: false
+        required: true
         type: string
 permissions:
   contents: read
