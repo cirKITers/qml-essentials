@@ -104,7 +104,8 @@ class Coefficients:
         # Run the fft and rearrange + normalize the output
         return (
             coeffs / np.prod(outputs.shape[0 : model.n_input_feat]),
-            np.repeat(freqs[:, np.newaxis], model.n_input_feat, axis=1).squeeze(),
+            freqs,
+            # np.repeat(freqs[:, np.newaxis], model.n_input_feat, axis=1).squeeze(),
         )
 
     @staticmethod

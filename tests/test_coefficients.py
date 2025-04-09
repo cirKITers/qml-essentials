@@ -104,15 +104,15 @@ def test_multi_dim_input() -> None:
 
 
 @pytest.mark.smoketest
-def test_parallel() -> None:
+def test_batch() -> None:
     n_samples = 3
 
     model = Model(
         n_qubits=2,
         n_layers=1,
-        circuit_type="Circuit_19",
+        circuit_type="Circuit_15",
         output_qubit=-1,
-        # mp_threshold=100,
+        mp_threshold=100,
         initialization="random",
     )
 

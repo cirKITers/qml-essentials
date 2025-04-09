@@ -736,10 +736,6 @@ class Model:
                     f"inputs, but input has shape {inputs.shape}."
                 )
 
-        # check if params and inputs are batched
-        # if len(self.params.shape) == 3 and inputs.shape[-1] != self.params.shape[-1]:
-        #
-
         return inputs
 
     @staticmethod
@@ -824,10 +820,14 @@ class Model:
             and batch_shape[0] != batch_shape[1]
             and batch_shape[0] > 1
         ):
-            inputs = np.repeat(inputs[np.newaxis,], batch_shape[1], axis=0).reshape(
-                np.prod(batch_shape), -1
-            )
-            # params = np.repeat(params, batch_shape[0], axis=2)
+            # the following code does some dirty reshaping
+            # key is to get the right "order" in which we repeat
+
+            # [BI,D] -> [BPxBI,D]
+            inputs = np.repeat(inputs, batch_shape[1], axis=0)
+
+            # this is a tricky one, essentially we want to get
+            # [L,Q,BP] -> [L,Q,BI,BP] -> [L,Q,BPxBI]
             params = np.repeat(
                 params[:, :, np.newaxis, :], batch_shape[0], axis=2
             ).reshape([*params.shape[:-1], np.prod(batch_shape)])
