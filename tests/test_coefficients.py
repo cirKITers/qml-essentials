@@ -91,7 +91,7 @@ def test_multi_dim_input() -> None:
         expected {(model.degree*2+1,)*model.n_input_feat}"
 
     ref_input = [1, 2]
-    exp_model = model(params=None, inputs=ref_input, force_mean=True)[0]
+    exp_model = model(params=None, inputs=ref_input, force_mean=True)
     exp_fourier = Coefficients.evaluate_Fourier_series(
         coefficients=coeffs,
         frequencies=freqs,
@@ -101,6 +101,53 @@ def test_multi_dim_input() -> None:
     assert np.isclose(
         exp_model, exp_fourier, atol=1.0e-5
     ), "Fourier series does not match model expectation"
+
+
+@pytest.mark.smoketest
+def test_batch() -> None:
+    n_samples = 3
+
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_15",
+        output_qubit=-1,
+        mp_threshold=100,
+        initialization="random",
+    )
+
+    model.initialize_params(rng=pnp.random.default_rng(1000), repeat=n_samples)
+    params = model.params
+    coeffs_parallel, _ = Coefficients.get_spectrum(model, shift=True)
+
+    # TODO: once the code is ready, test frequency vector as well
+    for i in range(n_samples):
+        model.params = params[:, :, i]
+        coeffs_single, _ = Coefficients.get_spectrum(model, shift=True)
+        assert np.allclose(
+            coeffs_parallel[:, i], coeffs_single, rtol=1.0e-5
+        ), "MP and SP coefficients don't match for 1D input"
+
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        output_qubit=-1,
+        mp_threshold=100,
+        encoding=["RX", "RY"],
+        initialization="random",
+    )
+
+    model.initialize_params(rng=pnp.random.default_rng(1000), repeat=n_samples)
+    params = model.params
+    coeffs_parallel, _ = Coefficients.get_spectrum(model, shift=True)
+
+    for i in range(n_samples):
+        model.params = params[:, :, i]
+        coeffs_single, _ = Coefficients.get_spectrum(model, shift=True)
+        assert np.allclose(
+            coeffs_parallel[:, :, i], coeffs_single, rtol=1.0e-5
+        ), "MP and SP coefficients don't match for 2D input"
 
 
 @pytest.mark.unittest

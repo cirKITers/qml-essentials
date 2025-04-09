@@ -57,12 +57,16 @@ class Coefficients:
                 {np.sum(coeffs).imag}"
             )
 
-        if trim and coeffs.size % 2 == 0:
-            coeffs = np.delete(coeffs, len(coeffs) // 2)
-            freqs = np.delete(freqs, len(freqs) // 2)
+        if trim:
+            for ax in coeffs.shape[:-1]:
+                if coeffs.shape[ax] % 2 == 0:
+                    coeffs = np.delete(coeffs, len(coeffs) // 2, axis=ax)
+                    freqs = np.delete(freqs, len(freqs) // 2, axis=ax)
 
         if shift:
-            return np.fft.fftshift(coeffs), np.fft.fftshift(freqs)
+            return np.fft.fftshift(
+                coeffs, axes=list(range(model.n_input_feat))
+            ), np.fft.fftshift(freqs)
         else:
             return coeffs, freqs
 
@@ -84,21 +88,27 @@ class Coefficients:
         )
 
         # Output vector is not necessarily the same length as input
-        outputs = model(inputs=nd_inputs, **kwargs).reshape(
-            inputs.shape * model.n_input_feat
-        )
+        outputs = model(inputs=nd_inputs, **kwargs)
+        outputs = outputs.reshape(*(inputs.shape * model.n_input_feat), -1).squeeze()
 
-        coeffs = np.fft.fftn(outputs)
+        coeffs = np.fft.fftn(outputs, axes=list(range(model.n_input_feat)))
 
-        assert (
-            mts * n_freqs,
-        ) * model.n_input_feat == coeffs.shape, f"Expected shape\
-            {(mts * n_freqs,) * model.n_input_feat} but got {coeffs.shape}"
+        # assert (
+        #     mts * n_freqs,
+        # ) * model.n_input_feat == coeffs.shape, f"Expected shape\
+        # {(mts * n_freqs,) * model.n_input_feat} but got {coeffs.shape}"
 
         freqs = np.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
 
-        # Run the fft and rearrange + normalize the output
-        return coeffs / outputs.size, freqs
+        # TODO: this could cause issues with multidim input
+        # FIXME: account for different frequencies in multidim input scenarios
+        # Run the fft and rearrange +
+        # normalize the output (using product if multidim)
+        return (
+            coeffs / np.prod(outputs.shape[0 : model.n_input_feat]),
+            freqs,
+            # np.repeat(freqs[:, np.newaxis], model.n_input_feat, axis=1).squeeze(),
+        )
 
     @staticmethod
     def get_psd(coeffs: np.ndarray) -> np.ndarray:

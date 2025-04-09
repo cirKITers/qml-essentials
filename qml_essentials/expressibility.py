@@ -38,23 +38,16 @@ class Expressibility:
         # pair of random state vectors
         model.initialize_params(rng=rng, repeat=n_samples * 2)
 
-        n_x_samples = len(x_samples)
-
         # Initialize array to store fidelities
-        fidelities: np.ndarray = np.zeros((n_x_samples, n_samples))
-
-        # Batch input samples and parameter sets for efficient computation
-        x_samples_batched: np.ndarray = x_samples.reshape(1, -1).repeat(
-            n_samples * 2, axis=0
-        )
+        fidelities: np.ndarray = np.zeros((len(x_samples), n_samples))
 
         # Compute the fidelity for each pair of input samples and parameters
-        for idx in range(n_x_samples):
+        for idx, x_sample in enumerate(x_samples):
 
             # Evaluate the model for the current pair of input samples and parameters
             # Execution type is explicitly set to density
             sv: np.ndarray = model(
-                inputs=x_samples_batched[:, idx],
+                inputs=x_sample,
                 params=model.params,
                 execution_type="density",
                 **kwargs,
