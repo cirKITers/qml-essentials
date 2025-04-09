@@ -54,7 +54,7 @@ class Expressibility:
             # Evaluate the model for the current pair of input samples and parameters
             # Execution type is explicitly set to density
             sv: np.ndarray = model(
-                inputs=x_samples_batched[:, idx],
+                inputs=x_samples[idx],
                 params=model.params,
                 execution_type="density",
                 **kwargs,
