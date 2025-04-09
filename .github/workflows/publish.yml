@@ -21,22 +21,32 @@ jobs:
             echo "runner-label=ubuntu-latest" >> $GITHUB_OUTPUT
           fi
   test-not-expensive:
+    needs: check-runner
     name: Trigger Not Expensive Tests
     uses: ./.github/workflows/test-on-pr.yml
+    with:
+      runner-label: ${{ needs.check-runner.outputs.runner-label }}
   test-expensive:
+    needs: check-runner
     name: Trigger Expensive Tests
     uses: ./.github/workflows/test-on-review.yml
+    with:
+      runner-label: ${{ needs.check-runner.outputs.runner-label }}
   quality:
+    needs: check-runner
     name: Trigger Quality
     uses: ./.github/workflows/quality.yml
+    with:
+      runner-label: ${{ needs.check-runner.outputs.runner-label }}
   documentation:
-    needs: [test-expensive, test-not-expensive]
+    needs: [check-runner, test-expensive, test-not-expensive]
     name: Trigger Documentation
     uses: ./.github/workflows/docs.yml
     with:
       test-run-id: ${{ github.run_id }}
+      runner-label: ${{ needs.check-runner.outputs.runner-label }}
   release:
-    needs: [check-runner, test-expensive, test-not-expensive, quality, documentation]
+    needs: [test-expensive, test-not-expensive, quality, documentation]
     name: Release
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest

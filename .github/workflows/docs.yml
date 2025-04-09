@@ -7,6 +7,9 @@ on:
       test-run-id:
         required: true
         type: string
+      runner-label:
+        required: false
+        type: string
 permissions:
   contents: write
 jobs:
@@ -16,6 +19,7 @@ jobs:
       runner-label: ${{ steps.set-runner.outputs.runner-label }}
     steps:
       - name: Set runner
+        if: "${{ github.event.inputs.runner-label == '' }}"
         id: set-runner
         run: |
           runners=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token ${{ secrets.REPO_ACCESS_TOKEN }}" "https://api.github.com/repos/${{ github.repository }}/actions/runners")
@@ -25,6 +29,10 @@ jobs:
           else
             echo "runner-label=ubuntu-latest" >> $GITHUB_OUTPUT
           fi
+      - name: Get runner
+        if: "${{ github.event.inputs.runner-label != '' }}"
+        id: get-runner
+        run: echo ${{ github.event.inputs.runner-label }} >> $GITHUB_OUTPUT
   build:
     if: github.ref != 'refs/heads/main'
     needs: check-runner
