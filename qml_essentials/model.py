@@ -714,10 +714,10 @@ class Model:
         elif isinstance(inputs, float) or isinstance(inputs, int):
             inputs = np.array([inputs])
 
-        if len(inputs.shape) == 1:
+        if len(inputs.shape) <= 1:
             if self.n_input_feat == 1:
                 # add a batch dimension
-                inputs = inputs.reshape(inputs.shape[0], 1)
+                inputs = inputs.reshape(-1, 1)
             else:
                 if inputs.shape[0] == self.n_input_feat:
                     inputs = inputs.reshape(1, -1)
