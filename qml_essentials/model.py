@@ -824,8 +824,13 @@ class Model:
             and batch_shape[0] != batch_shape[1]
             and batch_shape[0] > 1
         ):
-            inputs = np.repeat(inputs, batch_shape[1], axis=0)
-            params = np.repeat(params, batch_shape[0], axis=2)
+            inputs = np.repeat(inputs[np.newaxis,], batch_shape[1], axis=0).reshape(
+                np.prod(batch_shape), -1
+            )
+            # params = np.repeat(params, batch_shape[0], axis=2)
+            params = np.repeat(
+                params[:, :, np.newaxis, :], batch_shape[0], axis=2
+            ).reshape([*params.shape[:-1], np.prod(batch_shape)])
 
         return inputs, params, batch_shape
 
