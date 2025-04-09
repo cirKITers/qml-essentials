@@ -753,11 +753,12 @@ class Model:
             inputs: The inputs array.
         """
         min_idx = max(procnum * batch_size, 0)
-        max_idx = min((procnum + 1) * batch_size, params.shape[2])
 
         if batch_shape[0] > 1:
-            inputs = inputs[min_idx:max_idx, :]
+            max_idx = min((procnum + 1) * batch_size, inputs.shape[0])
+            inputs = inputs[min_idx:max_idx]
         if batch_shape[1] > 1:
+            max_idx = min((procnum + 1) * batch_size, params.shape[2])
             params = params[:, :, min_idx:max_idx]
 
         result[procnum] = f(params=params, inputs=inputs)
@@ -794,7 +795,7 @@ class Model:
             mpp = MultiprocessingPool(
                 n_processes=n_processes,
                 target=Model._parallel_f,
-                batch_size=params.shape[2] // n_processes,
+                batch_size=math.ceil(params.shape[2] / n_processes),
                 f=f,
                 params=params,
                 inputs=inputs,
