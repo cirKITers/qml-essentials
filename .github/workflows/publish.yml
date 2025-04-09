@@ -8,7 +8,7 @@ jobs:
   check-runner:
     runs-on: ubuntu-latest
     outputs:
-      runner-label: ${{ steps.set-runner.outputs.runner-label }}
+      runner_label: ${{ steps.set-runner.outputs.runner_label }}
     steps:
       - name: Set runner
         id: set-runner
@@ -16,35 +16,35 @@ jobs:
           runners=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token ${{ secrets.REPO_ACCESS_TOKEN }}" "https://api.github.com/repos/${{ github.repository }}/actions/runners")
           available=$(echo "$runners" | jq '.runners[] | select(.status == "online" and .labels[] .name == "self-hosted")')
           if [ -n "$available" ]; then
-            echo "runner-label=self-hosted" >> $GITHUB_OUTPUT
+            echo "runner_label=self-hosted" >> $GITHUB_OUTPUT
           else
-            echo "runner-label=ubuntu-latest" >> $GITHUB_OUTPUT
+            echo "runner_label=ubuntu-latest" >> $GITHUB_OUTPUT
           fi
   test-not-expensive:
     needs: check-runner
     name: Trigger Not Expensive Tests
     uses: ./.github/workflows/test-on-pr.yml
     with:
-      runner-label: ${{ needs.check-runner.outputs.runner-label }}
+      runner_label: ${{ needs.check-runner.outputs.runner_label }}
   test-expensive:
     needs: check-runner
     name: Trigger Expensive Tests
     uses: ./.github/workflows/test-on-review.yml
     with:
-      runner-label: ${{ needs.check-runner.outputs.runner-label }}
+      runner_label: ${{ needs.check-runner.outputs.runner_label }}
   quality:
     needs: check-runner
     name: Trigger Quality
     uses: ./.github/workflows/quality.yml
     with:
-      runner-label: ${{ needs.check-runner.outputs.runner-label }}
+      runner_label: ${{ needs.check-runner.outputs.runner_label }}
   documentation:
     needs: [check-runner, test-expensive, test-not-expensive]
     name: Trigger Documentation
     uses: ./.github/workflows/docs.yml
     with:
       test-run-id: ${{ github.run_id }}
-      runner-label: ${{ needs.check-runner.outputs.runner-label }}
+      runner_label: ${{ needs.check-runner.outputs.runner_label }}
   release:
     needs: [test-expensive, test-not-expensive, quality, documentation]
     name: Release

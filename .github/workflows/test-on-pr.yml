@@ -4,7 +4,7 @@ on:
     branches: [ "main" ]
   workflow_call:
     inputs:
-      runner-label:
+      runner_label:
         required: false
         type: string
 permissions:
@@ -15,28 +15,26 @@ concurrency:
 jobs:
   check-runner:
     runs-on: ubuntu-latest
-    outputs:
-      runner-label: ${{ steps.set-runner.outputs.runner-label }}
     steps:
       - name: Set runner
-        if: "${{ github.event.inputs.runner-label == '' }}"
+        if: "${{ github.event.inputs.runner_label == '' }}"
         id: set-runner
         run: |
           runners=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token ${{ secrets.REPO_ACCESS_TOKEN }}" "https://api.github.com/repos/${{ github.repository }}/actions/runners")
           available=$(echo "$runners" | jq '.runners[] | select(.status == "online" and .labels[] .name == "self-hosted")')
           if [ -n "$available" ]; then
-            echo "runner-label=self-hosted" >> $GITHUB_OUTPUT
+            echo "runner_label=self-hosted" >> $GITHUB_ENV
           else
-            echo "runner-label=ubuntu-latest" >> $GITHUB_OUTPUT
+            echo "runner_label=ubuntu-latest" >> $GITHUB_ENV
           fi
       - name: Get runner
-        if: "${{ github.event.inputs.runner-label != '' }}"
+        if: "${{ github.event.inputs.runner_label != '' }}"
         id: get-runner
-        run: echo ${{ github.event.inputs.runner-label }} >> $GITHUB_OUTPUT
+        run: echo ${{ github.event.inputs.runner_label }} >> $GITHUB_ENV
   test-not-expensive:
     if: ${{ (github.actor != 'github-actions[bot]') }}
     needs: check-runner
-    runs-on: ${{ needs.check-runner.outputs.runner-label }}
+    runs-on: env.runner_label
     steps:
     - uses: actions/checkout@v4
     - name: Install poetry
