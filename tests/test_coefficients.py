@@ -118,14 +118,15 @@ def test_batch() -> None:
 
     model.initialize_params(rng=pnp.random.default_rng(1000), repeat=n_samples)
     params = model.params
-    coeffs_parallel, freqs_parallel = Coefficients.get_spectrum(model, shift=True)
+    coeffs_parallel, _ = Coefficients.get_spectrum(model, shift=True)
 
+    # TODO: once the code is ready, test frequency vector as well
     for i in range(n_samples):
         model.params = params[:, :, i]
-        coeffs_single, freqs_single = Coefficients.get_spectrum(model, shift=True)
+        coeffs_single, _ = Coefficients.get_spectrum(model, shift=True)
         assert np.allclose(
             coeffs_parallel[:, i], coeffs_single, rtol=1.0e-5
-        ), f"MP and SP coefficients don't match"
+        ), "MP and SP coefficients don't match for 1D input"
 
     model = Model(
         n_qubits=2,
@@ -139,14 +140,14 @@ def test_batch() -> None:
 
     model.initialize_params(rng=pnp.random.default_rng(1000), repeat=n_samples)
     params = model.params
-    coeffs_parallel, freqs_parallel = Coefficients.get_spectrum(model, shift=True)
+    coeffs_parallel, _ = Coefficients.get_spectrum(model, shift=True)
 
     for i in range(n_samples):
         model.params = params[:, :, i]
-        coeffs_single, freqs_single = Coefficients.get_spectrum(model, shift=True)
+        coeffs_single, _ = Coefficients.get_spectrum(model, shift=True)
         assert np.allclose(
             coeffs_parallel[:, :, i], coeffs_single, rtol=1.0e-5
-        ), f"MP and SP coefficients don't match"
+        ), "MP and SP coefficients don't match for 2D input"
 
 
 @pytest.mark.unittest

@@ -101,7 +101,9 @@ class Coefficients:
         freqs = np.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
 
         # TODO: this could cause issues with multidim input
-        # Run the fft and rearrange + normalize the output
+        # FIXME: account for different frequencies in multidim input scenarios
+        # Run the fft and rearrange +
+        # normalize the output (using product if multidim)
         return (
             coeffs / np.prod(outputs.shape[0 : model.n_input_feat]),
             freqs,

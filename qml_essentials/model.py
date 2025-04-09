@@ -821,6 +821,7 @@ class Model:
             and batch_shape[0] > 1
         ):
             # the following code does some dirty reshaping
+            # TODO: optimize but be aware of the rabbit hole
             # key is to get the right "order" in which we repeat
 
             # [BI,D] -> [BPxBI,D]
