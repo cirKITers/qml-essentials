@@ -16,10 +16,12 @@ jobs:
       runner_label: ${{ steps.set-runner.outputs.runner_label }}
     steps:
       - name: Set runner
-        if: "${{ github.event.inputs.runner_label == '' }}"
         id: set-runner
         run: |
+          echo ${{ github.event.inputs.runner_label }}
           if [ -n "${{ github.event.inputs.runner_label }}" ]; then
+            echo ${{ github.event.inputs.runner_label }} >> $GITHUB_OUTPUT
+          else
             runners=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token ${{ secrets.REPO_ACCESS_TOKEN }}" "https://api.github.com/repos/${{ github.repository }}/actions/runners")
             available=$(echo "$runners" | jq '.runners[] | select(.status == "online" and .labels[] .name == "self-hosted")')
             if [ -n "$available" ]; then
@@ -27,8 +29,6 @@ jobs:
             else
               echo "runner_label=ubuntu-latest" >> $GITHUB_OUTPUT
             fi
-          else:
-            echo ${{ github.event.inputs.runner_label }} >> $GITHUB_OUTPUT
           fi
   quality:
     needs: check-runner
