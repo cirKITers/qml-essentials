@@ -3,39 +3,39 @@ on:
   pull_request:
     branches: [ "main" ]
   workflow_call:
-    inputs:
-      runner_label:
-        required: true
-        type: string
+    # inputs:
+    #   runner_label:
+    #     required: true
+    #     type: string
 permissions:
   contents: write
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
-  check-runner:
-    runs-on: ubuntu-latest
-    outputs:
-      runner_label: ${{ steps.set-runner.outputs.runner_label }}
-    steps:
-      - name: Set runner
-        id: set-runner
-        run: |
-          if [ -n "${{ github.event.inputs.runner_label }}" ]; then
-            echo "${{ github.event.inputs.runner_label }}" >> $GITHUB_OUTPUT
-          else
-            runners=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token ${{ secrets.REPO_ACCESS_TOKEN }}" "https://api.github.com/repos/${{ github.repository }}/actions/runners")
-            available=$(echo "$runners" | jq '.runners[] | select(.status == "online" and .labels[] .name == "self-hosted")')
-            if [ -n "$available" ]; then
-              echo "runner_label=self-hosted" >> $GITHUB_OUTPUT
-            else
-              echo "runner_label=ubuntu-latest" >> $GITHUB_OUTPUT
-            fi
-          fi
+  # check-runner:
+  #   runs-on: ubuntu-latest
+  #   outputs:
+  #     runner_label: ${{ steps.set-runner.outputs.runner_label }}
+  #   steps:
+  #     - name: Set runner
+  #       id: set-runner
+  #       run: |
+  #         if [ -n "${{ github.event.inputs.runner_label }}" ]; then
+  #           echo "${{ github.event.inputs.runner_label }}" >> $GITHUB_OUTPUT
+  #         else
+  #           runners=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token ${{ secrets.REPO_ACCESS_TOKEN }}" "https://api.github.com/repos/${{ github.repository }}/actions/runners")
+  #           available=$(echo "$runners" | jq '.runners[] | select(.status == "online" and .labels[] .name == "self-hosted")')
+  #           if [ -n "$available" ]; then
+  #             echo "runner_label=self-hosted" >> $GITHUB_OUTPUT
+  #           else
+  #             echo "runner_label=ubuntu-latest" >> $GITHUB_OUTPUT
+  #           fi
+  #         fi
   test-not-expensive:
-    if: ${{ (github.actor != 'github-actions[bot]') }}
-    needs: check-runner
-    runs-on: ${{ needs.check-runner.outputs.runner_label }}
+    runs-on: self-hosted
+    # needs: check-runner
+    # runs-on: ${{ needs.check-runner.outputs.runner_label }}
     steps:
       - uses: actions/checkout@v4
       - name: Install poetry
