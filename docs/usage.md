@@ -183,6 +183,13 @@ model = Model(
 Depending on the chosen parameters and your machine, this can result in a significant speedup.
 Note however, that this is currently only available for `n_qubits<model.lightning_threshold` which is 12 by default.
 Above this threshold, Pennylane's `lightning.qubit` device is used which would interfere with an additional parallelism.
+Also note, that no checks on the available memory will be performed and that the memory consumption could multiply with the number of parallel processes.
+
+Multiprocessing works for both parameters and inputs, meaning that if a batched input is provided, processing will be parallelized in the same way as explained above.
+Note, that if both, parameters and inputs are batched with size `B_I` and `B_P` respectively, the effective batch dimension will multiply, i.e. resulting in `B_I * B_P` combinations. 
+Internally, these combinations will be flattened during processing and then reshaped to the original shape afterwards, such that the output shape is `[O, B_I, B_P]`.
+Here, `O` is the general output shape depending on the execution type, `B_I` is the batch dimension of the inputs and `B_P` is the batch dimension of the parameters.
+This shape is also available as a property of the model: `model.batch_shape`.
 
 ## Quantikz Export
 
