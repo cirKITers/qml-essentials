@@ -20,25 +20,26 @@ dill = "^0.3.9"
 optional = true
 
 [tool.poetry.group.dev.dependencies]
-black = "^24.10.0"
-pytest = "^8.3.4"
-flake8 = "^7.1.1"
-pre-commit = "^4.0.1"
+black = "^25.1.0"
+pytest = "^8.3.5"
+flake8 = "^7.2.0"
+pre-commit = "^4.2.0"
 pytest-cov = "^6.0.0"
 licensecheck = "^2025.1.0"
-matplotlib = "^3.10.0"
+matplotlib = "^3.10.1"
 pytest-xdist = "^3.6.1"
+coverage = "^7.8.0"
 
 [tool.poetry.group.docs]
 optional = true
 
 [tool.poetry.group.docs.dependencies]
 mkdocs = "^1.6.1"
-mkdocs-material = {extras = ["imaging"], version = "^9.6.4"}
-mkdocstrings-python = "^1.15.0"
+mkdocs-material = "^9.6.11"
+mkdocs-glightbox = "^0.4.0"
+mkdocstrings-python = "^1.16.10"
 markdown-include = "^0.8.1"
 ipykernel = "^6.29.5"
-mkdocs-glightbox = "^0.4.0"
 
 [tool.licensecheck]
 fail_packages = ["typing_extensions"]
