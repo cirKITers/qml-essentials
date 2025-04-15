@@ -166,7 +166,7 @@ Each result is being identified by a md5 hash that is a representation of the fo
 
 Our framework can parallelise the execution of the model by providing a `mp_threshold` parameter (defaults to -1).
 This parameter effectively determines the batch size above which the model is executed in parallel.
-Given a parameter shape of `[x,y,1000]` and a `mp_threshold` of 400, three separate processes will be launched.
+Given a parameter shape of, i.e. `[x,y,1000]` and a `mp_threshold` of 400, three separate processes will be launched.
 If there are only two processes available on the machine, then the model will execute only two processes concurrently, wait for them to finish and then execute the remaining process.
 
 ```
