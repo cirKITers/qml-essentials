@@ -782,10 +782,8 @@ class Model:
         """
         n_processes = 1
         # batches available?
-        if params is not None and len(params.shape) > 2:
-            # sufficiently large for MP?
-            if self.mp_threshold > 0 and params.shape[2] > self.mp_threshold:
-                n_processes = math.ceil(params.shape[2] / self.mp_threshold)
+        if max(self.batch_shape) > 1 and max(self.batch_shape) > self.mp_threshold:
+            n_processes = math.ceil(max(self.batch_shape) / self.mp_threshold)
 
         # check if single process
         if n_processes == 1:
@@ -795,7 +793,7 @@ class Model:
             mpp = MultiprocessingPool(
                 n_processes=n_processes,
                 target=Model._parallel_f,
-                batch_size=math.ceil(params.shape[2] / n_processes),
+                batch_size=math.ceil(max(self.batch_shape) / n_processes),
                 f=f,
                 params=params,
                 inputs=inputs,
