@@ -782,9 +782,13 @@ class Model:
         """
         n_processes = 1
         # batches available?
-        if max(self.batch_shape) > 1 and max(self.batch_shape) > self.mp_threshold:
-            n_processes = math.ceil(max(self.batch_shape) / self.mp_threshold)
-
+        combined_batch_size = math.prod(self.batch_shape)
+        if (
+            combined_batch_size > 1
+            and self.mp_threshold > 0
+            and combined_batch_size > self.mp_threshold
+        ):
+            n_processes = math.ceil(combined_batch_size / self.mp_threshold)
         # check if single process
         if n_processes == 1:
             result = f(params=params, inputs=inputs)
@@ -793,7 +797,7 @@ class Model:
             mpp = MultiprocessingPool(
                 n_processes=n_processes,
                 target=Model._parallel_f,
-                batch_size=math.ceil(max(self.batch_shape) / n_processes),
+                batch_size=self.mp_threshold,
                 f=f,
                 params=params,
                 inputs=inputs,
