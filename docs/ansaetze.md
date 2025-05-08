@@ -20,6 +20,7 @@ To get an overview of all the available Ansaetze, checkout the [references](http
 
 If you want to implement your own ansatz, you can do so by inheriting from the `Circuit` class:
 ```python
+import pennylane as qml
 from qml_essentials.ansaetze import Circuit
 
 class MyHardwareEfficient(Circuit):

@@ -1,7 +1,7 @@
 # QML Essentials
 
 <p align="center">
-<img src="docs/logo.svg" width="200" title="Logo">
+<img src="https://raw.githubusercontent.com/cirKITers/qml-essentials/refs/heads/main/docs/logo.svg" width="200" title="Logo">
 </p>
 <h3 align="center">A toolbox to make working with QML models easier.</h3>
 <br/>
