@@ -846,7 +846,7 @@ Each result is being identified by a md5 hash that is a representation of the fo
 <h2 id="multiprocessing">Multiprocessing<a class="headerlink" href="#multiprocessing" title="Permanent link">#</a></h2>
 <p>Our framework can parallelise the execution of the model by providing a <code>mp_threshold</code> parameter (defaults to -1).
 This parameter effectively determines the batch size above which the model is executed in parallel.
-Given a parameter shape of <code>[x,y,1000]</code> and a <code>mp_threshold</code> of 400, three separate processes will be launched.
+Given a parameter shape of, i.e. <code>[x,y,1000]</code> and a <code>mp_threshold</code> of 400, three separate processes will be launched.
 If there are only two processes available on the machine, then the model will execute only two processes concurrently, wait for them to finish and then execute the remaining process.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>n_samples = 4500
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
@@ -859,7 +859,13 @@ If there are only two processes available on the machine, then the model will ex
 </span></code></pre></div>
 <p>Depending on the chosen parameters and your machine, this can result in a significant speedup.
 Note however, that this is currently only available for <code>n_qubits&lt;model.lightning_threshold</code> which is 12 by default.
-Above this threshold, Pennylane's <code>lightning.qubit</code> device is used which would interfere with an additional parallelism.</p>
+Above this threshold, Pennylane's <code>lightning.qubit</code> device is used which would interfere with an additional parallelism.
+Also note, that no checks on the available memory will be performed and that the memory consumption could multiply with the number of parallel processes.</p>
+<p>Multiprocessing works for both parameters and inputs, meaning that if a batched input is provided, processing will be parallelized in the same way as explained above.
+Note, that if both, parameters and inputs are batched with size <code>B_I</code> and <code>B_P</code> respectively, the effective batch dimension will multiply, i.e. resulting in <code>B_I * B_P</code> combinations. 
+Internally, these combinations will be flattened during processing and then reshaped to the original shape afterwards, such that the output shape is <code>[O, B_I, B_P]</code>.
+Here, <code>O</code> is the general output shape depending on the execution type, <code>B_I</code> is the batch dimension of the inputs and <code>B_P</code> is the batch dimension of the parameters.
+This shape is also available as a property of the model: <code>model.batch_shape</code>.</p>
 <h2 id="quantikz_export">Quantikz Export<a class="headerlink" href="#quantikz_export" title="Permanent link">#</a></h2>
 <p>In addition to the printing the model to console and into a figure using matplotlib (thanks to Pennylane); our framework extends this functionality by allowing you to create nice <a href="https://doi.org/10.48550/arXiv.1809.03842">Quantikz</a> figures that you can embedd in a Latex document <img alt="😍" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f60d.svg" title=":heart_eyes:" />.
 This can be achieved by </p>
@@ -912,6 +918,22 @@ To create a document that can be compiled, simply pass <code>full_document=True<
 </div>
       
         <div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://www.kit.edu/impressum.php" target="_blank" rel="noopener" title="Impressum" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M64.9 96c2.2-11.6 8.8-19.8 21.1-25.4 13.8-6.2 34.8-8.9 61.2-4.5 8.8 1.4 36.1 7.1 44.1 9.3 17 4.8 34.7-5.1 39.5-22.2s-5.1-34.7-22.2-39.5c-11.1-3.1-41-9.2-50.9-10.8-34.7-5.6-69.4-3.5-98 9.4C29.9 25.8 7.5 50.9 1.6 86.5c-.1.5-.2 1.1-.2 1.6-2.2 19.7.3 37.9 8.1 54.1 7.7 16.1 19.4 28 32 36.9.6.5 1.3.9 2 1.4-21.2 13.7-37 34.6-41.8 62.5-.1.6-.2 1.1-.2 1.7-2.3 19.3.4 37.1 8.4 53 7.9 15.6 19.8 27 32.3 35.5 22.4 15.2 51.9 24 75.4 31l3.7 1.1c27.2 8.2 46.9 14.6 59.4 23.8 5.5 4 8.2 7.6 9.5 10.9 1.3 3.2 2.6 8.6.9 18.1-1.7 10.1-7.7 18-20.7 23.5-14 6-35.4 8.5-62 4.4-12.8-2.1-35.1-9.7-54.1-16.2-4.3-1.5-8.5-2.9-12.3-4.2-16.7-5.6-34.8 3.5-40.4 20.2s3.5 34.9 20.3 40.5c2.6.8 5.7 1.9 9.2 3.1 18.6 6.3 48.5 16.6 67.3 19.6h.2c34.5 5.4 68.8 3.4 97.2-8.7 29.4-12.6 52.5-36.5 58.5-71.5 3.3-19.3 1.9-37.4-5-53.9-6.3-15-16.4-26.4-27.6-35.2 16.5-13.9 28.5-33.2 32.6-58.2 3.2-19.8 1.9-38.3-4.8-55.1s-17.8-29.4-30.2-39c-22.8-17.6-53.6-27.4-77.7-35l-1.4-.5c-27.4-8.7-47.8-15.3-61.5-25-6.1-4.4-9.5-8.5-11.4-12.4-1.8-3.7-3.2-9.3-2.3-18.5zm76.7 208.5-.6-.2-1.4-.4c-27.4-8.2-47.9-14.5-61.7-23.8-6.2-4.2-9.3-7.9-11-11.3-1.5-3-2.9-7.7-2.1-15.7 1.9-9.7 7.9-17.3 20.5-22.7 14-6 35.4-8.5 62.1-4.3l16.4 2.6c6.3 2.9 11.7 6 16.2 9.5 5.5 4.2 8.4 8.2 10 12.2s2.8 10.4 1.1 20.9c-2.4 14.7-12.8 26.4-37.1 31l-12.4 2.3z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://www.kit.edu/datenschutz.php" target="_blank" rel="noopener" title="Datenschutz" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M0 96h576c0-35.3-28.7-64-64-64H64C28.7 32 0 60.7 0 96m0 32v288c0 35.3 28.7 64 64 64h448c35.3 0 64-28.7 64-64V128zm64 277.3c0-29.5 23.9-53.3 53.3-53.3h117.3c29.5 0 53.3 23.9 53.3 53.3 0 5.9-4.8 10.7-10.7 10.7H74.7c-5.9 0-10.7-4.8-10.7-10.7M176 192a64 64 0 1 1 0 128 64 64 0 1 1 0-128m176 16c0-8.8 7.2-16 16-16h128c8.8 0 16 7.2 16 16s-7.2 16-16 16H368c-8.8 0-16-7.2-16-16m0 64c0-8.8 7.2-16 16-16h128c8.8 0 16 7.2 16 16s-7.2 16-16 16H368c-8.8 0-16-7.2-16-16m0 64c0-8.8 7.2-16 16-16h128c8.8 0 16 7.2 16 16s-7.2 16-16 16H368c-8.8 0-16-7.2-16-16"/></svg>
+    </a>
   
     
     
