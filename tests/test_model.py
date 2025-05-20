@@ -289,24 +289,29 @@ def test_encoding() -> None:
     test_cases = [
         {
             "encoding_unitary": Gates.RX,
-            "degree": 2,
+            "frequencies": [2],
             "input": [0],
             "warning": False,
         },
         {
             "encoding_unitary": [Gates.RX, Gates.RY],
-            "degree": 4,
+            "frequencies": [2, 2],
             "input": [[0, 0]],
             "warning": False,
         },
-        {"encoding_unitary": "RX", "degree": 2, "input": [0], "warning": False},
+        {"encoding_unitary": "RX", "frequencies": [2], "input": [0], "warning": False},
         {
             "encoding_unitary": ["RX", "RY"],
-            "degree": 4,
+            "frequencies": [2, 2],
             "input": [[0, 0]],
             "warning": False,
         },
-        {"encoding_unitary": ["RX", "RY"], "degree": 4, "input": [0], "warning": True},
+        {
+            "encoding_unitary": ["RX", "RY"],
+            "frequencies": [2, 2],
+            "input": [0],
+            "warning": True,
+        },
     ]
 
     for test_case in test_cases:
@@ -330,8 +335,9 @@ def test_encoding() -> None:
                 inputs=test_case["input"],
             )
         assert (
-            model.degree == test_case["degree"]
-        ), f"Degree is not correct: {model.degree}, expected {test_case['degree']}"
+            model.frequencies == test_case["frequencies"]
+        ), f"Frequencies is not correct: got {model.frequencies},\
+            expected {test_case['frequencies']}"
 
 
 @pytest.mark.unittest
