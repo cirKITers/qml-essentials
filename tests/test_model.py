@@ -213,7 +213,7 @@ def test_multiprocessing_expval() -> None:
     n_samples = 20000  # expval requires more samples for advantage
 
     model = Model(
-        n_qubits=4,  # .. and larger circuits
+        n_qubits=6,  # .. and larger circuits
         n_layers=1,
         circuit_type="Circuit_19",
         mp_threshold=1000,
@@ -227,7 +227,7 @@ def test_multiprocessing_expval() -> None:
     t_parallel = time.time() - start
 
     model = Model(
-        n_qubits=4,
+        n_qubits=6,
         n_layers=1,
         circuit_type="Circuit_19",
     )
@@ -243,6 +243,7 @@ def test_multiprocessing_expval() -> None:
         t_parallel < t_single
     ), "Time required for multiprocessing larger than single process"
 
+    print(t_parallel, t_single)
     assert (
         res_parallel.shape == res_single.shape
     ), "Shape of multiprocessing is not correct"
