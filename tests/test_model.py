@@ -718,16 +718,24 @@ def test_multi_input() -> None:
 def test_dru() -> None:
     test_cases = [
         {
+            "enc": Gates.RX,
             "dru": False,
             "degree": 1,
         },
         {
+            "enc": Gates.RX,
             "dru": True,
             "degree": 4,
         },
         {
+            "enc": Gates.RX,
             "dru": [[True, False], [False, True]],
             "degree": 2,
+        },
+        {
+            "enc": [Gates.RX, Gates.RY],
+            "dru": [[[0, 1], [1, 1]], [[1, 1], [0, 1]]],
+            "degree": 4,
         },
     ]
 
@@ -735,6 +743,7 @@ def test_dru() -> None:
         model = Model(
             n_qubits=2,
             n_layers=2,
+            encoding=test_case["enc"],
             circuit_type="Circuit_19",
             data_reupload=test_case["dru"],
             initialization="random",
