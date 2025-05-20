@@ -181,10 +181,12 @@ class Model:
                 data_reupload[0][0] = 1
                 log.debug("No data reuploading.")
 
+        # convert to boolean values
+        self.data_reupload = data_reupload.astype(bool)
         self.frequencies = [
-            np.count_nonzero(data_reupload[..., i]) for i in range(self.n_input_feat)
+            np.count_nonzero(self.data_reupload[..., i])
+            for i in range(self.n_input_feat)
         ]
-        self.data_reupload = data_reupload
 
         if self.degree > 1:
             impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
