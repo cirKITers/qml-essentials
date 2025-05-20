@@ -197,7 +197,9 @@ def test_multiprocessing_density() -> None:
     res_single = model(params=params, execution_type="density")
     t_single = time.time() - start
 
-    assert t_parallel < t_single, "Time required for multiprocessing larger than single process"
+    assert (
+        t_parallel < t_single
+    ), "Time required for multiprocessing larger than single process"
 
     assert (
         res_parallel.shape == res_single.shape
@@ -237,7 +239,9 @@ def test_multiprocessing_expval() -> None:
     res_single = model(params=params, execution_type="expval")
     t_single = time.time() - start
 
-    assert t_parallel < t_single, "Time required for multiprocessing larger than single process"
+    assert (
+        t_parallel < t_single
+    ), "Time required for multiprocessing larger than single process"
 
     assert (
         res_parallel.shape == res_single.shape
@@ -284,24 +288,24 @@ def test_encoding() -> None:
     test_cases = [
         {
             "encoding_unitary": Gates.RX,
-            "type": Callable,
+            "degree": 2,
             "input": [0],
             "warning": False,
         },
         {
             "encoding_unitary": [Gates.RX, Gates.RY],
-            "type": List,
+            "degree": 4,
             "input": [[0, 0]],
             "warning": False,
         },
-        {"encoding_unitary": "RX", "type": Callable, "input": [0], "warning": False},
+        {"encoding_unitary": "RX", "degree": 2, "input": [0], "warning": False},
         {
             "encoding_unitary": ["RX", "RY"],
-            "type": List,
+            "degree": 4,
             "input": [[0, 0]],
             "warning": False,
         },
-        {"encoding_unitary": ["RX", "RY"], "type": List, "input": [0], "warning": True},
+        {"encoding_unitary": ["RX", "RY"], "degree": 4, "input": [0], "warning": True},
     ]
 
     for test_case in test_cases:
@@ -324,7 +328,9 @@ def test_encoding() -> None:
                 model.params,
                 inputs=test_case["input"],
             )
-        assert isinstance(model._enc, test_case["type"])
+        assert (
+            model.degree == test_case["degree"]
+        ), f"Degree is not correct: {model.degree}, expected {test_case['degree']}"
 
 
 @pytest.mark.unittest
