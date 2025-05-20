@@ -131,22 +131,19 @@ class Model:
         # first check if we have a str, list or callable
         if isinstance(encoding, str):
             # if str, use the pennylane fct
-            self._enc = getattr(Gates, f"{encoding}")
+            self._enc = [getattr(Gates, f"{encoding}")]
         elif isinstance(encoding, list):
             # if list, check if str or callable
             if isinstance(encoding[0], str):
                 self._enc = [getattr(Gates, f"{enc}") for enc in encoding]
             else:
                 self._enc = encoding
-
-            if len(self._enc) == 1:
-                self._enc = self._enc[0]
         else:
             # default to callable
-            self._enc = encoding
+            self._enc = [encoding]
 
         # Number of possible inputs
-        self.n_input_feat = len(encoding) if isinstance(encoding, List) else 1
+        self.n_input_feat = len(self._enc)
         log.info(f"Number of input features: {self.n_input_feat}")
 
         # --- Data-Reuploading ---
@@ -154,18 +151,33 @@ class Model:
         if not isinstance(data_reupload, bool):
             if not isinstance(data_reupload, np.ndarray):
                 data_reupload = np.array(data_reupload)
-                log.debug("Using data reuploading as array.")
-            assert data_reupload.shape == (n_layers, n_qubits)
+            if data_reupload.shape == (
+                n_layers,
+                n_qubits,
+            ):
+                data_reupload = data_reupload.reshape(*data_reupload.shape, 1)
+                data_reupload = np.repeat(data_reupload, self.n_input_feat, axis=2)
+
+            assert data_reupload.shape == (
+                n_layers,
+                n_qubits,
+                self.n_input_feat,
+            ), f"Data reuploading array has wrong shape. \
+                Expected {(n_layers, n_qubits)} or\
+                {(n_layers, n_qubits, self.n_input_feat)},\
+                got {data_reupload.shape}."
+
+            log.debug(f"Data reuploading array:\n{data_reupload}")
         else:
             if data_reupload:
                 impl_n_layers: int = (
                     n_layers + 1
                 )  # we need L+1 according to Schuld et al.
-                data_reupload = np.ones((n_layers, n_qubits))
+                data_reupload = np.ones((n_layers, n_qubits, self.n_input_feat))
                 log.debug("Full data reuploading.")
             else:
                 impl_n_layers: int = n_layers
-                data_reupload = np.zeros((n_layers, n_qubits))
+                data_reupload = np.zeros((n_layers, n_qubits, self.n_input_feat))
                 data_reupload[0][0] = 1
                 log.debug("No data reuploading.")
 
@@ -495,17 +507,17 @@ class Model:
         if self.remove_zero_encoding and not inputs.any():
             return
 
-        # one dimensional encoding
-        if inputs.shape[1] == 1:
-            for q in range(self.n_qubits):
-                if data_reupload[q]:
-                    enc(inputs[:, 0], wires=q, noise_params=noise_params)
+        # # one dimensional encoding
+        # if inputs.shape[1] == 1:
+        #     for q in range(self.n_qubits):
+        #         if data_reupload[q, 0]:
+        #             enc(inputs[:, 0], wires=q, noise_params=noise_params)
         # multi dimensional encoding
-        else:
-            for q in range(self.n_qubits):
-                if data_reupload[q]:
-                    for idx in range(inputs.shape[1]):
-                        enc[idx](inputs[:, idx], wires=q, noise_params=noise_params)
+        # else:
+        for q in range(self.n_qubits):
+            for idx in range(inputs.shape[1]):
+                if data_reupload[q, idx]:
+                    enc[idx](inputs[:, idx], wires=q, noise_params=noise_params)
 
     def _circuit(
         self,
