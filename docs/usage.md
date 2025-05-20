@@ -25,6 +25,11 @@ model.draw(figure="mpl")
 Looks good to you? :eyes: Head over to the [*Training*](training.md) page for **getting started** with an easy example :rocket:
 
 Note that calling the model without any (`None`) values for the `params` and `inputs` argument, will implicitly call the model with the recently (or initial) parameters and `0`s as input.
+I.e. simply running the following
+```python
+model()
+```
+will return the combined expectation value of a n-local measurement (`output_qubit=-1` is default). 
 
 In the following we will describe some concepts of the `Model` class.
 For a more detailled reference on the methods and arguments that are available, please see the [references page](https://cirkiters.github.io/qml-essentials/references/#model).
@@ -44,7 +49,7 @@ The number of frequencies that the model can represent is constrained by the num
 
 Typically, there is a reuploading step after each layer and on each qubit (`data_reupload=True`).
 However, our package also allows you to specify and array with the number of rows representing the qubits and number of columns representing the layers.
-Then a `1` means that encoding is applied at the corresponding position within the circuit.
+Then a `True` means that encoding is applied at the corresponding position within the circuit.
 
 In the following example, the model has two reuploading steps (`model.degree` = 2) although it would be capable of representing four frequencies:
 
@@ -53,11 +58,22 @@ model = Model(
     n_qubits=2,
     n_layers=2,
     circuit_type="Hardware_Efficient",
-    data_reupload=[[1, 0], [0, 1]],
+    data_reupload=[[True, False], [False, True]],
 )
 ```
 
 Checkout the [*Coefficients*](coefficients.md) page for more details on how you can visualize such a model using tools from signal analysis.
+If you want to encode multi-dimensional data (checkout the [*Encoding*](usage.md#encoding) section on how to do that), you can specify another dimension in the `data_reupload` argument (which just extents naturally).
+```python
+model = Model(
+    n_qubits=2,
+    n_layers=2,
+    circuit_type="Hardware_Efficient",
+    data_reupload=[[[0, 1], [1, 1]], [[1, 1], [0, 1]]],
+)
+```
+Now, the first input will have two frequencies (`sum([0,1,1,0]) = 2`), and the second input will have four frequencies (`sum([1,1,1,1]) = 4`).
+Of course, this is just a rule of thumb and can vary depending on the exact encoding strategy.
 
 ## Parameter Initialization
 
@@ -87,8 +103,10 @@ Other options are:
 See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
 Otherwise multiple inputs are treated as batches of inputs.
-
 If you want to visualize zero-valued encoding gates in the model, set `remove_zero_encoding` to `False` on instantiation.
+
+In case of a multi-dimensional input, you can obtain the highest frequency in each encoding dimension from the `model.frequencies` property.
+Now, `model.degree` in turn will reflect the highest number in this list.
 
 ## State Preparation
 
