@@ -168,7 +168,7 @@ def test_batching() -> None:
 @pytest.mark.unittest
 def test_multiprocessing_density() -> None:
     # use n_samples that is not a multiple of the threshold
-    n_samples = 2500
+    n_samples = 1000
 
     model = Model(
         n_qubits=2,
@@ -182,7 +182,7 @@ def test_multiprocessing_density() -> None:
 
     start = time.time()
     res_parallel = model(params=params, execution_type="density")
-    print(f"Time required for multi process: {time.time() - start}")
+    t_parallel = time.time() - start
 
     model = Model(
         n_qubits=2,
@@ -195,7 +195,9 @@ def test_multiprocessing_density() -> None:
 
     start = time.time()
     res_single = model(params=params, execution_type="density")
-    print(f"Time required for single process: {time.time() - start}")
+    t_single = time.time() - start
+
+    assert t_parallel < t_single, "Time required for multiprocessing larger than single process"
 
     assert (
         res_parallel.shape == res_single.shape
@@ -206,13 +208,13 @@ def test_multiprocessing_density() -> None:
 @pytest.mark.unittest
 def test_multiprocessing_expval() -> None:
     # use n_samples that is not a multiple of the threshold
-    n_samples = 2500
+    n_samples = 20000  # expval requires more samples for advantage
 
     model = Model(
-        n_qubits=2,
+        n_qubits=4,  # .. and larger circuits
         n_layers=1,
         circuit_type="Circuit_19",
-        mp_threshold=500,
+        mp_threshold=1000,
     )
 
     model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
@@ -220,10 +222,10 @@ def test_multiprocessing_expval() -> None:
 
     start = time.time()
     res_parallel = model(params=params, execution_type="expval")
-    print(f"Time required for multi process: {time.time() - start}")
+    t_parallel = time.time() - start
 
     model = Model(
-        n_qubits=2,
+        n_qubits=4,
         n_layers=1,
         circuit_type="Circuit_19",
     )
@@ -233,7 +235,9 @@ def test_multiprocessing_expval() -> None:
 
     start = time.time()
     res_single = model(params=params, execution_type="expval")
-    print(f"Time required for single process: {time.time() - start}")
+    t_single = time.time() - start
+
+    assert t_parallel < t_single, "Time required for multiprocessing larger than single process"
 
     assert (
         res_parallel.shape == res_single.shape
