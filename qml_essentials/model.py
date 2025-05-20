@@ -181,7 +181,9 @@ class Model:
                 data_reupload[0][0] = 1
                 log.debug("No data reuploading.")
 
-        self.degree = np.count_nonzero(data_reupload)
+        self.frequencies = [
+            np.count_nonzero(data_reupload[..., i]) for i in range(self.n_input_feat)
+        ]
         self.data_reupload = data_reupload
 
         if self.degree > 1:
@@ -223,6 +225,10 @@ class Model:
             self._circuit,
             qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
         )
+
+    @property
+    def degree(self):
+        return max(self.frequencies)
 
     @property
     def as_pauli_circuit(self) -> bool:
