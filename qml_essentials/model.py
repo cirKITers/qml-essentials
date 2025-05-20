@@ -29,7 +29,7 @@ class Model:
         n_qubits: int,
         n_layers: int,
         circuit_type: Union[str, Circuit],
-        data_reupload: Union[bool, List[int]] = True,
+        data_reupload: Union[bool, List[int], List[List[int]]] = True,
         state_preparation: Union[str, Callable, List[str], List[Callable]] = None,
         encoding: Union[str, Callable, List[str], List[Callable]] = Gates.RX,
         initialization: str = "random",
@@ -97,6 +97,8 @@ class Model:
         self.shots = shots
         self.remove_zero_encoding = remove_zero_encoding
         self.mp_threshold = mp_threshold
+        self.n_qubits: int = n_qubits
+        self.n_layers: int = n_layers
 
         if isinstance(output_qubit, list):
             assert (
@@ -105,47 +107,10 @@ class Model:
             larger than number of qubits {n_qubits}."
         self.output_qubit: Union[List[int], int] = output_qubit
 
-        # Copy the parameters
-        self.n_qubits: int = n_qubits
-        self.n_layers: int = n_layers
-
-        # Process data reuploading strategy and set degree
-        if not isinstance(data_reupload, bool):
-            if not isinstance(data_reupload, np.ndarray):
-                data_reupload = np.array(data_reupload)
-            assert data_reupload.shape == (n_layers, n_qubits)
-        else:
-            if data_reupload:
-                impl_n_layers: int = (
-                    n_layers + 1
-                )  # we need L+1 according to Schuld et al.
-                data_reupload = np.ones((n_layers, n_qubits))
-            else:
-                impl_n_layers: int = n_layers
-                data_reupload = np.zeros((n_layers, n_qubits))
-                data_reupload[0][0] = 1
-
-        self.degree = np.count_nonzero(data_reupload)
-        self.data_reupload = data_reupload
-
-        if self.degree > 1:
-            impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
-        else:
-            impl_n_layers = n_layers
-
-        # Initialize ansatz
-        # only weak check for str. We trust the user to provide sth useful
-        if isinstance(circuit_type, str):
-            self.pqc: Callable[[Optional[np.ndarray], int], int] = getattr(
-                Ansaetze, circuit_type or "No_Ansatz"
-            )()
-        else:
-            self.pqc = circuit_type()
-
         # Initialize rng in Gates
         Gates.init_rng(random_seed)
 
-        # Initialize state preparation
+        # --- State Preparation ---
         # first check if we have a str, list or callable
         if isinstance(state_preparation, str):
             # if str, use the pennylane fct
@@ -162,7 +127,7 @@ class Model:
             # default to callable
             self._sp = [state_preparation]
 
-        # Initialize encoding
+        # --- Encoding ---
         # first check if we have a str, list or callable
         if isinstance(encoding, str):
             # if str, use the pennylane fct
@@ -182,15 +147,52 @@ class Model:
 
         # Number of possible inputs
         self.n_input_feat = len(encoding) if isinstance(encoding, List) else 1
+        log.info(f"Number of input features: {self.n_input_feat}")
 
-        log.info(f"Using {circuit_type} circuit.")
+        # --- Data-Reuploading ---
+        # Process data reuploading strategy and set degree
+        if not isinstance(data_reupload, bool):
+            if not isinstance(data_reupload, np.ndarray):
+                data_reupload = np.array(data_reupload)
+                log.debug("Using data reuploading as array.")
+            assert data_reupload.shape == (n_layers, n_qubits)
+        else:
+            if data_reupload:
+                impl_n_layers: int = (
+                    n_layers + 1
+                )  # we need L+1 according to Schuld et al.
+                data_reupload = np.ones((n_layers, n_qubits))
+                log.debug("Full data reuploading.")
+            else:
+                impl_n_layers: int = n_layers
+                data_reupload = np.zeros((n_layers, n_qubits))
+                data_reupload[0][0] = 1
+                log.debug("No data reuploading.")
 
-        log.info(f"Number of implicit layers set to {impl_n_layers}.")
+        self.degree = np.count_nonzero(data_reupload)
+        self.data_reupload = data_reupload
+
+        if self.degree > 1:
+            impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
+        else:
+            impl_n_layers = n_layers
+        log.info(f"Number of implicit layers: {impl_n_layers}.")
+
+        # --- Ansatz ---
+        # only weak check for str. We trust the user to provide sth useful
+        if isinstance(circuit_type, str):
+            self.pqc: Callable[[Optional[np.ndarray], int], int] = getattr(
+                Ansaetze, circuit_type or "No_Ansatz"
+            )()
+        else:
+            self.pqc = circuit_type()
+        log.info(f"Using Ansatz {circuit_type}.")
+
         # calculate the shape of the parameter vector here, we will re-use this in init.
-        self._params_shape: Tuple[int, int] = (
-            impl_n_layers,
-            self.pqc.n_params_per_layer(self.n_qubits),
-        )
+        params_per_layer = self.pqc.n_params_per_layer(self.n_qubits)
+        self._params_shape: Tuple[int, int] = (impl_n_layers, params_per_layer)
+        log.info(f"Parameters per layer: {params_per_layer}")
+
         self.batch_shape = (1, 1)
         # this will also be re-used in the init method,
         # however, only if nothing is provided
