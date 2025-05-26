@@ -29,7 +29,7 @@ class Model:
         n_qubits: int,
         n_layers: int,
         circuit_type: Union[str, Circuit],
-        data_reupload: Union[bool, List[int]] = True,
+        data_reupload: Union[bool, List[bool], List[List[bool]]] = True,
         state_preparation: Union[str, Callable, List[str], List[Callable]] = None,
         encoding: Union[str, Callable, List[str], List[Callable]] = Gates.RX,
         initialization: str = "random",
@@ -58,8 +58,12 @@ class Model:
             n_layers (int): The number of layers in the circuit.
             circuit_type (str, Circuit): The type of quantum circuit to use.
                 If None, defaults to "no_ansatz".
-            data_reupload (bool, optional): Whether to reupload data to the
-                quantum device on each measurement. Defaults to True.
+            data_reupload (Union[bool, List[bool], List[List[bool]]], optional):
+                Whether to reupload data to the quantum device on each
+                layer and qubit. Detailed re-uploading instructions can be given
+                as a list/array of 0/False and 1/True with shape (n_qubits,
+                n_layers) to specify where to upload the data. Defaults to True
+                for applying data re-uploading to the full circuit.
             encoding (Union[str, Callable, List[str], List[Callable]], optional):
                 The unitary to use for encoding the input data. Can be a string
                 (e.g. "RX") or a callable (e.g. qml.RX). Defaults to qml.RX.
@@ -97,6 +101,8 @@ class Model:
         self.shots = shots
         self.remove_zero_encoding = remove_zero_encoding
         self.mp_threshold = mp_threshold
+        self.n_qubits: int = n_qubits
+        self.n_layers: int = n_layers
 
         if isinstance(output_qubit, list):
             assert (
@@ -105,47 +111,10 @@ class Model:
             larger than number of qubits {n_qubits}."
         self.output_qubit: Union[List[int], int] = output_qubit
 
-        # Copy the parameters
-        self.n_qubits: int = n_qubits
-        self.n_layers: int = n_layers
-
-        # Process data reuploading strategy and set degree
-        if not isinstance(data_reupload, bool):
-            if not isinstance(data_reupload, np.ndarray):
-                data_reupload = np.array(data_reupload)
-            assert data_reupload.shape == (n_layers, n_qubits)
-        else:
-            if data_reupload:
-                impl_n_layers: int = (
-                    n_layers + 1
-                )  # we need L+1 according to Schuld et al.
-                data_reupload = np.ones((n_layers, n_qubits))
-            else:
-                impl_n_layers: int = n_layers
-                data_reupload = np.zeros((n_layers, n_qubits))
-                data_reupload[0][0] = 1
-
-        self.degree = np.count_nonzero(data_reupload)
-        self.data_reupload = data_reupload
-
-        if self.degree > 1:
-            impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
-        else:
-            impl_n_layers = n_layers
-
-        # Initialize ansatz
-        # only weak check for str. We trust the user to provide sth useful
-        if isinstance(circuit_type, str):
-            self.pqc: Callable[[Optional[np.ndarray], int], int] = getattr(
-                Ansaetze, circuit_type or "No_Ansatz"
-            )()
-        else:
-            self.pqc = circuit_type()
-
         # Initialize rng in Gates
         Gates.init_rng(random_seed)
 
-        # Initialize state preparation
+        # --- State Preparation ---
         # first check if we have a str, list or callable
         if isinstance(state_preparation, str):
             # if str, use the pennylane fct
@@ -162,35 +131,88 @@ class Model:
             # default to callable
             self._sp = [state_preparation]
 
-        # Initialize encoding
+        # --- Encoding ---
         # first check if we have a str, list or callable
         if isinstance(encoding, str):
             # if str, use the pennylane fct
-            self._enc = getattr(Gates, f"{encoding}")
+            self._enc = [getattr(Gates, f"{encoding}")]
         elif isinstance(encoding, list):
             # if list, check if str or callable
             if isinstance(encoding[0], str):
                 self._enc = [getattr(Gates, f"{enc}") for enc in encoding]
             else:
                 self._enc = encoding
-
-            if len(self._enc) == 1:
-                self._enc = self._enc[0]
         else:
             # default to callable
-            self._enc = encoding
+            self._enc = [encoding]
 
         # Number of possible inputs
-        self.n_input_feat = len(encoding) if isinstance(encoding, List) else 1
+        self.n_input_feat = len(self._enc)
+        log.info(f"Number of input features: {self.n_input_feat}")
 
-        log.info(f"Using {circuit_type} circuit.")
+        # --- Data-Reuploading ---
+        # Process data reuploading strategy and set degree
+        if not isinstance(data_reupload, bool):
+            if not isinstance(data_reupload, np.ndarray):
+                data_reupload = np.array(data_reupload)
+            if data_reupload.shape == (
+                n_layers,
+                n_qubits,
+            ):
+                data_reupload = data_reupload.reshape(*data_reupload.shape, 1)
+                data_reupload = np.repeat(data_reupload, self.n_input_feat, axis=2)
 
-        log.info(f"Number of implicit layers set to {impl_n_layers}.")
+            assert data_reupload.shape == (
+                n_layers,
+                n_qubits,
+                self.n_input_feat,
+            ), f"Data reuploading array has wrong shape. \
+                Expected {(n_layers, n_qubits)} or\
+                {(n_layers, n_qubits, self.n_input_feat)},\
+                got {data_reupload.shape}."
+
+            log.debug(f"Data reuploading array:\n{data_reupload}")
+        else:
+            if data_reupload:
+                impl_n_layers: int = (
+                    n_layers + 1
+                )  # we need L+1 according to Schuld et al.
+                data_reupload = np.ones((n_layers, n_qubits, self.n_input_feat))
+                log.debug("Full data reuploading.")
+            else:
+                impl_n_layers: int = n_layers
+                data_reupload = np.zeros((n_layers, n_qubits, self.n_input_feat))
+                data_reupload[0][0] = 1
+                log.debug("No data reuploading.")
+
+        # convert to boolean values
+        self.data_reupload = data_reupload.astype(bool)
+        self.frequencies = [
+            np.count_nonzero(self.data_reupload[..., i])
+            for i in range(self.n_input_feat)
+        ]
+
+        if self.degree > 1:
+            impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
+        else:
+            impl_n_layers = n_layers
+        log.info(f"Number of implicit layers: {impl_n_layers}.")
+
+        # --- Ansatz ---
+        # only weak check for str. We trust the user to provide sth useful
+        if isinstance(circuit_type, str):
+            self.pqc: Callable[[Optional[np.ndarray], int], int] = getattr(
+                Ansaetze, circuit_type or "No_Ansatz"
+            )()
+        else:
+            self.pqc = circuit_type()
+        log.info(f"Using Ansatz {circuit_type}.")
+
         # calculate the shape of the parameter vector here, we will re-use this in init.
-        self._params_shape: Tuple[int, int] = (
-            impl_n_layers,
-            self.pqc.n_params_per_layer(self.n_qubits),
-        )
+        params_per_layer = self.pqc.n_params_per_layer(self.n_qubits)
+        self._params_shape: Tuple[int, int] = (impl_n_layers, params_per_layer)
+        log.info(f"Parameters per layer: {params_per_layer}")
+
         self.batch_shape = (1, 1)
         # this will also be re-used in the init method,
         # however, only if nothing is provided
@@ -209,6 +231,10 @@ class Model:
             self._circuit,
             qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
         )
+
+    @property
+    def degree(self):
+        return max(self.frequencies)
 
     @property
     def as_pauli_circuit(self) -> bool:
@@ -474,7 +500,7 @@ class Model:
     def _iec(
         self,
         inputs: np.ndarray,
-        data_reupload: bool,
+        data_reupload: np.ndarray,
         enc: Union[Callable, List[Callable]],
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
     ) -> None:
@@ -483,8 +509,9 @@ class Model:
 
         Args:
             inputs (np.ndarray): length of vector must be 1, shape (1,)
-            data_reupload (bool, optional): Whether to reupload the data
-                for the IEC or not, default is True.
+            data_reupload (np.ndarray): Boolean array to indicate positions in
+                the circuit for data re-uploading for the IEC, shape is
+                (n_qubits, n_layers).
 
         Returns:
             None
@@ -493,17 +520,10 @@ class Model:
         if self.remove_zero_encoding and not inputs.any():
             return
 
-        # one dimensional encoding
-        if inputs.shape[1] == 1:
-            for q in range(self.n_qubits):
-                if data_reupload[q]:
-                    enc(inputs[:, 0], wires=q, noise_params=noise_params)
-        # multi dimensional encoding
-        else:
-            for q in range(self.n_qubits):
-                if data_reupload[q]:
-                    for idx in range(inputs.shape[1]):
-                        enc[idx](inputs[:, idx], wires=q, noise_params=noise_params)
+        for q in range(self.n_qubits):
+            for idx in range(inputs.shape[1]):
+                if data_reupload[q, idx]:
+                    enc[idx](inputs[:, idx], wires=q, noise_params=noise_params)
 
     def _circuit(
         self,
