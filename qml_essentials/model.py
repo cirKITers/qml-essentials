@@ -58,8 +58,12 @@ class Model:
             n_layers (int): The number of layers in the circuit.
             circuit_type (str, Circuit): The type of quantum circuit to use.
                 If None, defaults to "no_ansatz".
-            data_reupload (bool, optional): Whether to reupload data to the
-                quantum device on each measurement. Defaults to True.
+            data_reupload (Union[bool, List[int], List[List[int]]], optional):
+                Whether to reupload data to the quantum device on each
+                layer and qubit. Detailed re-uploading instructions can be given
+                as a list/array of 0/False and 1/True with shape (n_qubits,
+                n_layers) to specify where to upload the data. Defaults to True
+                for applying data re-uploading to the full circuit.
             encoding (Union[str, Callable, List[str], List[Callable]], optional):
                 The unitary to use for encoding the input data. Can be a string
                 (e.g. "RX") or a callable (e.g. qml.RX). Defaults to qml.RX.
@@ -496,7 +500,7 @@ class Model:
     def _iec(
         self,
         inputs: np.ndarray,
-        data_reupload: bool,
+        data_reupload: np.ndarray,
         enc: Union[Callable, List[Callable]],
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
     ) -> None:
@@ -505,8 +509,9 @@ class Model:
 
         Args:
             inputs (np.ndarray): length of vector must be 1, shape (1,)
-            data_reupload (bool, optional): Whether to reupload the data
-                for the IEC or not, default is True.
+            data_reupload (np.ndarray): Boolean array to indicate positions in
+                the circuit for data re-uploading for the IEC, shape is
+                (n_qubits, n_layers).
 
         Returns:
             None
@@ -515,13 +520,6 @@ class Model:
         if self.remove_zero_encoding and not inputs.any():
             return
 
-        # # one dimensional encoding
-        # if inputs.shape[1] == 1:
-        #     for q in range(self.n_qubits):
-        #         if data_reupload[q, 0]:
-        #             enc(inputs[:, 0], wires=q, noise_params=noise_params)
-        # multi dimensional encoding
-        # else:
         for q in range(self.n_qubits):
             for idx in range(inputs.shape[1]):
                 if data_reupload[q, idx]:
