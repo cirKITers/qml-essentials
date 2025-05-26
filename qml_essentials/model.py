@@ -29,7 +29,7 @@ class Model:
         n_qubits: int,
         n_layers: int,
         circuit_type: Union[str, Circuit],
-        data_reupload: Union[bool, List[int], List[List[int]]] = True,
+        data_reupload: Union[bool, List[bool], List[List[bool]]] = True,
         state_preparation: Union[str, Callable, List[str], List[Callable]] = None,
         encoding: Union[str, Callable, List[str], List[Callable]] = Gates.RX,
         initialization: str = "random",
@@ -58,7 +58,7 @@ class Model:
             n_layers (int): The number of layers in the circuit.
             circuit_type (str, Circuit): The type of quantum circuit to use.
                 If None, defaults to "no_ansatz".
-            data_reupload (Union[bool, List[int], List[List[int]]], optional):
+            data_reupload (Union[bool, List[bool], List[List[bool]]], optional):
                 Whether to reupload data to the quantum device on each
                 layer and qubit. Detailed re-uploading instructions can be given
                 as a list/array of 0/False and 1/True with shape (n_qubits,
