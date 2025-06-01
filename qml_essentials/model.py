@@ -16,7 +16,6 @@ import logging
 
 log = logging.getLogger(__name__)
 
-# TODO: when trainable_frequencies = False, make sure theta_F always has requires_grad = False. Currently, _theta_F_validation() and unpack() flips it to True
 class Model:
     """
     A quantum circuit model.
@@ -71,7 +70,8 @@ class Model:
                 If input is multidimensional it is assumed to be a list of
                 unitaries or a list of strings.
             trainable_frequencies (bool, optional): 
-                Sets trainable frequencies. Defaults to False.
+                Sets trainable encoding parameters for trainable frequencies.
+                Defaults to False.
             initialization (str, optional): The strategy to initialize the parameters.
                 Can be "random", "zeros", "zero-controlled", "pi", or "pi-controlled".
                 Defaults to "random".
@@ -106,7 +106,7 @@ class Model:
         self.mp_threshold = mp_threshold
         self.n_qubits: int = n_qubits
         self.n_layers: int = n_layers
-        self.trainable_frequencies = trainable_frequencies
+        self.trainable_frequencies: bool = trainable_frequencies
 
         if isinstance(output_qubit, list):
             assert (
@@ -155,7 +155,7 @@ class Model:
         log.info(f"Number of input features: {self.n_input_feat}")
 
         # Trainable frequencies
-        self.theta_F = np.ones(self.n_qubits, requires_grad=trainable_frequencies) # NOTE: default initialization as in arXiv:2309.03279v2
+        self.theta_F = np.ones(self.n_qubits, requires_grad=trainable_frequencies) # default initialization as in arXiv:2309.03279v2
 
         # --- Data-Reuploading ---
         # Process data reuploading strategy and set degree
@@ -433,7 +433,7 @@ class Model:
             value = None
         self._shots = value
 
-    def initialize_params( # NOTE / TODO: Maybe theta_F can be initialized here
+    def initialize_params(
         self,
         rng: np.random.Generator,
         repeat: int = None,
@@ -548,6 +548,8 @@ class Model:
             params (np.ndarray): weight vector of shape
                 [n_layers, n_qubits*(n_params_per_layer+float(trainable_frequencies)]
             inputs (np.ndarray): input vector of size 1
+            theta_F Optional[np.ndarray, None]: encoding weight vector of shape
+                [n_qubits]
         Returns:
             Union[float, np.ndarray]: Expectation value of PauliZ(0)
                 of the circuit if state_vector is False and expval is True,
@@ -694,14 +696,14 @@ class Model:
 
         if figure == "mpl":
             result = qml.draw_mpl(self.circuit)(
-                params=self.params, inputs=inputs, *args, **kwargs
+                params=self.params, theta_F=self.theta_F, inputs=inputs, *args, **kwargs
             )
         elif figure == "tikz":
             result = QuanTikz.build(
-                self.circuit, params=self.params, inputs=inputs, *args, **kwargs
+                self.circuit, params=self.params, theta_F=self.theta_F, inputs=inputs, *args, **kwargs
             )
         else:
-            result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
+            result = qml.draw(self.circuit)(params=self.params, theta_F=self.theta_F, inputs=inputs)
         return result
 
     def __repr__(self) -> str:
@@ -709,16 +711,6 @@ class Model:
 
     def __str__(self) -> str:
         return self.draw(figure="text")
-
-    def pack(self, params, theta_F):
-        return np.concatenate([params.ravel(), theta_F.ravel()])
-
-    def unpack(self, vector, param_shape, theta_F_shape):
-        param_size = np.prod(param_shape)
-        params = vector[:param_size].reshape(param_shape)
-        theta_F = vector[param_size:].reshape(theta_F_shape)
-        # theta_F = np.array(theta_F, requires_grad=True)
-        return params, theta_F
 
     def _params_validation(self, params) -> np.ndarray:
         """
@@ -738,7 +730,7 @@ class Model:
 
     def _theta_F_validation(self, theta_F) -> np.ndarray:
         """
-        Sets the trainable frequencies parameters when calling the quantum circuit
+        Sets the encoding parameters when calling the quantum circuit
 
         Args:
             theta_F (np.ndarray): The encoding parameters used for the call
@@ -747,11 +739,15 @@ class Model:
             theta_F = self.theta_F
         else:
             if type(theta_F) == numpy_boxes.ArrayBox:
-                self.theta_F = theta_F._value
-                # self.theta_F = np.array(theta_F._value, requires_grad=self.trainable_frequencies)
+                if self.trainable_frequencies:
+                    self.theta_F = theta_F._value
+                else:
+                    self.theta_F = np.array(theta_F._value, requires_grad=self.trainable_frequencies) # theta_F is detached when calling np.array(theta_F)
             else:
-                self.theta_F = theta_F
-                # self.theta_F = np.array(theta_F, requires_grad=self.trainable_frequencies)
+                if self.trainable_frequencies:
+                    self.theta_F = theta_F
+                else:
+                    self.theta_F = np.array(theta_F, requires_grad=self.trainable_frequencies)
 
         return theta_F
 
@@ -837,11 +833,12 @@ class Model:
                 the layer, and the third dimension is the sample index.
             inputs: A 2D numpy array of inputs where the first dimension is
                 the sample index and the second dimension is the input feature index.
-            theta_F: ...
+            theta_F: A 1D numpy array of encoding parameters where the dimension is
+                the qubit index.
 
         Returns:
             A numpy array of the output of f applied to each batch of
-            samples in params and inputs.
+            samples in params, theta_F, and inputs.
         """
         n_processes = 1
         # batches available?
@@ -918,8 +915,9 @@ class Model:
             params (Optional[np.ndarray]): Weight vector of shape
                 [n_layers, n_qubits*n_params_per_layer].
                 If None, model internal parameters are used.
-            theta_F ():
-                ...
+            theta_F (Optional[np.ndarray]): Weight vector of shape
+                [n_qubits]. If None, model internal encoding 
+                parameters are used.
             inputs (Optional[np.ndarray]): Input vector of shape [1].
                 If None, zeros are used.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
@@ -955,7 +953,7 @@ class Model:
             cache=cache,
             execution_type=execution_type,
             force_mean=force_mean,
-        ) # TODO: Include theta_F as argument
+        )
 
     def _forward(
         self,
@@ -974,8 +972,9 @@ class Model:
             params (Optional[np.ndarray]): Weight vector of shape
                 [n_layers, n_qubits*n_params_per_layer].
                 If None, model internal parameters are used.
-            theta_F (): 
-                ...
+            theta_F (Optional[np.ndarray]): Weight vector of shape
+                [n_qubits]. If None, model internal encoding 
+                parameters are used.
             inputs (Optional[np.ndarray]): Input vector of shape [1].
                 If None, zeros are used.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
