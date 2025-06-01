@@ -16,7 +16,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
-
+# TODO: when trainable_frequencies = False, make sure theta_F always has requires_grad = False. Currently, _theta_F_validation() and unpack() flips it to True
 class Model:
     """
     A quantum circuit model.
@@ -32,6 +32,7 @@ class Model:
         data_reupload: Union[bool, List[bool], List[List[bool]]] = True,
         state_preparation: Union[str, Callable, List[str], List[Callable]] = None,
         encoding: Union[str, Callable, List[str], List[Callable]] = Gates.RX,
+        trainable_frequencies: bool = False,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
         output_qubit: Union[List[int], int] = -1,
@@ -69,6 +70,8 @@ class Model:
                 (e.g. "RX") or a callable (e.g. qml.RX). Defaults to qml.RX.
                 If input is multidimensional it is assumed to be a list of
                 unitaries or a list of strings.
+            trainable_frequencies (bool, optional): 
+                Sets trainable frequencies. Defaults to False.
             initialization (str, optional): The strategy to initialize the parameters.
                 Can be "random", "zeros", "zero-controlled", "pi", or "pi-controlled".
                 Defaults to "random".
@@ -103,6 +106,7 @@ class Model:
         self.mp_threshold = mp_threshold
         self.n_qubits: int = n_qubits
         self.n_layers: int = n_layers
+        self.trainable_frequencies = trainable_frequencies
 
         if isinstance(output_qubit, list):
             assert (
@@ -149,6 +153,9 @@ class Model:
         # Number of possible inputs
         self.n_input_feat = len(self._enc)
         log.info(f"Number of input features: {self.n_input_feat}")
+
+        # Trainable frequencies
+        self.theta_F = np.ones(self.n_qubits, requires_grad=trainable_frequencies) # NOTE: default initialization as in arXiv:2309.03279v2
 
         # --- Data-Reuploading ---
         # Process data reuploading strategy and set degree
@@ -426,7 +433,7 @@ class Model:
             value = None
         self._shots = value
 
-    def initialize_params(
+    def initialize_params( # NOTE / TODO: Maybe theta_F can be initialized here
         self,
         rng: np.random.Generator,
         repeat: int = None,
@@ -502,6 +509,7 @@ class Model:
         inputs: np.ndarray,
         data_reupload: np.ndarray,
         enc: Union[Callable, List[Callable]],
+        theta_F: np.ndarray = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
     ) -> None:
         """
@@ -512,40 +520,43 @@ class Model:
             data_reupload (np.ndarray): Boolean array to indicate positions in
                 the circuit for data re-uploading for the IEC, shape is
                 (n_qubits, n_layers).
-
         Returns:
             None
         """
         # check for zero, because due to input validation, input cannot be none
         if self.remove_zero_encoding and not inputs.any():
             return
+        
+        if theta_F is None:
+            theta_F = np.ones(self.n_qubits, requires_grad=False)
 
         for q in range(self.n_qubits):
             for idx in range(inputs.shape[1]):
                 if data_reupload[q, idx]:
-                    enc[idx](inputs[:, idx], wires=q, noise_params=noise_params)
+                    enc[idx](theta_F[q] * inputs[:, idx], wires=q, noise_params=noise_params) # TODO: check if this is correct implementation of trainable frequencies according to theory
 
     def _circuit(
         self,
         params: np.ndarray,
         inputs: np.ndarray,
+        theta_F: Optional[np.ndarray] = None,
     ) -> Union[float, np.ndarray]:
         """
         Creates a circuit with noise.
 
         Args:
             params (np.ndarray): weight vector of shape
-                [n_layers, n_qubits*n_params_per_layer]
+                [n_layers, n_qubits*(n_params_per_layer+float(trainable_frequencies)]
             inputs (np.ndarray): input vector of size 1
         Returns:
             Union[float, np.ndarray]: Expectation value of PauliZ(0)
                 of the circuit if state_vector is False and expval is True,
                 otherwise the density matrix of all qubits.
         """
-        self._variational(params=params, inputs=inputs)
+        self._variational(params=params, inputs=inputs, theta_F=theta_F)
         return self._observable()
 
-    def _variational(self, params, inputs):
+    def _variational(self, params, inputs, theta_F=None):
         if self.noise_params is not None:
             self._apply_state_prep_noise()
 
@@ -560,6 +571,7 @@ class Model:
                 inputs,
                 data_reupload=self.data_reupload[layer],
                 enc=self._enc,
+                theta_F=theta_F,
                 noise_params=self.noise_params,
             )
 
@@ -698,6 +710,16 @@ class Model:
     def __str__(self) -> str:
         return self.draw(figure="text")
 
+    def pack(self, params, theta_F):
+        return np.concatenate([params.ravel(), theta_F.ravel()])
+
+    def unpack(self, vector, param_shape, theta_F_shape):
+        param_size = np.prod(param_shape)
+        params = vector[:param_size].reshape(param_shape)
+        theta_F = vector[param_size:].reshape(theta_F_shape)
+        # theta_F = np.array(theta_F, requires_grad=True)
+        return params, theta_F
+
     def _params_validation(self, params) -> np.ndarray:
         """
         Sets the parameters when calling the quantum circuit
@@ -713,6 +735,25 @@ class Model:
             else:
                 self.params = params
         return params
+
+    def _theta_F_validation(self, theta_F) -> np.ndarray:
+        """
+        Sets the trainable frequencies parameters when calling the quantum circuit
+
+        Args:
+            theta_F (np.ndarray): The encoding parameters used for the call
+        """
+        if theta_F is None:
+            theta_F = self.theta_F
+        else:
+            if type(theta_F) == numpy_boxes.ArrayBox:
+                self.theta_F = theta_F._value
+                # self.theta_F = np.array(theta_F._value, requires_grad=self.trainable_frequencies)
+            else:
+                self.theta_F = theta_F
+                # self.theta_F = np.array(theta_F, requires_grad=self.trainable_frequencies)
+
+        return theta_F
 
     def _inputs_validation(
         self, inputs: Union[None, List, float, int, np.ndarray]
@@ -759,7 +800,7 @@ class Model:
         return inputs
 
     @staticmethod
-    def _parallel_f(procnum, result, f, batch_size, params, inputs, batch_shape):
+    def _parallel_f(procnum, result, f, batch_size, params, inputs, batch_shape, theta_F=None):
         """
         Helper function for parallelizing a function f over parameters.
         Sices the batch dimension based on the procnum and batch size.
@@ -771,6 +812,7 @@ class Model:
             batch_size: The batch size.
             params: The parameters array.
             inputs: The inputs array.
+            theta_F: The encoding parameters array.
         """
         min_idx = max(procnum * batch_size, 0)
 
@@ -781,9 +823,9 @@ class Model:
             max_idx = min((procnum + 1) * batch_size, params.shape[2])
             params = params[:, :, min_idx:max_idx]
 
-        result[procnum] = f(params=params, inputs=inputs)
+        result[procnum] = f(params=params, inputs=inputs, theta_F=theta_F)
 
-    def _mp_executor(self, f, params, inputs):
+    def _mp_executor(self, f, params, inputs, theta_F=None):
         """
         Execute a function f in parallel over parameters.
 
@@ -795,6 +837,7 @@ class Model:
                 the layer, and the third dimension is the sample index.
             inputs: A 2D numpy array of inputs where the first dimension is
                 the sample index and the second dimension is the input feature index.
+            theta_F: ...
 
         Returns:
             A numpy array of the output of f applied to each batch of
@@ -811,7 +854,7 @@ class Model:
             n_processes = math.ceil(combined_batch_size / self.mp_threshold)
         # check if single process
         if n_processes == 1:
-            result = f(params=params, inputs=inputs)
+            result = f(params=params, inputs=inputs, theta_F=theta_F)
         else:
             log.info(f"Using {n_processes} processes")
             mpp = MultiprocessingPool(
@@ -820,6 +863,7 @@ class Model:
                 batch_size=self.mp_threshold,
                 f=f,
                 params=params,
+                theta_F=theta_F,
                 inputs=inputs,
                 batch_shape=self.batch_shape,
             )
@@ -829,7 +873,6 @@ class Model:
                 result[k] = v
 
             result = np.concat(result, axis=1 if self.execution_type == "expval" else 0)
-
         return result
 
     def _assimilate_batch(self, inputs, params):
@@ -861,6 +904,7 @@ class Model:
     def __call__(
         self,
         params: Optional[np.ndarray] = None,
+        theta_F: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
@@ -874,6 +918,8 @@ class Model:
             params (Optional[np.ndarray]): Weight vector of shape
                 [n_layers, n_qubits*n_params_per_layer].
                 If None, model internal parameters are used.
+            theta_F ():
+                ...
             inputs (Optional[np.ndarray]): Input vector of shape [1].
                 If None, zeros are used.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
@@ -903,16 +949,18 @@ class Model:
         # Call forward method which handles the actual caching etc.
         return self._forward(
             params=params,
+            theta_F=theta_F,
             inputs=inputs,
             noise_params=noise_params,
             cache=cache,
             execution_type=execution_type,
             force_mean=force_mean,
-        )
+        ) # TODO: Include theta_F as argument
 
     def _forward(
         self,
         params: Optional[np.ndarray] = None,
+        theta_F: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
@@ -926,6 +974,8 @@ class Model:
             params (Optional[np.ndarray]): Weight vector of shape
                 [n_layers, n_qubits*n_params_per_layer].
                 If None, model internal parameters are used.
+            theta_F (): 
+                ...
             inputs (Optional[np.ndarray]): Input vector of shape [1].
                 If None, zeros are used.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
@@ -963,6 +1013,7 @@ class Model:
             self.execution_type = execution_type
 
         params = self._params_validation(params)
+        theta_F = self._theta_F_validation(theta_F)
         inputs = self._inputs_validation(inputs)
         inputs, params, self.batch_shape = self._assimilate_batch(inputs, params)
         # the qasm representation contains the bound parameters,
@@ -975,6 +1026,7 @@ class Model:
                     "pqc": self.pqc.__class__.__name__,
                     "dru": self.data_reupload,
                     "params": self.params,  # use safe-params
+                    "theta_F": self.theta_F,
                     "noise_params": self.noise_params,
                     "execution_type": self.execution_type,
                     "inputs": inputs,
@@ -1002,6 +1054,7 @@ class Model:
                 result = self._mp_executor(
                     f=self.circuit_mixed,
                     params=params,  # use arraybox params
+                    theta_F=theta_F,
                     inputs=inputs,
                 )
             else:
@@ -1013,6 +1066,7 @@ class Model:
                     result = self._mp_executor(
                         f=self.circuit,
                         params=params,  # use arraybox params
+                        theta_F=theta_F,
                         inputs=inputs,
                     )
 
@@ -1071,3 +1125,4 @@ class Model:
             int: Circuit depth (longest path of gates in circuit.)
         """
         return self.get_specs(inputs)["resources"].depth
+    
