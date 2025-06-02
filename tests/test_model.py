@@ -152,7 +152,8 @@ def test_trainable_frequencies() -> None:
         trainable_frequencies=True,
     )
 
-    assert model.theta_F.requires_grad, "Encoding parameters theta_F do not require grad"
+    assert model.theta_F.requires_grad, \
+        "Encoding parameters theta_F do not require grad"
 
     # setting test data
     domain = [-np.pi, np.pi]
@@ -160,6 +161,7 @@ def test_trainable_frequencies() -> None:
     coefficients = np.array([0.5, 0.5, 0.5, 0.5])
     n_d = int(np.ceil(2 * np.max(np.abs(domain)) * np.max(omegas)))
     x = np.linspace(domain[0], domain[1], num=n_d)
+
     def f(x):
         return 1 / np.linalg.norm(omegas) * np.sum(coefficients * np.cos(omegas.T * x))
     y = np.stack([f(sample) for sample in x])
@@ -170,13 +172,17 @@ def test_trainable_frequencies() -> None:
 
     opt = qml.AdamOptimizer(stepsize=0.01)
     theta_F_before = model.theta_F.copy()
-    (model.params, model.theta_F), cost_val = opt.step_and_cost(cost_fct, model.params, model.theta_F)
+    (model.params, model.theta_F), cost_val = opt.step_and_cost(
+        cost_fct, model.params, model.theta_F
+    )
     theta_F_after = model.theta_F.copy()
-    
-    assert not np.allclose(theta_F_before, theta_F_after), "theta_F did not update during training"
+
+    assert not np.allclose(theta_F_before, theta_F_after), \
+        "theta_F did not update during training"
 
     grads = qml.grad(cost_fct, argnum=1)(model.params, model.theta_F)
     assert np.any(np.abs(grads) > 1e-6), "Gradient wrt theta_F is too small"
+
 
 @pytest.mark.unittest
 def test_batching() -> None:
