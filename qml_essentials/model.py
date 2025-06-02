@@ -537,9 +537,7 @@ class Model:
                     # TODO: check if this is correct implementation of trainable \
                     # frequencies according to theory
                     enc[idx](
-                        theta_F[q] * inputs[:, idx],
-                        wires=q,
-                        noise_params=noise_params
+                        theta_F[q] * inputs[:, idx], wires=q, noise_params=noise_params
                     )
 
     def _circuit(
@@ -707,14 +705,16 @@ class Model:
             )
         elif figure == "tikz":
             result = QuanTikz.build(
-                self.circuit, params=self.params,
-                theta_F=self.theta_F, inputs=inputs, *args, **kwargs
+                self.circuit,
+                params=self.params,
+                theta_F=self.theta_F,
+                inputs=inputs,
+                *args,
+                **kwargs,
             )
         else:
             result = qml.draw(self.circuit)(
-                params=self.params,
-                theta_F=self.theta_F,
-                inputs=inputs
+                params=self.params, theta_F=self.theta_F, inputs=inputs
             )
         return result
 
@@ -755,16 +755,14 @@ class Model:
                     self.theta_F = theta_F._value
                 else:
                     self.theta_F = np.array(
-                        theta_F._value,
-                        requires_grad=self.trainable_frequencies
+                        theta_F._value, requires_grad=self.trainable_frequencies
                     )
             else:
                 if self.trainable_frequencies:
                     self.theta_F = theta_F
                 else:
                     self.theta_F = np.array(
-                        theta_F,
-                        requires_grad=self.trainable_frequencies
+                        theta_F, requires_grad=self.trainable_frequencies
                     )
 
         return theta_F
@@ -815,7 +813,14 @@ class Model:
 
     @staticmethod
     def _parallel_f(
-        procnum, result, f, batch_size, params, inputs, batch_shape, theta_F=None,
+        procnum,
+        result,
+        f,
+        batch_size,
+        params,
+        inputs,
+        batch_shape,
+        theta_F=None,
     ):
         """
         Helper function for parallelizing a function f over parameters.
@@ -921,8 +926,8 @@ class Model:
     def __call__(
         self,
         params: Optional[np.ndarray] = None,
-        theta_F: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
+        theta_F: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
@@ -935,11 +940,11 @@ class Model:
             params (Optional[np.ndarray]): Weight vector of shape
                 [n_layers, n_qubits*n_params_per_layer].
                 If None, model internal parameters are used.
+            inputs (Optional[np.ndarray]): Input vector of shape [1].
+                If None, zeros are used.
             theta_F (Optional[np.ndarray]): Weight vector of shape
                 [n_qubits]. If None, model internal encoding
                 parameters are used.
-            inputs (Optional[np.ndarray]): Input vector of shape [1].
-                If None, zeros are used.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
                 set noise parameters being used.
@@ -967,8 +972,8 @@ class Model:
         # Call forward method which handles the actual caching etc.
         return self._forward(
             params=params,
-            theta_F=theta_F,
             inputs=inputs,
+            theta_F=theta_F,
             noise_params=noise_params,
             cache=cache,
             execution_type=execution_type,
@@ -978,8 +983,8 @@ class Model:
     def _forward(
         self,
         params: Optional[np.ndarray] = None,
-        theta_F: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
+        theta_F: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
@@ -992,11 +997,11 @@ class Model:
             params (Optional[np.ndarray]): Weight vector of shape
                 [n_layers, n_qubits*n_params_per_layer].
                 If None, model internal parameters are used.
+            inputs (Optional[np.ndarray]): Input vector of shape [1].
+                If None, zeros are used.
             theta_F (Optional[np.ndarray]): Weight vector of shape
                 [n_qubits]. If None, model internal encoding
                 parameters are used.
-            inputs (Optional[np.ndarray]): Input vector of shape [1].
-                If None, zeros are used.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
                 set noise parameters being used.
@@ -1032,8 +1037,8 @@ class Model:
             self.execution_type = execution_type
 
         params = self._params_validation(params)
-        theta_F = self._theta_F_validation(theta_F)
         inputs = self._inputs_validation(inputs)
+        theta_F = self._theta_F_validation(theta_F)
         inputs, params, self.batch_shape = self._assimilate_batch(inputs, params)
         # the qasm representation contains the bound parameters,
         # thus it is ok to hash that
@@ -1073,8 +1078,8 @@ class Model:
                 result = self._mp_executor(
                     f=self.circuit_mixed,
                     params=params,  # use arraybox params
-                    theta_F=theta_F,
                     inputs=inputs,
+                    theta_F=theta_F,
                 )
             else:
                 if not isinstance(self.circuit, qml.QNode):
@@ -1085,8 +1090,8 @@ class Model:
                     result = self._mp_executor(
                         f=self.circuit,
                         params=params,  # use arraybox params
-                        theta_F=theta_F,
                         inputs=inputs,
+                        theta_F=theta_F,
                     )
 
         if isinstance(result, list):
