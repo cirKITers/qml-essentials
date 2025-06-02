@@ -152,8 +152,9 @@ def test_trainable_frequencies() -> None:
         trainable_frequencies=True,
     )
 
-    assert model.theta_F.requires_grad, \
-        "Encoding parameters theta_F do not require grad"
+    assert (
+        model.theta_F.requires_grad
+    ), "Encoding parameters theta_F do not require grad"
 
     # setting test data
     domain = [-np.pi, np.pi]
@@ -164,6 +165,7 @@ def test_trainable_frequencies() -> None:
 
     def f(x):
         return 1 / np.linalg.norm(omegas) * np.sum(coefficients * np.cos(omegas.T * x))
+
     y = np.stack([f(sample) for sample in x])
 
     def cost_fct(params, theta_F):
@@ -177,8 +179,9 @@ def test_trainable_frequencies() -> None:
     )
     theta_F_after = model.theta_F.copy()
 
-    assert not np.allclose(theta_F_before, theta_F_after), \
-        "theta_F did not update during training"
+    assert not np.allclose(
+        theta_F_before, theta_F_after
+    ), "theta_F did not update during training"
 
     grads = qml.grad(cost_fct, argnum=1)(model.params, model.theta_F)
     assert np.any(np.abs(grads) > 1e-6), "Gradient wrt theta_F is too small"
