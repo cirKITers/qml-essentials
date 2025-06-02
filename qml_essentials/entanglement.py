@@ -116,7 +116,10 @@ class Entanglement:
         if scale:
             n_samples = np.power(2, model.n_qubits) * n_samples
 
-        def _circuit(params: np.ndarray, inputs: np.ndarray, theta_F: Optional[np.ndarray] = None) -> List[np.ndarray]:
+        def _circuit(
+                params: np.ndarray, inputs: np.ndarray,
+                theta_F: Optional[np.ndarray] = None
+        ) -> List[np.ndarray]:
             """
             Compute the Bell measurement circuit.
 
