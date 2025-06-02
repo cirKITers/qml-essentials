@@ -412,6 +412,7 @@ def test_cache() -> None:
                 "pqc": model.pqc.__class__.__name__,
                 "dru": model.data_reupload,
                 "params": model.params,
+                "theta_F": model.theta_F,
                 "noise_params": model.noise_params,
                 "execution_type": model.execution_type,
                 "inputs": np.array([[0]]),
