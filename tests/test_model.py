@@ -426,6 +426,8 @@ def test_cache() -> None:
 
     if os.path.isfile(file_path):
         cached_result = np.load(file_path)
+    else:
+        raise Exception("Cache file does not exist.")
 
     assert np.array_equal(
         result, cached_result
