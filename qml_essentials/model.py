@@ -16,6 +16,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
+
 class Model:
     """
     A quantum circuit model.
@@ -69,7 +70,7 @@ class Model:
                 (e.g. "RX") or a callable (e.g. qml.RX). Defaults to qml.RX.
                 If input is multidimensional it is assumed to be a list of
                 unitaries or a list of strings.
-            trainable_frequencies (bool, optional): 
+            trainable_frequencies (bool, optional):
                 Sets trainable encoding parameters for trainable frequencies.
                 Defaults to False.
             initialization (str, optional): The strategy to initialize the parameters.
@@ -154,8 +155,8 @@ class Model:
         self.n_input_feat = len(self._enc)
         log.info(f"Number of input features: {self.n_input_feat}")
 
-        # Trainable frequencies
-        self.theta_F = np.ones(self.n_qubits, requires_grad=trainable_frequencies) # default initialization as in arXiv:2309.03279v2
+        # Trainable frequencies, default initialization as in arXiv:2309.03279v2
+        self.theta_F = np.ones(self.n_qubits, requires_grad=trainable_frequencies)
 
         # --- Data-Reuploading ---
         # Process data reuploading strategy and set degree
@@ -526,14 +527,20 @@ class Model:
         # check for zero, because due to input validation, input cannot be none
         if self.remove_zero_encoding and not inputs.any():
             return
-        
+
         if theta_F is None:
             theta_F = np.ones(self.n_qubits, requires_grad=False)
 
         for q in range(self.n_qubits):
             for idx in range(inputs.shape[1]):
                 if data_reupload[q, idx]:
-                    enc[idx](theta_F[q] * inputs[:, idx], wires=q, noise_params=noise_params) # TODO: check if this is correct implementation of trainable frequencies according to theory
+                    # TODO: check if this is correct implementation of trainable \
+                    # frequencies according to theory
+                    enc[idx](
+                        theta_F[q] * inputs[:, idx],
+                        wires=q,
+                        noise_params=noise_params
+                    )
 
     def _circuit(
         self,
@@ -700,10 +707,15 @@ class Model:
             )
         elif figure == "tikz":
             result = QuanTikz.build(
-                self.circuit, params=self.params, theta_F=self.theta_F, inputs=inputs, *args, **kwargs
+                self.circuit, params=self.params,
+                theta_F=self.theta_F, inputs=inputs, *args, **kwargs
             )
         else:
-            result = qml.draw(self.circuit)(params=self.params, theta_F=self.theta_F, inputs=inputs)
+            result = qml.draw(self.circuit)(
+                params=self.params,
+                theta_F=self.theta_F,
+                inputs=inputs
+            )
         return result
 
     def __repr__(self) -> str:
@@ -738,16 +750,22 @@ class Model:
         if theta_F is None:
             theta_F = self.theta_F
         else:
-            if type(theta_F) == numpy_boxes.ArrayBox:
+            if isinstance(theta_F, numpy_boxes.ArrayBox):
                 if self.trainable_frequencies:
                     self.theta_F = theta_F._value
                 else:
-                    self.theta_F = np.array(theta_F._value, requires_grad=self.trainable_frequencies) # theta_F is detached when calling np.array(theta_F)
+                    self.theta_F = np.array(
+                        theta_F._value,
+                        requires_grad=self.trainable_frequencies
+                    )
             else:
                 if self.trainable_frequencies:
                     self.theta_F = theta_F
                 else:
-                    self.theta_F = np.array(theta_F, requires_grad=self.trainable_frequencies)
+                    self.theta_F = np.array(
+                        theta_F,
+                        requires_grad=self.trainable_frequencies
+                    )
 
         return theta_F
 
@@ -796,7 +814,9 @@ class Model:
         return inputs
 
     @staticmethod
-    def _parallel_f(procnum, result, f, batch_size, params, inputs, batch_shape, theta_F=None):
+    def _parallel_f(
+        procnum, result, f, batch_size, params, inputs, batch_shape, theta_F=None,
+    ):
         """
         Helper function for parallelizing a function f over parameters.
         Sices the batch dimension based on the procnum and batch size.
@@ -916,7 +936,7 @@ class Model:
                 [n_layers, n_qubits*n_params_per_layer].
                 If None, model internal parameters are used.
             theta_F (Optional[np.ndarray]): Weight vector of shape
-                [n_qubits]. If None, model internal encoding 
+                [n_qubits]. If None, model internal encoding
                 parameters are used.
             inputs (Optional[np.ndarray]): Input vector of shape [1].
                 If None, zeros are used.
@@ -973,7 +993,7 @@ class Model:
                 [n_layers, n_qubits*n_params_per_layer].
                 If None, model internal parameters are used.
             theta_F (Optional[np.ndarray]): Weight vector of shape
-                [n_qubits]. If None, model internal encoding 
+                [n_qubits]. If None, model internal encoding
                 parameters are used.
             inputs (Optional[np.ndarray]): Input vector of shape [1].
                 If None, zeros are used.
@@ -1124,4 +1144,3 @@ class Model:
             int: Circuit depth (longest path of gates in circuit.)
         """
         return self.get_specs(inputs)["resources"].depth
-    
