@@ -823,7 +823,7 @@ class QuanTikz:
 
     @staticmethod
     def build(
-        circuit: qml.QNode, params, inputs, theta_F=None,
+        circuit: qml.QNode, params, inputs, enc_params=None,
         gate_values=False, inputs_symbols="x"
     ) -> str:
         """
@@ -837,7 +837,7 @@ class QuanTikz:
             Weight parameters for the circuit.
         inputs : array
             Inputs for the circuit.
-        theta_F : array
+        enc_params : array
             Encoding weight parameters for the circuit.
         gate_values : bool, optional
             Toggle for gate values or theta variables in the representation.
@@ -849,9 +849,9 @@ class QuanTikz:
         str
             LaTeX string for the circuit.
         """
-        if theta_F is not None:
+        if enc_params is not None:
             quantum_tape = qml.workflow.construct_tape(circuit)(
-                params=params, inputs=inputs, theta_F=theta_F
+                params=params, inputs=inputs, enc_params=enc_params
             )
         else:
             quantum_tape = qml.workflow.construct_tape(circuit)(

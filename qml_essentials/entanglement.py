@@ -118,7 +118,7 @@ class Entanglement:
 
         def _circuit(
                 params: np.ndarray, inputs: np.ndarray,
-                theta_F: Optional[np.ndarray] = None
+                enc_params: Optional[np.ndarray] = None
         ) -> List[np.ndarray]:
             """
             Compute the Bell measurement circuit.
@@ -126,12 +126,12 @@ class Entanglement:
             Args:
                 params (np.ndarray): The model parameters.
                 inputs (np.ndarray): The input to the model.
-                theta_F (Optional[np.ndarray]): The frequency encoding parameters.
+                enc_params (Optional[np.ndarray]): The frequency encoding parameters.
 
             Returns:
                 List[np.ndarray]: The probabilities of the Bell measurement.
             """
-            model._variational(params, inputs, theta_F)
+            model._variational(params, inputs, enc_params)
 
             qml.map_wires(
                 model._variational,

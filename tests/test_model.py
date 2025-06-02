@@ -153,8 +153,8 @@ def test_trainable_frequencies() -> None:
     )
 
     assert (
-        model.theta_F.requires_grad
-    ), "Encoding parameters theta_F do not require grad"
+        model.enc_params.requires_grad
+    ), "Encoding parameters enc_params do not require grad"
 
     # setting test data
     domain = [-np.pi, np.pi]
@@ -168,23 +168,62 @@ def test_trainable_frequencies() -> None:
 
     y = np.stack([f(sample) for sample in x])
 
-    def cost_fct(params, theta_F):
-        y_hat = model(params=params, theta_F=theta_F, inputs=x, force_mean=True)
+    def cost_fct(params, enc_params):
+        y_hat = model(params=params, enc_params=enc_params, inputs=x, force_mean=True)
         return np.mean((y_hat - y) ** 2)
 
     opt = qml.AdamOptimizer(stepsize=0.01)
-    theta_F_before = model.theta_F.copy()
-    (model.params, model.theta_F), cost_val = opt.step_and_cost(
-        cost_fct, model.params, model.theta_F
+    enc_params_before = model.enc_params.copy()
+    (model.params, model.enc_params), cost_val = opt.step_and_cost(
+        cost_fct, model.params, model.enc_params
     )
-    theta_F_after = model.theta_F.copy()
+    enc_params_after = model.enc_params.copy()
 
     assert not np.allclose(
-        theta_F_before, theta_F_after
-    ), "theta_F did not update during training"
+        enc_params_before, enc_params_after
+    ), "enc_params did not update during training"
 
-    grads = qml.grad(cost_fct, argnum=1)(model.params, model.theta_F)
-    assert np.any(np.abs(grads) > 1e-6), "Gradient wrt theta_F is too small"
+    grads = qml.grad(cost_fct, argnum=1)(model.params, model.enc_params)
+    assert np.any(np.abs(grads) > 1e-6), "Gradient wrt enc_params is too small"
+
+
+@pytest.mark.unittest
+def test_transform_input() -> None:
+    domain = [-1, 1]
+    omegas = np.array([1, 2, 3, 4])
+    n_d = int(np.ceil(2 * np.max(np.abs(domain)) * np.max(omegas)))
+    x = np.linspace(domain[0], domain[1], num=n_d)
+
+    model = Model(
+        n_qubits=1,
+        n_layers=1,
+        circuit_type="No_Ansatz",
+        encoding="RX",
+        data_reupload=False,
+    )
+
+    # Test the intended use of transform_input()
+    inputs = np.array([[0.5, -0.2]])
+    enc_params = np.array([2.0, 3.0])
+
+    # Test for qubit 0, feature 0
+    result_0 = model.transform_input(inputs, qubit=0, idx=0, enc_params=enc_params)
+    expected_0 = enc_params[0] * inputs[:, 0]
+    assert np.allclose(result_0, expected_0), "Incorrect transform for qubit 0"
+
+    # Test for qubit 1, feature 1
+    result_1 = model.transform_input(inputs, qubit=1, idx=1, enc_params=enc_params)
+    expected_1 = enc_params[1] * inputs[:, 1]
+    assert np.allclose(result_1, expected_1), "Incorrect transform for qubit 1"
+
+    # Test modified transform_input()
+    model.transform_input = lambda inputs, qubit, idx, enc_params: (
+        np.arccos(inputs[:, idx])
+    )
+
+    result_new = model(model.params, x)
+
+    assert np.allclose(x, result_new), "model.transform_input does not work as intended"
 
 
 @pytest.mark.unittest
@@ -412,7 +451,7 @@ def test_cache() -> None:
                 "pqc": model.pqc.__class__.__name__,
                 "dru": model.data_reupload,
                 "params": model.params,
-                "theta_F": model.theta_F,
+                "enc_params": model.enc_params,
                 "noise_params": model.noise_params,
                 "execution_type": model.execution_type,
                 "inputs": np.array([[0]]),
