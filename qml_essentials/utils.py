@@ -823,7 +823,8 @@ class QuanTikz:
 
     @staticmethod
     def build(
-        circuit: qml.QNode, params, inputs, gate_values=False, inputs_symbols="x"
+        circuit: qml.QNode, params, inputs, enc_params=None,
+        gate_values=False, inputs_symbols="x"
     ) -> str:
         """
         Generate LaTeX for a quantum circuit in stick notation.
@@ -836,6 +837,8 @@ class QuanTikz:
             Weight parameters for the circuit.
         inputs : array
             Inputs for the circuit.
+        enc_params : array
+            Encoding weight parameters for the circuit.
         gate_values : bool, optional
             Toggle for gate values or theta variables in the representation.
         inputs_symbols : str, optional
@@ -846,9 +849,15 @@ class QuanTikz:
         str
             LaTeX string for the circuit.
         """
-        quantum_tape = qml.workflow.construct_tape(circuit)(
-            params=params, inputs=inputs
-        )
+        if enc_params is not None:
+            quantum_tape = qml.workflow.construct_tape(circuit)(
+                params=params, inputs=inputs, enc_params=enc_params
+            )
+        else:
+            quantum_tape = qml.workflow.construct_tape(circuit)(
+                params=params, inputs=inputs
+            )
+
         if isinstance(inputs_symbols, str) and inputs.size > 1:
             inputs_symbols = cycle(
                 [f"{inputs_symbols}_{i}" for i in range(inputs.size)]

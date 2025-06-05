@@ -28,10 +28,11 @@ class Model:
         self,
         n_qubits: int,
         n_layers: int,
-        circuit_type: Union[str, Circuit],
+        circuit_type: Union[str, Circuit] = "No_Ansatz",
         data_reupload: Union[bool, List[bool], List[List[bool]]] = True,
         state_preparation: Union[str, Callable, List[str], List[Callable]] = None,
         encoding: Union[str, Callable, List[str], List[Callable]] = Gates.RX,
+        trainable_frequencies: bool = False,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
         output_qubit: Union[List[int], int] = -1,
@@ -69,6 +70,9 @@ class Model:
                 (e.g. "RX") or a callable (e.g. qml.RX). Defaults to qml.RX.
                 If input is multidimensional it is assumed to be a list of
                 unitaries or a list of strings.
+            trainable_frequencies (bool, optional):
+                Sets trainable encoding parameters for trainable frequencies.
+                Defaults to False.
             initialization (str, optional): The strategy to initialize the parameters.
                 Can be "random", "zeros", "zero-controlled", "pi", or "pi-controlled".
                 Defaults to "random".
@@ -103,6 +107,7 @@ class Model:
         self.mp_threshold = mp_threshold
         self.n_qubits: int = n_qubits
         self.n_layers: int = n_layers
+        self.trainable_frequencies: bool = trainable_frequencies
 
         if isinstance(output_qubit, list):
             assert (
@@ -149,6 +154,11 @@ class Model:
         # Number of possible inputs
         self.n_input_feat = len(self._enc)
         log.info(f"Number of input features: {self.n_input_feat}")
+
+        # Trainable frequencies, default initialization as in arXiv:2309.03279v2
+        self.enc_params = np.ones(
+            (self.n_qubits, self.n_input_feat), requires_grad=trainable_frequencies
+        )
 
         # --- Data-Reuploading ---
         # Process data reuploading strategy and set degree
@@ -497,22 +507,45 @@ class Model:
             using strategy {initialization}."
         )
 
+    def transform_input(self, inputs: np.ndarray, enc_params: Optional[np.ndarray]):
+        """
+        Transforms the input as in arXiv:2309.03279v2
+
+        Args:
+            inputs (np.ndarray): single input point of shape (1, n_input_feat)
+            idx (int): feature index
+            qubit (int): qubit on which to the encoding is being performed
+            enc_params (np.ndarray): encoding weight vector of
+                shape (n_qubits)
+
+        Returns:
+            np.ndarray: transformed input of shape (1,), linearly scaled by
+            enc_params, ready for encoding
+        """
+        return inputs * enc_params
+
     def _iec(
         self,
         inputs: np.ndarray,
         data_reupload: np.ndarray,
         enc: Union[Callable, List[Callable]],
+        enc_params: np.ndarray,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
     ) -> None:
         """
         Creates an AngleEncoding using RX gates
 
         Args:
-            inputs (np.ndarray): length of vector must be 1, shape (1,)
+            inputs (np.ndarray): single input point of shape (1, n_input_feat)
             data_reupload (np.ndarray): Boolean array to indicate positions in
                 the circuit for data re-uploading for the IEC, shape is
                 (n_qubits, n_layers).
-
+            enc: Callable or List[Callable]: encoding function or list of encoding
+                functions
+            enc_params (np.ndarray): encoding weight vector
+                of shape [n_qubits, n_inputs]
+            noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
+                The noise parameters.
         Returns:
             None
         """
@@ -523,29 +556,45 @@ class Model:
         for q in range(self.n_qubits):
             for idx in range(inputs.shape[1]):
                 if data_reupload[q, idx]:
-                    enc[idx](inputs[:, idx], wires=q, noise_params=noise_params)
+                    enc[idx](
+                        self.transform_input(inputs[:, idx], enc_params[q, idx]),
+                        wires=q,
+                        noise_params=noise_params,
+                    )
 
     def _circuit(
         self,
         params: np.ndarray,
         inputs: np.ndarray,
+        enc_params: Optional[np.ndarray] = None,
     ) -> Union[float, np.ndarray]:
         """
         Creates a circuit with noise.
 
         Args:
             params (np.ndarray): weight vector of shape
-                [n_layers, n_qubits*n_params_per_layer]
+                [n_layers, n_qubits*(n_params_per_layer+trainable_frequencies)]
             inputs (np.ndarray): input vector of size 1
+            enc_params Optional[np.ndarray]: encoding weight vector
+                of shape [n_qubits, n_inputs]
         Returns:
             Union[float, np.ndarray]: Expectation value of PauliZ(0)
                 of the circuit if state_vector is False and expval is True,
                 otherwise the density matrix of all qubits.
         """
-        self._variational(params=params, inputs=inputs)
+
+        self._variational(params=params, inputs=inputs, enc_params=enc_params)
         return self._observable()
 
-    def _variational(self, params, inputs):
+    def _variational(self, params, inputs, enc_params=None):
+        if enc_params is None:
+            warnings.warn(
+                "Explicit call to `_circuit` or `_variational` detected: "
+                "`enc_params` is None, using `self.enc_params` instead.",
+                RuntimeWarning,
+            )
+            enc_params = self.enc_params
+
         if self.noise_params is not None:
             self._apply_state_prep_noise()
 
@@ -560,6 +609,7 @@ class Model:
                 inputs,
                 data_reupload=self.data_reupload[layer],
                 enc=self._enc,
+                enc_params=enc_params,
                 noise_params=self.noise_params,
             )
 
@@ -594,7 +644,7 @@ class Model:
                 return qml.expval(obs)
             else:
                 raise ValueError(
-                    f"Invalid parameter 'output_qubit': {self.output_qubit}.\
+                    f"Invalid parameter `output_qubit`: {self.output_qubit}.\
                         Must be int, list or -1."
                 )
         # run default simulation and get probs
@@ -682,14 +732,25 @@ class Model:
 
         if figure == "mpl":
             result = qml.draw_mpl(self.circuit)(
-                params=self.params, inputs=inputs, *args, **kwargs
+                params=self.params,
+                inputs=inputs,
+                enc_params=self.enc_params,
+                *args,
+                **kwargs,
             )
         elif figure == "tikz":
             result = QuanTikz.build(
-                self.circuit, params=self.params, inputs=inputs, *args, **kwargs
+                self.circuit,
+                params=self.params,
+                inputs=inputs,
+                enc_params=self.enc_params,
+                *args,
+                **kwargs,
             )
         else:
-            result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
+            result = qml.draw(self.circuit)(
+                params=self.params, inputs=inputs, enc_params=self.enc_params
+            )
         return result
 
     def __repr__(self) -> str:
@@ -713,6 +774,41 @@ class Model:
             else:
                 self.params = params
         return params
+
+    def _enc_params_validation(self, enc_params) -> np.ndarray:
+        """
+        Sets the encoding parameters when calling the quantum circuit
+
+        Args:
+            enc_params (np.ndarray): The encoding parameters used for the call
+        """
+        if enc_params is None:
+            enc_params = self.enc_params
+        else:
+            if isinstance(enc_params, numpy_boxes.ArrayBox):
+                if self.trainable_frequencies:
+                    self.enc_params = enc_params._value
+                else:
+                    self.enc_params = np.array(
+                        enc_params._value, requires_grad=self.trainable_frequencies
+                    )
+            else:
+                if self.trainable_frequencies:
+                    self.enc_params = enc_params
+                else:
+                    self.enc_params = np.array(
+                        enc_params, requires_grad=self.trainable_frequencies
+                    )
+
+        if len(enc_params.shape) == 1 and self.n_input_feat == 1:
+            enc_params = enc_params.reshape(-1, 1)
+        elif len(enc_params.shape) == 1 and self.n_input_feat > 1:
+            raise ValueError(
+                f"Input dimension {self.n_input_feat} >1 but \
+                `enc_params` has shape {enc_params.shape}"
+            )
+
+        return enc_params
 
     def _inputs_validation(
         self, inputs: Union[None, List, float, int, np.ndarray]
@@ -759,7 +855,16 @@ class Model:
         return inputs
 
     @staticmethod
-    def _parallel_f(procnum, result, f, batch_size, params, inputs, batch_shape):
+    def _parallel_f(
+        procnum,
+        result,
+        f,
+        batch_size,
+        params,
+        inputs,
+        batch_shape,
+        enc_params,
+    ):
         """
         Helper function for parallelizing a function f over parameters.
         Sices the batch dimension based on the procnum and batch size.
@@ -771,6 +876,7 @@ class Model:
             batch_size: The batch size.
             params: The parameters array.
             inputs: The inputs array.
+            enc_params: The encoding parameters array.
         """
         min_idx = max(procnum * batch_size, 0)
 
@@ -781,9 +887,9 @@ class Model:
             max_idx = min((procnum + 1) * batch_size, params.shape[2])
             params = params[:, :, min_idx:max_idx]
 
-        result[procnum] = f(params=params, inputs=inputs)
+        result[procnum] = f(params=params, inputs=inputs, enc_params=enc_params)
 
-    def _mp_executor(self, f, params, inputs):
+    def _mp_executor(self, f, params, inputs, enc_params):
         """
         Execute a function f in parallel over parameters.
 
@@ -795,10 +901,12 @@ class Model:
                 the layer, and the third dimension is the sample index.
             inputs: A 2D numpy array of inputs where the first dimension is
                 the sample index and the second dimension is the input feature index.
+            enc_params: A 1D numpy array of encoding parameters where the dimension is
+                the qubit index.
 
         Returns:
             A numpy array of the output of f applied to each batch of
-            samples in params and inputs.
+            samples in params, enc_params, and inputs.
         """
         n_processes = 1
         # batches available?
@@ -811,7 +919,7 @@ class Model:
             n_processes = math.ceil(combined_batch_size / self.mp_threshold)
         # check if single process
         if n_processes == 1:
-            result = f(params=params, inputs=inputs)
+            result = f(params=params, inputs=inputs, enc_params=enc_params)
         else:
             log.info(f"Using {n_processes} processes")
             mpp = MultiprocessingPool(
@@ -820,6 +928,7 @@ class Model:
                 batch_size=self.mp_threshold,
                 f=f,
                 params=params,
+                enc_params=enc_params,
                 inputs=inputs,
                 batch_shape=self.batch_shape,
             )
@@ -829,7 +938,6 @@ class Model:
                 result[k] = v
 
             result = np.concat(result, axis=1 if self.execution_type == "expval" else 0)
-
         return result
 
     def _assimilate_batch(self, inputs, params):
@@ -862,6 +970,7 @@ class Model:
         self,
         params: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
+        enc_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
@@ -876,6 +985,9 @@ class Model:
                 If None, model internal parameters are used.
             inputs (Optional[np.ndarray]): Input vector of shape [1].
                 If None, zeros are used.
+            enc_params (Optional[np.ndarray]): Weight vector of shape
+                [n_qubits, n_input_features]. If None, model internal encoding
+                parameters are used.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
                 set noise parameters being used.
@@ -904,6 +1016,7 @@ class Model:
         return self._forward(
             params=params,
             inputs=inputs,
+            enc_params=enc_params,
             noise_params=noise_params,
             cache=cache,
             execution_type=execution_type,
@@ -914,6 +1027,7 @@ class Model:
         self,
         params: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
+        enc_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
@@ -928,6 +1042,9 @@ class Model:
                 If None, model internal parameters are used.
             inputs (Optional[np.ndarray]): Input vector of shape [1].
                 If None, zeros are used.
+            enc_params (Optional[np.ndarray]): Weight vector of shape
+                [n_qubits, n_input_features]. If None, model internal encoding
+                parameters are used.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
                 set noise parameters being used.
@@ -964,6 +1081,7 @@ class Model:
 
         params = self._params_validation(params)
         inputs = self._inputs_validation(inputs)
+        enc_params = self._enc_params_validation(enc_params)
         inputs, params, self.batch_shape = self._assimilate_batch(inputs, params)
         # the qasm representation contains the bound parameters,
         # thus it is ok to hash that
@@ -975,6 +1093,7 @@ class Model:
                     "pqc": self.pqc.__class__.__name__,
                     "dru": self.data_reupload,
                     "params": self.params,  # use safe-params
+                    "enc_params": self.enc_params,
                     "noise_params": self.noise_params,
                     "execution_type": self.execution_type,
                     "inputs": inputs,
@@ -1003,6 +1122,7 @@ class Model:
                     f=self.circuit_mixed,
                     params=params,  # use arraybox params
                     inputs=inputs,
+                    enc_params=enc_params,
                 )
             else:
                 if not isinstance(self.circuit, qml.QNode):
@@ -1014,6 +1134,7 @@ class Model:
                         f=self.circuit,
                         params=params,  # use arraybox params
                         inputs=inputs,
+                        enc_params=enc_params,
                     )
 
         if isinstance(result, list):
