@@ -985,7 +985,7 @@ class Model:
             inputs (Optional[np.ndarray]): Input vector of shape [1].
                 If None, zeros are used.
             enc_params (Optional[np.ndarray]): Weight vector of shape
-                [n_qubits]. If None, model internal encoding
+                [n_qubits, n_input_features]. If None, model internal encoding
                 parameters are used.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
@@ -1042,7 +1042,7 @@ class Model:
             inputs (Optional[np.ndarray]): Input vector of shape [1].
                 If None, zeros are used.
             enc_params (Optional[np.ndarray]): Weight vector of shape
-                [n_qubits]. If None, model internal encoding
+                [n_qubits, n_input_features]. If None, model internal encoding
                 parameters are used.
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
