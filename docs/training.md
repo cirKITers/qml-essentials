@@ -133,7 +133,8 @@ plt.ylabel("f(x)")
 plt.show()
 ```
 
-![Fourier Series](figures/fourier_series_2_light.png#center#only-light)
+![Fourier Series](figures/fourier_series_tf_light.png#center#only-light)
+![Fourier Series](figures/fourier_series_tf_dark.png#center#only-dark)
 
 Now, let's build a model with fixed frequencies, as before, and one with trainable frequencies:
 ```python
@@ -211,7 +212,8 @@ Epoch: 900, Cost: 0.000001
 Epoch: 1000, Cost: 0.000001
 ```
 
-![Ground Truth and Prediction](figures/trained_series_2_light.png#center#only-light)
+![Ground Truth and Prediction](figures/trained_series_tf_light.png#center#only-light)
+![Ground Truth and Prediction](figures/trained_series_tf_dark.png#center#only-dark)
 
 As you can see, the fixed frequencies model was not able to find the underlying function representing the data, while the trainable frequencies model was successful in its training.
 
