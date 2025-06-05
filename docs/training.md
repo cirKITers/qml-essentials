@@ -107,9 +107,9 @@ Epoch: 1000, Cost: 0.0001
 
 As you can see, the model is able to learn the Fourier series with the $4$ frequencies.
 
-For the model we just trained, we considered the best possible scenario: evenly spaced, integer omegas. But, as shown by [Schuld et al. (2020)](https://arxiv.org/abs/2008.08605), we'll need an increasing and inefficient amount of qubits for larger omegas. What is more, the model will fail altogether if the frequencies are un-evenly spaced. Luckily, [Shaderberg et al. (2024)](https://arxiv.org/abs/2309.03279) showed how we can let the model choose its own frequencies by including a set of encoding parameters that act on the input before the encoding layers of the circuit. We demonstrate this functionality below. 
+For the model we just trained, we considered the best possible scenario: evenly spaced, integer omegas. But, as shown by [Schuld et al. (2020)](https://arxiv.org/abs/2008.08605), we'll need an increasing and inefficient amount of qubits for larger omegas. What is more, the model will fail altogether if the frequencies are un-evenly spaced. Luckily, [Jaderberg et al. (2024)](https://arxiv.org/abs/2309.03279) showed how we can let the model choose its own frequencies by including a set of encoding parameters that act on the input before the encoding layers of the circuit. We demonstrate this functionality below. 
 
-Let's first slighly modify the omegas from the first example and re-generate the data:
+First, let's slighly modify the omegas from the first example and re-generate the data:
 ```python
 domain = [-np.pi, np.pi]
 omegas = np.array([1.2, 2.6, 3.4, 4.9])
@@ -141,13 +141,12 @@ model = Model(
     n_qubits=4,
     n_layers=1,
     circuit_type="Circuit_19",
-    trainable_frequencies=False
 )
 model_tf = Model(
     n_qubits=4,
     n_layers=1,
     circuit_type="Circuit_19",
-    trainable_frequencies=True
+    trainable_frequencies=True # <---!
 )
 ```
 
@@ -214,7 +213,7 @@ Epoch: 1000, Cost: 0.000001
 
 ![Ground Truth and Prediction](figures/trained_series_2_light.png#center#only-light)
 
-As you can see, the fixed frequencies model wasn't able to find the underlying function representing the data, while the trainable frequencies model was successful in its training.
+As you can see, the fixed frequencies model was not able to find the underlying function representing the data, while the trainable frequencies model was successful in its training.
 
 Let's quickly check the final encoding parameter of both models:
 ```python
