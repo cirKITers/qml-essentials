@@ -207,19 +207,12 @@ def test_transform_input() -> None:
     enc_params = np.array([2.0, 3.0])
 
     # Test for qubit 0, feature 0
-    result_0 = model.transform_input(inputs, qubit=0, idx=0, enc_params=enc_params)
-    expected_0 = enc_params[0] * inputs[:, 0]
-    assert np.allclose(result_0, expected_0), "Incorrect transform for qubit 0"
-
-    # Test for qubit 1, feature 1
-    result_1 = model.transform_input(inputs, qubit=1, idx=1, enc_params=enc_params)
-    expected_1 = enc_params[1] * inputs[:, 1]
-    assert np.allclose(result_1, expected_1), "Incorrect transform for qubit 1"
+    result = model.transform_input(inputs, enc_params)
+    expected = enc_params * inputs
+    assert np.allclose(result, expected), "Incorrect transform for qubit 0"
 
     # Test modified transform_input()
-    model.transform_input = lambda inputs, qubit, idx, enc_params: (
-        np.arccos(inputs[:, idx])
-    )
+    model.transform_input = lambda inputs, enc_params: (np.arccos(inputs))
 
     result_new = model(model.params, x)
 
