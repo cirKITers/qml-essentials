@@ -804,7 +804,8 @@ class Model:
             enc_params = enc_params.reshape(-1, 1)
         elif len(enc_params.shape) == 1 and self.n_input_feat > 1:
             raise ValueError(
-                f"Input dimension {self.n_input_feat} >1 but `enc_params` has shape {enc_params.shape}"
+                f"Input dimension {self.n_input_feat} >1 but \
+                `enc_params` has shape {enc_params.shape}"
             )
 
         return enc_params
