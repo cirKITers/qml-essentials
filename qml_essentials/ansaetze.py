@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional
 import pennylane.numpy as np
 import pennylane as qml
+import itertools
 
 from typing import List, Union, Dict
 
@@ -86,6 +87,49 @@ class Gates:
         Gates.rng = np.random.default_rng(seed)
 
     @staticmethod
+    def _two_qubit_depolarizing_kraus(p: float) -> List[np.ndarray]:
+        """
+        Generates the Kraus operators for a two-qubit depolarizing channel.
+
+        The two-qubit depolarizing channel is defined as:
+            E(rho) = (1 - 15p/16) * rho + (p/16) * ∑_{P ≠ II} P rho P†
+        where the sum is over the 15 non-identity two-qubit Pauli operators 
+        (i.e., tensor products of {I, X, Y, Z}, excluding I⊗I). Each operator 
+        is weighted equally by p/16.
+
+        This operator-sum (Kraus) representation models uniform two-qubit 
+        Pauli noise. It's useful for simulating realistic gate noise affecting 
+        entangling gates in noisy quantum circuits.
+
+        Parameters
+        ----------
+        p : float
+            The total probability of a two-qubit depolarizing error occurring.
+            Must satisfy 0 ≤ p ≤ 1.
+
+        Returns
+        -------
+        List[np.ndarray]
+            A list of 16 Kraus operators (one for no error, 15 for Pauli errors),
+            each represented as a 4x4 NumPy array acting on the two-qubit system.
+        """
+        I = np.eye(2)
+        X = qml.matrix(qml.PauliX(0))
+        Y = qml.matrix(qml.PauliY(0))
+        Z = qml.matrix(qml.PauliZ(0))
+        paulis = [I, X, Y, Z]
+
+        kraus_ops = []
+        for i, j in itertools.product(range(4), repeat=2):
+            if i == 0 and j == 0:
+                continue  # skip I x I (identity)
+            P = np.kron(paulis[i], paulis[j])
+            kraus_ops.append(np.sqrt(p / 16) * P)
+
+        K0 = np.sqrt(1 - 15 * p / 16) * np.eye(4)
+        return [K0] + kraus_ops
+
+    @staticmethod
     def Noise(
         wires: Union[int, List[int]], noise_params: Optional[Dict[str, float]] = None
     ) -> None:
@@ -99,23 +143,33 @@ class Gates:
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
             supported:
-           -BitFlip: Applies a bit flip error to the given wires.
-           -PhaseFlip: Applies a phase flip error to the given wires.
-           -Depolarizing: Applies a depolarizing channel error to the
-              given wires.
+            -BitFlip: Applies a bit flip error to the given wires.
+            -PhaseFlip: Applies a phase flip error to the given wires.
+            -Depolarizing: Applies a depolarizing channel error to the
+                given wires.
+            -TwoQubitDepolarizing: Applies a two-qubit depolarizing channel 
+                error to the given wires. 
 
             All parameters are optional and default to 0.0 if not provided.
         """
         if noise_params is not None:
             if isinstance(wires, int):
                 wires = [wires]  # single qubit gate
-            # iterate for multi qubit gates
+            
+            # noise on single qubits
             for wire in wires:
                 qml.BitFlip(noise_params.get("BitFlip", 0.0), wires=wire)
                 qml.PhaseFlip(noise_params.get("PhaseFlip", 0.0), wires=wire)
                 qml.DepolarizingChannel(
                     noise_params.get("Depolarizing", 0.0), wires=wire
                 )
+
+            # noise on two-qubits
+            if len(wires) == 2:
+                p = noise_params.get("TwoQubitDepolarizing", 0.0)
+                if p > 0:
+                    K = Gates._two_qubit_depolarizing_kraus(p)
+                    qml.QubitChannel(K, wires=wires)
 
     @staticmethod
     def GateError(
@@ -144,7 +198,7 @@ class Gates:
         """
         if noise_params is not None:
             w += Gates.rng.normal(0, noise_params["GateError"], w.shape)
-        return w
+        return w          
 
     @staticmethod
     def Rot(phi, theta, omega, wires, noise_params=None):
@@ -199,6 +253,7 @@ class Gates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
+        # w = Gates.GateError(w, noise_params) # TODO: Check if this is mistakenly left out
         qml.RX(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
@@ -248,6 +303,7 @@ class Gates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
+        # w = Gates.GateError(w, noise_params) # TODO: Check if this is mistakenly left out
         qml.RZ(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
@@ -273,7 +329,7 @@ class Gates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        w = Gates.GateError(w, noise_params)
+        # w = Gates.GateError(w, noise_params)
         qml.CRX(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
