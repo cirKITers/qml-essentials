@@ -107,6 +107,139 @@ Epoch: 1000, Cost: 0.0001
 
 As you can see, the model is able to learn the Fourier series with the $4$ frequencies.
 
-Btw. if you're in a hurry, we have a Jupyter notebook with the exact same example [here](https://github.com/cirKITers/qml-essentials/blob/main/docs/training.ipynb) :upside_down_face:.
+For the model we just trained, we considered the best possible scenario: evenly spaced, integer omegas. But, as shown by [Schuld et al. (2020)](https://arxiv.org/abs/2008.08605), we'll need an increasing and inefficient amount of qubits for larger omegas. What is more, the model will fail altogether if the frequencies are un-evenly spaced. Luckily, [Jaderberg et al. (2024)](https://arxiv.org/abs/2309.03279) showed how we can let the model choose its own frequencies by including a set of encoding parameters that act on the input before the encoding layers of the circuit. We demonstrate this functionality below. 
+
+First, let's slighly modify the omegas from the first example and re-generate the data:
+```python
+domain = [-np.pi, np.pi]
+omegas = np.array([1.2, 2.6, 3.4, 4.9])
+coefficients = np.array([0.5, 0.5, 0.5, 0.5])
+
+# Calculate the number of required samples to satisfy the Nyquist criterium
+n_d = int(np.ceil(2 * np.max(np.abs(domain)) * np.max(omegas)))
+# Sample the domain linearly
+x = np.linspace(domain[0], domain[1], num=n_d)
+
+# define our Fourier series f(x)
+def f(x):
+    return 1 / np.linalg.norm(omegas) * np.sum(coefficients * np.cos(omegas.T * x))
+
+# evaluate f(x) on the domain samples
+y = np.stack([f(sample) for sample in x])
+
+plt.plot(x, y)
+plt.xlabel("x")
+plt.ylabel("f(x)")
+plt.show()
+```
+
+![Fourier Series](figures/fourier_series_tf_light.png#center#only-light)
+![Fourier Series](figures/fourier_series_tf_dark.png#center#only-dark)
+
+Now, let's build a model with fixed frequencies, as before, and one with trainable frequencies:
+```python
+model = Model(
+    n_qubits=4,
+    n_layers=1,
+    circuit_type="Circuit_19",
+)
+model_tf = Model(
+    n_qubits=4,
+    n_layers=1,
+    circuit_type="Circuit_19",
+    trainable_frequencies=True # <---!
+)
+```
+
+Let's train both models:
+```python
+# - Fixed Frequencies -
+opt = qml.AdamOptimizer(stepsize=0.01)
+
+print("Training fixed frequency model")
+for epoch in range(1, 1001):
+    model.params, cost_val = opt.step_and_cost(cost_fct, model.params)
+
+    if epoch % 100 == 0:
+        print(f"Epoch: {epoch}, Cost: {cost_val:.4f}")
+
+# - Trainable Frequencies -
+opt = qml.AdamOptimizer(stepsize=0.01)
+
+def cost_fct_tf(params, enc_params):
+    y_hat = model_tf(params=params, enc_params=enc_params, inputs=x, force_mean=True)
+    return np.mean((y_hat - y) ** 2)
+
+print(f"\nTraining trainable frequency model")
+for epoch in range(1, 1001):
+    (model_tf.params, model_tf.enc_params), cost_val_tf = opt.step_and_cost(cost_fct_tf, model_tf.params, model_tf.enc_params)
+
+    if epoch % 100 == 0:
+        print(f"Epoch: {epoch}, Cost: {cost_val_tf:.6f}")
+
+plt.plot(x, y, label="True function")
+plt.plot(x, model(params=model.params, inputs=x, force_mean=True), label="Fixed frequencies model prediction")
+plt.plot(x, model_tf(params=model_tf.params, enc_params=model_tf.enc_params, inputs=x, force_mean=True), label="Trainable frequencies model prediction")
+plt.xlabel("x")
+plt.ylabel("f(x)")
+plt.legend()
+plt.show()
+```
+
+```
+Training fixed frequency model
+Epoch: 100, Cost: 0.0082
+Epoch: 200, Cost: 0.0067
+Epoch: 300, Cost: 0.0038
+Epoch: 400, Cost: 0.0031
+Epoch: 500, Cost: 0.0027
+Epoch: 600, Cost: 0.0026
+Epoch: 700, Cost: 0.0025
+Epoch: 800, Cost: 0.0024
+Epoch: 900, Cost: 0.0023
+Epoch: 1000, Cost: 0.0023
+
+Training trainable frequency model
+Epoch: 100, Cost: 0.008454
+Epoch: 200, Cost: 0.002759
+Epoch: 300, Cost: 0.002382
+Epoch: 400, Cost: 0.001655
+Epoch: 500, Cost: 0.000232
+Epoch: 600, Cost: 0.000019
+Epoch: 700, Cost: 0.000010
+Epoch: 800, Cost: 0.000003
+Epoch: 900, Cost: 0.000001
+Epoch: 1000, Cost: 0.000001
+```
+
+![Ground Truth and Prediction](figures/trained_series_tf_light.png#center#only-light)
+![Ground Truth and Prediction](figures/trained_series_tf_dark.png#center#only-dark)
+
+As you can see, the fixed frequencies model was not able to find the underlying function representing the data, while the trainable frequencies model was successful in its training.
+
+Let's quickly check the final encoding parameter of both models:
+```python
+print(f"Encoding parameters of the fixed frequencies model: {model.enc_params}")
+print(f"Encoding parameters of the trainable frequencies model: {np.round(model_tf.enc_params, 3)}")
+```
+
+```
+Encoding parameters of the fixed frequencies model: [1. 1. 1. 1.]
+Encoding parameters of the trainable frequencies model: [1.001 2.065 2.817 0.364]
+```
+
+Clearly, the trainable frequencies model found the set of encoding parameters that allowed it to represent the given arbitrary frequency spectrum. 
+
+One last thing that might be interesting! Currently, the model applies 
+```python
+enc_params[qubit] * inputs[:, idx]
+```
+to allow for trainable frequencies. You may try different input transformations before the encoding by modifying the `model.transform_input` method. For example, if an `RX` gate performs the encoding, you may apply the identity operator by 
+```python
+model.transform_input = lambda inputs, qubit, idx, enc_params: np.arccos(inputs[:, idx])
+```
+
+
+Btw, if you're in a hurry, we have a Jupyter notebook with the exact same examples [here](https://github.com/cirKITers/qml-essentials/blob/main/docs/training.ipynb) :upside_down_face:.
 
 Wondering what to do next? You can try a few different models, and see how they perform. If you're curious, checkout how this correlates with the [*Entanglement*](entanglement.md) and [*Expressibility*](expressibility.md) of the model.

@@ -144,6 +144,82 @@ def test_parameters() -> None:
 
 
 @pytest.mark.unittest
+def test_trainable_frequencies() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        trainable_frequencies=True,
+    )
+
+    assert (
+        model.enc_params.requires_grad
+    ), "Encoding parameters enc_params do not require grad"
+
+    # setting test data
+    domain = [-np.pi, np.pi]
+    omegas = np.array([1.2, 2.6, 3.4, 4.9])
+    coefficients = np.array([0.5, 0.5, 0.5, 0.5])
+    n_d = int(np.ceil(2 * np.max(np.abs(domain)) * np.max(omegas)))
+    x = np.linspace(domain[0], domain[1], num=n_d)
+
+    def f(x):
+        return 1 / np.linalg.norm(omegas) * np.sum(coefficients * np.cos(omegas.T * x))
+
+    y = np.stack([f(sample) for sample in x])
+
+    def cost_fct(params, enc_params):
+        y_hat = model(params=params, enc_params=enc_params, inputs=x, force_mean=True)
+        return np.mean((y_hat - y) ** 2)
+
+    opt = qml.AdamOptimizer(stepsize=0.01)
+    enc_params_before = model.enc_params.copy()
+    (model.params, model.enc_params), cost_val = opt.step_and_cost(
+        cost_fct, model.params, model.enc_params
+    )
+    enc_params_after = model.enc_params.copy()
+
+    assert not np.allclose(
+        enc_params_before, enc_params_after
+    ), "enc_params did not update during training"
+
+    grads = qml.grad(cost_fct, argnum=1)(model.params, model.enc_params)
+    assert np.any(np.abs(grads) > 1e-6), "Gradient wrt enc_params is too small"
+
+
+@pytest.mark.unittest
+def test_transform_input() -> None:
+    domain = [-1, 1]
+    omegas = np.array([1, 2, 3, 4])
+    n_d = int(np.ceil(2 * np.max(np.abs(domain)) * np.max(omegas)))
+    x = np.linspace(domain[0], domain[1], num=n_d)
+
+    model = Model(
+        n_qubits=1,
+        n_layers=1,
+        circuit_type="No_Ansatz",
+        encoding="RX",
+        data_reupload=False,
+    )
+
+    # Test the intended use of transform_input()
+    inputs = np.array([[0.5, -0.2]])
+    enc_params = np.array([2.0, 3.0])
+
+    # Test for qubit 0, feature 0
+    result = model.transform_input(inputs, enc_params)
+    expected = enc_params * inputs
+    assert np.allclose(result, expected), "Incorrect transform for qubit 0"
+
+    # Test modified transform_input()
+    model.transform_input = lambda inputs, enc_params: (np.arccos(inputs))
+
+    result_new = model(model.params, x)
+
+    assert np.allclose(x, result_new), "model.transform_input does not work as intended"
+
+
+@pytest.mark.unittest
 def test_batching() -> None:
     model = Model(
         n_qubits=2,
@@ -210,7 +286,7 @@ def test_multiprocessing_density() -> None:
 @pytest.mark.unittest
 def test_multiprocessing_expval() -> None:
     # use n_samples that is not a multiple of the threshold
-    n_samples = 20000  # expval requires more samples for advantage
+    n_samples = 40000  # expval requires more samples for advantage
 
     model = Model(
         n_qubits=6,  # .. and larger circuits
@@ -368,6 +444,7 @@ def test_cache() -> None:
                 "pqc": model.pqc.__class__.__name__,
                 "dru": model.data_reupload,
                 "params": model.params,
+                "enc_params": model.enc_params,
                 "noise_params": model.noise_params,
                 "execution_type": model.execution_type,
                 "inputs": np.array([[0]]),
@@ -385,6 +462,8 @@ def test_cache() -> None:
 
     if os.path.isfile(file_path):
         cached_result = np.load(file_path)
+    else:
+        raise Exception("Cache file does not exist.")
 
     assert np.array_equal(
         result, cached_result

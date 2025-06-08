@@ -22,7 +22,7 @@ model.draw(figure="mpl")
 ![Hardware Efficient Ansatz](figures/hae_light.png#only-light)
 ![Hardware Efficient Ansatz](figures/hae_dark.png#only-dark)
 
-Looks good to you? :eyes: Head over to the [*Training*](training.md) page for **getting started** with an easy example :rocket:
+Looks good to you? :eyes: Head over to the [*Training*](training.md) page for **getting started** with an easy example, where we also show how to implement **trainable frequencies** :rocket:
 
 Note that calling the model without any (`None`) values for the `params` and `inputs` argument, will implicitly call the model with the recently (or initial) parameters and `0`s as input.
 I.e. simply running the following
