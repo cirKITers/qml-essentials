@@ -16,6 +16,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
+
 class Model:
     """
     A quantum circuit model.
@@ -567,7 +568,7 @@ class Model:
                 noise_params=self.noise_params,
             )
 
-            # visual barrier
+            # visual barrier
             if self.degree > 1:
                 qml.Barrier(wires=list(range(self.n_qubits)), only_visual=True)
 
@@ -575,7 +576,7 @@ class Model:
         if self.degree > 1:  # same check as in init
             self.pqc(params[-1], self.n_qubits, noise_params=self.noise_params)
 
-        # channel noise 
+        # channel noise
         if self.noise_params is not None:
             self._apply_general_noise()
 

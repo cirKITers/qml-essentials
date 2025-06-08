@@ -145,6 +145,7 @@ Noise can be added to the model by providing a `noise_params` argument, when cal
 - `AmplitudeDamping`
 - `PhaseDamping`
 - `Depolarizing`
+- `TwoQubitDepolarizing`
 - `StatePreparation`
 - `Measurement`
 
