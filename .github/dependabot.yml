@@ -2,14 +2,29 @@ version: 2
 updates:
   - package-ecosystem: "pip" # See documentation for possible values
     directory: "/" # Location of package manifests
-    schedule:
-      interval: "weekly"
     reviewers:
       - "stroblme"
+    groups:
+      security:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+      version:
+        applies-to: "version-updates"
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+    schedule:
+      day: "monday"
+      interval: "weekly"
+      time: "09:00"
+      timezone: "Europe/Amsterdam"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      # Check for updates to GitHub Actions every week
+      day: "monday"
       interval: "weekly"
+      time: "09:00"
+      timezone: "Europe/Amsterdam"
     reviewers:
       - "stroblme"
