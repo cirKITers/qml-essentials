@@ -7,7 +7,7 @@ permissions:
 jobs:
   test-expensive:
     runs-on: self-hosted
-    if: ${{ contains(fromJSON('["github-actions[bot]", "dependabot[bot]'), github.actor) }}
+    if: ${{ (github.actor != 'github-actions[bot]') }}
     steps:
       - uses: actions/checkout@v4
       - name: Install poetry

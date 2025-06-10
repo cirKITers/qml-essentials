@@ -7,6 +7,7 @@ permissions:
 jobs:
   quality:
     runs-on: self-hosted
+    if: ${{ (github.actor != 'dependabot[bot]') }}
     steps:
       - uses: actions/checkout@v4
       - name: Install poetry
