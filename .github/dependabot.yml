@@ -1,3 +1,4 @@
+# https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference#about-the-dependabotyml-file
 version: 2
 updates:
   - package-ecosystem: "pip" # See documentation for possible values
@@ -5,11 +6,11 @@ updates:
     reviewers:
       - "stroblme"
     groups:
-      security:
+      security-updates:
         applies-to: "security-updates"
         patterns:
           - "*"
-      version:
+      version-updates:
         applies-to: "version-updates"
         patterns:
           - "*"
