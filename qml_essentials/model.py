@@ -322,6 +322,7 @@ class Model:
             kvs.setdefault("BitFlip", 0.0)
             kvs.setdefault("PhaseFlip", 0.0)
             kvs.setdefault("Depolarizing", 0.0)
+            kvs.setdefault("TwoQubitDepolarizing", 0.0)
             kvs.setdefault("AmplitudeDamping", 0.0)
             kvs.setdefault("PhaseDamping", 0.0)
             kvs.setdefault("GateError", 0.0)
@@ -335,6 +336,7 @@ class Model:
                     "BitFlip",
                     "PhaseFlip",
                     "Depolarizing",
+                    "TwoQubitDepolarizing",
                     "AmplitudeDamping",
                     "PhaseDamping",
                     "GateError",
