@@ -307,8 +307,7 @@ class Gates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        # TODO: Check if this is mistakenly left out
-        # w = Gates.GateError(w, noise_params)
+        w = Gates.GateError(w, noise_params)
         qml.RZ(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
@@ -334,7 +333,7 @@ class Gates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        # w = Gates.GateError(w, noise_params)
+        w = Gates.GateError(w, noise_params)
         qml.CRX(w, wires=wires)
         Gates.Noise(wires, noise_params)
 
