@@ -87,50 +87,53 @@ class Gates:
         Gates.rng = np.random.default_rng(seed)
 
     @staticmethod
-    def _two_qubit_depolarizing_kraus(p: float) -> List[np.ndarray]:
-        """
-        Generates the Kraus operators for a two-qubit depolarizing channel.
+    def TwoQubitDepolarizingChannel(p, wires):
+        def two_qubit_depolarizing_kraus(p: float) -> List[np.ndarray]:
+            """
+            Generates the Kraus operators for a two-qubit depolarizing channel.
 
-        The two-qubit depolarizing channel is defined as:
-            E(rho) = sqrt(1 - 15p/16) * rho + sqrt(p/16) * ∑_{P ≠ II} P rho P†
-        where the sum is over the 15 non-identity two-qubit Pauli operators
-        (i.e., tensor products of {I, X, Y, Z}, excluding I x I). Each operator
-        is weighted equally by p/16.
+            The two-qubit depolarizing channel is defined as:
+                E(rho) = sqrt(1 - 15p/16) * rho + sqrt(p/16) * ∑_{P ≠ II} P rho P†
+            where the sum is over the 15 non-identity two-qubit Pauli operators
+            (i.e., tensor products of {I, X, Y, Z}, excluding I x I). Each operator
+            is weighted equally by p/16.
 
-        This operator-sum (Kraus) representation models uniform two-qubit
-        Pauli noise. It's useful for simulating realistic gate noise affecting
-        entangling gates in noisy quantum circuits.
+            This operator-sum (Kraus) representation models uniform two-qubit
+            Pauli noise. It's useful for simulating realistic gate noise affecting
+            entangling gates in noisy quantum circuits.
 
-        Parameters
-        ----------
-        p : float
-            The total probability of a two-qubit depolarizing error occurring.
-            Must satisfy 0 ≤ p ≤ 1.
+            Parameters
+            ----------
+            p : float
+                The total probability of a two-qubit depolarizing error occurring.
+                Must satisfy 0 ≤ p ≤ 1.
 
-        Returns
-        -------
-        List[np.ndarray]
-            A list of 16 Kraus operators (one for no error, 15 for Pauli errors),
-            each represented as a 4x4 NumPy array acting on the two-qubit system.
-        """
-        if not (0.0 <= p <= 1.0):
-            raise ValueError(f"Probability p must be between 0 and 1, got {p}")
+            Returns
+            -------
+            List[np.ndarray]
+                A list of 16 Kraus operators (one for no error, 15 for Pauli errors),
+                each represented as a 4x4 NumPy array acting on the two-qubit system.
+            """
+            if not (0.0 <= p <= 1.0):
+                raise ValueError(f"Probability p must be between 0 and 1, got {p}")
 
-        Id = np.eye(2)
-        X = qml.matrix(qml.PauliX(0))
-        Y = qml.matrix(qml.PauliY(0))
-        Z = qml.matrix(qml.PauliZ(0))
-        paulis = [Id, X, Y, Z]
+            Id = np.eye(2)
+            X = qml.matrix(qml.PauliX(0))
+            Y = qml.matrix(qml.PauliY(0))
+            Z = qml.matrix(qml.PauliZ(0))
+            paulis = [Id, X, Y, Z]
 
-        kraus_ops = []
-        for i, j in itertools.product(range(4), repeat=2):
-            if i == 0 and j == 0:
-                continue  # skip I x I (identity)
-            P = np.kron(paulis[i], paulis[j])
-            kraus_ops.append(np.sqrt(p / 16) * P)
+            kraus_ops = []
+            for i, j in itertools.product(range(4), repeat=2):
+                if i == 0 and j == 0:
+                    continue  # skip I x I (identity)
+                P = np.kron(paulis[i], paulis[j])
+                kraus_ops.append(np.sqrt(p / 16) * P)
 
-        K0 = np.sqrt(1 - 15 * p / 16) * np.eye(4)
-        return [K0] + kraus_ops
+            K0 = np.sqrt(1 - 15 * p / 16) * np.eye(4)
+            return [K0] + kraus_ops
+
+        return qml.QubitChannel(two_qubit_depolarizing_kraus(p), wires=wires)
 
     @staticmethod
     def Noise(
@@ -171,8 +174,7 @@ class Gates:
             if len(wires) == 2:
                 p = noise_params.get("TwoQubitDepolarizing", 0.0)
                 if p > 0:
-                    K = Gates._two_qubit_depolarizing_kraus(p)
-                    qml.QubitChannel(K, wires=wires)
+                    Gates.TwoQubitDepolarizingChannel(p, wires)
 
     @staticmethod
     def GateError(
