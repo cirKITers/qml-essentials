@@ -16,7 +16,7 @@ updates:
     schedule:
       day: "monday"
       interval: "weekly"
-      time: "09:00"
+      time: "06:00"
       timezone: "Europe/Amsterdam"
     reviewers:
       - "stroblme"
@@ -27,7 +27,7 @@ updates:
     schedule:
       day: "monday"
       interval: "weekly"
-      time: "09:00"
+      time: "06:00"
       timezone: "Europe/Amsterdam"
     reviewers:
       - "stroblme"
