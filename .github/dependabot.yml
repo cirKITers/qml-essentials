@@ -3,8 +3,6 @@ version: 2
 updates:
   - package-ecosystem: "pip" # See documentation for possible values
     directory: "/" # Location of package manifests
-    reviewers:
-      - "stroblme"
     groups:
       security-updates:
         applies-to: "security-updates"
@@ -20,6 +18,10 @@ updates:
       interval: "weekly"
       time: "09:00"
       timezone: "Europe/Amsterdam"
+    reviewers:
+      - "stroblme"
+    assignees:
+      - "stroblme"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -28,4 +30,6 @@ updates:
       time: "09:00"
       timezone: "Europe/Amsterdam"
     reviewers:
+      - "stroblme"
+    assignees:
       - "stroblme"
