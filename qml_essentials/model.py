@@ -306,7 +306,7 @@ class Model:
             },
 
         Args:
-            value (Optional[Dict[str, Union[float, Dict[str, float]]]]): A
+            kvs (Optional[Dict[str, Union[float, Dict[str, float]]]]): A
             dictionary of noise parameters. If all values are 0.0, the noise
             parameters are set to None.
 
@@ -322,6 +322,7 @@ class Model:
             kvs.setdefault("BitFlip", 0.0)
             kvs.setdefault("PhaseFlip", 0.0)
             kvs.setdefault("Depolarizing", 0.0)
+            kvs.setdefault("MultiQubitDepolarizing", 0.0)
             kvs.setdefault("AmplitudeDamping", 0.0)
             kvs.setdefault("PhaseDamping", 0.0)
             kvs.setdefault("GateError", 0.0)
@@ -335,6 +336,7 @@ class Model:
                     "BitFlip",
                     "PhaseFlip",
                     "Depolarizing",
+                    "MultiQubitDepolarizing",
                     "AmplitudeDamping",
                     "PhaseDamping",
                     "GateError",
@@ -598,13 +600,17 @@ class Model:
         if self.noise_params is not None:
             self._apply_state_prep_noise()
 
+        # state preparation
         for q in range(self.n_qubits):
             for _sp in self._sp:
                 _sp(wires=q, noise_params=self.noise_params)
 
+        # circuit building
         for layer in range(0, self.n_layers):
+            # ansatz layers
             self.pqc(params[layer], self.n_qubits, noise_params=self.noise_params)
 
+            # encoding layers
             self._iec(
                 inputs,
                 data_reupload=self.data_reupload[layer],
@@ -613,12 +619,15 @@ class Model:
                 noise_params=self.noise_params,
             )
 
+            # visual barrier
             if self.degree > 1:
                 qml.Barrier(wires=list(range(self.n_qubits)), only_visual=True)
 
+        # final ansatz layer
         if self.degree > 1:  # same check as in init
             self.pqc(params[-1], self.n_qubits, noise_params=self.noise_params)
 
+        # channel noise
         if self.noise_params is not None:
             self._apply_general_noise()
 

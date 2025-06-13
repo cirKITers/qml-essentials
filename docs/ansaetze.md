@@ -99,10 +99,11 @@ noise_params = {
     "AmplitudeDamping": 0.0,
     "PhaseDamping": 0.0,
     "Depolarizing": 0.0,
+    "MultiQubitDepolarizing": 0.0,
 }
 ```
 
-Providing this optional input will apply the corresponding noise to the model where the Bit Flip, Phase Flip and Depolarizing Channel are applied after each gate and the Amplitude and Phase Damping are applied at the end of the circuit.
+Providing this optional input will apply the corresponding noise to the model where the Bit Flip, Phase Flip, Depolarizing and Two-Qubit Depolarizing Channels are applied after each gate and the Amplitude and Phase Damping are applied at the end of the circuit.
 To achieve this, we implement our own set of noisy gates, that build upon the Pennylane gates. To demonstrate this, let's extend our example above:
 ```python
 from qml_essentials.ansaetze import Gates, Circuit
@@ -143,6 +144,7 @@ model(
         "AmplitudeDamping": 0.03,
         "PhaseDamping": 0.04,
         "Depolarizing": 0.05,
+        "MultiQubitDepolarizing": 0.06
 })
 ```
 
