@@ -1,15 +1,14 @@
+# https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference#about-the-dependabotyml-file
 version: 2
 updates:
   - package-ecosystem: "pip" # See documentation for possible values
     directory: "/" # Location of package manifests
-    reviewers:
-      - "stroblme"
     groups:
-      security:
+      security-updates:
         applies-to: "security-updates"
         patterns:
           - "*"
-      version:
+      version-updates:
         applies-to: "version-updates"
         patterns:
           - "*"
@@ -17,14 +16,20 @@ updates:
     schedule:
       day: "monday"
       interval: "weekly"
-      time: "09:00"
+      time: "06:00"
       timezone: "Europe/Amsterdam"
+    reviewers:
+      - "stroblme"
+    assignees:
+      - "stroblme"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       day: "monday"
       interval: "weekly"
-      time: "09:00"
+      time: "06:00"
       timezone: "Europe/Amsterdam"
     reviewers:
+      - "stroblme"
+    assignees:
       - "stroblme"
