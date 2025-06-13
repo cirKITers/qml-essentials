@@ -99,7 +99,7 @@ noise_params = {
     "AmplitudeDamping": 0.0,
     "PhaseDamping": 0.0,
     "Depolarizing": 0.0,
-    "TwoQubitDepolarizing": 0.0,
+    "MultiQubitDepolarizing": 0.0,
 }
 ```
 
@@ -144,7 +144,7 @@ model(
         "AmplitudeDamping": 0.03,
         "PhaseDamping": 0.04,
         "Depolarizing": 0.05,
-        "TwoQubitDepolarizing": 0.06
+        "MultiQubitDepolarizing": 0.06
 })
 ```
 
