@@ -10,6 +10,27 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.unittest
+def test_gate_gateerror_noise():
+    dev = qml.device("default.mixed", wires=1, shots=3000)
+
+    @qml.qnode(dev)
+    def circuit(noise_params=None):
+        Gates.RX(np.pi, wires=0, noise_params=noise_params)
+        return qml.expval(qml.PauliZ(0))
+
+    no_noise = circuit({})
+    with_noise = circuit({"GateError": 100})
+
+    assert np.isclose(no_noise, -1, atol=0.1), (
+        f"Expected ~-1 with no noise, got {no_noise}"
+    )
+    assert not np.isclose(with_noise, no_noise, atol=0.1), (
+        "Expected with noise output to differ,"
+        + f"got with noise: {with_noise} and with no noise: {no_noise}"
+    )
+
+
+@pytest.mark.unittest
 def test_gate_bitflip_noise():
     dev = qml.device("default.mixed", wires=1, shots=3000)
 
@@ -22,7 +43,7 @@ def test_gate_bitflip_noise():
     with_noise = circuit({"BitFlip": 0.5})
 
     assert np.isclose(no_noise, -1, atol=0.1), (
-        f"Expected ~-1 without noise, got {no_noise}"
+        f"Expected ~-1 with no noise, got {no_noise}"
     )
     assert np.isclose(with_noise, 0, atol=0.1), (
         f"Expected ~0 with noise, got {with_noise}"
