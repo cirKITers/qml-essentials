@@ -628,6 +628,33 @@ class FourierTree:
 
         return leaf_factor, s, c
 
+    def _compute_xy_indices(self, op: Operator):
+        xy_indices = set()
+        op = op.terms()[1][0] if isinstance(op, qml_op.Prod) else op
+
+        if isinstance(op, (qml.PauliX, qml.PauliY)):
+            xy_indices.add(op.wires[0])
+
+        elif isinstance(op, qml_op.SProd) and (
+            isinstance(op.base, (qml.PauliX, qml.PauliY))
+        ):
+            xy_indices.add(op.base.wires[0])
+        elif isinstance(op, qml_op.SProd) and not isinstance(op.base, qml.PauliZ):
+            for o in op.base:
+                if isinstance(o, (qml.PauliX, qml.PauliY)):
+                    xy_indices.add(o.wires[0])
+        return xy_indices
+
+    def _early_stopping_possible(
+        self, pauli_rotation_indices: List[int], observable: Operator
+    ):
+        xy_indices_obs = self._compute_xy_indices(observable)
+        xy_indices_pauli = set()
+        for idx in pauli_rotation_indices:
+            p = self.pauli_rotations[idx].generator().terms()[1][0]
+            xy_indices_pauli = xy_indices_pauli.union(self._compute_xy_indices(p))
+        return not all([o in xy_indices_pauli for o in xy_indices_obs])
+
     def _create_tree_node(
         self,
         observable: Operator,
@@ -635,7 +662,7 @@ class FourierTree:
         parameter_idx: Optional[int] = None,
         is_sine: bool = False,
         is_cosine: bool = False,
-    ) -> CoefficientsTreeNode:
+    ) -> Optional[CoefficientsTreeNode]:
         """
         Builds the Fourier-Tree according to the algorithm by Nemkov et al.
 
@@ -649,9 +676,11 @@ class FourierTree:
             is_cosine (bool): If the current node is a cosine (right) node.
 
         Returns:
-            CoefficientsTreeNode: The resulting node. Children are set
+            Optional[CoefficientsTreeNode]: The resulting node. Children are set
             recursively. The top level receives the tree root.
         """
+        if self._early_stopping_possible(pauli_rotation_indices, observable):
+            return None
 
         # remove commuting paulis
         idx = len(pauli_rotation_indices) - 1
