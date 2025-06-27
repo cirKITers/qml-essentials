@@ -327,20 +327,72 @@ class FourierTree:
         correspond to the terms in the sine-cosine tree representation that
         eventually are used to obtain coefficients and frequencies.
 
-            Attributes:
-                sin_indices (List[int]): Current number of sine contributions for each
-                    parameter. Has the same length as the parameters, as each
-                    position corresponds to one parameter.
-                cos_list (List[int]):  Current number of cosine contributions for
-                    each parameter. Has the same length as the parameters, as each
-                    position corresponds to one parameter.
-                term (np.complex): Constant factor of the leaf, depending on the
-                    expectation value of the observable, and a phase.
+        Args:
+            sin_indices (List[int]): Current number of sine contributions for each
+                parameter. Has the same length as the parameters, as each
+                position corresponds to one parameter.
+            cos_list (List[int]):  Current number of cosine contributions for
+                each parameter. Has the same length as the parameters, as each
+                position corresponds to one parameter.
+            term (np.complex): Constant factor of the leaf, depending on the
+                expectation value of the observable, and a phase.
         """
 
         sin_indices: List[int]
         cos_indices: List[int]
         term: np.complex128
+
+    class PauliOperator:
+        """
+        Utility class for storing Pauli Rotations and the corresponding indices
+        in the XY-Space (whether there is a gate with X or Y generator at a
+        certain qubit).
+
+        Args:
+            pauli (Operator): Pauli Rotation Operation
+            n_qubits (int): Number of qubits in the circuit
+        """
+
+        def __init__(self, pauli: Operator, n_qubits: int):
+            self.pauli: Operator = pauli
+            self.generator: Operator = pauli.generator()
+            self.xy_indices: np.ndarray[bool] = self._compute_xy_indices(
+                self.generator[0], n_qubits
+            )
+
+        @staticmethod
+        def _compute_xy_indices(
+            op: Operator, n_qubits: int, rev: bool = False
+        ) -> np.ndarray[bool]:
+            """
+            Computes the positions of X or Y gates to an one-hot encoded boolen
+            array.
+
+            Args:
+                op (Operator): Pauli-Operation for which to compute the indices.
+                n_qubits (int): Number of qubits in the full circuit.
+                rev (bool): Whether to negate the array.
+
+            Returns:
+                np.ndarray[bool]: One hot encoded boolean array.
+            """
+            xy_indices = np.zeros(n_qubits, dtype=bool)
+            op = op.terms()[1][0] if isinstance(op, qml_op.Prod) else op
+
+            if isinstance(op, (qml.PauliX, qml.PauliY)):
+                xy_indices[op.wires[0]] = True
+
+            elif isinstance(op, qml_op.SProd) and (
+                isinstance(op.base, (qml.PauliX, qml.PauliY))
+            ):
+                xy_indices[op.base.wires[0]] = True
+            elif isinstance(op, qml_op.SProd) and not isinstance(op.base, qml.PauliZ):
+                for o in op.base:
+                    if isinstance(o, (qml.PauliX, qml.PauliY)):
+                        xy_indices[o.wires[0]] = True
+            if rev:
+                xy_indices = ~xy_indices
+            return xy_indices
 
     def __init__(self, model: Model, inputs=1.0):
         """
@@ -388,7 +440,10 @@ class FourierTree:
         ]
 
         self.observables = quantum_tape.observables
-        self.pauli_rotations = quantum_tape.operations
+        self.pauli_rotations = [
+            FourierTree.PauliOperator(op, self.model.n_qubits)
+            for op in quantum_tape.operations
+        ]
 
         self.tree_roots = self.build()
         self.leafs: List[List[FourierTree.TreeLeaf]] = self._get_tree_leafs()
@@ -628,32 +683,31 @@ class FourierTree:
 
         return leaf_factor, s, c
 
-    def _compute_xy_indices(self, op: Operator):
-        xy_indices = set()
-        op = op.terms()[1][0] if isinstance(op, qml_op.Prod) else op
-
-        if isinstance(op, (qml.PauliX, qml.PauliY)):
-            xy_indices.add(op.wires[0])
-
-        elif isinstance(op, qml_op.SProd) and (
-            isinstance(op.base, (qml.PauliX, qml.PauliY))
-        ):
-            xy_indices.add(op.base.wires[0])
-        elif isinstance(op, qml_op.SProd) and not isinstance(op.base, qml.PauliZ):
-            for o in op.base:
-                if isinstance(o, (qml.PauliX, qml.PauliY)):
-                    xy_indices.add(o.wires[0])
-        return xy_indices
-
     def _early_stopping_possible(
         self, pauli_rotation_indices: List[int], observable: Operator
     ):
-        xy_indices_obs = self._compute_xy_indices(observable)
-        xy_indices_pauli = set()
+        """
+        Checks if a node for an observable can be discarded as all expecation
+        values that can result through further branching are zero.
+        The method is mentioned in the paper by Nemkov et al.: If the one-hot
+        encoded indices for X/Y operations in the Pauli-rotation generators are
+        a basis for that of the observable, the node must be processed further.
+        If not, it can be discarded.
+
+        Args:
+            pauli_rotation_indices (List[int]): Indices of remaining Pauli
+                rotation gates. Gates itself are attributes of the class.
+            observable (Operator): Current observable
+        """
+        xy_indices_obs = FourierTree.PauliOperator._compute_xy_indices(
+            observable, self.model.n_qubits, rev=True
+        )
         for idx in pauli_rotation_indices:
-            p = self.pauli_rotations[idx].generator().terms()[1][0]
-            xy_indices_pauli = xy_indices_pauli.union(self._compute_xy_indices(p))
-        return not all([o in xy_indices_pauli for o in xy_indices_obs])
+            xy_indices_obs += self.pauli_rotations[idx].xy_indices
+            if all(xy_indices_obs):
+                return False
+
+        return not all(xy_indices_obs)
 
     def _create_tree_node(
         self,
@@ -686,7 +740,7 @@ class FourierTree:
         idx = len(pauli_rotation_indices) - 1
         while idx >= 0:
             last_pauli = self.pauli_rotations[pauli_rotation_indices[idx]]
-            if not qml.is_commuting(last_pauli.generator(), observable):
+            if not qml.is_commuting(last_pauli.generator, observable):
                 break
             idx -= 1
 
@@ -707,7 +761,7 @@ class FourierTree:
         )
 
         next_observable = self._create_new_observable(
-            last_pauli.generator(), observable
+            last_pauli.generator, observable
         )
         right = self._create_tree_node(
             next_observable,
