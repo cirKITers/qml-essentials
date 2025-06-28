@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional
 import pennylane.numpy as np
 import pennylane as qml
+from jax import numpy as jnp
 import itertools
 
 from typing import List, Union, Dict
@@ -502,6 +503,34 @@ class Gates:
         """
         qml.Hadamard(wires=wires)
         Gates.Noise(wires, noise_params)
+
+
+class PulseGates:
+    def __init__(self):
+        pass
+
+    def RX(self, w, wires):
+        """Returns a ParametrizedEvolution operator implementing a DRAG-corrected RX pulse."""
+
+        def Sx(p, t):
+            A, sigma, T, _ = p
+            A *= w / jnp.pi
+            return A * jnp.exp(-0.5 * ((t - T / 2) / sigma) ** 2)
+
+        def Sy(p, t):
+            A, sigma, T, alpha = p
+            A *= w / jnp.pi
+            base = A * jnp.exp(-0.5 * ((t - T / 2) / sigma) ** 2)
+            return alpha * ((t - T / 2) / sigma ** 2) * base
+
+        X_op = qml.PauliX(wires)
+        Y_op = qml.PauliY(wires)
+
+        coeffs = [Sx, Sy]
+        ops = [X_op, Y_op]
+        H = qml.dot(coeffs, ops)
+
+        return qml.evolve(H)
 
 
 class Ansaetze:
