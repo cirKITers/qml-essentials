@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional
 import pennylane.numpy as np
 import pennylane as qml
+import jax
 from jax import numpy as jnp
 import itertools
 
@@ -506,31 +507,56 @@ class Gates:
 
 
 class PulseGates:
-    def __init__(self):
-        pass
+    def __init__(self, omega_q: float = 10 * jnp.pi):
 
-    def RX(self, w, wires):
-        """Returns a ParametrizedEvolution operator implementing a DRAG-corrected RX pulse."""
+        self.omega_q = omega_q
+        self.H_static = jnp.array([
+            [jnp.exp(1j * omega_q / 2), 0],
+            [0, jnp.exp(-1j * omega_q / 2)]
+        ])
+        self.X = jnp.array([[0, 1], [1, 0]])
+        self.Y = jnp.array([[0, -1j], [1j, 0]])
+        self.Z = jnp.array([[1, 0], [0, -1]])
+    
+    
+    def RX(self, w, params, t, wire):
+        def _Sx(p, t):
+            A, sigma, omega_c = p
+            t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
+            phi_c = 0
 
-        def Sx(p, t):
-            A, sigma, T, _ = p
-            A *= w / jnp.pi
-            return A * jnp.exp(-0.5 * ((t - T / 2) / sigma) ** 2)
+            f = A * jnp.exp(-0.5 * ((t - t_c) / sigma) ** 2)
+            x = jnp.cos(omega_c * t + phi_c)
 
-        def Sy(p, t):
-            A, sigma, T, alpha = p
-            A *= w / jnp.pi
-            base = A * jnp.exp(-0.5 * ((t - T / 2) / sigma) ** 2)
-            return alpha * ((t - T / 2) / sigma ** 2) * base
+            return f * x
+        
+        Sx = lambda p, t: _Sx(p, t) * w
 
-        X_op = qml.PauliX(wires)
-        Y_op = qml.PauliY(wires)
+        _H = self.H_static.conj().T @ self.X @ self.H_static
+        _H = qml.Hermitian(_H, wires=wire)
+        H_eff = Sx * _H
 
-        coeffs = [Sx, Sy]
-        ops = [X_op, Y_op]
-        H = qml.dot(coeffs, ops)
+        return qml.evolve(H_eff)(params, t)
 
-        return qml.evolve(H)
+
+    def RY(self, w, params, t, wire):
+        def _Sy(p, t):
+            A, sigma, omega_c = p
+            t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
+            phi_c = jnp.pi / 2
+
+            f = A * jnp.exp(-0.5 * ((t - t_c) / sigma) ** 2)
+            x = jnp.cos(omega_c * t + phi_c)
+
+            return f * x
+
+        Sy = lambda p, t: _Sy(p, t) * w
+
+        _H = self.H_static.conj().T @ self.Y @ self.H_static
+        _H = qml.Hermitian(_H, wires=wire)
+        H_eff = Sy * _H
+
+        return qml.evolve(H_eff)(params, t)
 
 
 class Ansaetze:

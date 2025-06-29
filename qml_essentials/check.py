@@ -3,36 +3,26 @@ from jax import numpy as jnp
 from ansaetze import PulseGates
 
 
-from scipy.integrate import quad
-import numpy as np
+dev = qml.device("default.qubit", wires=1)
 
-def Sx(t, A, sigma, T):
-    return A * np.exp(-0.5 * ((t - T/2) / sigma) ** 2)
+@qml.qnode(dev, interface="jax")
+def circuit(params, t):
+    PulseGates().RX(jnp.pi, params, t, wire=0)
+    # PulseGates().RY(jnp.pi, params, t, wire=0)
+    return qml.expval(qml.Z(0))
 
-T = 1.0 
-sigma = 15 
-A = 1.0
-alpha = 0.3
+# Example
+params = jnp.array([1, 15, 10 * jnp.pi])  # A, sigma, omega_c
+print(circuit([params], t=0.002))
+print(circuit([params], t=0.004))
+print(circuit([params], t=0.006))
+print(circuit([params], t=0.008))
+print(circuit([params], t=0.01))
+print(circuit([params], t=0.012))
+print(circuit([params], t=0.014))
+print(circuit([params], t=0.016))
+print(circuit([params], t=0.018))
+print(circuit([params], t=0.02))
 
-integral, _ = quad(Sx, 0, T, args=(A, sigma, T))
-
-theta = 2 * integral
-print("Rotation angle theta:", theta)
-print("Half pi rotation:", np.pi / 2)
-
-# dev = qml.device("default.qubit", wires=1)
-
-# @qml.qnode(dev, interface="jax")
-# def circuit(params, t):
-#     gate = PulseGates().RX(jnp.pi / 2, wires=0)
-#     gate(params, t=t)  # t is a list like [0, 4]
-#     return qml.expval(qml.Z(0))
-
-# # Example parameters and time interval
-# T = 4.0  # Duration of the pulse
-# t0 = 0.0  # Start time
-# params = jnp.array([1.0, 1., T, 0.3])  # A, sigma, T, alpha
-# time_interval = [t0, t0 + T]
-
-# result = circuit(params=[params, params], t=time_interval)
+# result = circuit([params], t=[2, 5])
 # print(result)
