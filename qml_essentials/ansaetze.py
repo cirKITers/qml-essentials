@@ -507,9 +507,10 @@ class Gates:
 
 
 class PulseGates:
-    def __init__(self, omega_q: float = 10 * jnp.pi):
+    def __init__(self, omega_q: float = 10 * jnp.pi, omega_c: float = 10 * jnp.pi):
 
         self.omega_q = omega_q
+        self.omega_c = omega_c
         self.H_static = jnp.array([
             [jnp.exp(1j * omega_q / 2), 0],
             [0, jnp.exp(-1j * omega_q / 2)]
@@ -518,15 +519,15 @@ class PulseGates:
         self.Y = jnp.array([[0, -1j], [1j, 0]])
         self.Z = jnp.array([[1, 0], [0, -1]])
     
-    
+
     def RX(self, w, params, t, wire):
         def _Sx(p, t):
-            A, sigma, omega_c = p
+            A, sigma = p
             t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
             phi_c = 0
 
             f = A * jnp.exp(-0.5 * ((t - t_c) / sigma) ** 2)
-            x = jnp.cos(omega_c * t + phi_c)
+            x = jnp.cos(self.omega_c * t + phi_c)
 
             return f * x
         
@@ -541,12 +542,12 @@ class PulseGates:
 
     def RY(self, w, params, t, wire):
         def _Sy(p, t):
-            A, sigma, omega_c = p
+            A, sigma = p
             t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
             phi_c = jnp.pi / 2
 
             f = A * jnp.exp(-0.5 * ((t - t_c) / sigma) ** 2)
-            x = jnp.cos(omega_c * t + phi_c)
+            x = jnp.cos(self.omega_c * t + phi_c)
 
             return f * x
 

@@ -1,28 +1,28 @@
 import pennylane as qml
 from jax import numpy as jnp
 from ansaetze import PulseGates
-
+import matplotlib.pyplot as plt
 
 dev = qml.device("default.qubit", wires=1)
 
 @qml.qnode(dev, interface="jax")
 def circuit(params, t):
     PulseGates().RX(jnp.pi, params, t, wire=0)
-    # PulseGates().RY(jnp.pi, params, t, wire=0)
     return qml.expval(qml.Z(0))
 
-# Example
-params = jnp.array([1, 15, 10 * jnp.pi])  # A, sigma, omega_c
-print(circuit([params], t=0.002))
-print(circuit([params], t=0.004))
-print(circuit([params], t=0.006))
-print(circuit([params], t=0.008))
-print(circuit([params], t=0.01))
-print(circuit([params], t=0.012))
-print(circuit([params], t=0.014))
-print(circuit([params], t=0.016))
-print(circuit([params], t=0.018))
-print(circuit([params], t=0.02))
+dt = 0.002
+times = jnp.arange(0, dt * 80, dt)
+# times = jnp.linspace(0, jnp.pi / 2, 60)
 
-# result = circuit([params], t=[2, 5])
-# print(result)
+for A in [1, 10, 30]:
+    for wc in [1, 10, 30]:
+        params = jnp.array([A, 10, wc * jnp.pi])  # A, sigma, omega_c
+        results = [circuit([params], t=float(t)) for t in times]
+
+        plt.scatter(times, results, s=10)
+        plt.xlabel('Time (t)')
+        plt.ylabel('Circuit Output')
+        plt.title('Circuit Output vs Time')
+        plt.grid(True)
+        plt.savefig(f"qml_essentials/figs/RX_{params[0]}_{params[1]}_{params[2]:.2f}.png")
+        plt.close()
