@@ -520,7 +520,13 @@ class PulseGates:
         self.Z = jnp.array([[1, 0], [0, -1]])
     
 
-    def RX(self, w, params, t, wire):
+    def RX(
+        self,
+        w,
+        wires,
+        params = [15.70989327341467, 29.5230665326707],
+        t = 0.7499810441330634
+    ):
         def _Sx(p, t):
             A, sigma = p
             t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
@@ -534,13 +540,19 @@ class PulseGates:
         Sx = lambda p, t: _Sx(p, t) * w
 
         _H = self.H_static.conj().T @ self.X @ self.H_static
-        _H = qml.Hermitian(_H, wires=wire)
+        _H = qml.Hermitian(_H, wires=wires)
         H_eff = Sx * _H
 
         return qml.evolve(H_eff)(params, t)
 
 
-    def RY(self, w, params, t, wire):
+    def RY(
+        self,
+        w,
+        wires,
+        params = [7.8787724942614235, 22.001319411513432],
+        t = 1.098524473819202
+    ):
         def _Sy(p, t):
             A, sigma = p
             t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
@@ -554,7 +566,7 @@ class PulseGates:
         Sy = lambda p, t: _Sy(p, t) * w
 
         _H = self.H_static.conj().T @ self.Y @ self.H_static
-        _H = qml.Hermitian(_H, wires=wire)
+        _H = qml.Hermitian(_H, wires=wires)
         H_eff = Sy * _H
 
         return qml.evolve(H_eff)(params, t)
