@@ -518,26 +518,50 @@ class PulseGates:
         self.X = jnp.array([[0, 1], [1, 0]])
         self.Y = jnp.array([[0, -1j], [1j, 0]])
         self.Z = jnp.array([[1, 0], [0, -1]])
+
+        self.opt_params_RX = [[15.70989327341467, 29.5230665326707]]
+        self.opt_t_RX = 0.7499810441330634
     
+        self.opt_params_RY = [[7.8787724942614235, 22.001319411513432]]
+        self.opt_t_RY = 1.098524473819202
 
-    def RX(
-        self,
-        w,
-        wires,
-        params = [15.70989327341467, 29.5230665326707],
-        t = 0.7499810441330634
-    ):
-        def _Sx(p, t):
-            A, sigma = p
-            t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
-            phi_c = 0
+        self.opt_params_H = [15, 30, 1]
+        self.opt_t_H = 0.75
 
-            f = A * jnp.exp(-0.5 * ((t - t_c) / sigma) ** 2)
-            x = jnp.cos(self.omega_c * t + phi_c)
 
-            return f * x
+    def S(self, p, t, phi_c):
+        A, sigma = p
+        t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
+
+        f = A * jnp.exp(-0.5 * ((t - t_c) / sigma) ** 2)
+        x = jnp.cos(self.omega_c * t + phi_c)
+
+        return f * x
         
-        Sx = lambda p, t: _Sx(p, t) * w
+
+    def RX(self, w, wires, params = None, t = None):
+        """
+        Applies a rotation around the X axis pulse to the given wires.
+
+        Parameters
+        ----------
+        w : float
+            The rotation angle in radians.
+        wires : Union[int, List[int]]
+            The wire(s) to apply the rotation to.
+        params : List[List[float]], optional
+            Parameters `[A, sigma]` of the Gaussian envelope.
+            Defaults to the optimized parameters through quantum optimal
+            control [15.70989327341467, 29.5230665326707].
+        t : Union[float, Tuple[float, float]], optional
+            Time or time interval for the evolution. Defaults to 0.7499810441330634.
+        """
+        if params is None: 
+            params = self.opt_params_RX
+        if t is None:
+            t = self.opt_t_RX
+        
+        Sx = lambda p, t: self.S(p, t, phi_c=jnp.pi) * w
 
         _H = self.H_static.conj().T @ self.X @ self.H_static
         _H = qml.Hermitian(_H, wires=wires)
@@ -546,30 +570,100 @@ class PulseGates:
         return qml.evolve(H_eff)(params, t)
 
 
-    def RY(
-        self,
-        w,
-        wires,
-        params = [7.8787724942614235, 22.001319411513432],
-        t = 1.098524473819202
-    ):
-        def _Sy(p, t):
-            A, sigma = p
-            t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
-            phi_c = jnp.pi / 2
+    def RY(self, w, wires, params = None, t = None):
+        """
+        Applies a rotation around the Y axis pulse to the given wires.
 
-            f = A * jnp.exp(-0.5 * ((t - t_c) / sigma) ** 2)
-            x = jnp.cos(self.omega_c * t + phi_c)
+        Parameters
+        ----------
+        w : float
+            The rotation angle in radians.
+        wires : Union[int, List[int]]
+            The wire(s) to apply the rotation to.
+        params : List[float], optional
+            Parameters `[A, sigma]` of the Gaussian envelope.
+            Defaults to the optimized parameters through quantum optimal
+            control [7.8787724942614235, 22.001319411513432].
+        t : Union[float, Tuple[float, float]], optional
+            Time or time interval for the evolution. Defaults to 1.098524473819202.
+        """
+        if params is None: 
+            params = self.opt_params_RY
+        if t is None:
+            t = self.opt_t_RY
 
-            return f * x
-
-        Sy = lambda p, t: _Sy(p, t) * w
+        Sy = lambda p, t: self.S(p, t, phi_c=-jnp.pi/2) * w
 
         _H = self.H_static.conj().T @ self.Y @ self.H_static
         _H = qml.Hermitian(_H, wires=wires)
         H_eff = Sy * _H
 
         return qml.evolve(H_eff)(params, t)
+
+
+    def RZ(self, w, wires, t = 0.5):
+        """
+        Applies a rotation around the Z axis to the given wires.
+
+        Parameters
+        ----------
+        w : float
+            The rotation angle in radians.
+        wires : Union[int, List[int]]
+            The wire(s) to apply the rotation to.
+        t : float
+            Duration of the pulse. Rotation angle = w * 2 * t. Defaults to 0.5.
+        """
+        _H = qml.Hermitian(self.Z, wires=wires)
+        Sz = lambda p, t: w
+
+        H_eff = Sz * _H
+
+        return qml.evolve(H_eff)([0], t)
+
+
+    def H(self, wires, params = None, t = None):
+        """
+        Applies Hadamard gate
+        """
+        if params is None:
+            params = self.opt_params_H
+        if t is None:
+            t = self.opt_t_H
+        
+        try: 
+            *params, Omega = params[0]
+        except Exception:
+            params, Omega = params[:-1], params[-1]
+
+        # RX like rotation
+        Sx = lambda p, t: self.S(p, t, phi_c=-jnp.pi/2) * Omega
+
+        _H = self.H_static.conj().T @ self.X @ self.H_static
+        _H = qml.Hermitian(_H, wires=wires)
+        H_eff = Sx * _H
+
+        qml.evolve(H_eff)([params], t)
+
+        # RZ rotation
+        self.RZ(jnp.pi, wires)
+
+        # Global Phase correction
+        modulus = 1 if isinstance(wires, int) else len(wires) % 4
+        global_phase = jnp.pi / 2 * modulus
+        global_phase %= 2 * jnp.pi
+        global_phase -= 2 * jnp.pi
+
+        Sc = lambda p, t: -1.0
+
+        _H = global_phase * jnp.eye(2, dtype=jnp.complex64)
+        _H = qml.Hermitian(_H, wires=wires)
+        H_corr = Sc * _H
+        
+        qml.evolve(H_corr)([0], 1)
+
+        return
+
 
 
 class Ansaetze:

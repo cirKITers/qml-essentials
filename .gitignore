@@ -1,5 +1,6 @@
 # General files
 *.bkp
+tensorboard/
 
 # Test output
 tikz_test.tex
