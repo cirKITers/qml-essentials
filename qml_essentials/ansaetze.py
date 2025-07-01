@@ -624,8 +624,13 @@ class PulseGates:
 
     def H(self, wires, params = None, t = None):
         """
-        Applies Hadamard gate
+        Applies Hadamard gate (WORK IN PROGRESS)
         """
+        # TODO: 
+            # Global Phase correction seems to do nothing. 
+            # Currently has fidelity of 0.5 with unitary H gate. 
+            # Has phase shift relative to unitary H gate of -pi/4 
+            # for odd amounts of H and -pi/2 for even amounts
         if params is None:
             params = self.opt_params_H
         if t is None:
