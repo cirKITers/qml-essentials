@@ -516,6 +516,7 @@ class PulseGates:
             [0, jnp.exp(-1j * omega_q / 2)]
         ])
 
+        self.I = jnp.eye(2)
         self.X = jnp.array([[0, 1], [1, 0]])
         self.Y = jnp.array([[0, -1j], [1j, 0]])
         self.Z = jnp.array([[1, 0], [0, -1]])
@@ -656,6 +657,29 @@ class PulseGates:
         self.RY(jnp.pi / 2, wires=wires, params=params, t=t)
 
 
+    def CZ(self, wires, t = 1.0):
+        """
+        Applies a controlled Z gate to the given wires.
+
+        Parameters
+        ----------
+        wires : Union[int, List[int]]
+            The wire(s) to apply the controlled Z gate to.
+        t : Union[float, Tuple[float, float]], optional
+            Time or time interval for the evolution. Defaults to 0.75.
+        """
+        I_I   = jnp.kron(self.I, self.I)
+        Z_I   = jnp.kron(self.Z, self.I)
+        I_Z   = jnp.kron(self.I, self.Z)
+        Z_Z   = jnp.kron(self.Z, self.Z)
+
+        Scz = lambda p, t: jnp.pi
+
+        _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
+        _H = qml.Hermitian(_H, wires=wires)
+        H_eff = Scz * _H
+
+        return qml.evolve(H_eff)([0], t)
 
 
 class Ansaetze:

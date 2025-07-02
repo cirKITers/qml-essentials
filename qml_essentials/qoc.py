@@ -394,33 +394,56 @@ class QOC:
 
 
 if __name__ == "__main__":
-    qoc = QOC(make_plots=False)
-    # Run optimization for RX gate
-    print("Optimizing RX gate...")
-    optimized_params, best_loss, loss_values = qoc.optimize_RX(steps=600, w=jnp.pi, init_params=jnp.array([1.0, 15.0, 1.0]))
-    print(f"Optimized parameters for RX: {optimized_params}\n")
-    print(f"Best achieved fidelity: {1 - best_loss}")
-    print("-" * 20, f"\n")
+    # qoc = QOC(make_plots=True)
+    # # Run optimization for RX gate
+    # print("Optimizing RX gate...")
+    # optimized_params, best_loss, loss_values = qoc.optimize_RX(steps=600, w=jnp.pi, init_params=jnp.array([1.0, 15.0, 1.0]))
+    # print(f"Optimized parameters for RX: {optimized_params}\n")
+    # print(f"Best achieved fidelity: {1 - best_loss}")
+    # print("-" * 20, f"\n")
 
-    # Run optimization for RY gate
-    print("Optimizing RY gate...")
-    optimized_params, best_loss, loss_values = qoc.optimize_RY(steps=600, w=jnp.pi, init_params=jnp.array([1.0, 15.0, 1.0]))
-    print(f"Optimized parameters for RY: {optimized_params}\n")
-    print(f"Best achieved fidelity: {1 - best_loss:.6f}\n")
-    print("-" * 20, f"\n")
+    # # Run optimization for RY gate
+    # print("Optimizing RY gate...")
+    # optimized_params, best_loss, loss_values = qoc.optimize_RY(steps=600, w=jnp.pi, init_params=jnp.array([1.0, 15.0, 1.0]))
+    # print(f"Optimized parameters for RY: {optimized_params}\n")
+    # print(f"Best achieved fidelity: {1 - best_loss:.6f}")
+    # print("-" * 20, f"\n")
 
+    # # Run optimization for RZ gate
+    # print("Plotting RZ gate rotation...")
+    # qoc.optimize_RZ()
+    # print(f"Plotted RZ gate rotation")
+    # print("-" * 20, f"\n")
 
-    # Run optimization for RZ gate
-    print("Plotting RZ gate rotation...")
-    qoc.optimize_RZ()
-    print(f"Plotted RZ gate rotation\n")
-    print("-" * 20, f"\n")
-
-    # Run optimization for H gate
-    print("Optimizing H gate...")
-    optimized_params, best_loss, loss_values = qoc.optimize_H(steps=600, init_params=jnp.array([1.0, 15.0, 1.0]))
-    print(f"Optimized parameters for H: {optimized_params}\n")
-    print(f"Best achieved fidelity: {1 - best_loss}\n")
-    print("-" * 20, f"\n")
+    # # Run optimization for H gate
+    # print("Optimizing H gate...")
+    # optimized_params, best_loss, loss_values = qoc.optimize_H(steps=600, init_params=jnp.array([1.0, 15.0, 1.0]))
+    # print(f"Optimized parameters for H: {optimized_params}\n")
+    # print(f"Best achieved fidelity: {1 - best_loss}")
+    # print("-" * 20, f"\n")
 
     # -----------------------------------------------------------
+
+    dev = qml.device("default.qubit", wires=2)
+
+    pulse = PulseGates()
+
+    @qml.qnode(dev)
+    def ideal_circuit():
+        qml.Hadamard(wires=0)
+        qml.Hadamard(wires=1)
+        qml.CZ(wires=[0,1])
+        return qml.state()
+
+    @qml.qnode(dev)
+    def pulse_circuit():
+        qml.Hadamard(wires=0)
+        qml.Hadamard(wires=1)
+        pulse.CZ(wires=[0,1])
+        return qml.state()
+
+    state_ideal = ideal_circuit()
+    state_pulse = pulse_circuit()
+
+    fidelity = jnp.abs(jnp.vdot(state_ideal, state_pulse)) ** 2
+    print("Fidelity:", fidelity)
