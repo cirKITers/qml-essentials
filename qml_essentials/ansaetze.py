@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional
 import pennylane.numpy as np
 import pennylane as qml
-import jax
 from jax import numpy as jnp
 import itertools
 
@@ -511,10 +510,12 @@ class PulseGates:
 
         self.omega_q = omega_q
         self.omega_c = omega_c
+
         self.H_static = jnp.array([
             [jnp.exp(1j * omega_q / 2), 0],
             [0, jnp.exp(-1j * omega_q / 2)]
         ])
+
         self.X = jnp.array([[0, 1], [1, 0]])
         self.Y = jnp.array([[0, -1j], [1j, 0]])
         self.Z = jnp.array([[1, 0], [0, -1]])
@@ -525,8 +526,8 @@ class PulseGates:
         self.opt_params_RY = [[7.8787724942614235, 22.001319411513432]]
         self.opt_t_RY = 1.098524473819202
 
-        self.opt_params_H = [15, 30, 1]
-        self.opt_t_H = 0.75
+        self.opt_params_H = [[7.8579924, 21.57270103]]
+        self.opt_t_H = 0.90006688
 
 
     def S(self, p, t, phi_c):
@@ -624,50 +625,36 @@ class PulseGates:
 
     def H(self, wires, params = None, t = None):
         """
-        Applies Hadamard gate (WORK IN PROGRESS)
+        Applies Hadamard gate to the given wires.
+
+        Parameters
+        ----------
+        wires : Union[int, List[int]]
+            The wire(s) to apply the Hadamard gate to.
+        params : List[float], optional
+            Parameters `[A, sigma]` of the Gaussian envelope.
+            Defaults to the optimized parameters through quantum optimal
+            control [15, 30, 1].
+        t : Union[float, Tuple[float, float]], optional
+            Time or time interval for the evolution. Defaults to 0.75.
         """
-        # TODO: 
-            # Global Phase correction seems to do nothing. 
-            # Currently has fidelity of 0.5 with unitary H gate. 
-            # Has phase shift relative to unitary H gate of -pi/4 
-            # for odd amounts of H and -pi/2 for even amounts
         if params is None:
             params = self.opt_params_H
         if t is None:
             t = self.opt_t_H
-        
-        try: 
-            *params, Omega = params[0]
-        except Exception:
-            params, Omega = params[:-1], params[-1]
 
-        # RX like rotation
-        Sx = lambda p, t: self.S(p, t, phi_c=-jnp.pi/2) * Omega
-
-        _H = self.H_static.conj().T @ self.X @ self.H_static
-        _H = qml.Hermitian(_H, wires=wires)
-        H_eff = Sx * _H
-
-        qml.evolve(H_eff)([params], t)
-
-        # RZ rotation
-        self.RZ(jnp.pi, wires)
-
-        # Global Phase correction
-        modulus = 1 if isinstance(wires, int) else len(wires) % 4
-        global_phase = jnp.pi / 2 * modulus
-        global_phase %= 2 * jnp.pi
-        global_phase -= 2 * jnp.pi
-
+        # qml.GlobalPhase(-jnp.pi / 2)
         Sc = lambda p, t: -1.0
 
-        _H = global_phase * jnp.eye(2, dtype=jnp.complex64)
+        _H = jnp.pi / 2 * jnp.eye(2, dtype=jnp.complex64)
         _H = qml.Hermitian(_H, wires=wires)
         H_corr = Sc * _H
         
         qml.evolve(H_corr)([0], 1)
 
-        return
+        self.RZ(jnp.pi, wires=wires)
+        self.RY(jnp.pi / 2, wires=wires, params=params, t=t)
+
 
 
 

@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 
 class QOC:
-    def __init__(self, log_dir="tensorboard/qoc", make_plots=False):
+    def __init__(self, log_dir="tensorboard/qoc", make_plots=False, fig_dir="qml_essentials/figures"):
         """
         Initialize Quantum Optimal Control with Pulse-level Gates.
         """
@@ -22,79 +22,104 @@ class QOC:
         self.H = ps.H
 
         self.ws = jnp.linspace(0, 2 * jnp.pi, 100)
-        # self.writer = SummaryWriter(log_dir=log_dir)
-        
+
+        # self.writer = SummaryWriter(log_dir=log_dir)        
         self.writer = None
         self.make_plots = make_plots
+        self.fig_dir = fig_dir
+        if make_plots:
+            os.makedirs(fig_dir, exist_ok=True)
 
         self.current_gate = None
+
 
     def get_circuits(self):
         dev = qml.device("default.qubit", wires=1)
 
         if self.current_gate in ["RX", "RY"]:
             @qml.qnode(dev, interface="jax")
-            def pulse_circuit(w, pulse_params, t):
+            def pulse_circuit(w, pulse_params=None, t=None):
                 getattr(self, self.current_gate)(w, 0, pulse_params, t)
-                return qml.expval(qml.Z(0))
+                return [qml.expval(qml.PauliX(0)), qml.expval(qml.PauliY(0)), qml.expval(qml.PauliZ(0))]
 
             @qml.qnode(dev)
             def ideal_circuit(w):
                 getattr(qml, self.current_gate)(w, wires=0)
-                return qml.expval(qml.Z(0))
+                return [qml.expval(qml.PauliX(0)), qml.expval(qml.PauliY(0)), qml.expval(qml.PauliZ(0))]
 
-            target_basis = "Z"
+            operation = f"{self.current_gate}(w)"
 
         elif self.current_gate == "RZ":
             @qml.qnode(dev, interface="jax")
             def pulse_circuit(w, *_):
                 qml.RX(jnp.pi / 2, 0)
                 getattr(self, self.current_gate)(w, 0)
-                return qml.expval(qml.X(0))
+                return [qml.expval(qml.PauliX(0)), qml.expval(qml.PauliY(0)), qml.expval(qml.PauliZ(0))]
 
             @qml.qnode(dev)
             def ideal_circuit(w):
                 qml.RX(jnp.pi / 2, 0)
                 getattr(qml, self.current_gate)(w, wires=0)
-                return qml.expval(qml.X(0))
+                return [qml.expval(qml.PauliX(0)), qml.expval(qml.PauliY(0)), qml.expval(qml.PauliZ(0))]
+            
+            operation = f"RX(π / 2)·{self.current_gate}(w)"
+            
+        elif self.current_gate == "H":
+            @qml.qnode(dev, interface="jax")
+            def pulse_circuit(w, pulse_params=None, t=None):
+                qml.RX(w, wires=0)
+                getattr(self, self.current_gate)(0, pulse_params, t)
+                return [qml.expval(qml.PauliX(0)), qml.expval(qml.PauliY(0)), qml.expval(qml.PauliZ(0))]
 
-            target_basis = "X"
+            @qml.qnode(dev)
+            def ideal_circuit(w):
+                qml.RX(w, wires=0)
+                getattr(qml, self.current_gate)(wires=0)
+                return [qml.expval(qml.PauliX(0)), qml.expval(qml.PauliY(0)), qml.expval(qml.PauliZ(0))]
 
-        return pulse_circuit, ideal_circuit, target_basis
+            operation = f"RX(w)·{self.current_gate}"
+
+        return pulse_circuit, ideal_circuit, operation
+
 
     def plot_rotation(self, params: jnp.ndarray):
-        """
-        Plot expectation value vs rotation angle for pulse and unitary gates.
+        
+        pulse_circuit, ideal_circuit, operation = self.get_circuits()
 
-        Args:
-            params (jnp.ndarray): Optimized pulse parameters.
-        """
-        pulse_circuit, ideal_circuit, target_basis= self.get_circuits()
-
-        if self.current_gate in ["RX", "RY"]:
+        if self.current_gate in ["RX", "RY", "H"]:
             *pulse_params, t = params
             pulse_params = [pulse_params]
             pulse_args = [pulse_params, t]
 
         elif self.current_gate in ["RZ"]:
             pulse_args = []
-            
+
         pulse_expvals = [pulse_circuit(w, *pulse_args) for w in self.ws]
         ideal_expvals = [ideal_circuit(w) for w in self.ws]
 
-        plt.plot(self.ws, pulse_expvals, label="Pulse-based")
-        plt.plot(self.ws, ideal_expvals, '--', label="Unitary-based")
-        plt.xlabel("Rotation angle w (rad)")
-        plt.ylabel(f"⟨{target_basis}⟩")
-        plt.title(f"{self.current_gate}(w): Pulse vs Unitary")
-        plt.grid(True)
-        plt.legend()
+        pulse_expvals = jnp.array(pulse_expvals)
+        ideal_expvals = jnp.array(ideal_expvals)
+
+        fig, axs = plt.subplots(3, 1, figsize=(6, 12))
+
+        bases = ["X", "Y", "Z"]
+        for i, basis in enumerate(bases):
+            axs[i].plot(self.ws, pulse_expvals[:, i], label="Pulse-based")
+            axs[i].plot(self.ws, ideal_expvals[:, i], '--', label="Unitary-based")
+            axs[i].set_xlabel("Rotation angle w (rad)")
+            axs[i].set_ylabel(f"⟨{basis}⟩")
+            axs[i].set_title(f"{operation} in {basis}-basis")
+            axs[i].grid(True)
+            axs[i].legend()
 
         xticks = [0, jnp.pi/2, jnp.pi, 3*jnp.pi/2, 2*jnp.pi]
         xtick_labels = ["0", "π/2", "π", "3π/2", "2π"]
-        plt.xticks(xticks, xtick_labels)
+        for ax in axs:
+            ax.set_xticks(xticks)
+            ax.set_xticklabels(xtick_labels)
 
-        plt.savefig(f"qml_essentials/figs/{self.current_gate}(w)_qoc.png")
+        plt.tight_layout()
+        plt.savefig(f"{self.fig_dir}/{self.current_gate}(w)_qoc.png")
         plt.close()
 
     def save_results(self, opt_params, filename="qml_essentials/qoc_results.csv"):
@@ -202,11 +227,11 @@ class QOC:
 
         if self.writer is not None:
             self.writer.flush()
-        return best_params, losses
+        return best_params, best_loss, losses
 
     def optimize_RX(
             self,
-            steps: int = 600,
+            steps: int = 1000,
             w: float = jnp.pi,
             init_params: jnp.ndarray = jnp.array([1.0, 15.0, 1.0]),
             print_every: int = 50
@@ -248,7 +273,7 @@ class QOC:
         
         # Optimizing
         cost = lambda params: self.cost_fn(params, circuit, w, target)
-        params, losses = self.run_optimization(cost, init_params, steps, print_every)
+        params, loss, losses = self.run_optimization(cost, init_params, steps, print_every)
 
         # Saving the optimized parameters
         self.save_results(params)
@@ -257,11 +282,11 @@ class QOC:
         if self.make_plots:
             self.plot_rotation(params)
 
-        return params, losses
+        return params, loss, losses
 
     def optimize_RY(
             self,
-            steps: int = 600,
+            steps: int = 1000,
             w: float = jnp.pi,
             init_params: jnp.ndarray = jnp.array([1.0, 15.0, 1.0]),
             print_every: int = 50
@@ -303,7 +328,7 @@ class QOC:
 
         # Optimizing
         cost = lambda params: self.cost_fn(params, circuit, w, target)
-        params, losses = self.run_optimization(cost, init_params, steps, print_every)
+        params, loss, losses = self.run_optimization(cost, init_params, steps, print_every)
 
         # Saving the optimized parameters
         self.save_results(params)
@@ -312,7 +337,7 @@ class QOC:
         if self.make_plots:
             self.plot_rotation(params)
 
-        return params, losses
+        return params, loss, losses
 
     def optimize_RZ(self):
         """
@@ -331,7 +356,7 @@ class QOC:
 
         return None, None
 
-    def optimize_H(self, steps=600, init_params: jnp.ndarray = jnp.array([1.0, 15.0, 1.0, 1.0]), print_every: int = 50):
+    def optimize_H(self, steps=1000, init_params: jnp.ndarray = jnp.array([1.0, 15.0, 1.0]), print_every: int = 50):
 
         self.current_gate = "H"
 
@@ -355,7 +380,7 @@ class QOC:
         
         # Optimizing
         cost = lambda params: self.cost_fn(params, circuit, None, target)
-        params, losses = self.run_optimization(cost, init_params, steps, print_every)
+        params, loss, losses = self.run_optimization(cost, init_params, steps, print_every)
 
         # Saving the optimized parameters
         self.save_results(params)
@@ -364,7 +389,7 @@ class QOC:
         if self.make_plots:
             self.plot_rotation(params)
 
-        return params, losses
+        return params, loss, losses
 
 
 
@@ -372,53 +397,30 @@ if __name__ == "__main__":
     qoc = QOC(make_plots=False)
     # Run optimization for RX gate
     print("Optimizing RX gate...")
-    optimized_params, loss_values = qoc.optimize_RX(steps=600, w=jnp.pi, init_params=jnp.array([1.0, 15.0, 1.0]))
+    optimized_params, best_loss, loss_values = qoc.optimize_RX(steps=600, w=jnp.pi, init_params=jnp.array([1.0, 15.0, 1.0]))
     print(f"Optimized parameters for RX: {optimized_params}\n")
+    print(f"Best achieved fidelity: {1 - best_loss}")
+    print("-" * 20, f"\n")
 
     # Run optimization for RY gate
     print("Optimizing RY gate...")
-    optimized_params, loss_values = qoc.optimize_RY(steps=600, w=jnp.pi, init_params=jnp.array([1.0, 15.0, 1.0]))
+    optimized_params, best_loss, loss_values = qoc.optimize_RY(steps=600, w=jnp.pi, init_params=jnp.array([1.0, 15.0, 1.0]))
     print(f"Optimized parameters for RY: {optimized_params}\n")
+    print(f"Best achieved fidelity: {1 - best_loss:.6f}\n")
+    print("-" * 20, f"\n")
+
 
     # Run optimization for RZ gate
     print("Plotting RZ gate rotation...")
     qoc.optimize_RZ()
     print(f"Plotted RZ gate rotation\n")
+    print("-" * 20, f"\n")
 
     # Run optimization for H gate
     print("Optimizing H gate...")
-    optimized_params, loss_values = qoc.optimize_H(print_every=2)
+    optimized_params, best_loss, loss_values = qoc.optimize_H(steps=600, init_params=jnp.array([1.0, 15.0, 1.0]))
     print(f"Optimized parameters for H: {optimized_params}\n")
+    print(f"Best achieved fidelity: {1 - best_loss}\n")
+    print("-" * 20, f"\n")
 
     # -----------------------------------------------------------
-
-    dev = qml.device("default.qubit", wires=1)
-
-    @qml.qnode(dev, interface="jax")
-    def custom_H_circuit():
-        PulseGates().H(wires=0)
-        # PulseGates().H(wires=0)
-        # PulseGates().H(wires=0)
-        # PulseGates().H(wires=0)
-        return qml.state()
-
-    @qml.qnode(dev, interface="jax")
-    def builtin_H_circuit():
-        qml.Hadamard(wires=0)
-        # qml.Hadamard(wires=0)
-        # qml.Hadamard(wires=0)
-        # qml.Hadamard(wires=0)
-        return qml.state()
-
-    # Compare final states
-    state_custom = custom_H_circuit()
-    state_builtin = builtin_H_circuit()
-
-    phase_diff = jnp.angle(state_builtin) - jnp.angle(state_custom)
-    print("Relative phase difference:", phase_diff)
-
-    print(state_custom)
-    print(state_builtin)
-
-    fidelity = jnp.abs(jnp.vdot(state_custom, state_builtin)) ** 2
-    print("Fidelity:", fidelity)
