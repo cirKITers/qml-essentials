@@ -516,7 +516,7 @@ class PulseGates:
             [0, jnp.exp(-1j * omega_q / 2)]
         ])
 
-        self.I = jnp.eye(2)
+        self.I = jnp.eye(2, dtype=jnp.complex64)
         self.X = jnp.array([[0, 1], [1, 0]])
         self.Y = jnp.array([[0, -1j], [1j, 0]])
         self.Z = jnp.array([[1, 0], [0, -1]])
@@ -527,8 +527,10 @@ class PulseGates:
         self.opt_params_RY = [[7.8787724942614235, 22.001319411513432]]
         self.opt_t_RY = 1.098524473819202
 
-        self.opt_params_H = [[7.8579924, 21.57270103]]
-        self.opt_t_H = 0.90006688
+        self.opt_params_H = [[7.857992398977854, 21.572701026008765]]
+        self.opt_t_H = 0.9000668764548863
+
+        self.opt_t_CZ = 0.962596375687258
 
 
     def S(self, p, t, phi_c):
@@ -657,22 +659,26 @@ class PulseGates:
         self.RY(jnp.pi / 2, wires=wires, params=params, t=t)
 
 
-    def CZ(self, wires, t = 1.0):
+    def CZ(self, wires, t = None):
         """
         Applies a controlled Z gate to the given wires.
 
         Parameters
         ----------
-        wires : Union[int, List[int]]
+        wires : List[int]
             The wire(s) to apply the controlled Z gate to.
         t : Union[float, Tuple[float, float]], optional
-            Time or time interval for the evolution. Defaults to 0.75.
+            Time or time interval for the evolution. Defaults to optimized time.
         """
+        if t is None:
+            t = self.opt_t_CZ
+            
         I_I   = jnp.kron(self.I, self.I)
         Z_I   = jnp.kron(self.Z, self.I)
         I_Z   = jnp.kron(self.I, self.Z)
         Z_Z   = jnp.kron(self.Z, self.Z)
 
+        # TODO: maybe optimize this parameter too
         Scz = lambda p, t: jnp.pi
 
         _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)

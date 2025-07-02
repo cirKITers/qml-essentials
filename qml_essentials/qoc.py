@@ -9,9 +9,10 @@ from ansaetze import PulseGates
 import matplotlib.pyplot as plt
 # from torch.utils.tensorboard import SummaryWriter
 
+# TODO: Docstrings for all methods
 
 class QOC:
-    def __init__(self, log_dir="tensorboard/qoc", make_plots=False, fig_dir="qml_essentials/figures"):
+    def __init__(self, log_dir="tensorboard/qoc", make_plots=False, fig_dir="qml_essentials/figures", fig_points=100):
         """
         Initialize Quantum Optimal Control with Pulse-level Gates.
         """
@@ -20,8 +21,9 @@ class QOC:
         self.RY = ps.RY
         self.RZ = ps.RZ
         self.H = ps.H
+        self.CZ = ps.CZ
 
-        self.ws = jnp.linspace(0, 2 * jnp.pi, 100)
+        self.ws = jnp.linspace(0, 2 * jnp.pi, fig_points)
 
         # self.writer = SummaryWriter(log_dir=log_dir)        
         self.writer = None
@@ -31,7 +33,6 @@ class QOC:
             os.makedirs(fig_dir, exist_ok=True)
 
         self.current_gate = None
-
 
     def get_circuits(self):
         dev = qml.device("default.qubit", wires=1)
@@ -79,14 +80,36 @@ class QOC:
 
             operation = f"RX(w)·{self.current_gate}"
 
-        return pulse_circuit, ideal_circuit, operation
+        elif self.current_gate == "CZ":
+            dev = qml.device("default.qubit", wires=2)
 
+            @qml.qnode(dev, interface="jax")
+            def pulse_circuit(w, pulse_params=None, t=None):
+                qml.RX(w, wires=0)
+                qml.RX(w, wires=1)
+                self.CZ(wires=[0, 1])
+                qml.RX(-w, wires=1)
+                qml.RX(-w, wires=0)
+                return [qml.expval(qml.PauliX(1)), qml.expval(qml.PauliY(1)), qml.expval(qml.PauliZ(1))]
+
+            @qml.qnode(dev)
+            def ideal_circuit(w):
+                qml.RX(w, wires=0)
+                qml.RX(w, wires=1)
+                qml.CZ(wires=[0, 1])
+                qml.RX(-w, wires=1)
+                qml.RX(-w, wires=0)
+                return [qml.expval(qml.PauliX(1)), qml.expval(qml.PauliY(1)), qml.expval(qml.PauliZ(1))]
+
+            operation = r"$RX_0(w)$·$RX_1(w)$·$CZ_{0, 1}$·$RX_1(-w)$·$RX_0(-w)$"
+
+        return pulse_circuit, ideal_circuit, operation
 
     def plot_rotation(self, params: jnp.ndarray):
         
         pulse_circuit, ideal_circuit, operation = self.get_circuits()
 
-        if self.current_gate in ["RX", "RY", "H"]:
+        if self.current_gate in ["RX", "RY", "H", "CZ"]:
             *pulse_params, t = params
             pulse_params = [pulse_params]
             pulse_args = [pulse_params, t]
@@ -391,10 +414,62 @@ class QOC:
 
         return params, loss, losses
 
+    def optimize_CZ(self, steps=1000, init_params: jnp.ndarray = jnp.array([1.0]), print_every: int = 50):
+        """
+        Optimize pulse parameters for the CZ gate to best approximate the unitary CZ gate.
+
+        Uses gradient-based optimization to minimize the difference between the
+        pulse-based CZ circuit expectation value and the target gate-based CZ.
+
+        Args:
+            steps (int): Number of optimization steps (default: 600).
+            init_params (jnp.ndarray): Initial pulse duration (default: [1.0]).
+            print_every (int): Frequency of printing loss during optimization (default: 50).
+
+        Returns:
+            tuple: Optimized parameters (jnp.ndarray) and list of loss values during optimization.
+        """
+        self.current_gate = "CZ"
+
+        # Defining the circuit for optimization
+        dev = qml.device("default.qubit", wires=2)
+
+        @qml.qnode(dev, interface="jax")
+        def circuit(pulse_params, t, w):
+            qml.H(wires=0)
+            qml.H(wires=1)
+            self.CZ(wires=[0, 1], t=t)
+            return qml.state()
+
+        # Defining the target expectation value for CZ
+        dev_ideal = qml.device("default.qubit", wires=2)
+
+        @qml.qnode(dev_ideal)
+        def ideal_circuit():
+            qml.H(wires=0)
+            qml.H(wires=1)
+            qml.CZ(wires=[0, 1])
+            return qml.state()
+
+        target = ideal_circuit()
+
+        # Optimizing
+        cost = lambda params: self.cost_fn(params, circuit, None, target)
+        params, loss, losses = self.run_optimization(cost, init_params, steps, print_every)
+
+        # Saving the optimized parameters
+        self.save_results(params)
+
+        # Plotting the CZ rotation 
+        if self.make_plots:
+            self.plot_rotation(params)
+
+        return params, loss, losses
+
 
 
 if __name__ == "__main__":
-    # qoc = QOC(make_plots=True)
+    qoc = QOC(make_plots=True, fig_points=100)
     # # Run optimization for RX gate
     # print("Optimizing RX gate...")
     # optimized_params, best_loss, loss_values = qoc.optimize_RX(steps=600, w=jnp.pi, init_params=jnp.array([1.0, 15.0, 1.0]))
@@ -422,28 +497,48 @@ if __name__ == "__main__":
     # print(f"Best achieved fidelity: {1 - best_loss}")
     # print("-" * 20, f"\n")
 
+    # Run optimization for CZ gate
+    print("Optimizing CZ gate...")
+    optimized_params, best_loss, loss_values = qoc.optimize_CZ(steps=600, init_params=jnp.array([0.975]), print_every=2)
+    print(f"Optimized parameters for CZ: {optimized_params}\n")
+    print(f"Best achieved fidelity: {1 - best_loss}")
+    print("-" * 20, f"\n")
+
     # -----------------------------------------------------------
 
+    # Testing the optimized CZ gate
+    # NOTE: Strangely, using the optimized evolve time gives a different 
+    # fidelity than the one obtained during optimization, although the fidelity
+    # is still very high.
     dev = qml.device("default.qubit", wires=2)
 
-    pulse = PulseGates()
+    @qml.qnode(dev, interface="jax")
+    def circuit():
+        qml.H(wires=0)
+        qml.H(wires=1)
+        PulseGates().CZ(wires=[0, 1], t=optimized_params[0])  # Using the optimized time from the ansaetze
+        return qml.state()
 
-    @qml.qnode(dev)
+    # Defining the target expectation value for CZ
+    dev_ideal = qml.device("default.qubit", wires=2)
+
+    @qml.qnode(dev_ideal)
     def ideal_circuit():
-        qml.Hadamard(wires=0)
-        qml.Hadamard(wires=1)
-        qml.CZ(wires=[0,1])
+        qml.H(wires=0)
+        qml.H(wires=1)
+        qml.CZ(wires=[0, 1])
         return qml.state()
 
-    @qml.qnode(dev)
-    def pulse_circuit():
-        qml.Hadamard(wires=0)
-        qml.Hadamard(wires=1)
-        pulse.CZ(wires=[0,1])
-        return qml.state()
+    target = ideal_circuit()
 
     state_ideal = ideal_circuit()
-    state_pulse = pulse_circuit()
+    state_pulse = circuit()
 
-    fidelity = jnp.abs(jnp.vdot(state_ideal, state_pulse)) ** 2
+    print("Ideal state:", state_ideal)
+    print("Pulse state:", state_pulse)
+
+    overlap = jnp.vdot(state_ideal, state_pulse)
+    global_phase_diff = jnp.angle(overlap)
+    fidelity = jnp.abs(overlap) ** 2
+    print("Global phase difference:", global_phase_diff)
     print("Fidelity:", fidelity)
