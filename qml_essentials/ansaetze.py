@@ -1,3 +1,4 @@
+# flake8: noqa: E731
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 import pennylane.numpy as np
@@ -516,14 +517,14 @@ class PulseGates:
             [0, jnp.exp(-1j * omega_q / 2)]
         ])
 
-        self.I = jnp.eye(2, dtype=jnp.complex64)
+        self.Id = jnp.eye(2, dtype=jnp.complex64)
         self.X = jnp.array([[0, 1], [1, 0]])
         self.Y = jnp.array([[0, -1j], [1j, 0]])
         self.Z = jnp.array([[1, 0], [0, -1]])
 
         self.opt_params_RX = [[15.70989327341467, 29.5230665326707]]
         self.opt_t_RX = 0.7499810441330634
-    
+
         self.opt_params_RY = [[7.8787724942614235, 22.001319411513432]]
         self.opt_t_RY = 1.098524473819202
 
@@ -532,6 +533,9 @@ class PulseGates:
 
         self.opt_t_CZ = 0.962596375687258
 
+        self.opt_params_CNOT = [[7.944725340235801, 21.639825810701435]]
+        self.opt_t_CNOT_H = 0.9072431332410497
+        self.opt_t_CNOT_CZ = 0.9550977662365613
 
     def S(self, p, t, phi_c):
         A, sigma = p
@@ -541,9 +545,8 @@ class PulseGates:
         x = jnp.cos(self.omega_c * t + phi_c)
 
         return f * x
-        
 
-    def RX(self, w, wires, params = None, t = None):
+    def RX(self, w, wires, params=None, t=None):
         """
         Applies a rotation around the X axis pulse to the given wires.
 
@@ -560,11 +563,11 @@ class PulseGates:
         t : Union[float, Tuple[float, float]], optional
             Time or time interval for the evolution. Defaults to 0.7499810441330634.
         """
-        if params is None: 
+        if params is None:
             params = self.opt_params_RX
         if t is None:
             t = self.opt_t_RX
-        
+
         Sx = lambda p, t: self.S(p, t, phi_c=jnp.pi) * w
 
         _H = self.H_static.conj().T @ self.X @ self.H_static
@@ -573,8 +576,7 @@ class PulseGates:
 
         return qml.evolve(H_eff)(params, t)
 
-
-    def RY(self, w, wires, params = None, t = None):
+    def RY(self, w, wires, params=None, t=None):
         """
         Applies a rotation around the Y axis pulse to the given wires.
 
@@ -591,7 +593,7 @@ class PulseGates:
         t : Union[float, Tuple[float, float]], optional
             Time or time interval for the evolution. Defaults to 1.098524473819202.
         """
-        if params is None: 
+        if params is None:
             params = self.opt_params_RY
         if t is None:
             t = self.opt_t_RY
@@ -604,8 +606,7 @@ class PulseGates:
 
         return qml.evolve(H_eff)(params, t)
 
-
-    def RZ(self, w, wires, t = 0.5):
+    def RZ(self, w, wires, t=0.5):
         """
         Applies a rotation around the Z axis to the given wires.
 
@@ -625,8 +626,7 @@ class PulseGates:
 
         return qml.evolve(H_eff)([0], t)
 
-
-    def H(self, wires, params = None, t = None):
+    def H(self, wires, params=None, t=None):
         """
         Applies Hadamard gate to the given wires.
 
@@ -652,14 +652,13 @@ class PulseGates:
         _H = jnp.pi / 2 * jnp.eye(2, dtype=jnp.complex64)
         _H = qml.Hermitian(_H, wires=wires)
         H_corr = Sc * _H
-        
+
         qml.evolve(H_corr)([0], 1)
 
         self.RZ(jnp.pi, wires=wires)
         self.RY(jnp.pi / 2, wires=wires, params=params, t=t)
 
-
-    def CZ(self, wires, t = None):
+    def CZ(self, wires, t=None):
         """
         Applies a controlled Z gate to the given wires.
 
@@ -672,13 +671,13 @@ class PulseGates:
         """
         if t is None:
             t = self.opt_t_CZ
-            
-        I_I   = jnp.kron(self.I, self.I)
-        Z_I   = jnp.kron(self.Z, self.I)
-        I_Z   = jnp.kron(self.I, self.Z)
-        Z_Z   = jnp.kron(self.Z, self.Z)
 
-        # TODO: maybe optimize this parameter too
+        I_I = jnp.kron(self.Id, self.Id)
+        Z_I = jnp.kron(self.Z, self.Id)
+        I_Z = jnp.kron(self.Id, self.Z)
+        Z_Z = jnp.kron(self.Z, self.Z)
+
+        # TODO: maybe optimize this parameter too
         Scz = lambda p, t: jnp.pi
 
         _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
@@ -686,6 +685,21 @@ class PulseGates:
         H_eff = Scz * _H
 
         return qml.evolve(H_eff)([0], t)
+
+    def CNOT(self, wires, params=None, t_H=None, t_CZ=None):
+
+        if params is None:
+            params = self.opt_params_CNOT
+        if t_H is None:
+            t_H = self.opt_t_CNOT_H
+        if t_CZ is None:
+            t_CZ = self.opt_t_CNOT_CZ
+
+        self.H(wires=wires[1], params=params, t=t_H)
+        self.CZ(wires=wires, t=t_CZ)
+        self.H(wires=wires[1], params=params, t=t_H)
+
+        return
 
 
 class Ansaetze:
