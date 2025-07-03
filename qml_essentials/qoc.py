@@ -9,9 +9,9 @@ import optax
 import pennylane as qml
 from ansaetze import PulseGates
 import matplotlib.pyplot as plt
-
 # from torch.utils.tensorboard import SummaryWriter
 
+# TODO: Put figures in docs/figures/qoc_<gate_name>.png
 
 class QOC:
     def __init__(

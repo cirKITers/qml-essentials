@@ -505,8 +505,10 @@ class Gates:
         qml.Hadamard(wires=wires)
         Gates.Noise(wires, noise_params)
 
-
+# TODO: Tests (check fidelity, check states are ~equal, global phase difference ~0)
 class PulseGates:
+    # TODO: Reference Tilmann's work
+    # TODO: Mention in the gates if the implementation deviates from Tilmann's work
     def __init__(self, omega_q: float = 10 * jnp.pi, omega_c: float = 10 * jnp.pi):
 
         self.omega_q = omega_q
@@ -702,6 +704,7 @@ class PulseGates:
         return
 
 
+# TODO: Integrate PulseGates into Ansaetze
 class Ansaetze:
 
     def get_available():
