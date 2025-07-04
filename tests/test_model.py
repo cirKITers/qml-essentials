@@ -289,7 +289,7 @@ def test_multiprocessing_expval() -> None:
     n_samples = 40000  # expval requires more samples for advantage
 
     model = Model(
-        n_qubits=6,  # .. and larger circuits
+        n_qubits=8,  # .. and larger circuits
         n_layers=1,
         circuit_type="Circuit_19",
         mp_threshold=1000,
