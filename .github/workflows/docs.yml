@@ -10,7 +10,7 @@ on:
 permissions:
   contents: write
 jobs:
-  build:
+  test:
     runs-on: self-hosted
     if: ${{ github.ref != 'refs/heads/main' }}
     steps:
@@ -66,5 +66,7 @@ jobs:
           name: coverage-report
           run-id: ${{ inputs.test-run-id }}
           path: docs/coverage/
+      - name: Build Docs
+        run: poetry run mkdocs build
       - name: Deploy
         run: poetry run mkdocs gh-deploy --force
