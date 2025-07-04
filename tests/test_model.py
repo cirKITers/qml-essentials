@@ -285,14 +285,13 @@ def test_multiprocessing_density() -> None:
 
 @pytest.mark.unittest
 def test_multiprocessing_expval() -> None:
-    # use n_samples that is not a multiple of the threshold
     n_samples = 40000  # expval requires more samples for advantage
 
     model = Model(
-        n_qubits=8,  # .. and larger circuits
-        n_layers=1,
+        n_qubits=6,  # .. and larger circuits
+        n_layers=6,
         circuit_type="Circuit_19",
-        mp_threshold=1000,
+        mp_threshold=4000,
     )
 
     model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
@@ -304,7 +303,7 @@ def test_multiprocessing_expval() -> None:
 
     model = Model(
         n_qubits=6,
-        n_layers=1,
+        n_layers=6,
         circuit_type="Circuit_19",
     )
 
