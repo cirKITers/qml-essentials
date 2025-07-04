@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "qml-essentials"
-version = "0.1.32"
+version = "0.1.33"
 description = "A toolbox to make working with QML models easier."
 authors = ["Melvin Strobl <melvin.strobl@kit.edu>", "Maja Franz <maja.franz@oth-regensburg.de>"]
 maintainers = ["Melvin Strobl <melvin.strobl@kit.edu>"]
