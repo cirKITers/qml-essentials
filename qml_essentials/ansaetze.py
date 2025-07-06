@@ -59,7 +59,7 @@ class Circuit(ABC):
         """
         indices = self.get_control_indices(n_qubits)
         if indices is None:
-            return None
+            return np.array([])
 
         return w[indices[0] : indices[1] : indices[2]]
 
