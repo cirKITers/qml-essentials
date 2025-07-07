@@ -17,7 +17,7 @@ class Circuit(ABC):
 
     @abstractmethod
     def n_params_per_layer(n_qubits: int) -> int:
-        return
+        raise NotImplementedError("n_params_per_layer method is not implemented")
 
     @abstractmethod
     def get_control_indices(self, n_qubits: int) -> List[int]:
@@ -37,7 +37,7 @@ class Circuit(ABC):
             List of all controlled indices, or None if the circuit does not
             contain controlled rotation gates.
         """
-        return
+        raise NotImplementedError("get_control_indices method is not implemented")
 
     def get_control_angles(self, w: np.ndarray, n_qubits: int) -> Optional[np.ndarray]:
         """
@@ -59,13 +59,13 @@ class Circuit(ABC):
         """
         indices = self.get_control_indices(n_qubits)
         if indices is None:
-            return None
+            return np.array([])
 
         return w[indices[0] : indices[1] : indices[2]]
 
     @abstractmethod
     def build(self, n_qubits: int, n_layers: int):
-        return
+        raise NotImplementedError("build method is not implemented")
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         self.build(*args, **kwds)
@@ -118,6 +118,7 @@ class Gates:
             A PennyLane QubitChannel constructed from the Kraus operators representing
             the n-qubit depolarizing noise channel acting on the specified wires.
         """
+
         def n_qubit_depolarizing_kraus(p: float, n: int) -> List[np.ndarray]:
             if not (0.0 <= p <= 1.0):
                 raise ValueError(f"Probability p must be between 0 and 1, got {p}")
@@ -130,7 +131,7 @@ class Gates:
             Z = qml.matrix(qml.PauliZ(0))
             paulis = [Id, X, Y, Z]
 
-            dim = 2 ** n
+            dim = 2**n
             all_ops = []
 
             # Generate all n-qubit Pauli tensor products:
@@ -141,14 +142,14 @@ class Gates:
                 all_ops.append(P)
 
             # Identity operator corresponds to all zeros indices (Id^n)
-            K0 = np.sqrt(1 - p * (4 ** n - 1) / (4 ** n)) * np.eye(dim)
+            K0 = np.sqrt(1 - p * (4**n - 1) / (4**n)) * np.eye(dim)
 
             kraus_ops = []
             for i, P in enumerate(all_ops):
                 if i == 0:
                     # Skip the identity, already handled as K0
                     continue
-                kraus_ops.append(np.sqrt(p / (4 ** n)) * P)
+                kraus_ops.append(np.sqrt(p / (4**n)) * P)
 
             return [K0] + kraus_ops
 
@@ -220,10 +221,7 @@ class Gates:
         float
             The modified rotation angle after applying the gate error.
         """
-        if (
-            noise_params is not None
-            and noise_params.get("GateError", None) is not None
-        ):
+        if noise_params is not None and noise_params.get("GateError", None) is not None:
             w += Gates.rng.normal(0, noise_params["GateError"])
         return w
 
