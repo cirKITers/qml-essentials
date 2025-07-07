@@ -18,7 +18,7 @@
       
       
       <link rel="icon" href="../logo.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.14">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.15">
     
     
       
@@ -57,32 +57,6 @@
       
 
     
-    
-      
-        <meta  property="og:type"  content="website" >
-      
-        <meta  property="og:title"  content="Ansaetze - QML Essentials" >
-      
-        <meta  property="og:description"  content="None" >
-      
-        <meta  property="og:image"  content="https://cirkiters.github.io/qml-essentials/assets/images/social/ansaetze.png" >
-      
-        <meta  property="og:image:type"  content="image/png" >
-      
-        <meta  property="og:image:width"  content="1200" >
-      
-        <meta  property="og:image:height"  content="630" >
-      
-        <meta  property="og:url"  content="https://cirkiters.github.io/qml-essentials/ansaetze/" >
-      
-        <meta  name="twitter:card"  content="summary_large_image" >
-      
-        <meta  name="twitter:title"  content="Ansaetze - QML Essentials" >
-      
-        <meta  name="twitter:description"  content="None" >
-      
-        <meta  name="twitter:image"  content="https://cirkiters.github.io/qml-essentials/assets/images/social/ansaetze.png" >
-      
     
     
    <link href="../assets/stylesheets/glightbox.min.css" rel="stylesheet"/><style>
@@ -1005,9 +979,10 @@ In general, all of the Ansatzes, that are implemented in this package allow this
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="s2">&quot;AmplitudeDamping&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
 </span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="s2">&quot;PhaseDamping&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
 </span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="s2">&quot;Depolarizing&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="p">}</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="s2">&quot;MultiQubitDepolarizing&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="p">}</span>
 </span></code></pre></div></p>
-<p>Providing this optional input will apply the corresponding noise to the model where the Bit Flip, Phase Flip and Depolarizing Channel are applied after each gate and the Amplitude and Phase Damping are applied at the end of the circuit.
+<p>Providing this optional input will apply the corresponding noise to the model where the Bit Flip, Phase Flip, Depolarizing and Two-Qubit Depolarizing Channels are applied after each gate and the Amplitude and Phase Damping are applied at the end of the circuit.
 To achieve this, we implement our own set of noisy gates, that build upon the Pennylane gates. To demonstrate this, let's extend our example above:
 <div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.ansaetze</span><span class="w"> </span><span class="kn">import</span> <span class="n">Gates</span><span class="p">,</span> <span class="n">Circuit</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
@@ -1045,7 +1020,8 @@ When using a noisy circuit, make sure to run the model with the <code>density</c
 </span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>        <span class="s2">&quot;AmplitudeDamping&quot;</span><span class="p">:</span> <span class="mf">0.03</span><span class="p">,</span>
 </span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>        <span class="s2">&quot;PhaseDamping&quot;</span><span class="p">:</span> <span class="mf">0.04</span><span class="p">,</span>
 </span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>        <span class="s2">&quot;Depolarizing&quot;</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
-</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="p">})</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>        <span class="s2">&quot;MultiQubitDepolarizing&quot;</span><span class="p">:</span> <span class="mf">0.06</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="p">})</span>
 </span></code></pre></div></p>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">#</a></h2>
 <p>This section shows an overview of all the available Ansaetze in our package.
@@ -1110,9 +1086,6 @@ Most of the circuits are implemented according to to the original paper by <a hr
 
 
 
-
-  
-  
 
 
 
@@ -1186,7 +1159,7 @@ Most of the circuits are implemented according to to the original paper by <a hr
       <script id="__config" type="application/json">{"base": "..", "features": ["content.code.select", "content.code.copy"], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      <script src="../assets/javascripts/bundle.56ea9cef.min.js"></script>
       
         <script src="../javascripts/mathjax.js"></script>
       
