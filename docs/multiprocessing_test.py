@@ -61,9 +61,5 @@ for run in range(n_runs):
 
             results[run][n_qubits][n_samples] = t_parallel / t_single
 
-            break
-        break
-    break
-
 with open("results.json", "w") as f:
     json.dump(results, f)
