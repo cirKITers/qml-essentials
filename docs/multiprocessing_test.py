@@ -9,7 +9,7 @@ min_n_samples = 500
 max_n_samples = 8500
 n_samples_step = 1000
 min_n_qubits = 2
-max_n_qubits = 8
+max_n_qubits = 6
 n_layers = 1
 n_runs = 10
 
@@ -32,46 +32,47 @@ except FileNotFoundError:
     pass
 
 if len(results) == 0:
-    for n_qubits in range(min_n_qubits, max_n_qubits + 1):
-        results[n_qubits] = {}
-        for n_samples in range(min_n_samples, max_n_samples + 1, n_samples_step):
-            results[n_qubits][n_samples] = {}
-            for run in range(n_runs):
-                model = Model(
-                    n_qubits=n_qubits,
-                    n_layers=n_layers,
-                    circuit_type="Circuit_19",
-                    random_seed=seed,
-                )
-                model.initialize_params(
-                    rng=np.random.default_rng(seed), repeat=n_samples
-                )
+    try:
+        for n_qubits in range(min_n_qubits, max_n_qubits + 1):
+            results[n_qubits] = {}
+            for n_samples in range(min_n_samples, max_n_samples + 1, n_samples_step):
+                results[n_qubits][n_samples] = {}
+                rng_s = np.random.default_rng(seed)
+                rng_p = np.random.default_rng(seed)
+                for run in range(n_runs):
+                    model = Model(
+                        n_qubits=n_qubits,
+                        n_layers=n_layers,
+                        circuit_type="Circuit_19",
+                        random_seed=seed,
+                    )
+                    model.initialize_params(rng=rng_s, repeat=n_samples)
 
-                start = time_measure()
-                model(execution_type="density")
-                t_single = time_measure() - start
+                    start = time_measure()
+                    model(execution_type="density")
+                    t_single = time_measure() - start
 
-                model = Model(
-                    n_qubits=n_qubits,
-                    n_layers=n_layers,
-                    circuit_type="Circuit_19",
-                    mp_threshold=1000,
-                    random_seed=seed,
-                )
+                    model = Model(
+                        n_qubits=n_qubits,
+                        n_layers=n_layers,
+                        circuit_type="Circuit_19",
+                        mp_threshold=1000,
+                        random_seed=seed,
+                    )
 
-                model.initialize_params(
-                    rng=np.random.default_rng(seed), repeat=n_samples
-                )
+                    model.initialize_params(rng=rng_p, repeat=n_samples)
 
-                start = time_measure()
-                model(execution_type="density")
-                t_parallel = time_measure() - start
+                    start = time_measure()
+                    model(execution_type="density")
+                    t_parallel = time_measure() - start
 
-                print(
-                    f"{run} | {n_qubits} qubits | {n_samples} samples: {t_single / t_parallel}"
-                )
+                    print(
+                        f"{run} | {n_qubits} qubits | {n_samples} samples: {t_single / t_parallel}"
+                    )
 
-                results[n_qubits][n_samples][run] = t_single / t_parallel
+                    results[n_qubits][n_samples][run] = t_single / t_parallel
+    except KeyboardInterrupt:
+        pass
 
     with open("results.json", "w") as f:
         json.dump(results, f)
