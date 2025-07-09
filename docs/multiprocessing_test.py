@@ -11,7 +11,7 @@ n_samples_step = 1000
 min_n_qubits = 2
 max_n_qubits = 6
 n_layers = 1
-n_runs = 10
+n_runs = 8
 
 time_measure = time.time
 
