@@ -95,7 +95,6 @@ for n_qubits in results.keys():
         list(results[n_qubits].keys()),
         y_mean,
         label=f"{n_qubits} qubits",
-        linestyle="dashed",
     )
 
     plt.fill_between(
@@ -104,14 +103,6 @@ for n_qubits in results.keys():
         y_max,
         alpha=0.2,
     )
-
-    # plt.errorbar(
-    #     list(results[n_qubits].keys()),
-    #     y_mean,
-    #     yerr=[[y_min_i for y_min_i in y_min], [y_max_i for y_max_i in y_max]],
-    #     label=f"{n_qubits} qubits",
-    # )
-
 
 plt.xlabel("Number of samples")
 plt.ylabel("Speedup")
