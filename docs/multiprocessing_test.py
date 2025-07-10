@@ -15,20 +15,22 @@ n_runs = 8
 
 time_measure = time.time
 
-print("Configuration:")
-print(f"n_layers: {n_layers}")
-print(f"min_n_samples: {min_n_samples}")
-print(f"max_n_samples: {max_n_samples}")
-print(f"n_samples_step: {n_samples_step}")
-print(f"min_n_qubits: {min_n_qubits}")
-print(f"max_n_qubits: {max_n_qubits}")
-print(f"n_runs: {n_runs}")
 
 try:
     with open("results.json", "r") as f:
         results = json.load(f)
+    print("Found and loaded results.json")
 except FileNotFoundError:
     results = {}
+    print("Configuration:")
+    print(f"n_layers: {n_layers}")
+    print(f"min_n_samples: {min_n_samples}")
+    print(f"max_n_samples: {max_n_samples}")
+    print(f"n_samples_step: {n_samples_step}")
+    print(f"min_n_qubits: {min_n_qubits}")
+    print(f"max_n_qubits: {max_n_qubits}")
+    print(f"n_runs: {n_runs}")
+
     pass
 
 if len(results) == 0:
