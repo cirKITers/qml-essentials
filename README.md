@@ -6,9 +6,6 @@
 <h3 align="center">A toolbox to make working with QML models easier.</h3>
 <br/>
 
-[![Quality](https://github.com/cirKITers/qml-essentials/actions/workflows/quality-publish.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/quality-publish.yml) [![Testing](https://github.com/cirKITers/qml-essentials/actions/workflows/test-on-publish.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/test-on-publish.yml) [![Documentation](https://github.com/cirKITers/qml-essentials/actions/workflows/docs-publish.yml/badge.svg)](https://github.com/cirKITers/qml-essentials/actions/workflows/docs-publish.yml)
-
-
 ## 📜 About
 
 This repo contains some of the commonly used Ansaetze and coding stuff required for working with QML and Data-Reuploading models.\
