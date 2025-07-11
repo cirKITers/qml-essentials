@@ -1,16 +1,12 @@
-name: Testing on PR
+name: Quality on Publish
 on:
-  pull_request:
-    branches: [ "main" ]
   workflow_call:
 permissions:
-  contents: write
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  contents: read
 jobs:
-  test-not-expensive:
+  quality:
     runs-on: self-hosted
+    if: ${{ (github.actor != 'dependabot[bot]') }}
     steps:
       - uses: actions/checkout@v4
       - name: Install poetry
@@ -22,5 +18,9 @@ jobs:
           cache: 'poetry'
       - name: Install dependencies
         run: poetry install --with dev
-      - name: Test with pytest
-        run: poetry run pytest --cov=qml_essentials --dist load -m "not expensive" -n auto
+      - name: Lint with flake8
+        run: |
+          poetry run flake8 qml_essentials
+          poetry run flake8 tests
+      - name: Running license check
+        run: poetry run licensecheck --zero --license mit

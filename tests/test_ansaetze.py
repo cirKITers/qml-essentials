@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.unittest
 def test_gate_gateerror_noise():
-    dev = qml.device("default.mixed", wires=1, shots=3000)
+    Gates.rng = np.random.default_rng(1000)
+
+    dev = qml.device("default.mixed", wires=1)
 
     @qml.qnode(dev)
     def circuit(noise_params=None):
@@ -21,18 +23,18 @@ def test_gate_gateerror_noise():
     no_noise = circuit({})
     with_noise = circuit({"GateError": 100})
 
-    assert np.isclose(no_noise, -1, atol=0.1), (
-        f"Expected ~-1 with no noise, got {no_noise}"
-    )
+    assert np.isclose(
+        no_noise, -1, atol=0.01
+    ), f"Expected ~-1 with no noise, got {no_noise}"
     assert not np.isclose(with_noise, no_noise, atol=0.1), (
-        "Expected with noise output to differ,"
+        "Expected with noise output to differ, "
         + f"got with noise: {with_noise} and with no noise: {no_noise}"
     )
 
 
 @pytest.mark.unittest
 def test_gate_bitflip_noise():
-    dev = qml.device("default.mixed", wires=1, shots=3000)
+    dev = qml.device("default.mixed", wires=1)
 
     @qml.qnode(dev)
     def circuit(noise_params=None):
@@ -42,12 +44,12 @@ def test_gate_bitflip_noise():
     no_noise = circuit({})
     with_noise = circuit({"BitFlip": 0.5})
 
-    assert np.isclose(no_noise, -1, atol=0.1), (
-        f"Expected ~-1 with no noise, got {no_noise}"
-    )
-    assert np.isclose(with_noise, 0, atol=0.1), (
-        f"Expected ~0 with noise, got {with_noise}"
-    )
+    assert np.isclose(
+        no_noise, -1, atol=0.1
+    ), f"Expected ~-1 with no noise, got {no_noise}"
+    assert np.isclose(
+        with_noise, 0, atol=0.1
+    ), f"Expected ~0 with noise, got {with_noise}"
 
 
 @pytest.mark.unittest
@@ -62,17 +64,17 @@ def test_gate_phaseflip_noise():
     no_noise = circuit({})
     with_noise = circuit({"PhaseFlip": 0.5})
 
-    assert np.isclose(no_noise, 1, atol=0.1), (
-        f"Expected ~1 with no noise, got {no_noise}"
-    )
-    assert np.isclose(with_noise, 0, atol=0.1), (
-        f"Expected ~0 with PhaseFlip noise, got {with_noise}"
-    )
+    assert np.isclose(
+        no_noise, 1, atol=0.1
+    ), f"Expected ~1 with no noise, got {no_noise}"
+    assert np.isclose(
+        with_noise, 0, atol=0.1
+    ), f"Expected ~0 with PhaseFlip noise, got {with_noise}"
 
 
 @pytest.mark.unittest
 def test_gate_depolarizing_noise():
-    dev = qml.device("default.mixed", wires=1, shots=3000)
+    dev = qml.device("default.mixed", wires=1)
 
     @qml.qnode(dev)
     def circuit(noise_params=None):
@@ -82,17 +84,17 @@ def test_gate_depolarizing_noise():
     no_noise = circuit({})
     with_noise = circuit({"Depolarizing": 3 / 4})
 
-    assert np.isclose(no_noise, -1, atol=0.1), (
-        f"Expected ~-1 with no noise, got {no_noise}"
-    )
-    assert np.isclose(with_noise, 0, atol=0.1), (
-        f"Expected ~0 with Depolarizing noise, got {with_noise}"
-    )
+    assert np.isclose(
+        no_noise, -1, atol=0.1
+    ), f"Expected ~-1 with no noise, got {no_noise}"
+    assert np.isclose(
+        with_noise, 0, atol=0.1
+    ), f"Expected ~0 with Depolarizing noise, got {with_noise}"
 
 
 @pytest.mark.unittest
 def test_gate_nqubitdepolarizing_noise():
-    dev_two = qml.device("default.mixed", wires=2, shots=3000)
+    dev_two = qml.device("default.mixed", wires=2)
 
     @qml.qnode(dev_two)
     def circuit(noise_params=None):
@@ -103,14 +105,14 @@ def test_gate_nqubitdepolarizing_noise():
     no_noise_two = circuit({})
     with_noise_two = circuit({"MultiQubitDepolarizing": 15 / 16})
 
-    assert np.isclose(no_noise_two, -1, atol=0.1), (
-        f"Expected ~-1 with no noise, got {no_noise_two}"
-    )
-    assert np.isclose(with_noise_two, 0, atol=0.1), (
-        f"Expected ~0 with noise, got {with_noise_two}"
-    )
+    assert np.isclose(
+        no_noise_two, -1, atol=0.1
+    ), f"Expected ~-1 with no noise, got {no_noise_two}"
+    assert np.isclose(
+        with_noise_two, 0, atol=0.1
+    ), f"Expected ~0 with noise, got {with_noise_two}"
 
-    dev_three = qml.device("default.mixed", wires=3, shots=3000)
+    dev_three = qml.device("default.mixed", wires=3)
 
     @qml.qnode(dev_three)
     def circuit(noise_params=None):
@@ -122,11 +124,11 @@ def test_gate_nqubitdepolarizing_noise():
         return qml.expval(qml.PauliZ(0) @ qml.PauliZ(1) @ qml.PauliZ(2))
 
     no_noise_three = circuit({})
-    with_noise_three = circuit({"MultiQubitDepolarizing": 63/64})
+    with_noise_three = circuit({"MultiQubitDepolarizing": 63 / 64})
 
-    assert np.isclose(no_noise_three, 1, atol=0.1), (
-        f"Expected ~1 with no noise, got {no_noise_three}"
-    )
-    assert np.isclose(with_noise_three, 0, atol=0.1), (
-        f"Expected ~0 with noise, got {with_noise_three}"
-    )
+    assert np.isclose(
+        no_noise_three, 1, atol=0.1
+    ), f"Expected ~1 with no noise, got {no_noise_three}"
+    assert np.isclose(
+        with_noise_three, 0, atol=0.1
+    ), f"Expected ~0 with noise, got {with_noise_three}"
