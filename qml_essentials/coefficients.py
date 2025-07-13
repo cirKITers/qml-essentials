@@ -413,7 +413,15 @@ class FourierTree:
             if tape_obs is not None and n_qubits is not None:
                 self.obs = -np.ones(n_qubits, dtype=int)
                 self.phase = 1
-                if isinstance(tape_obs, qml.PauliX):
+                if isinstance(tape_obs, qml_op.Prod):
+                    for to in tape_obs:
+                        if isinstance(to, qml.PauliX):
+                            self.obs[to.wires[0]] = 0
+                        elif isinstance(to, qml.PauliY):
+                            self.obs[to.wires[0]] = 1
+                        elif isinstance(to, qml.PauliZ):
+                            self.obs[to.wires[0]] = 2
+                elif isinstance(tape_obs, qml.PauliX):
                     self.obs[tape_obs.wires[0]] = 0
                 elif isinstance(tape_obs, qml.PauliY):
                     self.obs[tape_obs.wires[0]] = 1
@@ -611,7 +619,7 @@ class FourierTree:
             tree_roots.append(root)
         return tree_roots
 
-    def _encode_observables(self, tape_obs: List[Operator]) -> List[np.ndarray]:
+    def _encode_observables(self, tape_obs: List[Operator]) -> List[FourierTree.Observable]:
         observables = []
         for obs in tape_obs:
             observables.append(FourierTree.Observable(obs, self.model.n_qubits))
@@ -814,8 +822,8 @@ class FourierTree:
             Optional[CoefficientsTreeNode]: The resulting node. Children are set
             recursively. The top level receives the tree root.
         """
-        # if self._early_stopping_possible(pauli_rotation_idx, observable):
-        #     return None
+        if self._early_stopping_possible(pauli_rotation_idx, observable):
+            return None
 
         # remove commuting paulis
         while pauli_rotation_idx >= 0:
