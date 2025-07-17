@@ -6,10 +6,11 @@ import matplotlib.pyplot as plt
 
 seed = 1000
 min_n_samples = 500
-max_n_samples = 8500
-n_samples_step = 1000
-min_n_qubits = 2
-max_n_qubits = 6
+max_n_samples = 5000
+n_samples_step = 500
+n_qubits = 4
+min_mp_threshold = 500
+max_mp_threshold = 5000
 n_layers = 1
 n_runs = 8
 
@@ -26,19 +27,20 @@ except FileNotFoundError:
     print(f"n_layers: {n_layers}")
     print(f"min_n_samples: {min_n_samples}")
     print(f"max_n_samples: {max_n_samples}")
+    print(f"n_qubits: {n_qubits}")
+    print(f"min_mp_threshold: {min_mp_threshold}")
+    print(f"max_mp_threshold: {max_mp_threshold}")
     print(f"n_samples_step: {n_samples_step}")
-    print(f"min_n_qubits: {min_n_qubits}")
-    print(f"max_n_qubits: {max_n_qubits}")
     print(f"n_runs: {n_runs}")
 
     pass
 
 if len(results) == 0:
     try:
-        for n_qubits in range(min_n_qubits, max_n_qubits + 1):
-            results[n_qubits] = {}
+        for mp_threshold in range(min_mp_threshold, max_mp_threshold + 1, 200):
+            results[mp_threshold] = {}
             for n_samples in range(min_n_samples, max_n_samples + 1, n_samples_step):
-                results[n_qubits][n_samples] = {}
+                results[mp_threshold][n_samples] = {}
                 rng_s = np.random.default_rng(seed)
                 rng_p = np.random.default_rng(seed)
                 for run in range(n_runs):
@@ -58,7 +60,7 @@ if len(results) == 0:
                         n_qubits=n_qubits,
                         n_layers=n_layers,
                         circuit_type="Circuit_19",
-                        mp_threshold=1000,
+                        mp_threshold=mp_threshold,
                         random_seed=seed,
                     )
 
@@ -69,10 +71,10 @@ if len(results) == 0:
                     t_parallel = time_measure() - start
 
                     print(
-                        f"{run} | {n_qubits} qubits | {n_samples} samples: {t_single / t_parallel}"
+                        f"{run} | {mp_threshold} mp | {n_samples} samples: {t_single / t_parallel}"
                     )
 
-                    results[n_qubits][n_samples][run] = t_single / t_parallel
+                    results[mp_threshold][n_samples][run] = t_single / t_parallel
     except KeyboardInterrupt:
         pass
 
@@ -80,12 +82,12 @@ if len(results) == 0:
         json.dump(results, f)
 
 
-for n_qubits in results.keys():
+for mp_threshold in results.keys():
     y_mean = []
     y_max = []
     y_min = []
-    for n_samples in results[n_qubits].keys():
-        samples = list(results[n_qubits][n_samples].values())
+    for n_samples in results[mp_threshold].keys():
+        samples = list(results[mp_threshold][n_samples].values())
         y_mean.append(np.mean(samples))
 
     std = np.std(y_mean)
@@ -94,13 +96,13 @@ for n_qubits in results.keys():
         y_min.append(y_mean_i - std)
 
     plt.plot(
-        list(results[n_qubits].keys()),
+        list(results[mp_threshold].keys()),
         y_mean,
-        label=f"{n_qubits} qubits",
+        label=f"{mp_threshold} mp",
     )
 
     plt.fill_between(
-        list(results[n_qubits].keys()),
+        list(results[mp_threshold].keys()),
         y_min,
         y_max,
         alpha=0.2,
