@@ -6,11 +6,12 @@ import matplotlib.pyplot as plt
 
 seed = 1000
 min_n_samples = 500
-max_n_samples = 5000
+max_n_samples = 10000
 n_samples_step = 500
 n_qubits = 4
 min_mp_threshold = 500
 max_mp_threshold = 5000
+mp_threshold_step = 500
 n_layers = 1
 n_runs = 8
 
@@ -37,7 +38,9 @@ except FileNotFoundError:
 
 if len(results) == 0:
     try:
-        for mp_threshold in range(min_mp_threshold, max_mp_threshold + 1, 200):
+        for mp_threshold in range(
+            min_mp_threshold, max_mp_threshold + 1, mp_threshold_step
+        ):
             results[mp_threshold] = {}
             for n_samples in range(min_n_samples, max_n_samples + 1, n_samples_step):
                 results[mp_threshold][n_samples] = {}
@@ -71,7 +74,7 @@ if len(results) == 0:
                     t_parallel = time_measure() - start
 
                     print(
-                        f"{run} | {mp_threshold} mp | {n_samples} samples: {t_single / t_parallel}"
+                        f"{run} | {mp_threshold}/{max_mp_threshold} mp | {n_samples}/{max_n_samples} samples: {t_single / t_parallel:.2f}"
                     )
 
                     results[mp_threshold][n_samples][run] = t_single / t_parallel
