@@ -782,6 +782,10 @@ class Model:
                 self.params = params._value
             else:
                 self.params = params
+
+        if len(params.shape) == 3 and params.shape[2] == 1:
+            params = params[:, :, 0]
+
         return params
 
     def _enc_params_validation(self, enc_params) -> np.ndarray:
