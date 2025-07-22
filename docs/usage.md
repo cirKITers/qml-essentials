@@ -210,6 +210,16 @@ Internally, these combinations will be flattened during processing and then resh
 Here, `O` is the general output shape depending on the execution type, `B_I` is the batch dimension of the inputs and `B_P` is the batch dimension of the parameters.
 This shape is also available as a property of the model: `model.batch_shape`.
 
+Naturally, the question arises which is the best choice for the hyperparameter `mp_threshold` as a higher value will result in fewer processes being spawned, while a lower value might over-allocate the CPU and adds parallelization overhead which reduces the speedup compared to single process.
+To visualize this, we provide following Figure where we computed the speedup for several different configurations of `mp_threshold` and `n_samples` with a 4 qubit circuit, averaging over 8 runs.
+
+![Multiprocessing](figures/multiprocessing_light.png#only-light)
+![Multiprocessing](figures/multiprocessing_dark.png#only-dark)
+
+The computation was performed on a 16 core CPU with 32GB of RAM.
+It is clearly visible, that e.g. a `mp_threshold` of 500 saturates the multi-processing capability after 4500 samples similar to a `mp_threshold` of 1000 at 9000 samples.
+Also note how the speedup (over single process) is 1 until the number of samples equal `mp_threshold`.
+
 ## Quantikz Export
 
 In addition to the printing the model to console and into a figure using matplotlib (thanks to Pennylane); our framework extends this functionality by allowing you to create nice [Quantikz](https://doi.org/10.48550/arXiv.1809.03842) figures that you can embedd in a Latex document :heart_eyes:.

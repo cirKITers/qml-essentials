@@ -123,4 +123,4 @@ plt.legend(
     framealpha=0.0,
 )
 plt.tight_layout()
-plt.savefig("figures/mp_result.png", dpi=100, transparent=True)
+plt.savefig("figures/mp_result_light.png", dpi=100, transparent=True)
