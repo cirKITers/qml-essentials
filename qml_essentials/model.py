@@ -785,6 +785,7 @@ class Model:
             else:
                 self.params = params
 
+        # Get rid of extra dimension
         if len(params.shape) == 3 and params.shape[2] == 1:
             params = params[:, :, 0]
 
