@@ -19,9 +19,9 @@ time_measure = time.time
 
 
 try:
-    with open("results.json", "r") as f:
+    with open("mp_results.json", "r") as f:
         results = json.load(f)
-    print("Found and loaded results.json")
+    print("Found and loaded mp_results.json")
 except FileNotFoundError:
     results = {}
     print("Configuration:")
@@ -81,7 +81,7 @@ if len(results) == 0:
     except KeyboardInterrupt:
         pass
 
-    with open("results.json", "w") as f:
+    with open("mp_results.json", "w") as f:
         json.dump(results, f)
 
 
@@ -101,7 +101,7 @@ for mp_threshold in results.keys():
     plt.plot(
         list(results[mp_threshold].keys()),
         y_mean,
-        label=f"{mp_threshold} mp",
+        label=f"{int(mp_threshold)} mp",
     )
 
     plt.fill_between(
@@ -111,7 +111,16 @@ for mp_threshold in results.keys():
         alpha=0.2,
     )
 
+ax = plt.gca()
+ax.tick_params("x", rotation=45)
 plt.xlabel("Number of samples")
 plt.ylabel("Speedup")
-plt.legend()
-plt.savefig("figures/speedup_light.svg", dpi=100, transparent=True)
+plt.legend(
+    loc="upper center",
+    ncol=5,
+    bbox_to_anchor=(0.48, 1.18),
+    fancybox=True,
+    framealpha=0.0,
+)
+plt.tight_layout()
+plt.savefig("figures/mp_result.png", dpi=100, transparent=True)
