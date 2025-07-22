@@ -240,6 +240,8 @@ class Model:
         self.circuit_mixed: qml.QNode = qml.QNode(
             self._circuit,
             qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
+            interface="autograd" if self.shots is not None else "auto",
+            diff_method="parameter-shift" if self.shots is not None else "best",
         )
 
     @property
@@ -782,6 +784,11 @@ class Model:
                 self.params = params._value
             else:
                 self.params = params
+
+        # Get rid of extra dimension
+        if len(params.shape) == 3 and params.shape[2] == 1:
+            params = params[:, :, 0]
+
         return params
 
     def _enc_params_validation(self, enc_params) -> np.ndarray:
