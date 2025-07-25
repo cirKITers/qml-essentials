@@ -5,13 +5,15 @@ from qml_essentials.model import Model
 import matplotlib.pyplot as plt
 
 seed = 1000
-min_n_samples = 500
-max_n_samples = 10000
-n_samples_step = 500
+execution_type = "expval"  # density, expval
+# first for the density experiment, second for expval
+min_n_samples = 3000  # 500, 3000
+max_n_samples = 60000  # 10000, 60000
+n_samples_step = 3000  # 500, 3000
 n_qubits = 4
-min_mp_threshold = 500
-max_mp_threshold = 5000
-mp_threshold_step = 500
+min_mp_threshold = 1000  # 500, 1000
+max_mp_threshold = 10000  # 5000, 10000
+mp_threshold_step = 1000  # 500, 1000
 n_layers = 1
 n_runs = 8
 
@@ -19,9 +21,9 @@ time_measure = time.time
 
 
 try:
-    with open("mp_results.json", "r") as f:
+    with open(f"mp_results_{execution_type}.json", "r") as f:
         results = json.load(f)
-    print("Found and loaded mp_results.json")
+    print(f"Found and loaded mp_results_{execution_type}.json")
 except FileNotFoundError:
     results = {}
     print("Configuration:")
@@ -56,7 +58,7 @@ if len(results) == 0:
                     model.initialize_params(rng=rng_s, repeat=n_samples)
 
                     start = time_measure()
-                    model(execution_type="density")
+                    model(execution_type=execution_type)
                     t_single = time_measure() - start
 
                     model = Model(
@@ -70,7 +72,7 @@ if len(results) == 0:
                     model.initialize_params(rng=rng_p, repeat=n_samples)
 
                     start = time_measure()
-                    model(execution_type="density")
+                    model(execution_type=execution_type)
                     t_parallel = time_measure() - start
 
                     print(
@@ -81,7 +83,7 @@ if len(results) == 0:
     except KeyboardInterrupt:
         pass
 
-    with open("mp_results.json", "w") as f:
+    with open(f"mp_results_{execution_type}.json", "w") as f:
         json.dump(results, f)
 
 
@@ -123,4 +125,4 @@ plt.legend(
     framealpha=0.0,
 )
 plt.tight_layout()
-plt.savefig("figures/mp_result_light.png", dpi=100, transparent=True)
+plt.savefig(f"figures/mp_result_{execution_type}_light.png", dpi=100, transparent=True)
