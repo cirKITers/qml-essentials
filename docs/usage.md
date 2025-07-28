@@ -229,6 +229,9 @@ While computing the expectation value is significantly easier, there can still b
 Here, the experiment setup is identical to the one above, but the expectation value is computed instead of the density matrix.
 Not how a `mp_threshold` of 1k achives no significant speedup because of the overhead that comes with multiprocessing, whereas increasing the load of each process (e.g. `mp_threshold` > 8k) results in a speedup of almost 4 at 60k samples. 
 
+In all experiments, a CPU load factor of 0.9 was used, meaning that the actual number of spawned processes is `int(0.9*n_cores)` of the CPU.
+This value can be adjusted by overwriting `mode.cpu_scaler`.
+
 ## Quantikz Export
 
 In addition to the printing the model to console and into a figure using matplotlib (thanks to Pennylane); our framework extends this functionality by allowing you to create nice [Quantikz](https://doi.org/10.48550/arXiv.1809.03842) figures that you can embedd in a Latex document :heart_eyes:.
