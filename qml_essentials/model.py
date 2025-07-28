@@ -947,6 +947,8 @@ class Model:
                 batch_shape=self.batch_shape,
             )
             return_dict = mpp.spawn()
+
+            # TODO: the following code could use some optimization
             result = [None] * len(return_dict)
             for k, v in return_dict.items():
                 result[k] = v

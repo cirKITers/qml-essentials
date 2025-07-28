@@ -38,6 +38,8 @@ SKIPPABLE_OPERATIONS = (qml.Barrier,)
 
 
 class MultiprocessingPool:
+    cpu_scaler = 0.9  # set to <1 to not use full CPU
+
     class DillProcess(multiprocessing.Process):
 
         def __init__(self, *args, **kwargs):
@@ -66,7 +68,9 @@ class MultiprocessingPool:
         return_dict = manager.dict()
 
         jobs = []
-        n_procs = max(len(os.sched_getaffinity(0)) // 2, 1)
+        n_procs = max(
+            int(len(os.sched_getaffinity(0)) * MultiprocessingPool.cpu_scaler), 1
+        )
         c_procs = 0
         for it in range(self.n_processes):
             m = self.DillProcess(
@@ -823,8 +827,12 @@ class QuanTikz:
 
     @staticmethod
     def build(
-        circuit: qml.QNode, params, inputs, enc_params=None,
-        gate_values=False, inputs_symbols="x"
+        circuit: qml.QNode,
+        params,
+        inputs,
+        enc_params=None,
+        gate_values=False,
+        inputs_symbols="x",
     ) -> str:
         """
         Generate LaTeX for a quantum circuit in stick notation.
