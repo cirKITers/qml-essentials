@@ -928,6 +928,11 @@ class Model:
             n_processes = math.ceil(combined_batch_size / self.mp_threshold)
         # check if single process
         if n_processes == 1:
+            if self.mp_threshold > 0:
+                warnings.warn(
+                    f"Multiprocessing threshold {self.mp_threshold}>0, but using \
+                    single process, because {combined_batch_size} samples per batch.",
+                )
             result = f(params=params, inputs=inputs, enc_params=enc_params)
         else:
             log.info(f"Using {n_processes} processes")
