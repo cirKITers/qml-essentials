@@ -23,6 +23,7 @@ class Model:
     """
 
     lightning_threshold = 12
+    cpu_scaler = 0.9 # default cpu scaler, =1 means full CPU for MP
 
     def __init__(
         self,
@@ -937,8 +938,9 @@ class Model:
         else:
             log.info(f"Using {n_processes} processes")
             mpp = MultiprocessingPool(
-                n_processes=n_processes,
                 target=Model._parallel_f,
+                n_processes=n_processes,
+                cpu_scaler=self.cpu_scaler,
                 batch_size=self.mp_threshold,
                 f=f,
                 params=params,

@@ -38,7 +38,6 @@ SKIPPABLE_OPERATIONS = (qml.Barrier,)
 
 
 class MultiprocessingPool:
-    cpu_scaler = 0.9  # set to <1 to not use full CPU
 
     class DillProcess(multiprocessing.Process):
 
@@ -57,9 +56,10 @@ class MultiprocessingPool:
                     *self._args, **self._kwargs
                 )  # Execute the target function
 
-    def __init__(self, target, n_processes, *args, **kwargs):
+    def __init__(self, target, n_processes, cpu_scaler, *args, **kwargs):
         self.target = target
         self.n_processes = n_processes
+        self.cpu_scaler = cpu_scaler
         self.args = args
         self.kwargs = kwargs
 
@@ -68,9 +68,7 @@ class MultiprocessingPool:
         return_dict = manager.dict()
 
         jobs = []
-        n_procs = max(
-            int(len(os.sched_getaffinity(0)) * MultiprocessingPool.cpu_scaler), 1
-        )
+        n_procs = max(int(len(os.sched_getaffinity(0)) * self.cpu_scaler), 1)
         c_procs = 0
         for it in range(self.n_processes):
             m = self.DillProcess(
