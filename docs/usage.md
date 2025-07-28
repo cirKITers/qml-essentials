@@ -213,12 +213,21 @@ This shape is also available as a property of the model: `model.batch_shape`.
 Naturally, the question arises which is the best choice for the hyperparameter `mp_threshold` as a higher value will result in fewer processes being spawned, while a lower value might over-allocate the CPU and adds parallelization overhead which reduces the speedup compared to single process.
 To visualize this, we provide following Figure where we computed the speedup for several different configurations of `mp_threshold` and `n_samples` with a 4 qubit circuit, averaging over 8 runs.
 
-![Multiprocessing](figures/mp_result_density_light.png#only-light)
-![Multiprocessing](figures/mp_result_density_dark.png#only-dark)
+![Multiprocessing Density](figures/mp_result_density_light.png#only-light)
+![Multiprocessing Density](figures/mp_result_density_dark.png#only-dark)
 
 The computation was performed on a 16 core CPU with 32GB of RAM.
-It is clearly visible, that e.g. a `mp_threshold` of 500 saturates the multi-processing capability after 4500 samples similar to a `mp_threshold` of 1000 at 9000 samples.
+It is clearly visible, that e.g. a `mp_threshold` of 500 saturates the multi-processing capability after 4500 samples similar to a `mp_threshold` of 1k at 9k samples.
 Also note how the speedup (over single process) is 1 until the number of samples equal `mp_threshold`.
+
+Results above were obtained running density matrix calculations.
+While computing the expectation value is significantly easier, there can still be a speedup achieved for a higher number of samples, as shown in the following Figure.
+
+![Multiprocessing Expval](figures/mp_result_expval_light.png#only-light)
+![Multiprocessing Expval](figures/mp_result_expval_dark.png#only-dark)
+
+Here, the experiment setup is identical to the one above, but the expectation value is computed instead of the density matrix.
+Not how a `mp_threshold` of 1k achives no significant speedup because of the overhead that comes with multiprocessing, whereas increasing the load of each process (e.g. `mp_threshold` > 8k) results in a speedup of almost 4 at 60k samples. 
 
 ## Quantikz Export
 
