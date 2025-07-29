@@ -205,7 +205,7 @@ class Gates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
@@ -267,7 +267,7 @@ class Gates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation gate to.
@@ -292,7 +292,7 @@ class Gates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation gate to.
@@ -317,7 +317,7 @@ class Gates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation gate to.
@@ -343,7 +343,7 @@ class Gates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the controlled rotation gate to.
@@ -369,7 +369,7 @@ class Gates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the controlled rotation gate to.
@@ -395,7 +395,7 @@ class Gates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the controlled rotation gate to.
