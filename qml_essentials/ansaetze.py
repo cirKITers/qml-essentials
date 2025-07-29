@@ -222,7 +222,11 @@ class Gates:
             The modified rotation angle after applying the gate error.
         """
         if noise_params is not None and noise_params.get("GateError", None) is not None:
-            w += Gates.rng.normal(0, noise_params["GateError"], w.shape)
+            w += Gates.rng.normal(
+                0,
+                noise_params["GateError"],
+                w.shape if isinstance(w, np.ndarray) else 1,
+            )
         return w
 
     @staticmethod
