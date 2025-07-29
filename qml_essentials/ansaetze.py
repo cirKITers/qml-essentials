@@ -184,11 +184,17 @@ class Gates:
 
             # noise on single qubits
             for wire in wires:
-                qml.BitFlip(noise_params.get("BitFlip", 0.0), wires=wire)
-                qml.PhaseFlip(noise_params.get("PhaseFlip", 0.0), wires=wire)
-                qml.DepolarizingChannel(
-                    noise_params.get("Depolarizing", 0.0), wires=wire
-                )
+                bf = noise_params.get("BitFlip", 0.0)
+                if bf > 0:
+                    qml.BitFlip(bf, wires=wire)
+
+                pf = noise_params.get("PhaseFlip", 0.0)
+                if pf > 0:
+                    qml.PhaseFlip(pf, wires=wire)
+
+                dp = noise_params.get("Depolarizing", 0.0)
+                if dp > 0:
+                    qml.DepolarizingChannel(dp, wires=wire)
 
             # noise on two-qubits
             if len(wires) > 1:

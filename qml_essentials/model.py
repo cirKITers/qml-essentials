@@ -672,10 +672,10 @@ class Model:
         Applies a state preparation error on each qubit according to the
         probability for StatePreparation provided in the noise_params.
         """
-        sp = self.noise_params.get("StatePreparation", 0.0)
+        p = self.noise_params.get("StatePreparation", 0.0)
         for q in range(self.n_qubits):
-            if sp > 0:
-                qml.BitFlip(sp, wires=q)
+            if p > 0:
+                qml.BitFlip(p, wires=q)
 
     def _apply_general_noise(self) -> None:
         """
@@ -982,6 +982,19 @@ class Model:
 
         return inputs, params, batch_shape
 
+    def _requires_density(self):
+        if self.execution_type == "density":
+            return True
+
+        if self.noise_params is not None:
+            coherent_noise = ["GateError"]
+            for k, v in self.noise_params.items():
+                if k in coherent_noise:
+                    continue
+                if v is not None and v > 0.0:
+                    return True
+        return False
+
     def __call__(
         self,
         params: Optional[np.ndarray] = None,
@@ -1133,7 +1146,7 @@ class Model:
 
         if result is None:
             # if density matrix requested or noise params used
-            if self.execution_type == "density" or self.noise_params is not None:
+            if self._requires_density():
                 result = self._mp_executor(
                     f=self.circuit_mixed,
                     params=params,  # use arraybox params

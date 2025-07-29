@@ -32,6 +32,18 @@ def test_gate_gateerror_noise():
     )
 
 
+@pytest.mark.smoketest
+def test_coherent_as_expval():
+    model = Model(
+        n_qubits=1,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+    # should raise error if gate error is not filtered out correctly
+    # as density operations would then run on sv simulator
+    model(noise_params={"GateError": 0.5})
+
+
 @pytest.mark.unittest
 def test_gate_bitflip_noise():
     dev = qml.device("default.mixed", wires=1)
