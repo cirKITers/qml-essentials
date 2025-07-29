@@ -184,11 +184,17 @@ class Gates:
 
             # noise on single qubits
             for wire in wires:
-                qml.BitFlip(noise_params.get("BitFlip", 0.0), wires=wire)
-                qml.PhaseFlip(noise_params.get("PhaseFlip", 0.0), wires=wire)
-                qml.DepolarizingChannel(
-                    noise_params.get("Depolarizing", 0.0), wires=wire
-                )
+                bf = noise_params.get("BitFlip", 0.0)
+                if bf > 0:
+                    qml.BitFlip(bf, wires=wire)
+
+                pf = noise_params.get("PhaseFlip", 0.0)
+                if pf > 0:
+                    qml.PhaseFlip(pf, wires=wire)
+
+                dp = noise_params.get("Depolarizing", 0.0)
+                if dp > 0:
+                    qml.DepolarizingChannel(dp, wires=wire)
 
             # noise on two-qubits
             if len(wires) > 1:
@@ -205,7 +211,7 @@ class Gates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
@@ -222,7 +228,11 @@ class Gates:
             The modified rotation angle after applying the gate error.
         """
         if noise_params is not None and noise_params.get("GateError", None) is not None:
-            w += Gates.rng.normal(0, noise_params["GateError"])
+            w += Gates.rng.normal(
+                0,
+                noise_params["GateError"],
+                w.shape if isinstance(w, np.ndarray) else 1,
+            )
         return w
 
     @staticmethod
@@ -232,11 +242,11 @@ class Gates:
 
         Parameters
         ----------
-        phi : float
+        phi : Union[float, np.ndarray, List[float]]
             The first rotation angle in radians.
-        theta : float
+        theta : Union[float, np.ndarray, List[float]]
             The second rotation angle in radians.
-        omega : float
+        omega : Union[float, np.ndarray, List[float]]
             The third rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation gate to.
@@ -267,7 +277,7 @@ class Gates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation gate to.
@@ -292,7 +302,7 @@ class Gates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation gate to.
@@ -317,7 +327,7 @@ class Gates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation gate to.
@@ -343,7 +353,7 @@ class Gates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the controlled rotation gate to.
@@ -369,7 +379,7 @@ class Gates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the controlled rotation gate to.
@@ -395,7 +405,7 @@ class Gates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the controlled rotation gate to.

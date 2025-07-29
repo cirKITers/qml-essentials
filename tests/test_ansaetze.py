@@ -21,15 +21,27 @@ def test_gate_gateerror_noise():
         return qml.expval(qml.PauliZ(0))
 
     no_noise = circuit({})
-    with_noise = circuit({"GateError": 100})
+    with_noise = circuit({"GateError": 0.5})
 
     assert np.isclose(
         no_noise, -1, atol=0.01
     ), f"Expected ~-1 with no noise, got {no_noise}"
-    assert not np.isclose(with_noise, no_noise, atol=0.1), (
+    assert not np.isclose(with_noise, no_noise, atol=0.01), (
         "Expected with noise output to differ, "
         + f"got with noise: {with_noise} and with no noise: {no_noise}"
     )
+
+
+@pytest.mark.smoketest
+def test_coherent_as_expval():
+    model = Model(
+        n_qubits=1,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+    # should raise error if gate error is not filtered out correctly
+    # as density operations would then run on sv simulator
+    model(noise_params={"GateError": 0.5})
 
 
 @pytest.mark.unittest
