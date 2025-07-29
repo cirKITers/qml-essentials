@@ -80,7 +80,7 @@ class Coefficients:
 
         start, stop, step = 0, 2 * mts * np.pi, 2 * np.pi / n_freqs
         # Stretch according to the number of frequencies
-        inputs: np.ndarray = np.arange(start, stop, step) % (2 * np.pi)
+        inputs: np.ndarray = np.arange(start, stop, step)
 
         # permute with input dimensionality
         nd_inputs = np.array(np.meshgrid(*[inputs] * model.n_input_feat)).T.reshape(
