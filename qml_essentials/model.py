@@ -983,6 +983,13 @@ class Model:
         return inputs, params, batch_shape
 
     def _requires_density(self):
+        """
+        Checks if the current model requires density matrix simulation or not
+        based on the noise_params variable and the execution type
+
+        Returns:
+            bool: True if model requires density simulation
+        """
         if self.execution_type == "density":
             return True
 
@@ -991,7 +998,7 @@ class Model:
             for k, v in self.noise_params.items():
                 if k in coherent_noise:
                     continue
-                if v is not None and v > 0.0:
+                if v is not None and v > 0:
                     return True
         return False
 

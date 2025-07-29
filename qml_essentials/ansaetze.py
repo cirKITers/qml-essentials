@@ -242,11 +242,11 @@ class Gates:
 
         Parameters
         ----------
-        phi : float
+        phi : Union[float, np.ndarray, List[float]]
             The first rotation angle in radians.
-        theta : float
+        theta : Union[float, np.ndarray, List[float]]
             The second rotation angle in radians.
-        omega : float
+        omega : Union[float, np.ndarray, List[float]]
             The third rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation gate to.
