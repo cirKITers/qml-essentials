@@ -63,6 +63,10 @@ class MultiprocessingPool:
         self.args = args
         self.kwargs = kwargs
 
+        assert (
+            self.cpu_scaler <= 1 and self.cpu_scaler >= 0
+        ), f"cpu_scaler must in [0..1], got {self.cpu_scaler}"
+
     def spawn(self):
         manager = multiprocessing.Manager()
         return_dict = manager.dict()
