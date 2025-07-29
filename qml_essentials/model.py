@@ -23,6 +23,7 @@ class Model:
     """
 
     lightning_threshold = 12
+    cpu_scaler = 0.9  # default cpu scaler, =1 means full CPU for MP
 
     def __init__(
         self,
@@ -935,12 +936,18 @@ class Model:
             n_processes = math.ceil(combined_batch_size / self.mp_threshold)
         # check if single process
         if n_processes == 1:
+            if self.mp_threshold > 0:
+                warnings.warn(
+                    f"Multiprocessing threshold {self.mp_threshold}>0, but using \
+                    single process, because {combined_batch_size} samples per batch.",
+                )
             result = f(params=params, inputs=inputs, enc_params=enc_params)
         else:
             log.info(f"Using {n_processes} processes")
             mpp = MultiprocessingPool(
-                n_processes=n_processes,
                 target=Model._parallel_f,
+                n_processes=n_processes,
+                cpu_scaler=self.cpu_scaler,
                 batch_size=self.mp_threshold,
                 f=f,
                 params=params,
@@ -949,6 +956,8 @@ class Model:
                 batch_shape=self.batch_shape,
             )
             return_dict = mpp.spawn()
+
+            # TODO: the following code could use some optimization
             result = [None] * len(return_dict)
             for k, v in return_dict.items():
                 result[k] = v
