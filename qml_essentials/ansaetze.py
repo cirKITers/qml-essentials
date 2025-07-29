@@ -232,7 +232,11 @@ class Gates:
             w += Gates.rng.normal(
                 0,
                 noise_params["GateError"],
-                w.shape if isinstance(w, np.ndarray) and Gates.batch_gate_error else None,
+                (
+                    w.shape
+                    if isinstance(w, np.ndarray) and Gates.batch_gate_error
+                    else None
+                ),
             )
         return w
 
@@ -514,7 +518,6 @@ class Gates:
 
 
 class Ansaetze:
-
     def get_available():
         return [
             Ansaetze.No_Ansatz,
