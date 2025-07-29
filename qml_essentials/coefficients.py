@@ -58,7 +58,7 @@ class Coefficients:
             )
 
         if trim:
-            for ax in range(len(coeffs.shape)):
+            for ax in range(model.n_input_feat):
                 if coeffs.shape[ax] % 2 == 0:
                     coeffs = np.delete(coeffs, len(coeffs) // 2, axis=ax)
                     freqs = np.delete(freqs, len(freqs) // 2, axis=ax)
