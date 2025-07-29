@@ -73,6 +73,7 @@ class Circuit(ABC):
 
 class Gates:
     rng = np.random.default_rng()
+    batch_gate_error = True
 
     @staticmethod
     def init_rng(seed: int):
@@ -231,7 +232,7 @@ class Gates:
             w += Gates.rng.normal(
                 0,
                 noise_params["GateError"],
-                w.shape if isinstance(w, np.ndarray) else 1,
+                w.shape if isinstance(w, np.ndarray) and Gates.batch_gate_error else 1,
             )
         return w
 
