@@ -23,7 +23,7 @@ class Model:
     """
 
     lightning_threshold = 12
-    cpu_scaler = 0.9 # default cpu scaler, =1 means full CPU for MP
+    cpu_scaler = 0.9  # default cpu scaler, =1 means full CPU for MP
 
     def __init__(
         self,
