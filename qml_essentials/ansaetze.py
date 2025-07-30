@@ -1007,10 +1007,8 @@ class Ansaetze:
                 List of all controlled indices, or None if the circuit does not
                 contain controlled rotation gates.
             """
-            if n_qubits > 1:
-                return [-n_qubits, None, None]
-            else:
-                return None
+            # TODO: implement
+            return None
 
         @staticmethod
         def build(w: np.ndarray, n_qubits: int, noise_params=None):
@@ -1225,7 +1223,10 @@ class Ansaetze:
                 List of all controlled indices, or None if the circuit does not
                 contain controlled rotation gates.
             """
-            return None
+            if n_qubits > 1:
+                return [-(n_qubits - 1), None, None]
+            else:
+                return None
 
         @staticmethod
         def build(w: np.ndarray, n_qubits: int, noise_params=None):
@@ -1295,7 +1296,10 @@ class Ansaetze:
                 List of all controlled indices, or None if the circuit does not
                 contain controlled rotation gates.
             """
-            return None
+            if n_qubits > 1:
+                return [-(n_qubits - 1), None, None]
+            else:
+                return None
 
         @staticmethod
         def build(w: np.ndarray, n_qubits: int, noise_params=None):
@@ -1442,7 +1446,10 @@ class Ansaetze:
                 List of all controlled indices, or None if the circuit does not
                 contain controlled rotation gates.
             """
-            return None
+            if n_qubits > 1:
+                return [-(n_qubits - 1), None, None]
+            else:
+                return None
 
         @staticmethod
         def build(w: np.ndarray, n_qubits: int, noise_params=None):
@@ -1521,7 +1528,10 @@ class Ansaetze:
                 List of all controlled indices, or None if the circuit does not
                 contain controlled rotation gates.
             """
-            return None
+            if n_qubits > 1:
+                return [-(n_qubits - 1), None, None]
+            else:
+                return None
 
         @staticmethod
         def build(w: np.ndarray, n_qubits: int, noise_params=None):

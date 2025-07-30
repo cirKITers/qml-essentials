@@ -148,26 +148,42 @@ def test_gate_nqubitdepolarizing_noise():
     ), f"Expected ~0 with noise, got {with_noise_three}"
 
 
+@pytest.mark.unittest
 def test_control_angles():
-    model = Model(
-        n_qubits=2, n_layers=1, circuit_type="Circuit_19", data_reupload=False
-    )
+    control_params = {
+        "Circuit_3": -3,
+        "Circuit_4": -3,
+        "Circuit_16": -3,
+        "Circuit_17": -3,
+        "Circuit_18": -4,
+        "Circuit_19": -4,
+    }
+    ignore = ["No_Ansatz", "Circuit_6"]
 
-    # slice the first (only) layer of this model to get the params per layer
-    ctrl_params = model.pqc.get_control_angles(model.params[0], model.n_qubits)
+    for ansatz in Ansaetze.get_available():
+        ansatz = ansatz.__name__
+        model = Model(n_qubits=4, n_layers=1, circuit_type=ansatz, data_reupload=False)
 
-    # the ctrl params must be equal to the last two params in the set,
-    # i.e. the params that go into the crx gates of Circuit 19
-    assert np.allclose(
-        ctrl_params, model.params[0, -2:]
-    ), f"Ctrl. params are not returned as expected."
+        # slice the first (only) layer of this model to get the params per layer
+        ctrl_params = model.pqc.get_control_angles(model.params[0], model.n_qubits)
+
+        if ansatz in control_params.keys():
+            # the ctrl params must be equal to the last two params in the set,
+            # i.e. the params that go into the crx gates of Circuit 19
+            assert np.allclose(
+                ctrl_params, model.params[0, control_params[ansatz] :]
+            ), f"Ctrl. params are not returned as expected for circuit {ansatz}."
+        elif ansatz in ignore:
+            continue
+        else:
+            assert (
+                ctrl_params.size == 0
+            ), f"No ctrl. params expected for circuit {ansatz}"
 
 
 @pytest.mark.smoketest
 def test_ansaetze() -> None:
-    ansatz_cases = Ansaetze.get_available()
-
-    for ansatz in ansatz_cases:
+    for ansatz in Ansaetze.get_available():
         logger.info(f"Testing Ansatz: {ansatz.__name__}")
         model = Model(
             n_qubits=4,
