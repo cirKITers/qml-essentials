@@ -1,6 +1,6 @@
 import random
 from qml_essentials.model import Model
-from qml_essentials.ansaetze import Ansaetze, Circuit, Gates
+from qml_essentials.ansaetze import Ansaetze, Gates
 import pytest
 import logging
 import shutil
@@ -9,8 +9,6 @@ import hashlib
 import pennylane as qml
 import pennylane.numpy as np
 import time
-
-from typing import List, Callable
 
 logger = logging.getLogger(__name__)
 
