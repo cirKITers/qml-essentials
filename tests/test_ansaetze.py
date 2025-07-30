@@ -144,3 +144,18 @@ def test_gate_nqubitdepolarizing_noise():
     assert np.isclose(
         with_noise_three, 0, atol=0.1
     ), f"Expected ~0 with noise, got {with_noise_three}"
+
+
+def test_control_angles():
+    model = Model(
+        n_qubits=2, n_layers=1, circuit_type="Circuit_19", data_reupload=False
+    )
+
+    # slice the first (only) layer of this model to get the params per layer
+    ctrl_params = model.pqc.get_control_angles(model.params[0], model.n_qubits)
+
+    # the ctrl params must be equal to the last two params in the set,
+    # i.e. the params that go into the crx gates of Circuit 19
+    assert np.allclose(
+        ctrl_params, model.params[0, -2:]
+    ), f"Ctrl. params are not returned as expected."
