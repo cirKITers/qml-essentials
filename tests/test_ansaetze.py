@@ -32,6 +32,27 @@ def test_gate_gateerror_noise():
     )
 
 
+@pytest.mark.unittest
+def test_batch_gate_error():
+    Gates.rng = np.random.default_rng(1000)
+
+    model = Model(
+        n_qubits=1,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+
+    inputs = np.array([0.1, 0.1, 0.1, 0.1])
+    res_a = model(inputs=inputs, noise_params={"GateError": 0.5})
+    # check if each output is different
+    assert not np.allclose(res_a, np.flip(res_a))
+
+    Gates.batch_gate_error = False
+    res_b = model(inputs=inputs, noise_params={"GateError": 0.5})
+    # check if each output is the same
+    assert np.allclose(res_b, np.flip(res_b))
+
+
 @pytest.mark.smoketest
 def test_coherent_as_expval():
     model = Model(
