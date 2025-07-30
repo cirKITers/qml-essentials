@@ -60,16 +60,14 @@ class Entanglement:
             -1, 2**model.n_qubits, 2**model.n_qubits
         )
 
-        mw_measure = np.zeros(len(rhos))
+        measure = np.zeros(len(rhos))
 
         for i, rho in enumerate(rhos):
-            mw_measure[i] = Entanglement._compute_meyer_wallach_meas(
-                rho, model.n_qubits
-            )
+            measure[i] = Entanglement._compute_meyer_wallach_meas(rho, model.n_qubits)
 
         # Average all iterated states
-        entangling_capability = min(max(mw_measure.mean(), 0.0), 1.0)
-        log.debug(f"Variance of measure: {mw_measure.var()}")
+        entangling_capability = min(max(measure.mean(), 0.0), 1.0)
+        log.debug(f"Variance of measure: {measure.var()}")
 
         # catch floating point errors
         return float(entangling_capability)
@@ -117,8 +115,9 @@ class Entanglement:
             n_samples = np.power(2, model.n_qubits) * n_samples
 
         def _circuit(
-                params: np.ndarray, inputs: np.ndarray,
-                enc_params: Optional[np.ndarray] = None
+            params: np.ndarray,
+            inputs: np.ndarray,
+            enc_params: Optional[np.ndarray] = None,
         ) -> List[np.ndarray]:
             """
             Compute the Bell measurement circuit.
@@ -171,15 +170,15 @@ class Entanglement:
                 params = model.params
 
         n_samples = params.shape[-1]
-        mw_measure = np.zeros(n_samples)
+        measure = np.zeros(n_samples)
 
         # implicitly set input to none in case it's not needed
         kwargs.setdefault("inputs", None)
         exp = model(params=params, **kwargs)
         exp = 1 - 2 * exp[..., -1]
-        mw_measure = 2 * (1 - exp.mean(axis=0))
-        entangling_capability = min(max(mw_measure.mean(), 0.0), 1.0)
-        log.debug(f"Variance of measure: {mw_measure.var()}")
+        measure = 2 * (1 - exp.mean(axis=0))
+        entangling_capability = min(max(measure.mean(), 0.0), 1.0)
+        log.debug(f"Variance of measure: {measure.var()}")
 
         return float(entangling_capability)
 
@@ -232,7 +231,7 @@ class Entanglement:
             model.n_qubits, n_samples=n_sigmas, rng=rng, take_log=True
         )
 
-        if n_samples > 0:
+        if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             model.initialize_params(rng=rng, repeat=n_samples)
         else:
@@ -246,7 +245,7 @@ class Entanglement:
 
         ghz_model = Model(model.n_qubits, 1, "GHZ", data_reupload=False)
 
-        normalised_entropies = np.zeros((n_sigmas, n_samples))
+        normalised_entropies = np.zeros((n_sigmas, model.params.shape[-1]))
         for j, log_sigma in enumerate(log_sigmas):
 
             # Entropy of GHZ states should be maximal
@@ -338,7 +337,7 @@ class Entanglement:
             n_samples = np.power(2, model.n_qubits) * n_samples
 
         rng = np.random.default_rng(seed)
-        if n_samples > 0:
+        if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             model.initialize_params(rng=rng, repeat=n_samples)
         else:
@@ -386,8 +385,8 @@ class Entanglement:
         for prob, ev in zip(eigenvalues, eigenvectors):
             ev = ev.reshape(-1, 1)
             rho = ev @ np.conjugate(ev).T
-            mw_measure = Entanglement._compute_meyer_wallach_meas(rho, n_qubits)
-            ent += prob * mw_measure
+            measure = Entanglement._compute_meyer_wallach_meas(rho, n_qubits)
+            ent += prob * measure
         return ent
 
 
