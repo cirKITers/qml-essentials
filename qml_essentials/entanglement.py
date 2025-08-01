@@ -117,8 +117,9 @@ class Entanglement:
             n_samples = np.power(2, model.n_qubits) * n_samples
 
         def _circuit(
-                params: np.ndarray, inputs: np.ndarray,
-                enc_params: Optional[np.ndarray] = None
+            params: np.ndarray,
+            inputs: np.ndarray,
+            enc_params: Optional[np.ndarray] = None,
         ) -> List[np.ndarray]:
             """
             Compute the Bell measurement circuit.
@@ -392,7 +393,7 @@ class Entanglement:
 
     @staticmethod
     def concentratable_entanglement(
-            model: Model, n_samples: int, seed: int, scale: bool = False, **kwargs: Any
+        model: Model, n_samples: int, seed: int, scale: bool = False, **kwargs: Any
     ) -> float:
         """
         ToDo: Documentation.
@@ -403,22 +404,27 @@ class Entanglement:
             n_samples = np.power(2, model.n) * n_samples
 
         def _circuit(
-                params: np.ndarray, inputs: np.ndarray,
-                enc_params: Optional[np.ndarray] = None
+            params: np.ndarray,
+            inputs: np.ndarray,
+            enc_params: Optional[np.ndarray] = None,
         ) -> List[np.ndarray]:
             """
             ToDo: Documentation.
             """
             # Produce two copies of the models circuit and map the output wires accordinly
-            qml.map_wires(model._variational, {i: i + n for i in range(n)})(params, inputs)
-            qml.map_wires(model._variational, {i: i + 2*n for i in range(n)})(params, inputs)
+            qml.map_wires(model._variational, {i: i + n for i in range(n)})(
+                params, inputs
+            )
+            qml.map_wires(model._variational, {i: i + 2 * n for i in range(n)})(
+                params, inputs
+            )
 
             # Perform swap test
             for i in range(n):
                 qml.H(i)
 
             for i in range(n):
-                qml.CSWAP([i, i + n, i + 2*n])
+                qml.CSWAP([i, i + n, i + 2 * n])
 
             for i in range(n):
                 qml.H(i)
