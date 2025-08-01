@@ -235,6 +235,7 @@ def test_ansaetze() -> None:
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
                     Gates.CRY(w[w_idx], wires=[q, q + 1], noise_params=noise_params)
+                    Gates.CY(wires=[q + 1, q], noise_params=noise_params)
                     w_idx += 1
 
     model = Model(
