@@ -1,7 +1,5 @@
-name: Testing on Review
+name: Testing on Publish
 on:
-  pull_request:
-    types: [review_requested]
   workflow_call:
 permissions:
   contents: write
@@ -21,4 +19,9 @@ jobs:
       - name: Install dependencies
         run: poetry install --with dev
       - name: Test with pytest
-        run: poetry run pytest --cov=qml_essentials --cov-report html --dist load -m "expensive" -n auto
+        run: poetry run pytest --cov=qml_essentials --cov-report html --dist load -n auto
+      - name: Share coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: htmlcov/

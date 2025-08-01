@@ -60,9 +60,13 @@ Note that calling `np.fft.fftshift` is not required from a technical point of vi
 ![Model Fct Spectr](figures/model_fct_spectr_light.png#center#only-light)
 ![Model Fct Spectr](figures/model_fct_spectr_dark.png#center#only-dark)
 
-The same can be done with our framework, with a neat one-liner:
+You may notice, that something isn't quite right here; we specified the frequencies [1.5,3] earlier, but get frequencies for [0,1,2,3].
+This is because, we chose the wrong resolution for the FFT, i.e. the window length was too short.
+In our framework we can achieve the same and above, while simultanously applying the fix to our problem, i.e. setting `mts=2`.
+This additional variable effectively doubles the window length which gives us then the possibility to obtain frequencies "between" the integer valued frequencies seen above.
+
 ```python
-X_shift, X_freq_shift = Coefficients.get_spectrum(model_fct, shift=True)
+X_shift, X_freq_shift = Coefficients.get_spectrum(model_fct, mts=2, shift=True)
 ```
 
 ![Model Fct Spectr Ours](figures/model_fct_spectr_ours_light.png#center#only-light)

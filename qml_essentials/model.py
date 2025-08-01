@@ -23,6 +23,7 @@ class Model:
     """
 
     lightning_threshold = 12
+    cpu_scaler = 0.9  # default cpu scaler, =1 means full CPU for MP
 
     def __init__(
         self,
@@ -240,6 +241,8 @@ class Model:
         self.circuit_mixed: qml.QNode = qml.QNode(
             self._circuit,
             qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
+            interface="autograd" if self.shots is not None else "auto",
+            diff_method="parameter-shift" if self.shots is not None else "best",
         )
 
     @property
@@ -670,10 +673,10 @@ class Model:
         Applies a state preparation error on each qubit according to the
         probability for StatePreparation provided in the noise_params.
         """
-        sp = self.noise_params.get("StatePreparation", 0.0)
+        p = self.noise_params.get("StatePreparation", 0.0)
         for q in range(self.n_qubits):
-            if sp > 0:
-                qml.BitFlip(sp, wires=q)
+            if p > 0:
+                qml.BitFlip(p, wires=q)
 
     def _apply_general_noise(self) -> None:
         """
@@ -782,6 +785,11 @@ class Model:
                 self.params = params._value
             else:
                 self.params = params
+
+        # Get rid of extra dimension
+        if len(params.shape) == 3 and params.shape[2] == 1:
+            params = params[:, :, 0]
+
         return params
 
     def _enc_params_validation(self, enc_params) -> np.ndarray:
@@ -928,12 +936,18 @@ class Model:
             n_processes = math.ceil(combined_batch_size / self.mp_threshold)
         # check if single process
         if n_processes == 1:
+            if self.mp_threshold > 0:
+                warnings.warn(
+                    f"Multiprocessing threshold {self.mp_threshold}>0, but using \
+                    single process, because {combined_batch_size} samples per batch.",
+                )
             result = f(params=params, inputs=inputs, enc_params=enc_params)
         else:
             log.info(f"Using {n_processes} processes")
             mpp = MultiprocessingPool(
-                n_processes=n_processes,
                 target=Model._parallel_f,
+                n_processes=n_processes,
+                cpu_scaler=self.cpu_scaler,
                 batch_size=self.mp_threshold,
                 f=f,
                 params=params,
@@ -942,6 +956,8 @@ class Model:
                 batch_shape=self.batch_shape,
             )
             return_dict = mpp.spawn()
+
+            # TODO: the following code could use some optimization
             result = [None] * len(return_dict)
             for k, v in return_dict.items():
                 result[k] = v
@@ -974,6 +990,26 @@ class Model:
             ).reshape([*params.shape[:-1], np.prod(batch_shape)])
 
         return inputs, params, batch_shape
+
+    def _requires_density(self):
+        """
+        Checks if the current model requires density matrix simulation or not
+        based on the noise_params variable and the execution type
+
+        Returns:
+            bool: True if model requires density simulation
+        """
+        if self.execution_type == "density":
+            return True
+
+        if self.noise_params is not None:
+            coherent_noise = ["GateError"]
+            for k, v in self.noise_params.items():
+                if k in coherent_noise:
+                    continue
+                if v is not None and v > 0:
+                    return True
+        return False
 
     def __call__(
         self,
@@ -1126,7 +1162,7 @@ class Model:
 
         if result is None:
             # if density matrix requested or noise params used
-            if self.execution_type == "density" or self.noise_params is not None:
+            if self._requires_density():
                 result = self._mp_executor(
                     f=self.circuit_mixed,
                     params=params,  # use arraybox params
