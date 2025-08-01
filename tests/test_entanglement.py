@@ -136,9 +136,7 @@ def test_mw_measure() -> None:
             mp_threshold=1000,
         )
 
-        ent_cap = Entanglement.meyer_wallach(
-            model, n_samples=5000, seed=1000, cache=False
-        )
+        ent_cap = Entanglement.meyer_wallach(model, n_samples=5000, seed=1000)
 
         # Save results for later comparison
         circuit_number = test_case["circuit_type"]
@@ -192,7 +190,10 @@ def test_no_sampling() -> None:
         initialization="random",
     )
 
-    _ = Entanglement.meyer_wallach(model, n_samples=-1, seed=1000, cache=False)
+    _ = Entanglement.meyer_wallach(model, n_samples=None, seed=1000)
+    _ = Entanglement.bell_measurements(model, n_samples=None, seed=1000)
+    _ = Entanglement.relative_entropy(model, n_samples=None, n_sigmas=10, seed=1000)
+    _ = Entanglement.entanglement_of_formation(model, n_samples=None, seed=1000)
 
 
 @pytest.mark.expensive
@@ -236,9 +237,7 @@ def test_bell_measure() -> None:
             mp_threshold=1000,
         )
 
-        ent_cap = Entanglement.bell_measurements(
-            model, n_samples=5000, seed=1000, cache=False
-        )
+        ent_cap = Entanglement.bell_measurements(model, n_samples=5000, seed=1000)
 
         # Save results for later comparison
         circuit_number = test_case["circuit_type"]
@@ -297,12 +296,10 @@ def test_entangling_measures() -> None:
             data_reupload=False,
         )
 
-        mw_meas = Entanglement.meyer_wallach(
-            deepcopy(model), n_samples=1000, seed=1000, cache=False
-        )
+        mw_meas = Entanglement.meyer_wallach(deepcopy(model), n_samples=1000, seed=1000)
 
         bell_meas = Entanglement.bell_measurements(
-            deepcopy(model), n_samples=1000, seed=1000, cache=False
+            deepcopy(model), n_samples=1000, seed=1000
         )
 
         assert math.isclose(mw_meas, bell_meas, abs_tol=1e-5), (
@@ -320,13 +317,9 @@ def test_scaling() -> None:
         circuit_type="Circuit_1",
     )
 
-    _ = Entanglement.meyer_wallach(
-        deepcopy(model), n_samples=10, seed=1000, cache=False, scale=True
-    )
+    _ = Entanglement.meyer_wallach(deepcopy(model), n_samples=10, seed=1000, scale=True)
 
-    _ = Entanglement.bell_measurements(
-        model, n_samples=10, seed=1000, cache=False, scale=True
-    )
+    _ = Entanglement.bell_measurements(model, n_samples=10, seed=1000, scale=True)
 
 
 @pytest.mark.smoketest
@@ -351,13 +344,13 @@ def test_relative_entropy() -> None:
     )
 
     separable_ent = Entanglement.relative_entropy(
-        separable_model, n_samples=10, n_sigmas=10, seed=1000, cache=False, scale=False
+        separable_model, n_samples=10, n_sigmas=10, seed=1000, scale=False
     )
     entangled_ent = Entanglement.relative_entropy(
-        entangled_model, n_samples=10, n_sigmas=10, seed=1000, cache=False, scale=False
+        entangled_model, n_samples=10, n_sigmas=10, seed=1000, scale=False
     )
     ghz_ent = Entanglement.relative_entropy(
-        ghz_model, n_samples=10, n_sigmas=10, seed=1000, cache=False, scale=False
+        ghz_model, n_samples=10, n_sigmas=10, seed=1000, scale=False
     )
 
     assert 0.0 < separable_ent < entangled_ent < ghz_ent == 1.0, (
@@ -391,12 +384,12 @@ def test_relative_entropy_order() -> None:
         model = Model(n_qubits=3, n_layers=1, circuit_type=circuit)
 
         ent = Entanglement.relative_entropy(
-            model, n_samples=50, n_sigmas=100, seed=1000, cache=False, scale=False
+            model, n_samples=50, n_sigmas=100, seed=1000, scale=False
         )
         entanglement.append(ent)
 
     ghz_entanglement = Entanglement.relative_entropy(
-        ghz_model, n_samples=1, n_sigmas=100, seed=1000, cache=False, scale=False
+        ghz_model, n_samples=1, n_sigmas=100, seed=1000, scale=False
     )
     entanglement.append(ghz_entanglement)
 

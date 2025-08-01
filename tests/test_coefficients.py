@@ -83,7 +83,7 @@ def test_multi_dim_input() -> None:
         encoding=["RX", "RX"],
     )
 
-    coeffs, freqs = Coefficients.get_spectrum(model, shift=True, trim=True)
+    coeffs, freqs = Coefficients.get_spectrum(model)
 
     assert (
         coeffs.shape == (model.degree * 2 + 1,) * model.n_input_feat
@@ -186,6 +186,10 @@ def test_coefficients_tree() -> None:
         fft_coeffs, fft_freqs = Coefficients.get_spectrum(model, shift=True)
 
         coeff_tree = FourierTree(model)
+        # this one just as smoke test, as it's hard to validate
+        # TODO: think about validation
+        analytical_coeffs, analytical_freqs = coeff_tree.get_spectrum(force_mean=False)
+
         analytical_coeffs, analytical_freqs = coeff_tree.get_spectrum(force_mean=True)
 
         assert len(analytical_freqs[0]) == len(
@@ -265,6 +269,24 @@ def test_shift() -> None:
     ).all(), "Shift failed. Spectrum must be symmetric."
 
 
+@pytest.mark.unittest
+def test_trim() -> None:
+    model = Model(
+        n_qubits=3,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+        output_qubit=-1,
+    )
+
+    coeffs, freqs = Coefficients.get_spectrum(model, mts=2, trim=False)
+    coeffs_trimmed, freqs = Coefficients.get_spectrum(model, mts=2, trim=True)
+
+    assert (
+        coeffs.size - 1 == coeffs_trimmed.size
+    ), f"Wrong shape of coefficients: {coeffs_trimmed.size}, \
+        expected {coeffs.size-1}"
+
+
 @pytest.mark.smoketest
 def test_frequencies() -> None:
     model = Model(
@@ -277,3 +299,14 @@ def test_frequencies() -> None:
     assert (
         freqs.size == coeffs.size
     ), "Frequencies and coefficients must have the same length."
+
+
+@pytest.mark.smoketest
+def test_psd() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+    coeffs, _ = Coefficients.get_spectrum(model, shift=True)
+    _ = Coefficients.get_psd(coeffs)
