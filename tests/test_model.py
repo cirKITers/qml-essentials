@@ -66,6 +66,13 @@ def test_parameters() -> None:
             "exception": False,
         },
         {
+            "shots": None,
+            "execution_type": "state",
+            "output_qubit": -1,
+            "force_mean": False,
+            "exception": False,
+        },
+        {
             "shots": 1024,
             "execution_type": "expval",
             "output_qubit": 0,
@@ -133,6 +140,10 @@ def test_parameters() -> None:
                             result.shape[0] == 2
                         ), f"Shape of {test_case['output_qubit']} is not correct."
                     elif test_case["execution_type"] == "probs":
+                        assert (
+                            result.shape[0] == 4
+                        ), f"Shape of {test_case['output_qubit']} is not correct."
+                    elif test_case["execution_type"] == "state":
                         assert (
                             result.shape[0] == 4
                         ), f"Shape of {test_case['output_qubit']} is not correct."
@@ -240,7 +251,7 @@ def test_batching() -> None:
 @pytest.mark.unittest
 def test_multiprocessing_density() -> None:
     # use n_samples that is not a multiple of the threshold
-    n_samples = 1000
+    n_samples = 1500
 
     model = Model(
         n_qubits=2,
