@@ -396,7 +396,22 @@ class Entanglement:
         model: Model, n_samples: int, seed: int, scale: bool = False, **kwargs: Any
     ) -> float:
         """
-        ToDo: Documentation.
+        Computes the concentratable entanglement of a given model.
+
+        This method utilizes the Concentratable Entanglement measure from
+        https://arxiv.org/abs/2104.06923.
+
+        Args:
+            model (Model): The quantum circuit model.
+            n_samples (int): The number of samples to compute the measure for.
+            seed (int): The seed for the random number generator.
+            scale (bool): Whether to scale the number of samples according to
+                the number of qubits.
+            **kwargs (Any): Additional keyword arguments for the model function.
+
+        Returns:
+            float: Entangling capability of the given circuit, guaranteed
+                to be between 0.0 and 1.0.
         """
         n = model.n_qubits
 
@@ -409,14 +424,23 @@ class Entanglement:
             enc_params: Optional[np.ndarray] = None,
         ) -> List[np.ndarray]:
             """
-            ToDo: Documentation.
+            Constructs a circuit to compute the concentratable entanglement using the swap test by
+            creating two copies of the models circuit and map the output wires accordinly
+
+            Args:
+                params (np.ndarray): The model parameters.
+                inputs (np.ndarray): The input data for the model.
+                enc_params (Optional[np.ndarray]): Optional encoding parameters.
+
+            Returns:
+                List[np.ndarray]: Probabilities obtained from the swap test circuit.
             """
-            # Produce two copies of the models circuit and map the output wires accordinly
+
             qml.map_wires(model._variational, {i: i + n for i in range(n)})(
-                params, inputs
+                params, inputs, enc_params
             )
             qml.map_wires(model._variational, {i: i + 2 * n for i in range(n)})(
-                params, inputs
+                params, inputs, enc_params
             )
 
             # Perform swap test
