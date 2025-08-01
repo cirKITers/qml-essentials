@@ -159,9 +159,7 @@ def test_trainable_frequencies() -> None:
         trainable_frequencies=True,
     )
 
-    assert (
-        model.enc_params.requires_grad
-    ), "Encoding parameters enc_params do not require grad"
+    assert model.enc_params.requires_grad, "Encoding parameters enc_params require grad"
 
     # setting test data
     domain = [-np.pi, np.pi]
@@ -192,6 +190,11 @@ def test_trainable_frequencies() -> None:
 
     grads = qml.grad(cost_fct, argnum=1)(model.params, model.enc_params)
     assert np.any(np.abs(grads) > 1e-6), "Gradient wrt enc_params is too small"
+
+    # Smoketest to check model outside training
+    model(enc_params=np.array(model.enc_params, requires_grad=False))
+    model.trainable_frequencies = False
+    model(enc_params=np.array(model.enc_params, requires_grad=False))
 
 
 @pytest.mark.unittest
