@@ -308,5 +308,5 @@ def test_psd() -> None:
         n_layers=1,
         circuit_type="Circuit_19",
     )
-    coeffs, freqs = Coefficients.get_spectrum(model, shift=True)
-    psd = Coefficients.get_psd(coeffs)
+    coeffs, _ = Coefficients.get_spectrum(model, shift=True)
+    _ = Coefficients.get_psd(coeffs)
