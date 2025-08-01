@@ -390,6 +390,86 @@ class Entanglement:
             ent += prob * mw_measure
         return ent
 
+    @staticmethod
+    def concentratable_entanglement(
+            model: Model, n_samples: int, seed: int, scale: bool = False, **kwargs: Any
+    ) -> float:
+        """
+        ToDo: Documentation.
+        """
+        n = model.n_qubits
+
+        if scale:
+            n_samples = np.power(2, model.n) * n_samples
+
+        def _circuit(
+                params: np.ndarray, inputs: np.ndarray,
+                enc_params: Optional[np.ndarray] = None
+        ) -> List[np.ndarray]:
+            """
+            ToDo: Documentation.
+            """
+            # Produce two copies of the models circuit and map the output wires accordinly
+            qml.map_wires(model._variational, {i: i + n for i in range(n)})(params, inputs)
+            qml.map_wires(model._variational, {i: i + 2*n for i in range(n)})(params, inputs)
+
+            # Perform swap test
+            for i in range(n):
+                qml.H(i)
+
+            for i in range(n):
+                qml.CSWAP([i, i + n, i + 2*n])
+
+            for i in range(n):
+                qml.H(i)
+
+            return qml.probs(wires=[i for i in range(n)])
+
+        model.circuit = qml.QNode(
+            _circuit,
+            qml.device(
+                "default.qubit",
+                shots=model.shots,
+                wires=n * 3,
+            ),
+        )
+
+        rng = np.random.default_rng(seed)
+        if n_samples is not None and n_samples > 0:
+            assert seed is not None, "Seed must be provided when samples > 0"
+            model.initialize_params(rng=rng, repeat=n_samples)
+            params = model.params
+        else:
+            if seed is not None:
+                log.warning("Seed is ignored when samples is 0")
+
+            if len(model.params.shape) <= 2:
+                params = model.params.reshape(*model.params.shape, 1)
+            else:
+                log.info(f"Using sample size of model params: {model.params.shape[-1]}")
+                params = model.params
+
+        n_samples = params.shape[-1]
+
+        # implicitly set input to none in case it's not needed
+        kwargs.setdefault("inputs", None)
+
+        samples_probs = model(params=params, execution_type="probs", **kwargs)
+        if n_samples == 1:
+            samples_probs = [samples_probs]
+
+        ce_measure = np.zeros(len(samples_probs))
+
+        for i, probs in enumerate(samples_probs):
+            ce_measure[i] = 1 - probs[0]
+
+        # Average all iterated states
+        entangling_capability = min(max(ce_measure.mean(), 0.0), 1.0)
+        log.debug(f"Variance of measure: {ce_measure.var()}")
+
+        # catch floating point errors
+        return float(entangling_capability)
+
 
 def sample_random_separable_states(
     n_qubits: int, n_samples: int, rng: np.random.Generator, take_log: bool = False
