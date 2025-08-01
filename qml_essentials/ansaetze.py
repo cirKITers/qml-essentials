@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 import pennylane.numpy as np
-import pennylane as qml
+
+# import pennylane as qml
+from qml_essentials.simulator import QNode as qml
 import itertools
 
 from typing import List, Union, Dict

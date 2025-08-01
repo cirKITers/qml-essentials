@@ -1,4 +1,4 @@
-import jax
+# import jax
 import pennylane as qml
 
 
@@ -13,6 +13,42 @@ class QNode:
         return self.func(*args, **kwargs)
 
     @staticmethod
+    def matrix(op):
+        return qml.matrix(op)
+
+    @staticmethod
+    def BitFlip(p, wires):
+        return qml.BitFlip(p, wires=wires)
+
+    @staticmethod
+    def PhaseFlip(p, wires):
+        return qml.PhaseFlip(p, wires=wires)
+
+    @staticmethod
+    def DepolarizingChannel(p, wires):
+        return qml.DepolarizingChannel(p, wires=wires)
+
+    @staticmethod
+    def NQubitDepolarizingChannel(p, wires):
+        return qml.NQubitDepolarizingChannel(p, wires=wires)
+
+    @staticmethod
+    def QubitChannel(k_list, wires):
+        return qml.QubitChannel(k_list, wires=wires)
+
+    @staticmethod
+    def PauliX(wires):
+        return qml.PauliX(wires=wires)
+
+    @staticmethod
+    def PauliY(wires):
+        return qml.PauliY(wires=wires)
+
+    @staticmethod
+    def PauliZ(wires):
+        return qml.PauliZ(wires=wires)
+
+    @staticmethod
     def RX(theta, wires):
         return qml.RX(theta, wires=wires)
 
@@ -23,6 +59,10 @@ class QNode:
     @staticmethod
     def RZ(theta, wires):
         return qml.RZ(theta, wires=wires)
+
+    @staticmethod
+    def Rot(phi, theta, omega, wires):
+        return qml.Rot(phi, theta, omega, wires=wires)
 
     @staticmethod
     def CX(wires):
@@ -49,6 +89,10 @@ class QNode:
         return qml.CRZ(theta, wires=wires)
 
     @staticmethod
+    def CNOT(wires):
+        return qml.CNOT(wires=wires)
+
+    @staticmethod
     def SWAP(wires):
         return qml.SWAP(wires=wires)
 
@@ -57,5 +101,5 @@ class QNode:
         return qml.Identity(wires=wires)
 
     @staticmethod
-    def H(wires):
+    def Hadamard(wires):
         return qml.Hadamard(wires=wires)
