@@ -383,7 +383,6 @@ class QOC:
         """
         self.current_gate = "RX"
 
-        # Defining the circuit for optimization
         dev = qml.device("default.qubit", wires=1)
 
         @qml.qnode(dev, interface="jax")
@@ -391,10 +390,7 @@ class QOC:
             self.RX(w, 0, pulse_params, t)
             return qml.state()
 
-        # Defining the target expectation value for RX(w)
-        dev_ideal = qml.device("default.qubit", wires=1)
-
-        @qml.qnode(dev_ideal)
+        @qml.qnode(dev)
         def ideal_circuit(w):
             qml.RX(w, wires=0)
             return qml.state()
@@ -446,7 +442,6 @@ class QOC:
         """
         self.current_gate = "RY"
 
-        # Defining the circuit for optimization
         dev = qml.device("default.qubit", wires=1)
 
         @qml.qnode(dev, interface="jax")
@@ -454,10 +449,7 @@ class QOC:
             self.RY(w, 0, pulse_params, t)
             return qml.state()
 
-        # Defining the target expectation value for RY(w)
-        dev_ideal = qml.device("default.qubit", wires=1)
-
-        @qml.qnode(dev_ideal)
+        @qml.qnode(dev)
         def ideal_circuit(w):
             qml.RY(w, wires=0)
             return qml.state()
@@ -524,7 +516,6 @@ class QOC:
         """
         self.current_gate = "H"
 
-        # Defining the circuit for optimization
         dev = qml.device("default.qubit", wires=1)
 
         @qml.qnode(dev, interface="jax")
@@ -532,10 +523,7 @@ class QOC:
             self.H(0, pulse_params, t)
             return qml.state()
 
-        # Defining the target expectation value for RX(w)
-        dev_ideal = qml.device("default.qubit", wires=1)
-
-        @qml.qnode(dev_ideal)
+        @qml.qnode(dev)
         def ideal_circuit():
             qml.H(wires=0)
             return qml.state()
@@ -583,7 +571,6 @@ class QOC:
         """
         self.current_gate = "CZ"
 
-        # Defining the circuit for optimization
         dev = qml.device("default.qubit", wires=2)
 
         @qml.qnode(dev, interface="jax")
@@ -593,10 +580,7 @@ class QOC:
             self.CZ(wires=[0, 1], t=t)
             return qml.state()
 
-        # Defining the target expectation value for CZ
-        dev_ideal = qml.device("default.qubit", wires=2)
-
-        @qml.qnode(dev_ideal)
+        @qml.qnode(dev)
         def ideal_circuit():
             qml.H(wires=0)
             qml.H(wires=1)
@@ -647,7 +631,6 @@ class QOC:
         """
         self.current_gate = "CNOT"
 
-        # Defining the circuit for optimization
         dev = qml.device("default.qubit", wires=2)
 
         @qml.qnode(dev, interface="jax")
@@ -656,10 +639,7 @@ class QOC:
             self.CNOT(wires=[0, 1], params=pulse_params, t_H=t[0], t_CZ=t[1])
             return qml.state()
 
-        # Defining the target expectation value for CNOT
-        dev_ideal = qml.device("default.qubit", wires=2)
-
-        @qml.qnode(dev_ideal)
+        @qml.qnode(dev)
         def ideal_circuit():
             qml.H(wires=0)
             qml.CNOT(wires=[0, 1])

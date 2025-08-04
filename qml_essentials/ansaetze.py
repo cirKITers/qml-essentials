@@ -258,9 +258,6 @@ class Gates:
             phi = Gates.GateError(phi, noise_params)
             theta = Gates.GateError(theta, noise_params)
             omega = Gates.GateError(omega, noise_params)
-            # phi += Gates.rng.normal(0, noise_params["GateError"])
-            # theta += Gates.rng.normal(0, noise_params["GateError"])
-            # omega += Gates.rng.normal(0, noise_params["GateError"])
         qml.Rot(phi, theta, omega, wires=wires)
         Gates.Noise(wires, noise_params)
 
