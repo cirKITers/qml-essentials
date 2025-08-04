@@ -155,7 +155,8 @@ def test_pulse_RX_gate(w):
     state_pulse = pulse_circuit()
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
-    assert np.isclose(fidelity, 1.0, atol=1e-2), f"Fidelity too low for w={w}: {fidelity}"
+    assert np.isclose(
+        fidelity, 1.0, atol=1e-2), f"Fidelity too low for w={w}: {fidelity}"
 
     phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
     assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
@@ -181,7 +182,8 @@ def test_pulse_RY_gate(w):
     state_pulse = pulse_circuit()
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
-    assert np.isclose(fidelity, 1.0, atol=1e-2), f"Fidelity too low for w={w}: {fidelity}"
+    assert np.isclose(
+        fidelity, 1.0, atol=1e-2), f"Fidelity too low for w={w}: {fidelity}"
 
     phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
     assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
@@ -209,7 +211,8 @@ def test_pulse_RZ_gate(w):
     state_pulse = pulse_circuit()
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
-    assert np.isclose(fidelity, 1.0, atol=1e-2), f"Fidelity too low for w={w}: {fidelity}"
+    assert np.isclose(
+        fidelity, 1.0, atol=1e-2), f"Fidelity too low for w={w}: {fidelity}"
 
     phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
     assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
@@ -234,7 +237,8 @@ def test_pulse_H_gate():
     state_pulse = pulse_circuit()
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
-    assert np.isclose(fidelity, 1.0, atol=1e-2), f"Fidelity too low for H gate: {fidelity}"
+    assert np.isclose(
+        fidelity, 1.0, atol=1e-2), f"Fidelity too low for H gate: {fidelity}"
 
     phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
     assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for H gate: {phase_diff}"
