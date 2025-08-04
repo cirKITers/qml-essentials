@@ -668,7 +668,8 @@ class QOC:
 
 if __name__ == "__main__":
     qoc = QOC(make_plots=False, fig_points=70)
-    # # Run optimization for RX gate
+    
+    # # - Run optimization for RX gate -
     # print("Optimizing RX gate...")
     # optimized_params, best_loss, loss_values = qoc.optimize_RX(
     #     w=jnp.pi, init_params=jnp.array([1.0, 15.0, 1.0])
@@ -677,7 +678,7 @@ if __name__ == "__main__":
     # print(f"Best achieved fidelity: {1 - best_loss}")
     # print("-" * 20, "\n")
 
-    # # Run optimization for RY gate
+    # # - Run optimization for RY gate -
     # print("Optimizing RY gate...")
     # optimized_params, best_loss, loss_values = qoc.optimize_RY(
     #     w=jnp.pi, init_params=jnp.array([1.0, 15.0, 1.0])
@@ -686,13 +687,13 @@ if __name__ == "__main__":
     # print(f"Best achieved fidelity: {1 - best_loss:.6f}")
     # print("-" * 20, "\n")
 
-    # # Run optimization for RZ gate
+    # # - Run optimization for RZ gate -
     # print("Plotting RZ gate rotation...")
     # qoc.optimize_RZ()
     # print("Plotted RZ gate rotation")
     # print("-" * 20, "\n")
 
-    # # Run optimization for H gate
+    # # - Run optimization for H gate -
     # print("Optimizing H gate...")
     # optimized_params, best_loss, loss_values = qoc.optimize_H(
     #     init_params=jnp.array([1.0, 15.0, 1.0])
@@ -701,7 +702,7 @@ if __name__ == "__main__":
     # print(f"Best achieved fidelity: {1 - best_loss}")
     # print("-" * 20, "\n")
 
-    # # Run optimization for CZ gate
+    # # - Run optimization for CZ gate -
     # print("Optimizing CZ gate...")
     # optimized_params, best_loss, loss_values = qoc.optimize_CZ(
     #     init_params=jnp.array([0.975]), print_every=50
@@ -710,11 +711,11 @@ if __name__ == "__main__":
     # print(f"Best achieved fidelity: {1 - best_loss}")
     # print("-" * 20, "\n")
 
-    # Run optimization for CNOT gate
-    print("Optimizing CNOT gate...")
-    optimized_params, best_loss, loss_values = qoc.optimize_CNOT(
-        init_params=jnp.array([1.0, 15.0, 1.0, 1.0]), print_every=50
-    )
-    print(f"Optimized parameters for CNOT: {optimized_params}\n")
-    print(f"Best achieved fidelity: {1 - best_loss}")
-    print("-" * 20, "\n")
+    # # - Run optimization for CNOT gate -
+    # print("Optimizing CNOT gate...")
+    # optimized_params, best_loss, loss_values = qoc.optimize_CNOT(
+    #     init_params=jnp.array([1.0, 15.0, 1.0, 1.0]), print_every=50
+    # )
+    # print(f"Optimized parameters for CNOT: {optimized_params}\n")
+    # print(f"Best achieved fidelity: {1 - best_loss}")
+    # print("-" * 20, "\n")

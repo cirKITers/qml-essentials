@@ -502,7 +502,7 @@ class Gates:
         qml.Hadamard(wires=wires)
         Gates.Noise(wires, noise_params)
 
-# TODO: Tests (check fidelity, check states are ~equal, global phase difference ~0)
+
 class PulseGates:
     # TODO: Reference Tilmann's work
     # TODO: Mention in the gates if the implementation deviates from Tilmann's work
@@ -702,6 +702,20 @@ class PulseGates:
 
 
 # TODO: Integrate PulseGates into Ansaetze
+    # Ansaetze is used only in model.py as self.pqc
+    # Modify n_params_per_layer and build
+        # Add gate_level argument to build and define Gates = Gates or PulseGates()
+        # If PulseGates, then: 1. Do not use noise, 2. Optionally use params and t
+        # Maybe PulseAnsaetze from scratch is easier
+        # NOTE: Not all gates in Ansaetze are implemented at pulse level. Un-implemented
+            # gates can be substituted by some decomposition, or the pulse level can be 
+            # implemented
+    # get_control_indices should return the same indices as before (?)
+
+# TODO: In model.py, adapt/extend enc_params and trainable frequencies when pulse level
+# is used, so both the original gate parameter (rotation angle w) and, separately, the
+# pulse parameters can be optimized and trained
+
 class Ansaetze:
 
     def get_available():
