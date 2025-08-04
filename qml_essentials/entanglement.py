@@ -430,8 +430,9 @@ class Entanglement:
             enc_params: Optional[np.ndarray] = None,
         ) -> List[np.ndarray]:
             """
-            Constructs a circuit to compute the concentratable entanglement using the swap test by
-            creating two copies of the models circuit and map the output wires accordingly
+            Constructs a circuit to compute the concentratable entanglement using the
+            swap test by creating two copies of the models circuit and map the output
+            wires accordingly
 
             Args:
                 params (np.ndarray): The model parameters.
