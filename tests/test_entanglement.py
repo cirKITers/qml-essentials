@@ -136,9 +136,7 @@ def test_mw_measure() -> None:
             mp_threshold=1000,
         )
 
-        ent_cap = Entanglement.meyer_wallach(
-            model, n_samples=5000, seed=1000, cache=False
-        )
+        ent_cap = Entanglement.meyer_wallach(model, n_samples=5000, seed=1000)
 
         # Save results for later comparison
         circuit_number = test_case["circuit_type"]
@@ -192,7 +190,10 @@ def test_no_sampling() -> None:
         initialization="random",
     )
 
-    _ = Entanglement.meyer_wallach(model, n_samples=-1, seed=1000, cache=False)
+    _ = Entanglement.meyer_wallach(model, n_samples=None, seed=1000)
+    _ = Entanglement.bell_measurements(model, n_samples=None, seed=1000)
+    _ = Entanglement.relative_entropy(model, n_samples=None, n_sigmas=10, seed=1000)
+    _ = Entanglement.entanglement_of_formation(model, n_samples=None, seed=1000)
 
 
 @pytest.mark.expensive
@@ -236,9 +237,7 @@ def test_bell_measure() -> None:
             mp_threshold=1000,
         )
 
-        ent_cap = Entanglement.bell_measurements(
-            model, n_samples=5000, seed=1000, cache=False
-        )
+        ent_cap = Entanglement.bell_measurements(model, n_samples=5000, seed=1000)
 
         # Save results for later comparison
         circuit_number = test_case["circuit_type"]
@@ -297,12 +296,10 @@ def test_entangling_measures() -> None:
             data_reupload=False,
         )
 
-        mw_meas = Entanglement.meyer_wallach(
-            deepcopy(model), n_samples=1000, seed=1000, cache=False
-        )
+        mw_meas = Entanglement.meyer_wallach(deepcopy(model), n_samples=1000, seed=1000)
 
         bell_meas = Entanglement.bell_measurements(
-            deepcopy(model), n_samples=1000, seed=1000, cache=False
+            deepcopy(model), n_samples=1000, seed=1000
         )
 
         assert math.isclose(mw_meas, bell_meas, abs_tol=1e-5), (
