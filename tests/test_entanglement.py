@@ -320,13 +320,9 @@ def test_scaling() -> None:
         circuit_type="Circuit_1",
     )
 
-    _ = Entanglement.meyer_wallach(
-        deepcopy(model), n_samples=10, seed=1000, cache=False, scale=True
-    )
+    _ = Entanglement.meyer_wallach(deepcopy(model), n_samples=10, seed=1000, scale=True)
 
-    _ = Entanglement.bell_measurements(
-        model, n_samples=10, seed=1000, cache=False, scale=True
-    )
+    _ = Entanglement.bell_measurements(model, n_samples=10, seed=1000, scale=True)
 
 
 @pytest.mark.smoketest
@@ -351,13 +347,13 @@ def test_relative_entropy() -> None:
     )
 
     separable_ent = Entanglement.relative_entropy(
-        separable_model, n_samples=10, n_sigmas=10, seed=1000, cache=False, scale=False
+        separable_model, n_samples=10, n_sigmas=10, seed=1000, scale=False
     )
     entangled_ent = Entanglement.relative_entropy(
-        entangled_model, n_samples=10, n_sigmas=10, seed=1000, cache=False, scale=False
+        entangled_model, n_samples=10, n_sigmas=10, seed=1000, scale=False
     )
     ghz_ent = Entanglement.relative_entropy(
-        ghz_model, n_samples=10, n_sigmas=10, seed=1000, cache=False, scale=False
+        ghz_model, n_samples=10, n_sigmas=10, seed=1000, scale=False
     )
 
     assert 0.0 < separable_ent < entangled_ent < ghz_ent == 1.0, (
@@ -391,12 +387,12 @@ def test_relative_entropy_order() -> None:
         model = Model(n_qubits=3, n_layers=1, circuit_type=circuit)
 
         ent = Entanglement.relative_entropy(
-            model, n_samples=50, n_sigmas=100, seed=1000, cache=False, scale=False
+            model, n_samples=50, n_sigmas=100, seed=1000, scale=False
         )
         entanglement.append(ent)
 
     ghz_entanglement = Entanglement.relative_entropy(
-        ghz_model, n_samples=1, n_sigmas=100, seed=1000, cache=False, scale=False
+        ghz_model, n_samples=1, n_sigmas=100, seed=1000, scale=False
     )
     entanglement.append(ghz_entanglement)
 
@@ -423,16 +419,12 @@ def test_entanglement_of_formation() -> None:
         separable_model,
         n_samples=10,
         seed=1000,
-        cache=False,
-        scale=False,
         noise_params={"Depolarizing": 0.01},
     )
     entangled_ent = Entanglement.entanglement_of_formation(
         entangled_model,
         n_samples=10,
         seed=1000,
-        cache=False,
-        scale=False,
         noise_params={"Depolarizing": 0.01},
     )
 
@@ -462,8 +454,65 @@ def test_entanglement_of_formation_order() -> None:
             model,
             n_samples=100,
             seed=1000,
-            cache=False,
-            scale=False,
+        )
+        entanglement.append(ent)
+
+    assert all(
+        entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
+    ), f"Order of entanglement should be {circuits}."
+
+
+@pytest.mark.smoketest
+def test_concentratable_entanglement() -> None:
+    separable_model = Model(
+        n_qubits=3,
+        n_layers=1,
+        circuit_type="Circuit_1",
+    )
+
+    entangled_model = Model(
+        n_qubits=3,
+        n_layers=1,
+        circuit_type="Strongly_Entangling",
+    )
+
+    separable_ent = Entanglement.concentratable_entanglement(
+        separable_model,
+        n_samples=100,
+        seed=1000,
+    )
+    entangled_ent = Entanglement.concentratable_entanglement(
+        entangled_model,
+        n_samples=100,
+        seed=1000,
+    )
+
+    assert 0.0 <= separable_ent < entangled_ent <= 1.0, (
+        f"Order of entanglement should be 0 < Circuit_1 < Strongly Entangling < "
+        f"GHZ = 1, but got values 0 < {separable_ent} < {entangled_ent} < 1"
+    )
+
+
+@pytest.mark.smoketest
+@pytest.mark.expensive
+def test_concentratable_entanglement_order() -> None:
+
+    circuits = [
+        "Circuit_1",
+        "Circuit_16",
+        "Circuit_19",
+        "Circuit_15",
+        "Strongly_Entangling",
+    ]
+
+    entanglement = [0.0]
+    for circuit in circuits:
+        model = Model(n_qubits=3, n_layers=1, circuit_type=circuit)
+
+        ent = Entanglement.concentratable_entanglement(
+            model,
+            n_samples=100,
+            seed=1000,
         )
         entanglement.append(ent)
 
