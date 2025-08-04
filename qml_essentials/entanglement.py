@@ -413,6 +413,12 @@ class Entanglement:
             float: Entangling capability of the given circuit, guaranteed
                 to be between 0.0 and 1.0.
         """
+        if "noise_params" in kwargs:
+            log.warning(
+                "Concentratable entanglement is not suitable for noisy circuits.\
+                    Consider 'relative_entropy' instead."
+            )
+
         n = model.n_qubits
 
         if scale:
@@ -425,7 +431,7 @@ class Entanglement:
         ) -> List[np.ndarray]:
             """
             Constructs a circuit to compute the concentratable entanglement using the swap test by
-            creating two copies of the models circuit and map the output wires accordinly
+            creating two copies of the models circuit and map the output wires accordingly
 
             Args:
                 params (np.ndarray): The model parameters.
