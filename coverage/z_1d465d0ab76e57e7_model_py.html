@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for qml_essentials/model.py: 92%</title>
+    <title>Coverage for qml_essentials/model.py: 93%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_81f8c14c.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>qml_essentials/model.py</b>:
-            <span class="pc_cov">92%</span>
+            <span class="pc_cov">93%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">405 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">372<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">33<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">377<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">28<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_1d465d0ab76e57e7_utils_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.9.2">coverage.py v7.9.2</a>,
-            created at 2025-07-29 14:55 +0000
+            created at 2025-08-12 12:25 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -484,7 +484,7 @@
     <p class="pln"><span class="n"><a id="t402" href="#t402">402</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t403" href="#t403">403</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t404" href="#t404">404</a></span><span class="t">        <span class="key">if</span> <span class="nam">value</span> <span class="op">==</span> <span class="str">"probs"</span> <span class="key">and</span> <span class="nam">self</span><span class="op">.</span><span class="nam">shots</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t405" href="#t405">405</a></span><span class="t">            <span class="nam">warnings</span><span class="op">.</span><span class="nam">warn</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t405" href="#t405">405</a></span><span class="t">            <span class="nam">warnings</span><span class="op">.</span><span class="nam">warn</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t406" href="#t406">406</a></span><span class="t">                <span class="str">"Setting execution_type to probs without specifying shots."</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t407" href="#t407">407</a></span><span class="t">                <span class="nam">UserWarning</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t408" href="#t408">408</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -721,7 +721,7 @@
     <p class="run"><span class="n"><a id="t639" href="#t639">639</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">execution_type</span> <span class="op">==</span> <span class="str">"density"</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t640" href="#t640">640</a></span><span class="t">            <span class="key">return</span> <span class="nam">qml</span><span class="op">.</span><span class="nam">density_matrix</span><span class="op">(</span><span class="nam">wires</span><span class="op">=</span><span class="nam">list</span><span class="op">(</span><span class="nam">range</span><span class="op">(</span><span class="nam">self</span><span class="op">.</span><span class="nam">n_qubits</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t641" href="#t641">641</a></span><span class="t">        <span class="key">elif</span> <span class="nam">self</span><span class="op">.</span><span class="nam">execution_type</span> <span class="op">==</span> <span class="str">"state"</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t642" href="#t642">642</a></span><span class="t">            <span class="key">return</span> <span class="nam">qml</span><span class="op">.</span><span class="nam">state</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t642" href="#t642">642</a></span><span class="t">            <span class="key">return</span> <span class="nam">qml</span><span class="op">.</span><span class="nam">state</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t643" href="#t643">643</a></span><span class="t">        <span class="com"># run default simulation and get expectation value</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t644" href="#t644">644</a></span><span class="t">        <span class="key">elif</span> <span class="nam">self</span><span class="op">.</span><span class="nam">execution_type</span> <span class="op">==</span> <span class="str">"expval"</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t645" href="#t645">645</a></span><span class="t">            <span class="com"># n-local measurement</span>&nbsp;</span><span class="r"></span></p>
@@ -892,10 +892,10 @@
     <p class="pln"><span class="n"><a id="t810" href="#t810">810</a></span><span class="t">                        <span class="nam">enc_params</span><span class="op">.</span><span class="nam">_value</span><span class="op">,</span> <span class="nam">requires_grad</span><span class="op">=</span><span class="nam">self</span><span class="op">.</span><span class="nam">trainable_frequencies</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t811" href="#t811">811</a></span><span class="t">                    <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t812" href="#t812">812</a></span><span class="t">            <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t813" href="#t813">813</a></span><span class="t">                <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">trainable_frequencies</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t814" href="#t814">814</a></span><span class="t">                    <span class="nam">self</span><span class="op">.</span><span class="nam">enc_params</span> <span class="op">=</span> <span class="nam">enc_params</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t813" href="#t813">813</a></span><span class="t">                <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">trainable_frequencies</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t814" href="#t814">814</a></span><span class="t">                    <span class="nam">self</span><span class="op">.</span><span class="nam">enc_params</span> <span class="op">=</span> <span class="nam">enc_params</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t815" href="#t815">815</a></span><span class="t">                <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t816" href="#t816">816</a></span><span class="t">                    <span class="nam">self</span><span class="op">.</span><span class="nam">enc_params</span> <span class="op">=</span> <span class="nam">np</span><span class="op">.</span><span class="nam">array</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t816" href="#t816">816</a></span><span class="t">                    <span class="nam">self</span><span class="op">.</span><span class="nam">enc_params</span> <span class="op">=</span> <span class="nam">np</span><span class="op">.</span><span class="nam">array</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t817" href="#t817">817</a></span><span class="t">                        <span class="nam">enc_params</span><span class="op">,</span> <span class="nam">requires_grad</span><span class="op">=</span><span class="nam">self</span><span class="op">.</span><span class="nam">trainable_frequencies</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t818" href="#t818">818</a></span><span class="t">                    <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t819" href="#t819">819</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -1328,7 +1328,7 @@
             <a class="nav" href="z_1d465d0ab76e57e7_utils_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.9.2">coverage.py v7.9.2</a>,
-            created at 2025-07-29 14:55 +0000
+            created at 2025-08-12 12:25 +0000
         </p>
     </div>
 </footer>
