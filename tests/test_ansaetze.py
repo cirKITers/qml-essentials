@@ -1,6 +1,6 @@
 import random
 from qml_essentials.model import Model
-from qml_essentials.ansaetze import Ansaetze, Circuit, Gates, PulseGates
+from qml_essentials.ansaetze import Ansaetze, Circuit, Gates
 import pennylane as qml
 import pennylane.numpy as np
 import pytest
@@ -138,7 +138,6 @@ def test_gate_nqubitdepolarizing_noise():
 @pytest.mark.unittest
 @pytest.mark.parametrize("w", [np.pi/4, np.pi/2, np.pi])
 def test_pulse_RX_gate(w):
-    pg = PulseGates()
     dev = qml.device("default.qubit", wires=1)
 
     @qml.qnode(dev)
@@ -148,7 +147,7 @@ def test_pulse_RX_gate(w):
 
     @qml.qnode(dev)
     def pulse_circuit():
-        pg.RX(w, wires=0)
+        Gates.RX(w, wires=0, mode="pulse")
         return qml.state()
 
     state_ideal = ideal_circuit()
@@ -165,7 +164,6 @@ def test_pulse_RX_gate(w):
 @pytest.mark.unittest
 @pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
 def test_pulse_RY_gate(w):
-    pg = PulseGates()
     dev = qml.device("default.qubit", wires=1)
 
     @qml.qnode(dev)
@@ -175,7 +173,7 @@ def test_pulse_RY_gate(w):
 
     @qml.qnode(dev)
     def pulse_circuit():
-        pg.RY(w, wires=0)
+        Gates.RY(w, wires=0, mode="pulse")
         return qml.state()
 
     state_ideal = ideal_circuit()
@@ -192,7 +190,6 @@ def test_pulse_RY_gate(w):
 @pytest.mark.unittest
 @pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
 def test_pulse_RZ_gate(w):
-    pg = PulseGates()
     dev = qml.device("default.qubit", wires=1)
 
     @qml.qnode(dev)
@@ -204,7 +201,7 @@ def test_pulse_RZ_gate(w):
     @qml.qnode(dev)
     def pulse_circuit():
         qml.Hadamard(wires=0)
-        pg.RZ(w, wires=0)
+        Gates.RZ(w, wires=0, mode="pulse")
         return qml.state()
 
     state_ideal = ideal_circuit()
@@ -220,7 +217,6 @@ def test_pulse_RZ_gate(w):
 
 @pytest.mark.unittest
 def test_pulse_H_gate():
-    pg = PulseGates()
     dev = qml.device("default.qubit", wires=1)
 
     @qml.qnode(dev)
@@ -230,7 +226,7 @@ def test_pulse_H_gate():
 
     @qml.qnode(dev)
     def pulse_circuit():
-        pg.H(wires=0)
+        Gates.H(wires=0, mode="pulse")
         return qml.state()
 
     state_ideal = ideal_circuit()
@@ -246,7 +242,6 @@ def test_pulse_H_gate():
 
 @pytest.mark.unittest
 def test_pulse_CZ_gate():
-    pg = PulseGates()
     dev = qml.device("default.qubit", wires=2)
 
     @qml.qnode(dev)
@@ -260,7 +255,7 @@ def test_pulse_CZ_gate():
     def pulse_circuit():
         qml.H(wires=0)
         qml.H(wires=1)
-        pg.CZ(wires=[0, 1])
+        Gates.CZ(wires=[0, 1], mode="pulse")
         return qml.state()
 
     state_ideal = ideal_circuit()
@@ -275,7 +270,6 @@ def test_pulse_CZ_gate():
 
 @pytest.mark.unittest
 def test_pulse_CNOT_gate():
-    pg = PulseGates()
     dev = qml.device("default.qubit", wires=2)
 
     @qml.qnode(dev)
@@ -287,7 +281,7 @@ def test_pulse_CNOT_gate():
     @qml.qnode(dev)
     def pulse_circuit():
         qml.H(wires=0)
-        pg.CNOT(wires=[0, 1])
+        Gates.CNOT(wires=[0, 1], mode="pulse")
         return qml.state()
 
     state_ideal = ideal_circuit()

@@ -17,6 +17,8 @@ import logging
 log = logging.getLogger(__name__)
 
 
+# NOTE: Implement pulse level by having it as a execution type
+
 class Model:
     """
     A quantum circuit model.
@@ -1037,6 +1039,7 @@ class Model:
         params: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
         enc_params: Optional[np.ndarray] = None,
+        # TODO: add pulse parameters
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
@@ -1087,6 +1090,9 @@ class Model:
             self.noise_params = noise_params
         if execution_type is not None:
             self.execution_type = execution_type
+
+        # TODO: Raise exception if pulse params is not None and execution type is 
+        # not pulse
 
         params = self._params_validation(params)
         inputs = self._inputs_validation(inputs)
@@ -1161,6 +1167,7 @@ class Model:
                 result = result[..., -1].sum(axis=-1)
             else:
                 result = result[1:, ...].sum(axis=0)
+        # TODO: add execution type pulse here
 
         if self.batch_shape[0] > 1 and self.batch_shape[1] > 1:
             result = result.reshape(-1, *self.batch_shape)

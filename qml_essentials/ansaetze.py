@@ -1,6 +1,8 @@
 # flake8: noqa: E731
 from abc import ABC, abstractmethod
 from typing import Any, Optional
+
+from torch import name
 import pennylane.numpy as np
 import pennylane as qml
 from jax import numpy as jnp
@@ -73,7 +75,7 @@ class Circuit(ABC):
         self.build(*args, **kwds)
 
 
-class Gates:
+class UnitaryGates:
     rng = np.random.default_rng()
 
     @staticmethod
@@ -86,7 +88,7 @@ class Gates:
         seed : int
             The seed for the random number generator.
         """
-        Gates.rng = np.random.default_rng(seed)
+        UnitaryGates.rng = np.random.default_rng(seed)
 
     @staticmethod
     def NQubitDepolarizingChannel(p, wires):
@@ -195,7 +197,7 @@ class Gates:
             if len(wires) > 1:
                 p = noise_params.get("MultiQubitDepolarizing", 0.0)
                 if p > 0:
-                    Gates.NQubitDepolarizingChannel(p, wires)
+                    UnitaryGates.NQubitDepolarizingChannel(p, wires)
 
     @staticmethod
     def GateError(
@@ -226,7 +228,7 @@ class Gates:
             noise_params is not None
             and noise_params.get("GateError", None) is not None
         ):
-            w += Gates.rng.normal(0, noise_params["GateError"])
+            w += UnitaryGates.rng.normal(0, noise_params["GateError"])
         return w
 
     @staticmethod
@@ -255,11 +257,11 @@ class Gates:
             All parameters are optional and default to 0.0 if not provided.
         """
         if noise_params is not None and "GateError" in noise_params:
-            phi = Gates.GateError(phi, noise_params)
-            theta = Gates.GateError(theta, noise_params)
-            omega = Gates.GateError(omega, noise_params)
+            phi = UnitaryGates.GateError(phi, noise_params)
+            theta = UnitaryGates.GateError(theta, noise_params)
+            omega = UnitaryGates.GateError(omega, noise_params)
         qml.Rot(phi, theta, omega, wires=wires)
-        Gates.Noise(wires, noise_params)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def RX(w, wires, noise_params=None):
@@ -282,9 +284,9 @@ class Gates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        w = Gates.GateError(w, noise_params)
+        w = UnitaryGates.GateError(w, noise_params)
         qml.RX(w, wires=wires)
-        Gates.Noise(wires, noise_params)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def RY(w, wires, noise_params=None):
@@ -307,9 +309,9 @@ class Gates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        w = Gates.GateError(w, noise_params)
+        w = UnitaryGates.GateError(w, noise_params)
         qml.RY(w, wires=wires)
-        Gates.Noise(wires, noise_params)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def RZ(w, wires, noise_params=None):
@@ -332,9 +334,9 @@ class Gates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        w = Gates.GateError(w, noise_params)
+        w = UnitaryGates.GateError(w, noise_params)
         qml.RZ(w, wires=wires)
-        Gates.Noise(wires, noise_params)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def CRX(w, wires, noise_params=None):
@@ -358,9 +360,9 @@ class Gates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        w = Gates.GateError(w, noise_params)
+        w = UnitaryGates.GateError(w, noise_params)
         qml.CRX(w, wires=wires)
-        Gates.Noise(wires, noise_params)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def CRY(w, wires, noise_params=None):
@@ -384,9 +386,9 @@ class Gates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        w = Gates.GateError(w, noise_params)
+        w = UnitaryGates.GateError(w, noise_params)
         qml.CRY(w, wires=wires)
-        Gates.Noise(wires, noise_params)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def CRZ(w, wires, noise_params=None):
@@ -410,9 +412,9 @@ class Gates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        w = Gates.GateError(w, noise_params)
+        w = UnitaryGates.GateError(w, noise_params)
         qml.CRZ(w, wires=wires)
-        Gates.Noise(wires, noise_params)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def CX(wires, noise_params=None):
@@ -434,7 +436,7 @@ class Gates:
             All parameters are optional and default to 0.0 if not provided.
         """
         qml.CNOT(wires=wires)
-        Gates.Noise(wires, noise_params)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def CY(wires, noise_params=None):
@@ -456,7 +458,7 @@ class Gates:
             All parameters are optional and default to 0.0 if not provided.
         """
         qml.CY(wires=wires)
-        Gates.Noise(wires, noise_params)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def CZ(wires, noise_params=None):
@@ -478,7 +480,7 @@ class Gates:
             All parameters are optional and default to 0.0 if not provided.
         """
         qml.CZ(wires=wires)
-        Gates.Noise(wires, noise_params)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def H(wires, noise_params=None):
@@ -500,52 +502,57 @@ class Gates:
             All parameters are optional and default to 0.0 if not provided.
         """
         qml.Hadamard(wires=wires)
-        Gates.Noise(wires, noise_params)
+        UnitaryGates.Noise(wires, noise_params)
 
 
+# TODO: Refactor QOC to take into account new params shape
+# TODO: Reference Tilmann's work
+# TODO: Mention in the gates if the implementation deviates from Tilmann's work
 class PulseGates:
-    # TODO: Reference Tilmann's work
-    # TODO: Mention in the gates if the implementation deviates from Tilmann's work
-    def __init__(self, omega_q: float = 10 * jnp.pi, omega_c: float = 10 * jnp.pi):
+    omega_q = 10 * jnp.pi
+    omega_c = 10 * jnp.pi
 
-        self.omega_q = omega_q
-        self.omega_c = omega_c
+    H_static = jnp.array([
+        [jnp.exp(1j * omega_q / 2), 0],
+        [0, jnp.exp(-1j * omega_q / 2)]
+    ])
 
-        self.H_static = jnp.array([
-            [jnp.exp(1j * omega_q / 2), 0],
-            [0, jnp.exp(-1j * omega_q / 2)]
-        ])
+    Id = jnp.eye(2, dtype=jnp.complex64)
+    X = jnp.array([[0, 1], [1, 0]])
+    Y = jnp.array([[0, -1j], [1j, 0]])
+    Z = jnp.array([[1, 0], [0, -1]])
 
-        self.Id = jnp.eye(2, dtype=jnp.complex64)
-        self.X = jnp.array([[0, 1], [1, 0]])
-        self.Y = jnp.array([[0, -1j], [1j, 0]])
-        self.Z = jnp.array([[1, 0], [0, -1]])
+    opt_params_RX = [[15.70989327341467, 29.5230665326707]]
+    opt_t_RX = 0.7499810441330634
 
-        self.opt_params_RX = [[15.70989327341467, 29.5230665326707]]
-        self.opt_t_RX = 0.7499810441330634
+    opt_params_RY = [[7.8787724942614235, 22.001319411513432]]
+    opt_t_RY = 1.098524473819202
 
-        self.opt_params_RY = [[7.8787724942614235, 22.001319411513432]]
-        self.opt_t_RY = 1.098524473819202
+    opt_params_H = [[7.857992398977854, 21.572701026008765]]
+    opt_t_H = 0.9000668764548863
 
-        self.opt_params_H = [[7.857992398977854, 21.572701026008765]]
-        self.opt_t_H = 0.9000668764548863
+    opt_t_CZ = 0.962596375687258
 
-        self.opt_t_CZ = 0.962596375687258
+    opt_params_CNOT = [[7.944725340235801, 21.639825810701435]]
+    opt_t_CNOT_H = 0.9072431332410497
+    opt_t_CNOT_CZ = 0.9550977662365613
 
-        self.opt_params_CNOT = [[7.944725340235801, 21.639825810701435]]
-        self.opt_t_CNOT_H = 0.9072431332410497
-        self.opt_t_CNOT_CZ = 0.9550977662365613
-
-    def S(self, p, t, phi_c):
+    @staticmethod
+    def S(p, t, phi_c):
         A, sigma = p
         t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
 
         f = A * jnp.exp(-0.5 * ((t - t_c) / sigma) ** 2)
-        x = jnp.cos(self.omega_c * t + phi_c)
+        x = jnp.cos(PulseGates.omega_c * t + phi_c)
 
         return f * x
 
-    def RX(self, w, wires, params=None, t=None):
+    @staticmethod
+    def Rot(phi, theta, omega, wires): # TODO
+        pass
+
+    @staticmethod
+    def RX(w, wires, params=None):
         """
         Applies a rotation around the X axis pulse to the given wires.
 
@@ -555,27 +562,26 @@ class PulseGates:
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation to.
-        params : List[List[float]], optional
-            Parameters `[A, sigma]` of the Gaussian envelope.
-            Defaults to the optimized parameters through quantum optimal
-            control [15.70989327341467, 29.5230665326707].
-        t : Union[float, Tuple[float, float]], optional
-            Time or time interval for the evolution. Defaults to 0.7499810441330634.
+        params : Tuple[List[float], float], optional
+            Tuple containing pulse parameters `[A, sigma]` and time `t` for the
+            Gaussian envelope. Defaults to optimized parameters and time.
         """
         if params is None:
-            params = self.opt_params_RX
-        if t is None:
-            t = self.opt_t_RX
+            params = PulseGates.opt_params_RX
+            t = PulseGates.opt_t_RX
+        else:
+            params, t = params  # TODO: params = [[1, 2], 3], params = [1, 2, 3] params = params[:2], t = params[-1]
 
-        Sx = lambda p, t: self.S(p, t, phi_c=jnp.pi) * w
+        Sx = lambda p, t: PulseGates.S(p, t, phi_c=jnp.pi) * w
 
-        _H = self.H_static.conj().T @ self.X @ self.H_static
+        _H = PulseGates.H_static.conj().T @ PulseGates.X @ PulseGates.H_static
         _H = qml.Hermitian(_H, wires=wires)
         H_eff = Sx * _H
 
         return qml.evolve(H_eff)(params, t)
 
-    def RY(self, w, wires, params=None, t=None):
+    @staticmethod
+    def RY(w, wires, params=None):
         """
         Applies a rotation around the Y axis pulse to the given wires.
 
@@ -585,27 +591,26 @@ class PulseGates:
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation to.
-        params : List[float], optional
-            Parameters `[A, sigma]` of the Gaussian envelope.
-            Defaults to the optimized parameters through quantum optimal
-            control [7.8787724942614235, 22.001319411513432].
-        t : Union[float, Tuple[float, float]], optional
-            Time or time interval for the evolution. Defaults to 1.098524473819202.
+        params : Tuple[List[float], float], optional
+            Tuple containing pulse parameters `[A, sigma]` and time `t` for the
+            Gaussian envelope. Defaults to optimized parameters and time.
         """
         if params is None:
-            params = self.opt_params_RY
-        if t is None:
-            t = self.opt_t_RY
+            params = PulseGates.opt_params_RY
+            t = PulseGates.opt_t_RY
+        else:
+            params, t = params
 
-        Sy = lambda p, t: self.S(p, t, phi_c=-jnp.pi/2) * w
+        Sy = lambda p, t: PulseGates.S(p, t, phi_c=-jnp.pi/2) * w
 
-        _H = self.H_static.conj().T @ self.Y @ self.H_static
+        _H = PulseGates.H_static.conj().T @ PulseGates.Y @ PulseGates.H_static
         _H = qml.Hermitian(_H, wires=wires)
         H_eff = Sy * _H
 
         return qml.evolve(H_eff)(params, t)
 
-    def RZ(self, w, wires, t=0.5):
+    @staticmethod
+    def RZ(w, wires, params=None):
         """
         Applies a rotation around the Z axis to the given wires.
 
@@ -615,17 +620,110 @@ class PulseGates:
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation to.
-        t : float
-            Duration of the pulse. Rotation angle = w * 2 * t. Defaults to 0.5.
+        params : float or None, optional
+            Duration of the pulse. Rotation angle = w * 2 * t.
+            Defaults to 0.5 if None.
         """
-        _H = qml.Hermitian(self.Z, wires=wires)
+        if params is None:
+            t = 0.5
+        elif isinstance(params, (float, int)):
+            t = params
+        else:
+            raise ValueError("Invalid parameters for RZ gate.")
+
+        _H = qml.Hermitian(PulseGates.Z, wires=wires)
         Sz = lambda p, t: w
 
         H_eff = Sz * _H
 
         return qml.evolve(H_eff)([0], t)
 
-    def H(self, wires, params=None, t=None):
+    @staticmethod
+    def CRX(w, wires): # TODO
+        pass
+
+    @staticmethod
+    def CRY(w, wires): # TODO
+        pass
+
+    @staticmethod
+    def CRZ(w, wires): # TODO
+        pass
+
+    @staticmethod
+    def CX(wires): # TODO
+        pass
+
+    @staticmethod
+    def CY(wires): # TODO
+        pass
+
+    @staticmethod
+    def CZ(wires, params=None):
+        """
+        Applies a controlled Z gate to the given wires.
+
+        Parameters
+        ----------
+        wires : List[int]
+            The wire(s) to apply the controlled Z gate to.
+        params : float or None, optional
+            Time or time interval for the evolution.
+            Defaults to optimized time if None.
+        """
+        if params is None:
+            t = PulseGates.opt_t_CZ
+        elif isinstance(params, (float, int)):
+            t = params
+        else:
+            raise ValueError("Invalid parameters for CZ gate.")
+
+        I_I = jnp.kron(PulseGates.Id, PulseGates.Id)
+        Z_I = jnp.kron(PulseGates.Z, PulseGates.Id)
+        I_Z = jnp.kron(PulseGates.Id, PulseGates.Z)
+        Z_Z = jnp.kron(PulseGates.Z, PulseGates.Z)
+
+        # TODO: optimize this parameter too?
+        Scz = lambda p, t: jnp.pi
+
+        _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
+        _H = qml.Hermitian(_H, wires=wires)
+        H_eff = Scz * _H
+
+        return qml.evolve(H_eff)([0], t)
+
+    @staticmethod
+    def CNOT(wires, params=None):
+        """
+        Applies a CNOT gate composed of Hadamard and controlled-Z pulses.
+
+        Parameters
+        ----------
+        wires : List[int]
+            The control and target wires for the CNOT gate.
+        params : Tuple[List[float], Tuple[float, float]], optional
+            Tuple containing pulse parameters `[A, sigma]` and a tuple of two times:
+            - time for the Hadamard gates
+            - time for the controlled-Z gate
+
+            Defaults to optimized parameters and times if None.
+        """
+        if params is None:
+            params = PulseGates.opt_params_CNOT
+            t_H = PulseGates.opt_t_CNOT_H
+            t_CZ = PulseGates.opt_t_CNOT_CZ
+        else:
+            params, (t_H, t_CZ) = params
+
+
+        PulseGates.H(wires=wires[1], params=(params, t_H))
+        PulseGates.CZ(wires=wires, params=t_CZ)
+        PulseGates.H(wires=wires[1], params=(params, t_H))
+
+        return
+
+    @staticmethod
+    def H(wires, params=None):
         """
         Applies Hadamard gate to the given wires.
 
@@ -633,17 +731,15 @@ class PulseGates:
         ----------
         wires : Union[int, List[int]]
             The wire(s) to apply the Hadamard gate to.
-        params : List[float], optional
-            Parameters `[A, sigma]` of the Gaussian envelope.
-            Defaults to the optimized parameters through quantum optimal
-            control [15, 30, 1].
-        t : Union[float, Tuple[float, float]], optional
-            Time or time interval for the evolution. Defaults to 0.75.
+        params : Tuple[List[float], float], optional
+            Tuple containing pulse parameters `[A, sigma]` and time `t`.
+            Defaults to optimized parameters and time.
         """
         if params is None:
-            params = self.opt_params_H
-        if t is None:
-            t = self.opt_t_H
+            params = PulseGates.opt_params_H
+            t = PulseGates.opt_t_H
+        else:
+            params, t = params
 
         # qml.GlobalPhase(-jnp.pi / 2)
         Sc = lambda p, t: -1.0
@@ -654,68 +750,47 @@ class PulseGates:
 
         qml.evolve(H_corr)([0], 1)
 
-        self.RZ(jnp.pi, wires=wires)
-        self.RY(jnp.pi / 2, wires=wires, params=params, t=t)
-
-    def CZ(self, wires, t=None):
-        """
-        Applies a controlled Z gate to the given wires.
-
-        Parameters
-        ----------
-        wires : List[int]
-            The wire(s) to apply the controlled Z gate to.
-        t : Union[float, Tuple[float, float]], optional
-            Time or time interval for the evolution. Defaults to optimized time.
-        """
-        if t is None:
-            t = self.opt_t_CZ
-
-        I_I = jnp.kron(self.Id, self.Id)
-        Z_I = jnp.kron(self.Z, self.Id)
-        I_Z = jnp.kron(self.Id, self.Z)
-        Z_Z = jnp.kron(self.Z, self.Z)
-
-        # TODO: maybe optimize this parameter too
-        Scz = lambda p, t: jnp.pi
-
-        _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
-        _H = qml.Hermitian(_H, wires=wires)
-        H_eff = Scz * _H
-
-        return qml.evolve(H_eff)([0], t)
-
-    def CNOT(self, wires, params=None, t_H=None, t_CZ=None):
-
-        if params is None:
-            params = self.opt_params_CNOT
-        if t_H is None:
-            t_H = self.opt_t_CNOT_H
-        if t_CZ is None:
-            t_CZ = self.opt_t_CNOT_CZ
-
-        self.H(wires=wires[1], params=params, t=t_H)
-        self.CZ(wires=wires, t=t_CZ)
-        self.H(wires=wires[1], params=params, t=t_H)
-
-        return
+        PulseGates.RZ(jnp.pi, wires=wires)
+        PulseGates.RY(jnp.pi / 2, wires=wires, params=(params, t))
 
 
-# TODO: Integrate PulseGates into Ansaetze
-    # Ansaetze is used only in model.py as self.pqc
-    # Modify n_params_per_layer and build
-        # Add gate_level argument to build and define Gates = Gates or PulseGates()
-        # If PulseGates, then: 1. Do not use noise, 2. Optionally use params and t
-        # Maybe PulseAnsaetze from scratch is easier
-        # NOTE: Not all gates in Ansaetze are implemented at pulse level. Un-implemented
-            # gates can be substituted by some decomposition, or the pulse level can be 
-            # implemented
-    # get_control_indices should return the same indices as before (?)
+class GatesMeta(type):
+    def __getattr__(cls, gate_name):
+        def handler(*args, **kwargs):
+            return Gates._inner_getattr(gate_name, *args, **kwargs)
+        return handler
 
-# TODO: In model.py, adapt/extend enc_params and trainable frequencies when pulse level
-# is used, so both the original gate parameter (rotation angle w) and, separately, the
-# pulse parameters can be optimized and trained
+class Gates(metaclass=GatesMeta):
+    """
+    Gate accessor that dynamically routes calls such as
+    'Gates.RX(...)' to either the UnitaryGates or
+    PulseGates backend, depending on the 'mode' keyword
+    argument (defaults to 'unitary').
+    """
+    def __getattr__(self, gate_name):
+        def handler(**kwargs):
+            return self._inner_getattr(gate_name, **kwargs)
+        return handler
 
+    @staticmethod
+    def _inner_getattr(gate_name, *args, **kwargs):
+        mode = kwargs.pop("mode", "unitary")
+        if mode == "unitary":
+            gate_backend = UnitaryGates
+        elif mode == "pulse":
+            gate_backend = PulseGates
+
+        gate = getattr(gate_backend, gate_name, None)
+        if gate is None:
+            raise AttributeError(f"'{gate_backend.__class__.__name__}' object has no attribute '{gate_name}'")
+
+        return gate(*args, **kwargs)
+
+
+# NOTE: Gate mode is specified in Model call method (execution type)
+# NOTE: Don't modify n_params_per_layer. Maybe add a new method for pulse parameters. Wait until that stage to decide
+# TODO: Make PulseGates static
+# TODO: Remove Gates instantiation and pass gate mode to gate method kwargs
 class Ansaetze:
 
     def get_available():
@@ -762,11 +837,11 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
-            Gates.H(0, noise_params=noise_params)
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
+            Gates.H(0, **kwargs)
 
             for q in range(n_qubits - 1):
-                Gates.CX([q, q + 1], noise_params=noise_params)
+                Gates.CX([q, q + 1], **kwargs)
 
     class Hardware_Efficient(Circuit):
         @staticmethod
@@ -813,7 +888,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             """
             Creates a Hardware-Efficient ansatz, as proposed in
             https://arxiv.org/pdf/2309.03279
@@ -829,22 +904,22 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RY(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
-                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
-                Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RY(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
             if n_qubits > 1:
                 for q in range(n_qubits // 2):
-                    Gates.CX(wires=[(2 * q), (2 * q + 1)], noise_params=noise_params)
+                    Gates.CX(wires=[(2 * q), (2 * q + 1)], **kwargs)
                 for q in range((n_qubits - 1) // 2):
                     Gates.CX(
-                        wires=[(2 * q + 1), (2 * q + 2)], noise_params=noise_params
+                        wires=[(2 * q + 1), (2 * q + 2)], **kwargs
                     )
                 if n_qubits > 2:
-                    Gates.CX(wires=[(n_qubits - 1), 0], noise_params=noise_params)
+                    Gates.CX(wires=[(n_qubits - 1), 0], **kwargs)
 
     class Circuit_19(Circuit):
         @staticmethod
@@ -867,7 +942,6 @@ class Ansaetze:
             int
                 Number of parameters required for one layer of the circuit
             """
-
             if n_qubits > 1:
                 return n_qubits * 3
             else:
@@ -898,7 +972,7 @@ class Ansaetze:
                 return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             """
             Creates a Circuit19 ansatz.
 
@@ -916,9 +990,9 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                Gates.RX(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RX(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
-                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
             if n_qubits > 1:
@@ -926,7 +1000,7 @@ class Ansaetze:
                     Gates.CRX(
                         w[w_idx],
                         wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits],
-                        noise_params=noise_params,
+                        **kwargs,
                     )
                     w_idx += 1
 
@@ -981,7 +1055,7 @@ class Ansaetze:
                 return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             """
             Creates a Circuit18 ansatz.
 
@@ -998,9 +1072,9 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                Gates.RX(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RX(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
-                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
             if n_qubits > 1:
@@ -1008,7 +1082,7 @@ class Ansaetze:
                     Gates.CRZ(
                         w[w_idx],
                         wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits],
-                        noise_params=noise_params,
+                        **kwargs,
                     )
                     w_idx += 1
 
@@ -1056,7 +1130,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             """
             Creates a Circuit15 ansatz.
 
@@ -1074,25 +1148,25 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RY(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
             if n_qubits > 1:
                 for q in range(n_qubits):
                     Gates.CX(
                         wires=[n_qubits - q - 1, (n_qubits - q) % n_qubits],
-                        noise_params=noise_params,
+                        **kwargs,
                     )
 
             for q in range(n_qubits):
-                Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RY(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
             if n_qubits > 1:
                 for q in range(n_qubits):
                     Gates.CX(
                         wires=[(q - 1) % n_qubits, (q - 2) % n_qubits],
-                        noise_params=noise_params,
+                        **kwargs,
                     )
 
     class Circuit_9(Circuit):
@@ -1134,7 +1208,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             """
             Creates a Circuit9 ansatz.
 
@@ -1151,17 +1225,17 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                Gates.H(wires=q, noise_params=noise_params)
+                Gates.H(wires=q, **kwargs)
 
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
                     Gates.CZ(
                         wires=[n_qubits - q - 2, n_qubits - q - 1],
-                        noise_params=noise_params,
+                        **kwargs,
                     )
 
             for q in range(n_qubits):
-                Gates.RX(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RX(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
     class Circuit_6(Circuit):
@@ -1217,7 +1291,7 @@ class Ansaetze:
                 return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             """
             Creates a Circuit6 ansatz.
 
@@ -1237,9 +1311,9 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                Gates.RX(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RX(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
-                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
             if n_qubits > 1:
@@ -1250,14 +1324,14 @@ class Ansaetze:
                         Gates.CRX(
                             w[w_idx],
                             wires=[n_qubits - ql - 1, (n_qubits - q - 1) % n_qubits],
-                            noise_params=noise_params,
+                            **kwargs,
                         )
                         w_idx += 1
 
             for q in range(n_qubits):
-                Gates.RX(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RX(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
-                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
     class Circuit_1(Circuit):
@@ -1300,7 +1374,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             """
             Creates a Circuit1 ansatz.
 
@@ -1317,9 +1391,9 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                Gates.RX(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RX(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
-                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
     class Circuit_2(Circuit):
@@ -1362,7 +1436,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             """
             Creates a Circuit2 ansatz.
 
@@ -1379,16 +1453,16 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                Gates.RX(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RX(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
-                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
                     Gates.CX(
                         wires=[n_qubits - q - 1, n_qubits - q - 2],
-                        noise_params=noise_params,
+                        **kwargs,
                     )
 
     class Circuit_3(Circuit):
@@ -1432,7 +1506,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             """
             Creates a Circuit3 ansatz.
 
@@ -1449,9 +1523,9 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                Gates.RX(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RX(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
-                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
             if n_qubits > 1:
@@ -1459,7 +1533,7 @@ class Ansaetze:
                     Gates.CRZ(
                         w[w_idx],
                         wires=[n_qubits - q - 1, n_qubits - q - 2],
-                        noise_params=noise_params,
+                        **kwargs,
                     )
                     w_idx += 1
 
@@ -1502,7 +1576,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             """
             Creates a Circuit4 ansatz.
 
@@ -1519,9 +1593,9 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                Gates.RX(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RX(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
-                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
             if n_qubits > 1:
@@ -1529,7 +1603,7 @@ class Ansaetze:
                     Gates.CRX(
                         w[w_idx],
                         wires=[n_qubits - q - 1, n_qubits - q - 2],
-                        noise_params=noise_params,
+                        **kwargs,
                     )
                     w_idx += 1
 
@@ -1572,7 +1646,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             """
             Creates a Circuit10 ansatz.
 
@@ -1590,7 +1664,7 @@ class Ansaetze:
             w_idx = 0
             # constant gates, independent of layers. has to be fixed
             for q in range(n_qubits):
-                Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RY(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
             if n_qubits > 1:
@@ -1600,13 +1674,13 @@ class Ansaetze:
                             (n_qubits - q - 2) % n_qubits,
                             (n_qubits - q - 1) % n_qubits,
                         ],
-                        noise_params=noise_params,
+                        **kwargs,
                     )
                 if n_qubits > 2:
-                    Gates.CZ(wires=[n_qubits - 1, 0], noise_params=noise_params)
+                    Gates.CZ(wires=[n_qubits - 1, 0], **kwargs)
 
             for q in range(n_qubits):
-                Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RY(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
     class Circuit_16(Circuit):
@@ -1627,7 +1701,6 @@ class Ansaetze:
             int
                 Number of parameters per layer
             """
-
             return n_qubits * 3 - 1
 
         @staticmethod
@@ -1649,7 +1722,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             """
             Creates a Circuit16 ansatz.
 
@@ -1666,9 +1739,9 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                Gates.RX(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RX(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
-                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
             if n_qubits > 1:
@@ -1676,7 +1749,7 @@ class Ansaetze:
                     Gates.CRZ(
                         w[w_idx],
                         wires=[(2 * q + 1), (2 * q)],
-                        noise_params=noise_params,
+                        **kwargs,
                     )
                     w_idx += 1
 
@@ -1684,7 +1757,7 @@ class Ansaetze:
                     Gates.CRZ(
                         w[w_idx],
                         wires=[(2 * q + 2), (2 * q + 1)],
-                        noise_params=noise_params,
+                        **kwargs,
                     )
                     w_idx += 1
 
@@ -1706,7 +1779,6 @@ class Ansaetze:
             int
                 Number of parameters per layer
             """
-
             return n_qubits * 3 - 1
 
         @staticmethod
@@ -1728,7 +1800,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             """
             Creates a Circuit17 ansatz.
 
@@ -1745,9 +1817,9 @@ class Ansaetze:
             """
             w_idx = 0
             for q in range(n_qubits):
-                Gates.RX(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RX(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
-                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
             if n_qubits > 1:
@@ -1755,7 +1827,7 @@ class Ansaetze:
                     Gates.CRX(
                         w[w_idx],
                         wires=[(2 * q + 1), (2 * q)],
-                        noise_params=noise_params,
+                        **kwargs,
                     )
                     w_idx += 1
 
@@ -1763,7 +1835,7 @@ class Ansaetze:
                     Gates.CRX(
                         w[w_idx],
                         wires=[(2 * q + 2), (2 * q + 1)],
-                        noise_params=noise_params,
+                        **kwargs,
                     )
                     w_idx += 1
 
@@ -1809,7 +1881,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None) -> None:
+        def build(w: np.ndarray, n_qubits: int, **kwargs) -> None:
             """
             Creates a Strongly Entangling ansatz.
 
@@ -1831,13 +1903,13 @@ class Ansaetze:
                     w[w_idx + 1],
                     w[w_idx + 2],
                     wires=q,
-                    noise_params=noise_params,
+                    **kwargs,
                 )
                 w_idx += 3
 
             if n_qubits > 1:
                 for q in range(n_qubits):
-                    Gates.CX(wires=[q, (q + 1) % n_qubits], noise_params=noise_params)
+                    Gates.CX(wires=[q, (q + 1) % n_qubits], **kwargs)
 
             for q in range(n_qubits):
                 Gates.Rot(
@@ -1845,7 +1917,7 @@ class Ansaetze:
                     w[w_idx + 1],
                     w[w_idx + 2],
                     wires=q,
-                    noise_params=noise_params,
+                    **kwargs,
                 )
                 w_idx += 3
 
@@ -1853,7 +1925,7 @@ class Ansaetze:
                 for q in range(n_qubits):
                     Gates.CX(
                         wires=[q, (q + n_qubits // 2) % n_qubits],
-                        noise_params=noise_params,
+                        **kwargs,
                     )
 
     class No_Entangling(Circuit):
@@ -1895,7 +1967,7 @@ class Ansaetze:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             """
             Creates a circuit without entangling, but with U3 gates on all qubits
 
@@ -1917,6 +1989,6 @@ class Ansaetze:
                     w[w_idx + 1],
                     w[w_idx + 2],
                     wires=q,
-                    noise_params=noise_params,
+                    **kwargs,
                 )
                 w_idx += 3
