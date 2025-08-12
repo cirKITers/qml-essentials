@@ -1091,7 +1091,7 @@ class Model:
         if execution_type is not None:
             self.execution_type = execution_type
 
-        # TODO: Raise exception if pulse params is not None and execution type is 
+        # TODO: Raise exception if pulse params is not None and execution type is
         # not pulse
 
         params = self._params_validation(params)

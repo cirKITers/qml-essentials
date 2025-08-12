@@ -522,18 +522,18 @@ class PulseGates:
     Y = jnp.array([[0, -1j], [1j, 0]])
     Z = jnp.array([[1, 0], [0, -1]])
 
-    opt_params_RX = [[15.70989327341467, 29.5230665326707]]
+    opt_params_RX = [15.70989327341467, 29.5230665326707]
     opt_t_RX = 0.7499810441330634
 
-    opt_params_RY = [[7.8787724942614235, 22.001319411513432]]
+    opt_params_RY = [7.8787724942614235, 22.001319411513432]
     opt_t_RY = 1.098524473819202
 
-    opt_params_H = [[7.857992398977854, 21.572701026008765]]
+    opt_params_H = [7.857992398977854, 21.572701026008765]
     opt_t_H = 0.9000668764548863
 
     opt_t_CZ = 0.962596375687258
 
-    opt_params_CNOT = [[7.944725340235801, 21.639825810701435]]
+    opt_params_CNOT = [7.944725340235801, 21.639825810701435]
     opt_t_CNOT_H = 0.9072431332410497
     opt_t_CNOT_CZ = 0.9550977662365613
 
@@ -567,10 +567,11 @@ class PulseGates:
             Gaussian envelope. Defaults to optimized parameters and time.
         """
         if params is None:
-            params = PulseGates.opt_params_RX
+            params = [PulseGates.opt_params_RX]
             t = PulseGates.opt_t_RX
         else:
-            params, t = params  # TODO: params = [[1, 2], 3], params = [1, 2, 3] params = params[:2], t = params[-1]
+            params, t = params[:2], params[-1]
+            params = [params]
 
         Sx = lambda p, t: PulseGates.S(p, t, phi_c=jnp.pi) * w
 
@@ -596,10 +597,11 @@ class PulseGates:
             Gaussian envelope. Defaults to optimized parameters and time.
         """
         if params is None:
-            params = PulseGates.opt_params_RY
+            params = [PulseGates.opt_params_RY]
             t = PulseGates.opt_t_RY
         else:
-            params, t = params
+            params, t = params[:2], params[-1]
+            params = [params]
 
         Sy = lambda p, t: PulseGates.S(p, t, phi_c=-jnp.pi/2) * w
 
@@ -629,7 +631,7 @@ class PulseGates:
         elif isinstance(params, (float, int)):
             t = params
         else:
-            raise ValueError("Invalid parameters for RZ gate.")
+            t = params[0]
 
         _H = qml.Hermitian(PulseGates.Z, wires=wires)
         Sz = lambda p, t: w
@@ -676,7 +678,7 @@ class PulseGates:
         elif isinstance(params, (float, int)):
             t = params
         else:
-            raise ValueError("Invalid parameters for CZ gate.")
+            t = params[0]
 
         I_I = jnp.kron(PulseGates.Id, PulseGates.Id)
         Z_I = jnp.kron(PulseGates.Z, PulseGates.Id)
@@ -712,13 +714,15 @@ class PulseGates:
             params = PulseGates.opt_params_CNOT
             t_H = PulseGates.opt_t_CNOT_H
             t_CZ = PulseGates.opt_t_CNOT_CZ
+            params += [t_H]
         else:
-            params, (t_H, t_CZ) = params
+            print(f"Shape params: {params.shape}\nParams: {params}")
+            t_CZ = params[-1]
+            params = params[:-1]
 
-
-        PulseGates.H(wires=wires[1], params=(params, t_H))
-        PulseGates.CZ(wires=wires, params=t_CZ)
-        PulseGates.H(wires=wires[1], params=(params, t_H))
+        PulseGates.H(wires=wires[1], params=params)
+        PulseGates.CZ(wires=wires, params=[t_CZ])
+        PulseGates.H(wires=wires[1], params=params)
 
         return
 
@@ -738,8 +742,7 @@ class PulseGates:
         if params is None:
             params = PulseGates.opt_params_H
             t = PulseGates.opt_t_H
-        else:
-            params, t = params
+            params += [t]
 
         # qml.GlobalPhase(-jnp.pi / 2)
         Sc = lambda p, t: -1.0
@@ -751,7 +754,7 @@ class PulseGates:
         qml.evolve(H_corr)([0], 1)
 
         PulseGates.RZ(jnp.pi, wires=wires)
-        PulseGates.RY(jnp.pi / 2, wires=wires, params=(params, t))
+        PulseGates.RY(jnp.pi / 2, wires=wires, params=params)
 
 
 class GatesMeta(type):
@@ -779,6 +782,8 @@ class Gates(metaclass=GatesMeta):
             gate_backend = UnitaryGates
         elif mode == "pulse":
             gate_backend = PulseGates
+        else:
+            raise ValueError(f"Unknown gate mode: {mode}. Use 'unitary' or 'pulse'.")
 
         gate = getattr(gate_backend, gate_name, None)
         if gate is None:
@@ -789,8 +794,6 @@ class Gates(metaclass=GatesMeta):
 
 # NOTE: Gate mode is specified in Model call method (execution type)
 # NOTE: Don't modify n_params_per_layer. Maybe add a new method for pulse parameters. Wait until that stage to decide
-# TODO: Make PulseGates static
-# TODO: Remove Gates instantiation and pass gate mode to gate method kwargs
 class Ansaetze:
 
     def get_available():
