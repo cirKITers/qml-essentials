@@ -8,7 +8,7 @@ jobs:
     runs-on: self-hosted
     if: ${{ (github.actor != 'dependabot[bot]') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install poetry
         run: pipx install poetry
       - name: Set up Python 3.12
