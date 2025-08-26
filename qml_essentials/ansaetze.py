@@ -505,10 +505,12 @@ class UnitaryGates:
         UnitaryGates.Noise(wires, noise_params)
 
 
-# TODO: Refactor QOC to take into account new params shape
-# TODO: Reference Tilmann's work
-# TODO: Mention in the gates if the implementation deviates from Tilmann's work
 class PulseGates:
+    # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT and H pulse level
+    # gates closely follow https://doi.org/10.5445/IR/1000184129
+    # TODO: Mention deviations from the above?
+    # TODO: Which gate decomposition to use for Rot, CRX, CRY, CRZ, CX, CY?
+    # Favor CNOT or CZ? Currently, using CZ
     omega_q = 10 * jnp.pi
     omega_c = 10 * jnp.pi
 
@@ -549,6 +551,7 @@ class PulseGates:
 
     @staticmethod
     def Rot(phi, theta, omega, wires): # TODO
+        # RZ(phi) · RY(theta) · RZ(omega)
         pass
 
     @staticmethod
@@ -642,22 +645,33 @@ class PulseGates:
 
     @staticmethod
     def CRX(w, wires): # TODO
+        # H_t · CRZ(w) · H_t
+        # =
+        # H_t · RZ(w/2)_t · CZ · RZ(-w/2)_t · H_t
         pass
 
     @staticmethod
     def CRY(w, wires): # TODO
+        # RX(-pi/2)_t · CRZ(w) · RX(pi/2)_t
+        # =
+        # RX(-pi/2)_t · RZ(w/2)_t · CZ · RZ(-w/2)_t · RX(pi/2)_t
         pass
 
     @staticmethod
     def CRZ(w, wires): # TODO
+        # RZ(w/2)_t · CZ · RZ(-w/2)_t
         pass
 
     @staticmethod
     def CX(wires): # TODO
+        # H_t · CZ · H_t
         pass
 
     @staticmethod
     def CY(wires): # TODO
+        # RZ(-pi/2)_t · CX · RZ(pi/2)_t
+        # =
+        # RZ(-pi/2)_t · H_t · CZ · H_t · RZ(pi/2)_t
         pass
 
     @staticmethod
@@ -685,7 +699,7 @@ class PulseGates:
         I_Z = jnp.kron(PulseGates.Id, PulseGates.Z)
         Z_Z = jnp.kron(PulseGates.Z, PulseGates.Z)
 
-        # TODO: optimize this parameter too?
+        # NOTE: optimize this parameter too?
         Scz = lambda p, t: jnp.pi
 
         _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
@@ -756,7 +770,7 @@ class PulseGates:
         PulseGates.RZ(jnp.pi, wires=wires)
         PulseGates.RY(jnp.pi / 2, wires=wires, params=params)
 
-
+# Meta class to avoid instantiating the Gates class
 class GatesMeta(type):
     def __getattr__(cls, gate_name):
         def handler(*args, **kwargs):
@@ -846,6 +860,8 @@ class Ansaetze:
             for q in range(n_qubits - 1):
                 Gates.CX([q, q + 1], **kwargs)
 
+    
+    # TODO: Include new method "n_params_per_layer"
     class Hardware_Efficient(Circuit):
         @staticmethod
         def n_params_per_layer(n_qubits: int) -> int:

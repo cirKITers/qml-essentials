@@ -18,6 +18,9 @@ log = logging.getLogger(__name__)
 
 
 # NOTE: Implement pulse level by having it as a execution type
+# TODO: Use default gate params with requires grad = False in initialization
+# Train parameter scaling instead of parameters, use default 1
+
 
 class Model:
     """
@@ -1130,6 +1133,7 @@ class Model:
             if os.path.isfile(file_path):
                 result = np.load(file_path)
 
+        # TODO: check if I can use pulse with every execution type
         if result is None:
             # if density matrix requested or noise params used
             if self.execution_type == "density" or self.noise_params is not None:
