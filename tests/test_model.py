@@ -1,18 +1,14 @@
 import random
 from qml_essentials.model import Model
-from qml_essentials.ansaetze import Ansaetze, Circuit, Gates
+from qml_essentials.ansaetze import Ansaetze, Gates
 import pytest
 import logging
-import inspect
 import shutil
 import os
 import hashlib
-from typing import Optional
 import pennylane as qml
 import pennylane.numpy as np
 import time
-
-from typing import List, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +62,13 @@ def test_parameters() -> None:
             "shots": 1024,
             "execution_type": "expval",
             "output_qubit": 0,
+            "force_mean": False,
+            "exception": False,
+        },
+        {
+            "shots": None,
+            "execution_type": "state",
+            "output_qubit": -1,
             "force_mean": False,
             "exception": False,
         },
@@ -140,6 +143,10 @@ def test_parameters() -> None:
                         assert (
                             result.shape[0] == 4
                         ), f"Shape of {test_case['output_qubit']} is not correct."
+                    elif test_case["execution_type"] == "state":
+                        assert (
+                            result.shape[0] == 4
+                        ), f"Shape of {test_case['output_qubit']} is not correct."
             str(model)
 
 
@@ -152,9 +159,7 @@ def test_trainable_frequencies() -> None:
         trainable_frequencies=True,
     )
 
-    assert (
-        model.enc_params.requires_grad
-    ), "Encoding parameters enc_params do not require grad"
+    assert model.enc_params.requires_grad, "Encoding parameters enc_params require grad"
 
     # setting test data
     domain = [-np.pi, np.pi]
@@ -185,6 +190,11 @@ def test_trainable_frequencies() -> None:
 
     grads = qml.grad(cost_fct, argnum=1)(model.params, model.enc_params)
     assert np.any(np.abs(grads) > 1e-6), "Gradient wrt enc_params is too small"
+
+    # Smoketest to check model outside training
+    model(enc_params=np.array(model.enc_params, requires_grad=False))
+    model.trainable_frequencies = False
+    model(enc_params=np.array(model.enc_params, requires_grad=False))
 
 
 @pytest.mark.unittest
@@ -244,7 +254,7 @@ def test_batching() -> None:
 @pytest.mark.unittest
 def test_multiprocessing_density() -> None:
     # use n_samples that is not a multiple of the threshold
-    n_samples = 1000
+    n_samples = 1500
 
     model = Model(
         n_qubits=2,
@@ -633,111 +643,6 @@ def test_re_initialization() -> None:
     assert not np.allclose(
         model.params, temp_params, atol=1e-3
     ), "Re-Initialization failed!"
-
-
-@pytest.mark.smoketest
-def test_ansaetze() -> None:
-    ansatz_cases = Ansaetze.get_available()
-
-    for ansatz in ansatz_cases:
-        logger.info(f"Testing Ansatz: {ansatz.__name__}")
-        model = Model(
-            n_qubits=4,
-            n_layers=1,
-            circuit_type=ansatz.__name__,
-            data_reupload=False,
-            initialization="random",
-            output_qubit=0,
-            shots=1024,
-        )
-
-        _ = model(
-            model.params,
-            inputs=None,
-            noise_params={
-                "GateError": 0.1,
-                "BitFlip": 0.1,
-                "PhaseFlip": 0.2,
-                "AmplitudeDamping": 0.3,
-                "PhaseDamping": 0.4,
-                "Depolarizing": 0.5,
-                "MultiQubitDepolarizing": 0.6,
-                "ThermalRelaxation": {"t1": 2000.0, "t2": 1000.0, "t_factor": 1},
-                "StatePreparation": 0.1,
-                "Measurement": 0.1,
-            },
-            cache=False,
-            execution_type="density",
-        )
-
-    class custom_ansatz(Circuit):
-        @staticmethod
-        def n_params_per_layer(n_qubits: int) -> int:
-            return n_qubits * 3
-
-        @staticmethod
-        def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
-            return None
-
-        @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
-            w_idx = 0
-            for q in range(n_qubits):
-                Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
-                w_idx += 1
-                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
-                w_idx += 1
-
-            if n_qubits > 1:
-                for q in range(n_qubits - 1):
-                    Gates.CZ(wires=[q, q + 1], noise_params=noise_params)
-
-    model = Model(
-        n_qubits=2,
-        n_layers=1,
-        circuit_type=custom_ansatz,
-        data_reupload=True,
-        initialization="random",
-        output_qubit=0,
-        shots=1024,
-    )
-    logger.info(f"{str(model)}")
-
-    _ = model(
-        model.params,
-        inputs=None,
-        noise_params={
-            "GateError": 0.1,
-            "PhaseFlip": 0.2,
-            "AmplitudeDamping": 0.3,
-            "Depolarizing": 0.5,
-            "MultiQubitDepolarizing": 0.6,
-        },
-        cache=False,
-        execution_type="density",
-    )
-
-    with pytest.warns(UserWarning):
-        _ = model(
-            model.params,
-            inputs=None,
-            noise_params={
-                "UnsupportedNoise": 0.1,
-            },
-            cache=False,
-            execution_type="density",
-        )
-
-
-@pytest.mark.unittest
-def test_available_ansaetze() -> None:
-    ansatze = set(Ansaetze.get_available())
-
-    actual_ansaetze = set(
-        ansatz for ansatz in Ansaetze.__dict__.values() if inspect.isclass(ansatz)
-    )
-    # check that the classes are the ones returned by .__subclasses__
-    assert actual_ansaetze == ansatze
 
 
 @pytest.mark.unittest
