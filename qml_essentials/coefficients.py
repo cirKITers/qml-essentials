@@ -333,15 +333,21 @@ class FourierTree:
 
     class PauliOperator:
         """
-        Utility class for storing Pauli Rotations and the corresponding indices
+        Utility class for storing Pauli Rotations, the corresponding indices
         in the XY-Space (whether there is a gate with X or Y generator at a
-        certain qubit).
+        certain qubit) and the phase.
 
         Args:
-            pauli (Operator): Pauli Rotation Operation
+            pauli (Union[Operator, np.ndarray[int]]): Pauli Rotation Operation
+                or list representation
             n_qubits (int): Number of qubits in the circuit
             prev_xy_indices (Optional[np.ndarray[bool]]): X/Y indices of the
-                previous Pauli sequence.
+                previous Pauli sequence. Defaults to None.
+            is_observable (bool): If the operator is an observable. Defaults to
+                False.
+            is_init (bool): If this Pauli operator is initialised the first
+                time. Defaults to True.
+            phase (float): Phase of the operator. Defaults to 1.0
         """
 
         def __init__(
@@ -380,7 +386,7 @@ class FourierTree:
             array.
 
             Args:
-                op (Operator): Pauli-Operation list representation.
+                op (np.ndarray[int]): Pauli-Operation list representation.
                 rev (bool): Whether to negate the array.
 
             Returns:
@@ -393,6 +399,22 @@ class FourierTree:
 
         @staticmethod
         def _create_list_representation(op: Operator, n_qubits: int) -> np.ndarray[int]:
+            """
+            Create list representation of a Pennylane Operator.
+            Generally, the list representation is a list of length n_qubits,
+            where at each position a Pauli Operator is encoded as such:
+                I: -1
+                X: 0
+                Y: 1
+                Z: 2
+
+            Args:
+                op (Operator): Pennylane Operator
+                n_qubits (int): number of qubits in the circuit
+
+            Returns:
+                np.ndarray[int]: List representation
+            """
             pauli_repr = -np.ones(n_qubits, dtype=int)
             op = op.terms()[1][0] if isinstance(op, qml_op.Prod) else op
             op = op.base if isinstance(op, qml_op.SProd) else op
@@ -413,7 +435,19 @@ class FourierTree:
                         pauli_repr[o.wires[0]] = 2
             return pauli_repr
 
-        def is_commuting(self, pauli: np.ndarray[int]):
+        def is_commuting(self, pauli: np.ndarray[int]) -> bool:
+            """
+            Computes if this Pauli commutes with another Pauli operator.
+            This computation is based on the fact that The commutator is zero
+            if and only if the number of anticommuting single-qubit Paulis is
+            even.
+
+            Args:
+                pauli (np.ndarray[int]): List representation of another Pauli
+
+            Returns:
+                bool: If the current and other Pauli are commuting.
+            """
             anticommutator = np.where(
                 pauli < 0,
                 False,
@@ -426,6 +460,17 @@ class FourierTree:
             return not (np.sum(anticommutator) % 2)
 
         def tensor(self, pauli: np.ndarray[int]) -> FourierTree.PauliOperator:
+            """
+            Compute tensor product between the current Pauli and a given list
+            representation of another Pauli operator.
+
+            Args:
+                pauli (np.ndarray[int]): List representation of Pauli
+
+            Returns:
+                FourierTree.PauliOperator: New Pauli operator object, which
+                contains the tensor product
+            """
             diff = (pauli - self.list_repr + 3) % 3
             phase = np.where(
                 self.list_repr < 0,
@@ -606,6 +651,16 @@ class FourierTree:
     def _encode_observables(
         self, tape_obs: List[Operator]
     ) -> List[FourierTree.PauliOperator]:
+        """
+        Encodes Pennylane observables from tape as FourierTree.PauliOperator
+        utility objects.
+
+        Args:
+            tape_obs (List[Operator]): Pennylane tape operations
+
+        Returns:
+            List[FourierTree.PauliOperator]: List of Pauli operators
+        """
         observables = []
         for obs in tape_obs:
             observables.append(
@@ -704,8 +759,8 @@ class FourierTree:
         Args:
             coeffs (List[Dict[int, np.ndarray]]): Frequency->Coefficients
                 dictionary list, one dict for each observable (root).
-            force_mean (bool, optional): Whether to average coefficients over
-                multiple observables. Defaults to False.
+            force_mean (bool): Whether to average coefficients over multiple
+                observables.
 
         Returns:
             Tuple[List[np.ndarray], List[np.ndarray]]:
@@ -777,7 +832,7 @@ class FourierTree:
         Args:
             pauli_rotation_idx (int): Index of remaining Pauli rotation gates.
                 Gates itself are attributes of the class.
-            observable (Operator): Current observable
+            observable (FourierTree.PauliOperator): Current observable
         """
         xy_indices_obs = np.logical_or(
             observable.xy_indices, self.pauli_rotations[pauli_rotation_idx].xy_indices
@@ -797,7 +852,7 @@ class FourierTree:
         Builds the Fourier-Tree according to the algorithm by Nemkov et al.
 
         Args:
-            observable (Operator): Current observable
+            observable (FourierTree.PauliOperator): Current observable
             pauli_rotation_idx (int): Index of remaining Pauli rotation gates.
                 Gates itself are attributes of the class.
             parameter_idx (Optional[int]): Index of the current parameter.
@@ -857,12 +912,12 @@ class FourierTree:
         last Pauli and the observable do not commute.
 
         Args:
-            pauli (Operator): The generator of the last Pauli rotation in the
-            operation sequence.
-            observable (Operator): The current observable.
+            pauli (np.ndarray[int]): The int array representation of the last
+                Pauli rotation in the operation sequence.
+            observable (FourierTree.PauliOperator): The current observable.
 
         Returns:
-            Operator: The new observable.
+            FourierTree.PauliOperator: The new observable.
         """
         observable = observable.tensor(pauli)
         return observable
