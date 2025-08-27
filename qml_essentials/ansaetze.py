@@ -805,9 +805,7 @@ class Gates(metaclass=GatesMeta):
 
         return gate(*args, **kwargs)
 
-
-# NOTE: Gate mode is specified in Model call method (execution type)
-# NOTE: Don't modify n_params_per_layer. Maybe add a new method for pulse parameters. Wait until that stage to decide
+# TODO: After final HEA solution: extend it to the other ansatzes
 class Ansaetze:
 
     def get_available():
@@ -860,8 +858,7 @@ class Ansaetze:
             for q in range(n_qubits - 1):
                 Gates.CX([q, q + 1], **kwargs)
 
-    
-    # TODO: Include new method "n_params_per_layer"
+    # TODO: Include new method "n_pulse_params_per_layer"
     class Hardware_Efficient(Circuit):
         @staticmethod
         def n_params_per_layer(n_qubits: int) -> int:
@@ -906,6 +903,7 @@ class Ansaetze:
             """
             return None
 
+        # TODO: Add pulse_params after w to build
         @staticmethod
         def build(w: np.ndarray, n_qubits: int, **kwargs):
             """

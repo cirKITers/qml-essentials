@@ -228,6 +228,11 @@ class Model:
         self._params_shape: Tuple[int, int] = (impl_n_layers, params_per_layer)
         log.info(f"Parameters per layer: {params_per_layer}")
 
+        # TODO: Add pulse_params_per_layer here
+        # self._pulse_params_shape: Tuple[int, int] = (
+        # impl_n_layers, pulse_params_per_layer
+        # )
+
         self.batch_shape = (1, 1)
         # this will also be re-used in the init method,
         # however, only if nothing is provided
@@ -236,6 +241,9 @@ class Model:
 
         # ..here! where we only require a rng
         self.initialize_params(np.random.default_rng(random_seed))
+        # TODO: Add pulse_params here with requires_grad = False. Will modify to True if
+        # gate mode pulse is specified
+        # self.initialize_pulse_params()
 
         # Initialize two circuits, one with the default device and
         # one with the mixed device
@@ -417,6 +425,17 @@ class Model:
 
         self._execution_type = value
 
+    def _normalize_execution_type(self, execution_type: str) -> tuple[str, str]:
+        parts = execution_type.split("_")
+        if len(parts) == 1:
+            return parts[0], "unitary"
+
+        elif len(parts) == 2:
+            return parts[0], parts[1]
+
+        else:
+            raise ValueError(f"Invalid execution_type string: {execution_type}")
+
     @property
     def shots(self) -> Optional[int]:
         """
@@ -514,6 +533,12 @@ class Model:
             using strategy {initialization}."
         )
 
+    # TODO: Complete initialize_pulse_params (array of appropiate size of 1s)
+    # The 1s are the element-wise scalers of the optimized pulse parameters
+    # Use self._pulse_params_shape
+    def initialize_pulse_params(self) -> None:
+        pass
+
     def transform_input(self, inputs: np.ndarray, enc_params: Optional[np.ndarray]):
         """
         Transforms the input as in arXiv:2309.03279v2
@@ -569,9 +594,12 @@ class Model:
                         noise_params=noise_params,
                     )
 
+    # TODO: Adapt _circuit to take pulse_params
     def _circuit(
         self,
         params: np.ndarray,
+        # TODO: Add below
+        # pulse_params: np.ndarray,
         inputs: np.ndarray,
         enc_params: Optional[np.ndarray] = None,
     ) -> Union[float, np.ndarray]:
@@ -590,10 +618,25 @@ class Model:
                 otherwise the density matrix of all qubits.
         """
 
+        # TODO: Modify below
         self._variational(params=params, inputs=inputs, enc_params=enc_params)
+        # self._variational(
+        #     params=params,
+        #     pulse_params=pulse_params,
+        #     inputs=inputs,
+        #     enc_params=enc_params)
         return self._observable()
 
-    def _variational(self, params, inputs, enc_params=None):
+    # TODO: Adapt _variational to take pulse_params
+    def _variational(
+        self,
+        params: np.ndarray,
+        # TODO: Add below
+        # pulse_params: np.ndarray,
+        inputs: np.ndarray,
+        enc_params: Optional[np.ndarray] = None
+    ) -> None:
+
         if enc_params is None:
             warnings.warn(
                 "Explicit call to `_circuit` or `_variational` detected: "
@@ -613,7 +656,14 @@ class Model:
         # circuit building
         for layer in range(0, self.n_layers):
             # ansatz layers
+            # TODO: Modify below (self.pqc() calls build() in Ansaetze)
             self.pqc(params[layer], self.n_qubits, noise_params=self.noise_params)
+            # self.pqc(
+            #     params[layer],
+            #     pulse_params[layer],
+            #     self.n_qubits,
+            #     noise_params=self.noise_params
+            # )
 
             # encoding layers
             self._iec(
@@ -630,7 +680,14 @@ class Model:
 
         # final ansatz layer
         if self.degree > 1:  # same check as in init
+            # TODO: Modify below (self.pqc() calls build() in Ansaetze)
             self.pqc(params[-1], self.n_qubits, noise_params=self.noise_params)
+            # self.pqc(
+            #     params[-1],
+            #     pulse_params[-1],
+            #     self.n_qubits,
+            #     noise_params=self.noise_params
+            # )
 
         # channel noise
         if self.noise_params is not None:
@@ -824,6 +881,10 @@ class Model:
 
         return enc_params
 
+    # TODO: Complete _pulse_params_validation
+    def _pulse_params_validation(self, pulse_params) -> np.ndarray:
+        pass
+
     def _inputs_validation(
         self, inputs: Union[None, List, float, int, np.ndarray]
     ) -> np.ndarray:
@@ -868,6 +929,7 @@ class Model:
 
         return inputs
 
+    # TODO: Adapt _parallel_f to take pulse_params
     @staticmethod
     def _parallel_f(
         procnum,
@@ -875,6 +937,8 @@ class Model:
         f,
         batch_size,
         params,
+        # TODO: Add below
+        # pulse_params,
         inputs,
         batch_shape,
         enc_params,
@@ -903,6 +967,7 @@ class Model:
 
         result[procnum] = f(params=params, inputs=inputs, enc_params=enc_params)
 
+    # TODO: Adapt _mp_executor to take pulse_params
     def _mp_executor(self, f, params, inputs, enc_params):
         """
         Execute a function f in parallel over parameters.
@@ -980,11 +1045,14 @@ class Model:
 
         return inputs, params, batch_shape
 
+    # TODO: Adapt __call__ to take pulse_params
     def __call__(
         self,
         params: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
         enc_params: Optional[np.ndarray] = None,
+        # TODO: Add below
+        # pulse_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
@@ -1037,12 +1105,14 @@ class Model:
             force_mean=force_mean,
         )
 
+    # TODO: Adapt _forward to take pulse_params and handle pulse mode
     def _forward(
         self,
         params: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
         enc_params: Optional[np.ndarray] = None,
-        # TODO: add pulse parameters
+        # TODO: Add below
+        # pulse_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
@@ -1092,14 +1162,18 @@ class Model:
         if noise_params is not None:
             self.noise_params = noise_params
         if execution_type is not None:
-            self.execution_type = execution_type
+            measure, mode = self._normalize_execution_type(execution_type)
+            self.execution_type, self.gate_mode = measure, mode
 
-        # TODO: Raise exception if pulse params is not None and execution type is
-        # not pulse
+        # TODO: Raise exception if pulse_params is not None and gate_mode is
+        # not pulse?
+        # TODO: Raise exception if gate mode is pulse and noise params are passed?
 
         params = self._params_validation(params)
         inputs = self._inputs_validation(inputs)
         enc_params = self._enc_params_validation(enc_params)
+        # TODO: Add below
+        # pulse_params = self._pulse_params_validation(pulse_params)
         inputs, params, self.batch_shape = self._assimilate_batch(inputs, params)
         # the qasm representation contains the bound parameters,
         # thus it is ok to hash that
@@ -1133,7 +1207,6 @@ class Model:
             if os.path.isfile(file_path):
                 result = np.load(file_path)
 
-        # TODO: check if I can use pulse with every execution type
         if result is None:
             # if density matrix requested or noise params used
             if self.execution_type == "density" or self.noise_params is not None:
@@ -1183,6 +1256,7 @@ class Model:
 
         return result
 
+    # TODO: Modify get_specs to handle pulse mode and pulse params?
     def get_specs(self, inputs: Optional[np.ndarray] = None) -> dict:
         """
         Get pennylane specs for the model.
