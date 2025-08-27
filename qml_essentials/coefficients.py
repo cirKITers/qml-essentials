@@ -189,8 +189,9 @@ class FourierTree:
 
             Args:
                 parameter_idx (Optional[int]): Index of the corresp. param. index i.
-                observable (FourierTree.PauliOperator): The nodes observable to obtain the
-                    expectation value that contributes to the constant term.
+                observable (FourierTree.PauliOperator): The nodes observable to
+                    obtain the expectation value that contributes to the constant
+                    term.
                 is_sine_factor (bool): If this node belongs to a sine coefficient.
                 is_cosine_factor (bool): If this node belongs to a cosine coefficient.
                 left (Optional[CoefficientsTreeNode]): left child (if any).
