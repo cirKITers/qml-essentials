@@ -281,7 +281,7 @@ def test_pulse_CNOT_gate():
     @qml.qnode(dev)
     def pulse_circuit():
         qml.H(wires=0)
-        Gates.CNOT(wires=[0, 1], mode="pulse")
+        Gates.CX(wires=[0, 1], mode="pulse")
         return qml.state()
 
     state_ideal = ideal_circuit()

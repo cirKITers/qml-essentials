@@ -17,9 +17,19 @@ import logging
 log = logging.getLogger(__name__)
 
 
-# NOTE: Implement pulse level by having it as a execution type
-# TODO: Use default gate params with requires grad = False in initialization
-# Train parameter scaling instead of parameters, use default 1
+"""
+Meeting Notes
+
+- Handle pulse param vector slicing in Gate manager class instead of in each
+    pulse gate or build method. Detect if slicing is needed if vector is
+    larger than needed for that gate.
+- How to implement scaling pulse parameters (instead of directly the actual
+    pulse parameters)?
+- How/where to specify pulse mode? In model init, in execution type or in new argument
+    in __call__?
+- Where to raise exception/warning if given vector is larger/smaller than
+    required (in build)?
+"""
 
 
 class Model:
@@ -536,6 +546,7 @@ class Model:
     # TODO: Complete initialize_pulse_params (array of appropiate size of 1s)
     # The 1s are the element-wise scalers of the optimized pulse parameters
     # Use self._pulse_params_shape
+    # TODO: Figure out where/when the array of 1s multiply the actual pulse parameters
     def initialize_pulse_params(self) -> None:
         pass
 
@@ -660,9 +671,10 @@ class Model:
             self.pqc(params[layer], self.n_qubits, noise_params=self.noise_params)
             # self.pqc(
             #     params[layer],
-            #     pulse_params[layer],
             #     self.n_qubits,
-            #     noise_params=self.noise_params
+            #     noise_params=self.noise_params,
+            #     params=pulse_params[layer],
+            #     mode=self.gate_mode,
             # )
 
             # encoding layers
@@ -1206,6 +1218,9 @@ class Model:
 
             if os.path.isfile(file_path):
                 result = np.load(file_path)
+
+        # TODO: Figure out how to include gate_mode when executing (in
+        # _mp_executor probably)
 
         if result is None:
             # if density matrix requested or noise params used

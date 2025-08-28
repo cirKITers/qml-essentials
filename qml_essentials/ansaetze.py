@@ -506,11 +506,11 @@ class UnitaryGates:
 
 
 class PulseGates:
-    # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT and H pulse level
+    # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT/CX and H pulse level
     # gates closely follow https://doi.org/10.5445/IR/1000184129
     # TODO: Mention deviations from the above?
     # TODO: Which gate decomposition to use for Rot, CRX, CRY, CRZ, CX, CY?
-    # Favor CNOT or CZ? Currently, using CZ
+    # Favor CNOT/CX or CZ? Currently using CZ
     omega_q = 10 * jnp.pi
     omega_c = 10 * jnp.pi
 
@@ -535,9 +535,9 @@ class PulseGates:
 
     opt_t_CZ = 0.962596375687258
 
-    opt_params_CNOT = [7.944725340235801, 21.639825810701435]
-    opt_t_CNOT_H = 0.9072431332410497
-    opt_t_CNOT_CZ = 0.9550977662365613
+    opt_params_CX = [7.944725340235801, 21.639825810701435]
+    opt_t_CX_H = 0.9072431332410497
+    opt_t_CX_CZ = 0.9550977662365613
 
     @staticmethod
     def S(p, t, phi_c):
@@ -550,9 +550,9 @@ class PulseGates:
         return f * x
 
     @staticmethod
-    def Rot(phi, theta, omega, wires): # TODO
+    def Rot(phi, theta, omega, wires, params=None): # TODO
         # RZ(phi) · RY(theta) · RZ(omega)
-        pass
+        qml.Rot(phi, theta, omega, wires=wires)
 
     @staticmethod
     def RX(w, wires, params=None):
@@ -644,35 +644,62 @@ class PulseGates:
         return qml.evolve(H_eff)([0], t)
 
     @staticmethod
-    def CRX(w, wires): # TODO
+    def CRX(w, wires, params=None): # TODO
         # H_t · CRZ(w) · H_t
         # =
         # H_t · RZ(w/2)_t · CZ · RZ(-w/2)_t · H_t
-        pass
+        qml.CRX(w, wires=wires)
 
     @staticmethod
-    def CRY(w, wires): # TODO
+    def CRY(w, wires, params=None): # TODO
         # RX(-pi/2)_t · CRZ(w) · RX(pi/2)_t
         # =
         # RX(-pi/2)_t · RZ(w/2)_t · CZ · RZ(-w/2)_t · RX(pi/2)_t
-        pass
+        qml.CRY(w, wires=wires)
 
     @staticmethod
-    def CRZ(w, wires): # TODO
+    def CRZ(w, wires, params=None): # TODO
         # RZ(w/2)_t · CZ · RZ(-w/2)_t
-        pass
+        qml.CRZ(w, wires=wires)
 
     @staticmethod
-    def CX(wires): # TODO
-        # H_t · CZ · H_t
-        pass
+    def CX(wires, params=None):
+        """
+        Applies a CNOT gate composed of Hadamard and controlled-Z pulses.
+
+        Parameters
+        ----------
+        wires : List[int]
+            The control and target wires for the CNOT gate.
+        params : Tuple[List[float], Tuple[float, float]], optional
+            Tuple containing pulse parameters `[A, sigma]` and a tuple of two times:
+            - time for the Hadamard gates
+            - time for the controlled-Z gate
+
+            Defaults to optimized parameters and times if None.
+        """
+        if params is None:
+            params = PulseGates.opt_params_CX
+            t_H = PulseGates.opt_t_CX_H
+            t_CZ = PulseGates.opt_t_CX_CZ
+            params += [t_H]
+        else:
+            print(f"Shape params: {params.shape}\nParams: {params}")
+            t_CZ = params[-1]
+            params = params[:-1]
+
+        PulseGates.H(wires=wires[1], params=params)
+        PulseGates.CZ(wires=wires, params=[t_CZ])
+        PulseGates.H(wires=wires[1], params=params)
+
+        return
 
     @staticmethod
-    def CY(wires): # TODO
+    def CY(wires, params=None): # TODO
         # RZ(-pi/2)_t · CX · RZ(pi/2)_t
         # =
         # RZ(-pi/2)_t · H_t · CZ · H_t · RZ(pi/2)_t
-        pass
+        qml.CY(wires=wires)
 
     @staticmethod
     def CZ(wires, params=None):
@@ -709,38 +736,6 @@ class PulseGates:
         return qml.evolve(H_eff)([0], t)
 
     @staticmethod
-    def CNOT(wires, params=None):
-        """
-        Applies a CNOT gate composed of Hadamard and controlled-Z pulses.
-
-        Parameters
-        ----------
-        wires : List[int]
-            The control and target wires for the CNOT gate.
-        params : Tuple[List[float], Tuple[float, float]], optional
-            Tuple containing pulse parameters `[A, sigma]` and a tuple of two times:
-            - time for the Hadamard gates
-            - time for the controlled-Z gate
-
-            Defaults to optimized parameters and times if None.
-        """
-        if params is None:
-            params = PulseGates.opt_params_CNOT
-            t_H = PulseGates.opt_t_CNOT_H
-            t_CZ = PulseGates.opt_t_CNOT_CZ
-            params += [t_H]
-        else:
-            print(f"Shape params: {params.shape}\nParams: {params}")
-            t_CZ = params[-1]
-            params = params[:-1]
-
-        PulseGates.H(wires=wires[1], params=params)
-        PulseGates.CZ(wires=wires, params=[t_CZ])
-        PulseGates.H(wires=wires[1], params=params)
-
-        return
-
-    @staticmethod
     def H(wires, params=None):
         """
         Applies Hadamard gate to the given wires.
@@ -770,6 +765,24 @@ class PulseGates:
         PulseGates.RZ(jnp.pi, wires=wires)
         PulseGates.RY(jnp.pi / 2, wires=wires, params=params)
 
+        return
+
+
+PULSE_PARAM_COUNTS = {
+    "Rot": 0, # TODO
+    "RX": 3,
+    "RY": 3,
+    "RZ": 1,
+    "CRX": 0, # TODO
+    "CRY": 0, # TODO
+    "CRZ": 0, # TODO
+    "CX": 4,
+    "CY": 0, # TODO
+    "CZ": 1,
+    "H": 3
+}
+
+
 # Meta class to avoid instantiating the Gates class
 class GatesMeta(type):
     def __getattr__(cls, gate_name):
@@ -789,6 +802,12 @@ class Gates(metaclass=GatesMeta):
             return self._inner_getattr(gate_name, **kwargs)
         return handler
 
+    # TODO: Handle slicing logic here
+    #   Use helper fn to slice if vector is larger than required
+    # TODO: raise exception/warning if len of pulse params vector is 
+    #   not in the exact required shape for the layer
+    # TODO: Handle scaling pulse params vs pulse params here?
+    #   Figure out how and where to handle this
     @staticmethod
     def _inner_getattr(gate_name, *args, **kwargs):
         mode = kwargs.pop("mode", "unitary")
@@ -804,6 +823,48 @@ class Gates(metaclass=GatesMeta):
             raise AttributeError(f"'{gate_backend.__class__.__name__}' object has no attribute '{gate_name}'")
 
         return gate(*args, **kwargs)
+    
+    # TODO: Add below (proposed solution, replace _inner_getattr above)
+    # @staticmethod
+    # def _inner_getattr(gate_name, *args, **kwargs):
+    #     mode = kwargs.pop("mode", "unitary")
+
+    #     # Backend selection
+    #     if mode == "unitary":
+    #         gate_backend = UnitaryGates
+    #     elif mode == "pulse":
+    #         gate_backend = PulseGates
+    #     else:
+    #         raise ValueError(f"Unknown gate mode: {mode}. Use 'unitary' or 'pulse'.")
+
+    #     # Pulse slicing
+    #     if mode == "pulse":
+    #         pulse_mgr = getattr(Gates, "_pulse_mgr", None)
+    #         n_params = PULSE_PARAM_COUNTS.get(gate_name, None)
+    #         if pulse_mgr is not None and n_params is not None and n_params > 0:
+    #             kwargs["pulse_params"] = pulse_mgr.get(n_params)
+
+    #     # Call the selected gate backend
+    #     gate = getattr(gate_backend, gate_name, None)
+    #     if gate is None:
+    #         raise AttributeError(f"'{gate_backend.__class__.__name__}' object has no attribute '{gate_name}'")
+
+    #     return gate(*args, **kwargs)
+
+
+class PulseParamManager:
+    def __init__(self, pulse_params: np.ndarray):
+        self.pulse_params = pulse_params
+        self.idx = 0
+
+    def get(self, n: int):
+        """Return the next n parameters and advance the cursor."""
+        if self.idx + n > len(self.pulse_params):
+            raise ValueError("Not enough pulse parameters left for this gate")
+        params = self.pulse_params[self.idx:self.idx + n]
+        self.idx += n
+        return params
+
 
 # TODO: After final HEA solution: extend it to the other ansatzes
 class Ansaetze:
@@ -858,7 +919,6 @@ class Ansaetze:
             for q in range(n_qubits - 1):
                 Gates.CX([q, q + 1], **kwargs)
 
-    # TODO: Include new method "n_pulse_params_per_layer"
     class Hardware_Efficient(Circuit):
         @staticmethod
         def n_params_per_layer(n_qubits: int) -> int:
@@ -885,6 +945,11 @@ class Ansaetze:
                 log.warning("Number of Qubits < 2, no entanglement available")
             return n_qubits * 3
 
+        # TODO: Implement n_pulse_params_per_layer
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            pass
+
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
             """
@@ -903,7 +968,6 @@ class Ansaetze:
             """
             return None
 
-        # TODO: Add pulse_params after w to build
         @staticmethod
         def build(w: np.ndarray, n_qubits: int, **kwargs):
             """
@@ -919,6 +983,12 @@ class Ansaetze:
             noise_params : Optional[Dict[str, float]], optional
                 Dictionary of noise parameters to apply to the gates
             """
+            # TODO: Add below. This is the only modification needed for build
+            # if kwargs.get("mode", "unitary") == "pulse" and "pulse_params" in kwargs:
+            #     Gates._pulse_mgr = PulseParamManager(kwargs["pulse_params"])
+            # TODO: Raise exception/warning here if
+            #   len(kwargs.get("params") != Hardware_Efficient.n_pulse_params_per_layer(n_qubits)?
+            
             w_idx = 0
             for q in range(n_qubits):
                 Gates.RY(w[w_idx], wires=q, **kwargs)

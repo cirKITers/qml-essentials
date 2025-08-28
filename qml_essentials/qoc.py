@@ -154,7 +154,7 @@ class QOC:
             @qml.qnode(dev, interface="jax")
             def pulse_circuit(w, params=None):
                 qml.RX(w, wires=0)
-                Gates.CNOT([0, 1], params, mode="pulse")
+                Gates.CX([0, 1], params, mode="pulse")
                 return [
                     qml.expval(qml.PauliX(1)),
                     qml.expval(qml.PauliY(1)),
@@ -609,7 +609,7 @@ class QOC:
         @qml.qnode(dev, interface="jax")
         def circuit(w, params):
             qml.H(wires=0)
-            Gates.CNOT(wires=[0, 1], params=params, mode="pulse")
+            Gates.CX(wires=[0, 1], params=params, mode="pulse")
             return qml.state()
 
         @qml.qnode(dev)
