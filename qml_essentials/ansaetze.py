@@ -550,12 +550,12 @@ class PulseGates:
         return f * x
 
     @staticmethod
-    def Rot(phi, theta, omega, wires, params=None): # TODO
+    def Rot(phi, theta, omega, wires, pulse_params=None): # TODO
         # RZ(phi) · RY(theta) · RZ(omega)
         qml.Rot(phi, theta, omega, wires=wires)
 
     @staticmethod
-    def RX(w, wires, params=None):
+    def RX(w, wires, pulse_params=None):
         """
         Applies a rotation around the X axis pulse to the given wires.
 
@@ -565,16 +565,16 @@ class PulseGates:
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation to.
-        params : Tuple[List[float], float], optional
+        pulse_params : Tuple[List[float], float], optional
             Tuple containing pulse parameters `[A, sigma]` and time `t` for the
             Gaussian envelope. Defaults to optimized parameters and time.
         """
-        if params is None:
-            params = [PulseGates.opt_params_RX[:2]]
+        if pulse_params is None:
+            pulse_params = [PulseGates.opt_pulse_params_RX[:2]]
             t = PulseGates.opt_params_RX[-1]
         else:
-            params, t = [params[:2]], params[-1]
-            # params = [params] # TODO: Remove this line if everything works
+            pulse_params, t = [pulse_params[:2]], pulse_params[-1]
+            # pulse_params = [pulse_params] # TODO: Remove this line if everything works
 
         Sx = lambda p, t: PulseGates.S(p, t, phi_c=jnp.pi) * w
 
@@ -582,10 +582,10 @@ class PulseGates:
         _H = qml.Hermitian(_H, wires=wires)
         H_eff = Sx * _H
 
-        return qml.evolve(H_eff)(params, t)
+        return qml.evolve(H_eff)(pulse_params, t)
 
     @staticmethod
-    def RY(w, wires, params=None):
+    def RY(w, wires, pulse_params=None):
         """
         Applies a rotation around the Y axis pulse to the given wires.
 
@@ -595,16 +595,16 @@ class PulseGates:
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation to.
-        params : Tuple[List[float], float], optional
+        pulse_params : Tuple[List[float], float], optional
             Tuple containing pulse parameters `[A, sigma]` and time `t` for the
             Gaussian envelope. Defaults to optimized parameters and time.
         """
-        if params is None:
-            params = [PulseGates.opt_params_RY[:2]]
+        if pulse_params is None:
+            pulse_params = [PulseGates.opt_params_RY[:2]]
             t = PulseGates.opt_params_RY[-1]
         else:
-            params, t = [params[:2]], params[-1]
-            # params = [params] # TODO: Remove this line
+            pulse_params, t = [pulse_params[:2]], pulse_params[-1]
+            # pulse_params = [pulse_params] # TODO: Remove this line
 
         Sy = lambda p, t: PulseGates.S(p, t, phi_c=-jnp.pi/2) * w
 
@@ -612,10 +612,10 @@ class PulseGates:
         _H = qml.Hermitian(_H, wires=wires)
         H_eff = Sy * _H
 
-        return qml.evolve(H_eff)(params, t)
+        return qml.evolve(H_eff)(pulse_params, t)
 
     @staticmethod
-    def RZ(w, wires, params=None):
+    def RZ(w, wires, pulse_params=None):
         """
         Applies a rotation around the Z axis to the given wires.
 
@@ -625,16 +625,16 @@ class PulseGates:
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation to.
-        params : float or None, optional
+        pulse_params : float or None, optional
             Duration of the pulse. Rotation angle = w * 2 * t.
             Defaults to 0.5 if None.
         """
-        if params is None:
+        if pulse_params is None:
             t = PulseGates.opt_params_RZ[0]
-        elif isinstance(params, (float, int)):
-            t = params
+        elif isinstance(pulse_params, (float, int)):
+            t = pulse_params
         else:
-            t = params[0]
+            t = pulse_params[0]
 
         _H = qml.Hermitian(PulseGates.Z, wires=wires)
         Sz = lambda p, t: w
@@ -644,26 +644,26 @@ class PulseGates:
         return qml.evolve(H_eff)([0], t)
 
     @staticmethod
-    def CRX(w, wires, params=None): # TODO
+    def CRX(w, wires, pulse_params=None): # TODO
         # H_t · CRZ(w) · H_t
         # =
         # H_t · RZ(w/2)_t · CZ · RZ(-w/2)_t · H_t
         qml.CRX(w, wires=wires)
 
     @staticmethod
-    def CRY(w, wires, params=None): # TODO
+    def CRY(w, wires, pulse_params=None): # TODO
         # RX(-pi/2)_t · CRZ(w) · RX(pi/2)_t
         # =
         # RX(-pi/2)_t · RZ(w/2)_t · CZ · RZ(-w/2)_t · RX(pi/2)_t
         qml.CRY(w, wires=wires)
 
     @staticmethod
-    def CRZ(w, wires, params=None): # TODO
+    def CRZ(w, wires, pulse_params=None): # TODO
         # RZ(w/2)_t · CZ · RZ(-w/2)_t
         qml.CRZ(w, wires=wires)
 
     @staticmethod
-    def CX(wires, params=None):
+    def CX(wires, pulse_params=None):
         """
         Applies a CNOT gate composed of Hadamard and controlled-Z pulses.
 
@@ -671,35 +671,35 @@ class PulseGates:
         ----------
         wires : List[int]
             The control and target wires for the CNOT gate.
-        params : Tuple[List[float], Tuple[float, float]], optional
+        pulse_params : Tuple[List[float], Tuple[float, float]], optional
             Tuple containing pulse parameters `[A, sigma]` and a tuple of two times:
             - time for the Hadamard gates
             - time for the controlled-Z gate
 
             Defaults to optimized parameters and times if None.
         """
-        if params is None:
-            params = PulseGates.opt_params_CX[:3]
+        if pulse_params is None:
+            pulse_params = PulseGates.opt_params_CX[:3]
             t_CZ = PulseGates.opt_t_CX_CZ[-1]
         else:
-            params = params[:-1]
-            t_CZ = params[-1]
+            pulse_params = pulse_params[:-1]
+            t_CZ = pulse_params[-1]
 
-        PulseGates.H(wires=wires[1], params=params)
-        PulseGates.CZ(wires=wires, params=[t_CZ])
-        PulseGates.H(wires=wires[1], params=params)
+        PulseGates.H(wires=wires[1], pulse_params=pulse_params)
+        PulseGates.CZ(wires=wires, pulse_params=[t_CZ])
+        PulseGates.H(wires=wires[1], pulse_params=pulse_params)
 
         return
 
     @staticmethod
-    def CY(wires, params=None): # TODO
+    def CY(wires, pulse_params=None): # TODO
         # RZ(-pi/2)_t · CX · RZ(pi/2)_t
         # =
         # RZ(-pi/2)_t · H_t · CZ · H_t · RZ(pi/2)_t
         qml.CY(wires=wires)
 
     @staticmethod
-    def CZ(wires, params=None):
+    def CZ(wires, pulse_params=None):
         """
         Applies a controlled Z gate to the given wires.
 
@@ -707,16 +707,16 @@ class PulseGates:
         ----------
         wires : List[int]
             The wire(s) to apply the controlled Z gate to.
-        params : float or None, optional
+        pulse_params : float or None, optional
             Time or time interval for the evolution.
             Defaults to optimized time if None.
         """
-        if params is None:
+        if pulse_params is None:
             t = PulseGates.opt_params_CZ[0]
-        elif isinstance(params, (float, int)):
-            t = params
+        elif isinstance(pulse_params, (float, int)):
+            t = pulse_params
         else:
-            t = params[0]
+            t = pulse_params[0]
 
         I_I = jnp.kron(PulseGates.Id, PulseGates.Id)
         Z_I = jnp.kron(PulseGates.Z, PulseGates.Id)
@@ -733,7 +733,7 @@ class PulseGates:
         return qml.evolve(H_eff)([0], t)
 
     @staticmethod
-    def H(wires, params=None):
+    def H(wires, pulse_params=None):
         """
         Applies Hadamard gate to the given wires.
 
@@ -741,12 +741,12 @@ class PulseGates:
         ----------
         wires : Union[int, List[int]]
             The wire(s) to apply the Hadamard gate to.
-        params : Tuple[List[float], float], optional
+        pulse_params : Tuple[List[float], float], optional
             Tuple containing pulse parameters `[A, sigma]` and time `t`.
             Defaults to optimized parameters and time.
         """
-        if params is None:
-            params = PulseGates.opt_params_H
+        if pulse_params is None:
+            pulse_params = PulseGates.opt_params_H
 
         # qml.GlobalPhase(-jnp.pi / 2)
         Sc = lambda p, t: -1.0
@@ -758,7 +758,7 @@ class PulseGates:
         qml.evolve(H_corr)([0], 1)
 
         PulseGates.RZ(jnp.pi, wires=wires)
-        PulseGates.RY(jnp.pi / 2, wires=wires, params=params)
+        PulseGates.RY(jnp.pi / 2, wires=wires, pulse_params=pulse_params)
 
         return
 
@@ -802,6 +802,7 @@ class GatesMeta(type):
         return handler
 
 class Gates(metaclass=GatesMeta):
+    # TODO: Update docstring
     """
     Gate accessor that dynamically routes calls such as
     'Gates.RX(...)' to either the UnitaryGates or
@@ -812,16 +813,12 @@ class Gates(metaclass=GatesMeta):
         def handler(**kwargs):
             return self._inner_getattr(gate_name, **kwargs)
         return handler
-
-    # TODO: Handle slicing logic here
-    #   Use helper fn to slice if vector is larger than required
-    # TODO: raise exception/warning if len of pulse params vector is 
-    #   not in the exact required shape for the layer
-    # TODO: Handle scaling pulse params vs pulse params here?
-    #   Figure out how and where to handle this
+    
     @staticmethod
     def _inner_getattr(gate_name, *args, **kwargs):
         mode = kwargs.pop("mode", "unitary")
+
+        # Backend selection
         if mode == "unitary":
             gate_backend = UnitaryGates
         elif mode == "pulse":
@@ -829,40 +826,21 @@ class Gates(metaclass=GatesMeta):
         else:
             raise ValueError(f"Unknown gate mode: {mode}. Use 'unitary' or 'pulse'.")
 
+        # CHECK
+        # Pulse slicing + scaling
+        n_params = PULSE_PARAM_COUNTS.get(gate_name, None)
+        pulse_mgr = getattr(Gates, "_pulse_mgr", None)
+        if mode == "pulse" and pulse_mgr is not None:
+            scalers = pulse_mgr.get(n_params)
+            base = OPTIMIZED_PULSES.get(gate_name)
+            kwargs["pulse_params"] = scalers * base  # element-wise scaling
+
+        # Call the selected gate backend
         gate = getattr(gate_backend, gate_name, None)
         if gate is None:
             raise AttributeError(f"'{gate_backend.__class__.__name__}' object has no attribute '{gate_name}'")
 
         return gate(*args, **kwargs)
-    
-    # TODO: Add below (proposed solution, replace _inner_getattr above)
-    # @staticmethod
-    # def _inner_getattr(gate_name, *args, **kwargs):
-    #     mode = kwargs.pop("mode", "unitary")
-
-    #     # Backend selection
-    #     if mode == "unitary":
-    #         gate_backend = UnitaryGates
-    #     elif mode == "pulse":
-    #         gate_backend = PulseGates
-    #     else:
-    #         raise ValueError(f"Unknown gate mode: {mode}. Use 'unitary' or 'pulse'.")
-
-    #     # Pulse slicing + scaling
-    #     n_params = PULSE_PARAM_COUNTS.get(gate_name, None)
-    #     pulse_mgr = getattr(Gates, "_pulse_mgr", None)
-    #     if mode == "pulse" and pulse_mgr is not None:
-    #         scalers = pulse_mgr.get(n_params)
-    #         base = OPTIMIZED_PULSES.get(gate_name)
-    #         kwargs["pulse_params"] = scalers * base  # element-wise scaling
-
-    #     # Call the selected gate backend
-    #     gate = getattr(gate_backend, gate_name, None)
-    #     if gate is None:
-    #         raise AttributeError(f"'{gate_backend.__class__.__name__}' object has no attribute '{gate_name}'")
-
-    #     return gate(*args, **kwargs)
-
 
 
 class PulseParamManager:
@@ -958,10 +936,20 @@ class Ansaetze:
                 log.warning("Number of Qubits < 2, no entanglement available")
             return n_qubits * 3
 
-        # TODO: Implement n_pulse_params_per_layer
+        # CHECK
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            pass
+            # TODO: Docstring
+            single_qubit = n_qubits * (2 * PULSE_PARAM_COUNTS["RY"] + PULSE_PARAM_COUNTS["RZ"])
+
+            if n_qubits > 1:
+                multi_qubit = n_qubits // 2 + (n_qubits - 1) // 2
+                multi_qubit += 1 if n_qubits > 2 else 0
+                multi_qubit *= PULSE_PARAM_COUNTS["CX"]
+                return single_qubit + multi_qubit
+
+            else:
+                return single_qubit
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -996,11 +984,16 @@ class Ansaetze:
             noise_params : Optional[Dict[str, float]], optional
                 Dictionary of noise parameters to apply to the gates
             """
-            # TODO: Add below. This is the only modification needed for build
-            # if kwargs.get("mode", "unitary") == "pulse" and "pulse_params" in kwargs:
-            #     Gates._pulse_mgr = PulseParamManager(kwargs["pulse_params"])
-            # TODO: Raise exception/warning here if
-            #   len(kwargs.get("params") != Hardware_Efficient.n_pulse_params_per_layer(n_qubits)?
+            # CHECK
+            if kwargs.get("mode", "unitary") == "pulse" and "pulse_params" in kwargs:
+                pulse_params_per_layer = Ansaetze.Hardware_Efficient.n_pulse_params_per_layer(n_qubits)
+                if len(kwargs["pulse_params"]) != pulse_params_per_layer:
+                    raise ValueError(
+                        f"Pulse params length {len(kwargs['pulse_params'])} "
+                        f"does not match expected {pulse_params_per_layer} "
+                        f"for {n_qubits} qubits"
+                    )
+                Gates._pulse_mgr = PulseParamManager(kwargs["pulse_params"])
             
             w_idx = 0
             for q in range(n_qubits):

@@ -17,6 +17,7 @@ import logging
 log = logging.getLogger(__name__)
 
 # TODO: Include pulse functionality in docs
+# TODO: Implement tests for pulse functionality
 # TODO: Make trainable frequencies implementation consistent with pulse mode?
 #   I.e. pass trainable frequencies as an execution type and initialize enc_params
 #   with requires_grad=False
@@ -35,8 +36,12 @@ Meeting Notes
 - How/where to specify pulse mode? In model init, in execution type or in new argument
     in __call__?
 
-    - Where to raise exception/warning if given vector is larger/smaller than
+- Where to raise exception/warning if given vector is larger/smaller than
     required (in build currently)?
+
+- How to index pulse_params in state preparation? pulse_params needs additional
+    length or dim to index for state preparation, or pass
+    a seperate sp_pulse_params
 """
 
 
@@ -246,10 +251,11 @@ class Model:
         self._params_shape: Tuple[int, int] = (impl_n_layers, params_per_layer)
         log.info(f"Parameters per layer: {params_per_layer}")
 
-        # TODO: Add pulse_params_per_layer here
-        # self._pulse_params_shape: Tuple[int, int] = (
-        # impl_n_layers, pulse_params_per_layer
-        # )
+        # CHECK
+        pulse_params_per_layer = self.pqc.n_pulse_params_per_layer(self.n_qubits)
+        self._pulse_params_shape: Tuple[int, int] = (
+            impl_n_layers, pulse_params_per_layer
+        )
 
         self.batch_shape = (1, 1)
         # this will also be re-used in the init method,
@@ -259,9 +265,8 @@ class Model:
 
         # ..here! where we only require a rng
         self.initialize_params(np.random.default_rng(random_seed))
-        # TODO: Add pulse_params here with requires_grad = False. Will modify to True if
-        # gate mode pulse is specified
-        # self.initialize_pulse_params()
+        # CHECK
+        self.initialize_pulse_params()
 
         # Initialize two circuits, one with the default device and
         # one with the mixed device
@@ -551,12 +556,16 @@ class Model:
             using strategy {initialization}."
         )
 
-    # TODO: Complete initialize_pulse_params (array of appropiate size of 1s)
-    # The 1s are the element-wise scalers of the optimized pulse parameters
-    # Use self._pulse_params_shape
-    # TODO: Figure out where/when the array of 1s multiply the actual pulse parameters
+    # CHECK
     def initialize_pulse_params(self) -> None:
-        pass
+        # TODO: Add docstring
+        self.pulse_params: np.ndarray = np.ones(
+            self._pulse_params_shape, requires_grad=False
+        )
+
+        log.info(
+            f"Initialized pulse parameters with shape {self.pulse_params.shape}."
+        )
 
     def transform_input(self, inputs: np.ndarray, enc_params: Optional[np.ndarray]):
         """
@@ -613,15 +622,17 @@ class Model:
                         noise_params=noise_params,
                     )
 
-    # TODO: Adapt _circuit to take pulse_params
+    # TODO: see where circuit and variational are used and fix their input arguments
+    # CHECK
     def _circuit(
         self,
         params: np.ndarray,
-        # TODO: Add below
-        # pulse_params: np.ndarray,
+        pulse_params: np.ndarray,
         inputs: np.ndarray,
         enc_params: Optional[np.ndarray] = None,
+        mode: str = "unitary"
     ) -> Union[float, np.ndarray]:
+        # TODO: Update docstring
         """
         Creates a circuit with noise.
 
@@ -637,23 +648,23 @@ class Model:
                 otherwise the density matrix of all qubits.
         """
 
-        # TODO: Modify below
-        self._variational(params=params, inputs=inputs, enc_params=enc_params)
-        # self._variational(
-        #     params=params,
-        #     pulse_params=pulse_params,
-        #     inputs=inputs,
-        #     enc_params=enc_params)
+        self._variational(
+            params=params,
+            pulse_params=pulse_params,
+            inputs=inputs,
+            enc_params=enc_params,
+            mode=mode
+        )
         return self._observable()
 
-    # TODO: Adapt _variational to take pulse_params
+    # TODO: semi-check, see issue/todo below in state preparation
     def _variational(
         self,
         params: np.ndarray,
-        # TODO: Add below
-        # pulse_params: np.ndarray,
+        pulse_params: np.ndarray,
         inputs: np.ndarray,
-        enc_params: Optional[np.ndarray] = None
+        enc_params: Optional[np.ndarray] = None,
+        mode: str = "unitary"
     ) -> None:
 
         if enc_params is None:
@@ -670,20 +681,26 @@ class Model:
         # state preparation
         for q in range(self.n_qubits):
             for _sp in self._sp:
-                _sp(wires=q, noise_params=self.noise_params)
+                _sp(
+                    wires=q,
+                    # TODO: How to index this? pulse_params needs additional
+                    # length or dim to index for state preparation, or pass
+                    # a seperate sp_pulse_params
+                    pulse_params=pulse_params,
+                    noise_params=self.noise_params,
+                    mode=mode
+                )
 
         # circuit building
         for layer in range(0, self.n_layers):
             # ansatz layers
-            # TODO: Modify below (self.pqc() calls build() in Ansaetze)
-            self.pqc(params[layer], self.n_qubits, noise_params=self.noise_params)
-            # self.pqc(
-            #     params[layer],
-            #     self.n_qubits,
-            #     noise_params=self.noise_params,
-            #     params=pulse_params[layer],
-            #     mode=self.gate_mode,
-            # )
+            self.pqc(
+                params[layer],
+                self.n_qubits,
+                pulse_params=pulse_params[layer],
+                noise_params=self.noise_params,
+                mode=mode
+            )
 
             # encoding layers
             self._iec(
@@ -700,14 +717,13 @@ class Model:
 
         # final ansatz layer
         if self.degree > 1:  # same check as in init
-            # TODO: Modify below (self.pqc() calls build() in Ansaetze)
-            self.pqc(params[-1], self.n_qubits, noise_params=self.noise_params)
-            # self.pqc(
-            #     params[-1],
-            #     pulse_params[-1],
-            #     self.n_qubits,
-            #     noise_params=self.noise_params
-            # )
+            self.pqc(
+                params[-1],
+                self.n_qubits,
+                pulse_params=pulse_params[-1],
+                noise_params=self.noise_params,
+                mode=mode
+            )
 
         # channel noise
         if self.noise_params is not None:
@@ -866,6 +882,18 @@ class Model:
                 self.params = params
         return params
 
+    # CHECK: unsure of implementation, just copied _params_validation
+    def _pulse_params_validation(self, pulse_params) -> np.ndarray:
+        # TODO: Docstring
+        if pulse_params is None:
+            pulse_params = self.pulse_params
+        else:
+            if isinstance(pulse_params, numpy_boxes.ArrayBox):
+                self.pulse_params = pulse_params._value
+            else:
+                self.pulse_params = pulse_params
+        return pulse_params
+
     def _enc_params_validation(self, enc_params) -> np.ndarray:
         """
         Sets the encoding parameters when calling the quantum circuit
@@ -900,10 +928,6 @@ class Model:
             )
 
         return enc_params
-
-    # TODO: Complete _pulse_params_validation
-    def _pulse_params_validation(self, pulse_params) -> np.ndarray:
-        pass
 
     def _inputs_validation(
         self, inputs: Union[None, List, float, int, np.ndarray]
@@ -1228,7 +1252,8 @@ class Model:
                 result = np.load(file_path)
 
         # TODO: Figure out how to include gate_mode when executing (in
-        # _mp_executor probably)
+        # _mp_executor probably). Remember to set requires_grad=True
+        # to self.pulse_params
 
         if result is None:
             # if density matrix requested or noise params used
