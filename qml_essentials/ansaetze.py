@@ -507,10 +507,13 @@ class UnitaryGates:
 
 class PulseGates:
     # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT/CX and H pulse level
-    # gates closely follow https://doi.org/10.5445/IR/1000184129
+    #   gates closely follow https://doi.org/10.5445/IR/1000184129
     # TODO: Mention deviations from the above?
     # TODO: Which gate decomposition to use for Rot, CRX, CRY, CRZ, CX, CY?
-    # Favor CNOT/CX or CZ? Currently using CZ
+    #   Favor CNOT/CX or CZ? Currently using CZ
+    # TODO: RZ takes as params only t, which theoretically is 0.5 and is
+    #   confirmed numerically. Should this parameters be passed too when 
+    #   RZ is found in other gate decompositions?
     omega_q = 10 * jnp.pi
     omega_c = 10 * jnp.pi
 
@@ -524,20 +527,17 @@ class PulseGates:
     Y = jnp.array([[0, -1j], [1j, 0]])
     Z = jnp.array([[1, 0], [0, -1]])
 
-    opt_params_RX = [15.70989327341467, 29.5230665326707]
-    opt_t_RX = 0.7499810441330634
+    opt_params_RX = [15.70989327341467, 29.5230665326707, 0.7499810441330634]
 
-    opt_params_RY = [7.8787724942614235, 22.001319411513432]
-    opt_t_RY = 1.098524473819202
+    opt_params_RY = [7.8787724942614235, 22.001319411513432, 1.098524473819202]
 
-    opt_params_H = [7.857992398977854, 21.572701026008765]
-    opt_t_H = 0.9000668764548863
+    opt_params_RZ = [0.5]
 
-    opt_t_CZ = 0.962596375687258
+    opt_params_CX = [7.944725340235801, 21.639825810701435, 0.9072431332410497, 0.9550977662365613]
 
-    opt_params_CX = [7.944725340235801, 21.639825810701435]
-    opt_t_CX_H = 0.9072431332410497
-    opt_t_CX_CZ = 0.9550977662365613
+    opt_params_CZ = [0.962596375687258]
+
+    opt_params_H = [7.857992398977854, 21.572701026008765, 0.9000668764548863]
 
     @staticmethod
     def S(p, t, phi_c):
@@ -570,11 +570,11 @@ class PulseGates:
             Gaussian envelope. Defaults to optimized parameters and time.
         """
         if params is None:
-            params = [PulseGates.opt_params_RX]
-            t = PulseGates.opt_t_RX
+            params = [PulseGates.opt_params_RX[:2]]
+            t = PulseGates.opt_params_RX[-1]
         else:
-            params, t = params[:2], params[-1]
-            params = [params]
+            params, t = [params[:2]], params[-1]
+            # params = [params] # TODO: Remove this line if everything works
 
         Sx = lambda p, t: PulseGates.S(p, t, phi_c=jnp.pi) * w
 
@@ -600,11 +600,11 @@ class PulseGates:
             Gaussian envelope. Defaults to optimized parameters and time.
         """
         if params is None:
-            params = [PulseGates.opt_params_RY]
-            t = PulseGates.opt_t_RY
+            params = [PulseGates.opt_params_RY[:2]]
+            t = PulseGates.opt_params_RY[-1]
         else:
-            params, t = params[:2], params[-1]
-            params = [params]
+            params, t = [params[:2]], params[-1]
+            # params = [params] # TODO: Remove this line
 
         Sy = lambda p, t: PulseGates.S(p, t, phi_c=-jnp.pi/2) * w
 
@@ -630,7 +630,7 @@ class PulseGates:
             Defaults to 0.5 if None.
         """
         if params is None:
-            t = 0.5
+            t = PulseGates.opt_params_RZ[0]
         elif isinstance(params, (float, int)):
             t = params
         else:
@@ -679,14 +679,11 @@ class PulseGates:
             Defaults to optimized parameters and times if None.
         """
         if params is None:
-            params = PulseGates.opt_params_CX
-            t_H = PulseGates.opt_t_CX_H
-            t_CZ = PulseGates.opt_t_CX_CZ
-            params += [t_H]
+            params = PulseGates.opt_params_CX[:3]
+            t_CZ = PulseGates.opt_t_CX_CZ[-1]
         else:
-            print(f"Shape params: {params.shape}\nParams: {params}")
-            t_CZ = params[-1]
             params = params[:-1]
+            t_CZ = params[-1]
 
         PulseGates.H(wires=wires[1], params=params)
         PulseGates.CZ(wires=wires, params=[t_CZ])
@@ -715,7 +712,7 @@ class PulseGates:
             Defaults to optimized time if None.
         """
         if params is None:
-            t = PulseGates.opt_t_CZ
+            t = PulseGates.opt_params_CZ[0]
         elif isinstance(params, (float, int)):
             t = params
         else:
@@ -726,7 +723,7 @@ class PulseGates:
         I_Z = jnp.kron(PulseGates.Id, PulseGates.Z)
         Z_Z = jnp.kron(PulseGates.Z, PulseGates.Z)
 
-        # NOTE: optimize this parameter too?
+        # TODO: optimize this parameter too?
         Scz = lambda p, t: jnp.pi
 
         _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
@@ -750,8 +747,6 @@ class PulseGates:
         """
         if params is None:
             params = PulseGates.opt_params_H
-            t = PulseGates.opt_t_H
-            params += [t]
 
         # qml.GlobalPhase(-jnp.pi / 2)
         Sc = lambda p, t: -1.0
@@ -768,6 +763,7 @@ class PulseGates:
         return
 
 
+# TODO: Store these in a PulseInfo class better?
 PULSE_PARAM_COUNTS = {
     "Rot": 0, # TODO
     "RX": 3,
@@ -780,6 +776,21 @@ PULSE_PARAM_COUNTS = {
     "CY": 0, # TODO
     "CZ": 1,
     "H": 3
+}
+
+OPTIMIZED_PULSES = {
+    "Rot": None,  # TODO
+    "RX": jnp.array([15.70989327341467, 29.5230665326707, 0.7499810441330634]),
+    "RY": jnp.array([7.8787724942614235, 22.001319411513432, 1.098524473819202]),
+    "RZ": jnp.array([0.5]),
+    "CRX": None,  # TODO
+    "CRY": None,  # TODO
+    "CRZ": None,  # TODO
+    "CX": jnp.array([7.944725340235801, 21.639825810701435,
+                     0.9072431332410497, 0.9550977662365613]),
+    "CY": None,  # TODO
+    "CZ": jnp.array([0.962596375687258]),
+    "H": jnp.array([7.857992398977854, 21.572701026008765, 0.9000668764548863]),
 }
 
 
@@ -837,12 +848,13 @@ class Gates(metaclass=GatesMeta):
     #     else:
     #         raise ValueError(f"Unknown gate mode: {mode}. Use 'unitary' or 'pulse'.")
 
-    #     # Pulse slicing
-    #     if mode == "pulse":
-    #         pulse_mgr = getattr(Gates, "_pulse_mgr", None)
-    #         n_params = PULSE_PARAM_COUNTS.get(gate_name, None)
-    #         if pulse_mgr is not None and n_params is not None and n_params > 0:
-    #             kwargs["pulse_params"] = pulse_mgr.get(n_params)
+    #     # Pulse slicing + scaling
+    #     n_params = PULSE_PARAM_COUNTS.get(gate_name, None)
+    #     pulse_mgr = getattr(Gates, "_pulse_mgr", None)
+    #     if mode == "pulse" and pulse_mgr is not None:
+    #         scalers = pulse_mgr.get(n_params)
+    #         base = OPTIMIZED_PULSES.get(gate_name)
+    #         kwargs["pulse_params"] = scalers * base  # element-wise scaling
 
     #     # Call the selected gate backend
     #     gate = getattr(gate_backend, gate_name, None)
@@ -850,6 +862,7 @@ class Gates(metaclass=GatesMeta):
     #         raise AttributeError(f"'{gate_backend.__class__.__name__}' object has no attribute '{gate_name}'")
 
     #     return gate(*args, **kwargs)
+
 
 
 class PulseParamManager:
@@ -866,7 +879,7 @@ class PulseParamManager:
         return params
 
 
-# TODO: After final HEA solution: extend it to the other ansatzes
+# TODO: After final HEA solution: extend it to the other ansaetze
 class Ansaetze:
 
     def get_available():

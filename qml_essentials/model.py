@@ -16,19 +16,27 @@ import logging
 
 log = logging.getLogger(__name__)
 
+# TODO: Include pulse functionality in docs
+# TODO: Make trainable frequencies implementation consistent with pulse mode?
+#   I.e. pass trainable frequencies as an execution type and initialize enc_params
+#   with requires_grad=False
 
 """
 Meeting Notes
 
 - Handle pulse param vector slicing in Gate manager class instead of in each
     pulse gate or build method. Detect if slicing is needed if vector is
-    larger than needed for that gate.
+    larger than needed for that gate. When that is the case, assume they are
+    scalers instead of the actual params. Initialize PulseParamManager in build
+
 - How to implement scaling pulse parameters (instead of directly the actual
-    pulse parameters)?
+    pulse parameters)? Currently implemented in Gate handler (_inner_getattr)
+
 - How/where to specify pulse mode? In model init, in execution type or in new argument
     in __call__?
-- Where to raise exception/warning if given vector is larger/smaller than
-    required (in build)?
+
+    - Where to raise exception/warning if given vector is larger/smaller than
+    required (in build currently)?
 """
 
 
