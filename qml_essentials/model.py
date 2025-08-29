@@ -42,6 +42,16 @@ Meeting Notes
 - How to index pulse_params in state preparation? pulse_params needs additional
     length or dim to index for state preparation, or pass
     a seperate sp_pulse_params
+
+- Modify get_specs?
+
+- Modified hash, adapt somewhere else?
+
+- What was _(pulse_)param_validation() for?
+
+- Raise exception is noise params and pulse mode are passed?
+
+- _parallel_f?
 """
 
 
@@ -448,6 +458,7 @@ class Model:
 
         self._execution_type = value
 
+    # CHECK
     def _normalize_execution_type(self, execution_type: str) -> tuple[str, str]:
         parts = execution_type.split("_")
         if len(parts) == 1:
@@ -981,7 +992,6 @@ class Model:
         f,
         batch_size,
         params,
-        # TODO: Add below
         # pulse_params,
         inputs,
         batch_shape,
@@ -1042,9 +1052,11 @@ class Model:
             n_processes = math.ceil(combined_batch_size / self.mp_threshold)
         # check if single process
         if n_processes == 1:
+            # TODO: Add pulse_params
             result = f(params=params, inputs=inputs, enc_params=enc_params)
         else:
             log.info(f"Using {n_processes} processes")
+            # TODO: Add pulse_params
             mpp = MultiprocessingPool(
                 n_processes=n_processes,
                 target=Model._parallel_f,
@@ -1089,19 +1101,19 @@ class Model:
 
         return inputs, params, batch_shape
 
-    # TODO: Adapt __call__ to take pulse_params
+    # CHECK
     def __call__(
         self,
         params: Optional[np.ndarray] = None,
+        pulse_params: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
         enc_params: Optional[np.ndarray] = None,
-        # TODO: Add below
-        # pulse_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
     ) -> np.ndarray:
+        # TODO: Update docstring
         """
         Perform a forward pass of the quantum circuit.
 
@@ -1141,6 +1153,7 @@ class Model:
         # Call forward method which handles the actual caching etc.
         return self._forward(
             params=params,
+            pulse_params=pulse_params,
             inputs=inputs,
             enc_params=enc_params,
             noise_params=noise_params,
@@ -1149,19 +1162,19 @@ class Model:
             force_mean=force_mean,
         )
 
-    # TODO: Adapt _forward to take pulse_params and handle pulse mode
+    # TODO: Adapt _forward to handle pulse mode
     def _forward(
         self,
         params: Optional[np.ndarray] = None,
+        pulse_params: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
         enc_params: Optional[np.ndarray] = None,
-        # TODO: Add below
-        # pulse_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
     ) -> np.ndarray:
+        # TODO: Update docstring
         """
         Perform a forward pass of the quantum circuit.
 
@@ -1214,13 +1227,14 @@ class Model:
         # TODO: Raise exception if gate mode is pulse and noise params are passed?
 
         params = self._params_validation(params)
+        pulse_params = self._pulse_params_validation(pulse_params)
         inputs = self._inputs_validation(inputs)
         enc_params = self._enc_params_validation(enc_params)
-        # TODO: Add below
-        # pulse_params = self._pulse_params_validation(pulse_params)
+
         inputs, params, self.batch_shape = self._assimilate_batch(inputs, params)
         # the qasm representation contains the bound parameters,
         # thus it is ok to hash that
+        # TODO: hs is modified, adapt somewhere else?
         hs = hashlib.md5(
             repr(
                 {
@@ -1229,6 +1243,7 @@ class Model:
                     "pqc": self.pqc.__class__.__name__,
                     "dru": self.data_reupload,
                     "params": self.params,  # use safe-params
+                    "pulse_params": self.pulse_params,
                     "enc_params": self.enc_params,
                     "noise_params": self.noise_params,
                     "execution_type": self.execution_type,
@@ -1292,7 +1307,6 @@ class Model:
                 result = result[..., -1].sum(axis=-1)
             else:
                 result = result[1:, ...].sum(axis=0)
-        # TODO: add execution type pulse here
 
         if self.batch_shape[0] > 1 and self.batch_shape[1] > 1:
             result = result.reshape(-1, *self.batch_shape)
