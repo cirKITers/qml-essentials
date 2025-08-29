@@ -23,23 +23,26 @@ log = logging.getLogger(__name__)
 #   I.e. pass trainable frequencies as an execution type and initialize enc_params
 #   with requires_grad=False
 
+# TODO: Migrate from pennylane.numpy to jax.numpy everywhere or
+#   Migrate from jax.numpy to pennylane.numpy in ansaetze and qoc
+
 """
-Meeting Notes
+Notes
 
-- Handle pulse param vector slicing in Gate manager class instead of in each
-    pulse gate or build method. Detect if slicing is needed if vector is
-    larger than needed for that gate. When that is the case, assume they are
-    scalers instead of the actual params. Initialize PulseParamManager in build
+- Modify get_specs and draw?
 
-- How to index pulse_params in state preparation? pulse_params needs additional
-    length or dim to index for state preparation, or pass
-    a seperate sp_pulse_params
+- Modified hash and MultiprocessingPool, adapt somewhere else?
 
-- Modify get_specs?
+- Add new arg for trainable pulse params or always optimize if gate_mode is pulse?
 
-- Modified hash, adapt somewhere else?
+- If gate_mode pulse also means optimize, then pulse_params can be init at
+    forward instead of init? Or is gate_mode reduntant, are pulse params always
+    passed when gate_mode = pulse? Confused myself...
 
-- _parallel_f?
+- Pennylane pulse module works on JAX. Pulse parameters (in model and qoc) must be
+    optimized with jnp (double check). So, either
+    1. Migrate everything from pennylane.numpy to jax.numpy (better optimization anyway)
+    2. Add if else statements and use jnp when pulse and np when unitary
 """
 
 
@@ -146,7 +149,6 @@ class Model:
         Gates.init_rng(random_seed)
 
         # --- State Preparation ---
-        # TODO: are _sp already the unitary gates or can I still pass gate_mode?
         # first check if we have a str, list or callable
         if isinstance(state_preparation, str):
             # if str, use the pennylane fct
@@ -424,13 +426,13 @@ class Model:
         self._noise_params = kvs
 
     # TODO: implement pulse_params setter, so when None defaults to array of 1s
-    @property
-    def pulse_params(self):
+    # @property
+    # def pulse_params(self):
         pass
 
     # TODO: see above
-    @pulse_params.setter
-    def pulse_params():
+    # @pulse_params.setter
+    # def pulse_params():
         pass
 
     @property
@@ -1094,7 +1096,7 @@ class Model:
             result = np.concat(result, axis=1 if self.execution_type == "expval" else 0)
         return result
 
-    # CHECK
+    # CHECK: unsure
     def _assimilate_batch(self, inputs, params, pulse_params):
         batch_shape = (
             inputs.shape[0],

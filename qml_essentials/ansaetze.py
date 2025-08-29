@@ -24,6 +24,10 @@ class Circuit(ABC):
         return
 
     @abstractmethod
+    def n_pulse_params_per_layer(n_qubits: int) -> int:
+        return
+
+    @abstractmethod
     def get_control_indices(self, n_qubits: int) -> List[int]:
         """
         Returns the indices for the controlled rotation gates for one layer.
@@ -67,17 +71,32 @@ class Circuit(ABC):
 
         return w[indices[0] : indices[1] : indices[2]]
 
-    # TODO: implement _build, which calls pulse manager and raises error, then calls regular build
-    def _build():
-        pass
+    # CHECK
+    def _build(self, w: np.ndarray, n_qubits: int, **kwargs):
+        # TODO: Docstring
+        gate_mode = kwargs.get("gate_mode", "unitary")
+
+        if gate_mode == "pulse" and "pulse_params" in kwargs:
+            pulse_params_per_layer = self.n_pulse_params_per_layer(n_qubits)
+
+            if len(kwargs["pulse_params"]) != pulse_params_per_layer:
+                raise ValueError(
+                    f"Pulse params length {len(kwargs['pulse_params'])} "
+                    f"does not match expected {pulse_params_per_layer} "
+                    f"for {n_qubits} qubits"
+                )
+
+            Gates._pulse_mgr = PulseParamManager(kwargs["pulse_params"])
+
+        return self.build(w, n_qubits, **kwargs)
 
     @abstractmethod
     def build(self, n_qubits: int, n_layers: int):
         return
 
-    # TODO change below to _build
+    # CHECK
     def __call__(self, *args: Any, **kwds: Any) -> Any:
-        self.build(*args, **kwds)
+        self._build(*args, **kwds)
 
 
 class UnitaryGates:
@@ -822,21 +841,26 @@ class Gates(metaclass=GatesMeta):
     
     @staticmethod
     def _inner_getattr(gate_name, *args, **kwargs):
-        mode = kwargs.pop("mode", "unitary")
+        gate_mode = kwargs.pop("gate_mode", "unitary")
 
-        # Backend selection
-        if mode == "unitary":
+        # Backend selection and kwargs filtering
+        allowed_args = ["w", "wires", "phi", "theta", "omega"]
+        if gate_mode == "unitary":
             gate_backend = UnitaryGates
-        elif mode == "pulse":
+            allowed_args += ["noise_params"]
+        elif gate_mode == "pulse":
             gate_backend = PulseGates
+            allowed_args += ["pulse_params"]
         else:
-            raise ValueError(f"Unknown gate mode: {mode}. Use 'unitary' or 'pulse'.")
+            raise ValueError(f"Unknown gate mode: {gate_mode}. Use 'unitary' or 'pulse'.")
+
+        kwargs = {k: v for k, v in kwargs.items() if k in allowed_args}
 
         # CHECK
         # Pulse slicing + scaling
         n_params = PULSE_PARAM_COUNTS.get(gate_name, None)
         pulse_mgr = getattr(Gates, "_pulse_mgr", None)
-        if mode == "pulse" and pulse_mgr is not None:
+        if gate_mode == "pulse" and pulse_mgr is not None:
             scalers = pulse_mgr.get(n_params)
             base = OPTIMIZED_PULSES.get(gate_name)
             kwargs["pulse_params"] = scalers * base  # element-wise scaling
@@ -916,6 +940,7 @@ class Ansaetze:
             for q in range(n_qubits - 1):
                 Gates.CX([q, q + 1], **kwargs)
 
+    # CHECK
     class Hardware_Efficient(Circuit):
         @staticmethod
         def n_params_per_layer(n_qubits: int) -> int:
@@ -990,17 +1015,6 @@ class Ansaetze:
             noise_params : Optional[Dict[str, float]], optional
                 Dictionary of noise parameters to apply to the gates
             """
-            # TODO: clean this in circuit class
-            if kwargs.get("mode", "unitary") == "pulse" and "pulse_params" in kwargs:
-                pulse_params_per_layer = Ansaetze.Hardware_Efficient.n_pulse_params_per_layer(n_qubits)
-                if len(kwargs["pulse_params"]) != pulse_params_per_layer:
-                    raise ValueError(
-                        f"Pulse params length {len(kwargs['pulse_params'])} "
-                        f"does not match expected {pulse_params_per_layer} "
-                        f"for {n_qubits} qubits"
-                    )
-                Gates._pulse_mgr = PulseParamManager(kwargs["pulse_params"])
-
             w_idx = 0
             for q in range(n_qubits):
                 Gates.RY(w[w_idx], wires=q, **kwargs)
