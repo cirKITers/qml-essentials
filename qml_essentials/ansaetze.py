@@ -67,10 +67,15 @@ class Circuit(ABC):
 
         return w[indices[0] : indices[1] : indices[2]]
 
+    # TODO: implement _build, which calls pulse manager and raises error, then calls regular build
+    def _build():
+        pass
+
     @abstractmethod
     def build(self, n_qubits: int, n_layers: int):
         return
 
+    # TODO change below to _build
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         self.build(*args, **kwds)
 
@@ -527,6 +532,7 @@ class PulseGates:
     Y = jnp.array([[0, -1j], [1j, 0]])
     Z = jnp.array([[1, 0], [0, -1]])
 
+    # TODO: Refactor using OPTIMIZED_PULSES
     opt_params_RX = [15.70989327341467, 29.5230665326707, 0.7499810441330634]
 
     opt_params_RY = [7.8787724942614235, 22.001319411513432, 1.098524473819202]
@@ -984,7 +990,7 @@ class Ansaetze:
             noise_params : Optional[Dict[str, float]], optional
                 Dictionary of noise parameters to apply to the gates
             """
-            # CHECK
+            # TODO: clean this in circuit class
             if kwargs.get("mode", "unitary") == "pulse" and "pulse_params" in kwargs:
                 pulse_params_per_layer = Ansaetze.Hardware_Efficient.n_pulse_params_per_layer(n_qubits)
                 if len(kwargs["pulse_params"]) != pulse_params_per_layer:
@@ -994,7 +1000,7 @@ class Ansaetze:
                         f"for {n_qubits} qubits"
                     )
                 Gates._pulse_mgr = PulseParamManager(kwargs["pulse_params"])
-            
+
             w_idx = 0
             for q in range(n_qubits):
                 Gates.RY(w[w_idx], wires=q, **kwargs)

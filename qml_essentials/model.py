@@ -9,6 +9,7 @@ from copy import deepcopy
 import math
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
+from qml_essentials.ansaetze import OPTIMIZED_PULSES
 from qml_essentials.utils import PauliCircuit, QuanTikz, MultiprocessingPool
 
 
@@ -18,7 +19,7 @@ log = logging.getLogger(__name__)
 
 # TODO: Include pulse functionality in docs
 # TODO: Implement tests for pulse functionality
-# TODO: Make trainable frequencies implementation consistent with pulse mode?
+# TODO: Make trainable frequencies implementation consistent with pulse mode
 #   I.e. pass trainable frequencies as an execution type and initialize enc_params
 #   with requires_grad=False
 
@@ -30,15 +31,6 @@ Meeting Notes
     larger than needed for that gate. When that is the case, assume they are
     scalers instead of the actual params. Initialize PulseParamManager in build
 
-- How to implement scaling pulse parameters (instead of directly the actual
-    pulse parameters)? Currently implemented in Gate handler (_inner_getattr)
-
-- How/where to specify pulse mode? In model init, in execution type or in new argument
-    in __call__?
-
-- Where to raise exception/warning if given vector is larger/smaller than
-    required (in build currently)?
-
 - How to index pulse_params in state preparation? pulse_params needs additional
     length or dim to index for state preparation, or pass
     a seperate sp_pulse_params
@@ -46,10 +38,6 @@ Meeting Notes
 - Modify get_specs?
 
 - Modified hash, adapt somewhere else?
-
-- What was _(pulse_)param_validation() for?
-
-- Raise exception is noise params and pulse mode are passed?
 
 - _parallel_f?
 """
@@ -158,6 +146,7 @@ class Model:
         Gates.init_rng(random_seed)
 
         # --- State Preparation ---
+        # TODO: are _sp already the unitary gates or can I still pass gate_mode?
         # first check if we have a str, list or callable
         if isinstance(state_preparation, str):
             # if str, use the pennylane fct
@@ -173,6 +162,18 @@ class Model:
         else:
             # default to callable
             self._sp = [state_preparation]
+
+        # prepare corresponding pulse parameters (always optimized pulses)
+        self.sp_pulse_params = []
+        for sp in self._sp:
+            sp_name = sp.__name__ if hasattr(sp, "__name__") else str(sp)
+
+            if sp_name in OPTIMIZED_PULSES:
+                params = np.array(OPTIMIZED_PULSES[sp_name], requires_grad=False)
+                self.sp_pulse_params.append(params)
+            else:
+                # gate has no pulse parametrization
+                self.sp_pulse_params.append(None)
 
         # --- Encoding ---
         # first check if we have a str, list or callable
@@ -422,6 +423,16 @@ class Model:
 
         self._noise_params = kvs
 
+    # TODO: implement pulse_params setter, so when None defaults to array of 1s
+    @property
+    def pulse_params(self):
+        pass
+
+    # TODO: see above
+    @pulse_params.setter
+    def pulse_params():
+        pass
+
     @property
     def execution_type(self) -> str:
         """
@@ -457,18 +468,6 @@ class Model:
             )
 
         self._execution_type = value
-
-    # CHECK
-    def _normalize_execution_type(self, execution_type: str) -> tuple[str, str]:
-        parts = execution_type.split("_")
-        if len(parts) == 1:
-            return parts[0], "unitary"
-
-        elif len(parts) == 2:
-            return parts[0], parts[1]
-
-        else:
-            raise ValueError(f"Invalid execution_type string: {execution_type}")
 
     @property
     def shots(self) -> Optional[int]:
@@ -633,7 +632,6 @@ class Model:
                         noise_params=noise_params,
                     )
 
-    # TODO: see where circuit and variational are used and fix their input arguments
     # CHECK
     def _circuit(
         self,
@@ -641,7 +639,7 @@ class Model:
         pulse_params: np.ndarray,
         inputs: np.ndarray,
         enc_params: Optional[np.ndarray] = None,
-        mode: str = "unitary"
+        gate_mode: str = "unitary"
     ) -> Union[float, np.ndarray]:
         # TODO: Update docstring
         """
@@ -664,18 +662,18 @@ class Model:
             pulse_params=pulse_params,
             inputs=inputs,
             enc_params=enc_params,
-            mode=mode
+            gate_mode=gate_mode
         )
         return self._observable()
 
-    # TODO: semi-check, see issue/todo below in state preparation
+    # CHECK
     def _variational(
         self,
         params: np.ndarray,
         pulse_params: np.ndarray,
         inputs: np.ndarray,
         enc_params: Optional[np.ndarray] = None,
-        mode: str = "unitary"
+        gate_mode: str = "unitary"
     ) -> None:
 
         if enc_params is None:
@@ -691,15 +689,12 @@ class Model:
 
         # state preparation
         for q in range(self.n_qubits):
-            for _sp in self._sp:
+            for _sp, sp_pulse_params in zip(self._sp, self.sp_pulse_params):
                 _sp(
                     wires=q,
-                    # TODO: How to index this? pulse_params needs additional
-                    # length or dim to index for state preparation, or pass
-                    # a seperate sp_pulse_params
-                    pulse_params=pulse_params,
+                    pulse_params=sp_pulse_params,  # TODO: maybe pass None instead?
                     noise_params=self.noise_params,
-                    mode=mode
+                    gate_mode=gate_mode
                 )
 
         # circuit building
@@ -710,7 +705,7 @@ class Model:
                 self.n_qubits,
                 pulse_params=pulse_params[layer],
                 noise_params=self.noise_params,
-                mode=mode
+                gate_mode=gate_mode
             )
 
             # encoding layers
@@ -733,7 +728,7 @@ class Model:
                 self.n_qubits,
                 pulse_params=pulse_params[-1],
                 noise_params=self.noise_params,
-                mode=mode
+                gate_mode=gate_mode
             )
 
         # channel noise
@@ -815,6 +810,7 @@ class Model:
                 tg = circuit_depth * t_factor
                 qml.ThermalRelaxationError(1.0, t1, t2, tg, q)
 
+    # TODO: are pulse_params and gate_mode correctly absorbed in kwargs?
     def draw(self, inputs=None, figure="text", *args, **kwargs):
         """
         Draws the quantum circuit using the specified visualization method.
@@ -893,7 +889,7 @@ class Model:
                 self.params = params
         return params
 
-    # CHECK: unsure of implementation, just copied _params_validation
+    # CHECK
     def _pulse_params_validation(self, pulse_params) -> np.ndarray:
         # TODO: Docstring
         if pulse_params is None:
@@ -903,6 +899,15 @@ class Model:
                 self.pulse_params = pulse_params._value
             else:
                 self.pulse_params = pulse_params
+
+        # TODO: This assumes, if gate_mode = pulse then pulse_parameters should be
+        #   optimized. Is this correct or should there be a trainable_pulse_params arg?
+        # flip requires_grad depending on current gate_mode
+        if self.gate_mode == "pulse":
+            self.pulse_params = np.array(self.pulse_params, requires_grad=True)
+        else:
+            self.pulse_params = np.array(self.pulse_params, requires_grad=False)
+
         return pulse_params
 
     def _enc_params_validation(self, enc_params) -> np.ndarray:
@@ -984,7 +989,7 @@ class Model:
 
         return inputs
 
-    # TODO: Adapt _parallel_f to take pulse_params
+    # CHECK
     @staticmethod
     def _parallel_f(
         procnum,
@@ -992,11 +997,12 @@ class Model:
         f,
         batch_size,
         params,
-        # pulse_params,
+        pulse_params,
         inputs,
         batch_shape,
         enc_params,
     ):
+        # TODO: Docstring
         """
         Helper function for parallelizing a function f over parameters.
         Sices the batch dimension based on the procnum and batch size.
@@ -1019,10 +1025,16 @@ class Model:
             max_idx = min((procnum + 1) * batch_size, params.shape[2])
             params = params[:, :, min_idx:max_idx]
 
-        result[procnum] = f(params=params, inputs=inputs, enc_params=enc_params)
+        result[procnum] = f(
+            params=params,
+            pulse_params=pulse_params,
+            inputs=inputs,
+            enc_params=enc_params
+        )
 
-    # TODO: Adapt _mp_executor to take pulse_params
-    def _mp_executor(self, f, params, inputs, enc_params):
+    # CHECK
+    def _mp_executor(self, f, params, pulse_params, inputs, enc_params, gate_mode):
+        # TODO: Docstring
         """
         Execute a function f in parallel over parameters.
 
@@ -1052,19 +1064,26 @@ class Model:
             n_processes = math.ceil(combined_batch_size / self.mp_threshold)
         # check if single process
         if n_processes == 1:
-            # TODO: Add pulse_params
-            result = f(params=params, inputs=inputs, enc_params=enc_params)
+            result = f(
+                params=params,
+                pulse_params=pulse_params,
+                inputs=inputs,
+                enc_params=enc_params,
+                gate_mode=gate_mode
+            )
         else:
             log.info(f"Using {n_processes} processes")
-            # TODO: Add pulse_params
+            # TODO: MultiprocessingPool is modified, adapt somewhere else?
             mpp = MultiprocessingPool(
                 n_processes=n_processes,
                 target=Model._parallel_f,
                 batch_size=self.mp_threshold,
                 f=f,
                 params=params,
+                pulse_params=pulse_params,
                 enc_params=enc_params,
                 inputs=inputs,
+                gate_mode=gate_mode,
                 batch_shape=self.batch_shape,
             )
             return_dict = mpp.spawn()
@@ -1075,7 +1094,8 @@ class Model:
             result = np.concat(result, axis=1 if self.execution_type == "expval" else 0)
         return result
 
-    def _assimilate_batch(self, inputs, params):
+    # CHECK
+    def _assimilate_batch(self, inputs, params, pulse_params):
         batch_shape = (
             inputs.shape[0],
             params.shape[2] if len(params.shape) == 3 else 1,
@@ -1099,7 +1119,12 @@ class Model:
                 params[:, :, np.newaxis, :], batch_shape[0], axis=2
             ).reshape([*params.shape[:-1], np.prod(batch_shape)])
 
-        return inputs, params, batch_shape
+            # TODO: Is this implementation correct?
+            pulse_params = np.repeat(
+                pulse_params[:, :, np.newaxis, :], batch_shape[0], axis=2
+            ).reshape([*pulse_params.shape[:-1], np.prod(batch_shape)])
+
+        return inputs, params, pulse_params, batch_shape
 
     # CHECK
     def __call__(
@@ -1112,6 +1137,7 @@ class Model:
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
+        gate_mode: str = "unitary"
     ) -> np.ndarray:
         # TODO: Update docstring
         """
@@ -1160,9 +1186,10 @@ class Model:
             cache=cache,
             execution_type=execution_type,
             force_mean=force_mean,
+            gate_mode=gate_mode
         )
 
-    # TODO: Adapt _forward to handle pulse mode
+    # CHECK
     def _forward(
         self,
         params: Optional[np.ndarray] = None,
@@ -1173,6 +1200,7 @@ class Model:
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
+        gate_mode: str = "unitary"
     ) -> np.ndarray:
         # TODO: Update docstring
         """
@@ -1219,19 +1247,32 @@ class Model:
         if noise_params is not None:
             self.noise_params = noise_params
         if execution_type is not None:
-            measure, mode = self._normalize_execution_type(execution_type)
-            self.execution_type, self.gate_mode = measure, mode
+            self.execution_type = execution_type
+        self.gate_mode = gate_mode
 
-        # TODO: Raise exception if pulse_params is not None and gate_mode is
-        # not pulse?
-        # TODO: Raise exception if gate mode is pulse and noise params are passed?
+        # consistency checks
+        if pulse_params is not None and gate_mode != "pulse":
+            raise ValueError(
+                "pulse_params were provided but gate_mode is not 'pulse'. "
+                "Either switch gate_mode='pulse' or do not pass pulse_params."
+            )
+
+        if noise_params is not None and gate_mode == "pulse":
+            raise ValueError(
+                "Noise is not supported in 'pulse' gate_mode. "
+                "Either remove noise_params or use gate_mode='unitary'."
+            )
 
         params = self._params_validation(params)
         pulse_params = self._pulse_params_validation(pulse_params)
         inputs = self._inputs_validation(inputs)
         enc_params = self._enc_params_validation(enc_params)
 
-        inputs, params, self.batch_shape = self._assimilate_batch(inputs, params)
+        inputs, params, pulse_params, self.batch_shape = self._assimilate_batch(
+            inputs,
+            params,
+            pulse_params,
+        )
         # the qasm representation contains the bound parameters,
         # thus it is ok to hash that
         # TODO: hs is modified, adapt somewhere else?
@@ -1266,21 +1307,20 @@ class Model:
             if os.path.isfile(file_path):
                 result = np.load(file_path)
 
-        # TODO: Figure out how to include gate_mode when executing (in
-        # _mp_executor probably). Remember to set requires_grad=True
-        # to self.pulse_params
-
         if result is None:
             # if density matrix requested or noise params used
             if self.execution_type == "density" or self.noise_params is not None:
                 result = self._mp_executor(
                     f=self.circuit_mixed,
                     params=params,  # use arraybox params
+                    pulse_params=pulse_params,
                     inputs=inputs,
                     enc_params=enc_params,
+                    gate_mode=gate_mode,
                 )
             else:
                 if not isinstance(self.circuit, qml.QNode):
+                    # TODO: No modifications to this circuit, correct?
                     result = self.circuit(
                         inputs=inputs,
                     )
@@ -1288,8 +1328,10 @@ class Model:
                     result = self._mp_executor(
                         f=self.circuit,
                         params=params,  # use arraybox params
+                        pulse_params=pulse_params,
                         inputs=inputs,
                         enc_params=enc_params,
+                        gate_mode=gate_mode,
                     )
 
         if isinstance(result, list):
