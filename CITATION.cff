@@ -7,16 +7,25 @@ authors:
   - family-names: "Strobl"
     given-names: "Melvin"
     orcid: "https://orcid.org/0000-0003-0229-9897"
-  - family-names: "Schillinger"
-    given-names: "Paul"
-    orcid: "https://orcid.org/0009-0009-1566-6220"
+  - family-names: "Kuehn"
+    given-names: "Eileen"
+    orcid: "https://orcid.org/0000-0002-8034-8837"
   - family-names: "van der Horst"
     given-names: "Lucas"
     orcid: "https://orcid.org/0009-0003-0609-9582"
+  - family-names: "Schillinger"
+    given-names: "Paul"
+    orcid: "https://orcid.org/0009-0009-1566-6220"
+  - family-names: "Hunz"
+    given-names: "Jonathan"
   - family-names: "Wahl"
     given-names: "Johannes"
 title: "QML Essentials"
 version: 0.1.36
-# doi: 10.5281/zenodo.1234
 date-released: 2025-08-29
-url: "https://github.com/cirKITers/qml-essentials"
+repository-code: "https://github.com/cirKITers/qml-essentials"
+url: "https://cirkiters.github.io/qml-essentials"
+license: MIT
+identifiers:
+  - type: doi
+    value: 10.1109/QSW67625.2025.00035
