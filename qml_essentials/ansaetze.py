@@ -276,6 +276,72 @@ class Gates:
         Gates.Noise(wires, noise_params)
 
     @staticmethod
+    def X(wires, noise_params=None):
+        """
+        Applies a X gate to the given wires and adds `Noise`
+
+        Parameters
+        ----------
+        wires : Union[int, List[int]]
+            The wire(s) to apply the gate to.
+        noise_params : Optional[Dict[str, float]]
+            A dictionary of noise parameters. The following noise gates are
+            supported:
+           -BitFlip: Applies a bit flip error to the given wires.
+           -PhaseFlip: Applies a phase flip error to the given wires.
+           -Depolarizing: Applies a depolarizing channel error to the
+              given wires.
+
+            All parameters are optional and default to 0.0 if not provided.
+        """
+        qml.X(wires=wires)
+        Gates.Noise(wires, noise_params)
+
+    @staticmethod
+    def Y(wires, noise_params=None):
+        """
+        Applies a Y gate to the given wires and adds `Noise`
+
+        Parameters
+        ----------
+        wires : Union[int, List[int]]
+            The wire(s) to apply the gate to.
+        noise_params : Optional[Dict[str, float]]
+            A dictionary of noise parameters. The following noise gates are
+            supported:
+           -BitFlip: Applies a bit flip error to the given wires.
+           -PhaseFlip: Applies a phase flip error to the given wires.
+           -Depolarizing: Applies a depolarizing channel error to the
+              given wires.
+
+            All parameters are optional and default to 0.0 if not provided.
+        """
+        qml.Y(wires=wires)
+        Gates.Noise(wires, noise_params)
+
+    @staticmethod
+    def Z(wires, noise_params=None):
+        """
+        Applies a Z gate to the given wires and adds `Noise`
+
+        Parameters
+        ----------
+        wires : Union[int, List[int]]
+            The wire(s) to apply the gate to.
+        noise_params : Optional[Dict[str, float]]
+            A dictionary of noise parameters. The following noise gates are
+            supported:
+           -BitFlip: Applies a bit flip error to the given wires.
+           -PhaseFlip: Applies a phase flip error to the given wires.
+           -Depolarizing: Applies a depolarizing channel error to the
+              given wires.
+
+            All parameters are optional and default to 0.0 if not provided.
+        """
+        qml.Z(wires=wires)
+        Gates.Noise(wires, noise_params)
+
+    @staticmethod
     def RX(w, wires, noise_params=None):
         """
         Applies a rotation around the X axis to the given wires and adds `Noise`
