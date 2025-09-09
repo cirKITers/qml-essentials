@@ -31,8 +31,8 @@ class Model:
         n_layers: int,
         circuit_type: Union[str, Circuit] = "No_Ansatz",
         data_reupload: Union[bool, List[bool], List[List[bool]]] = True,
-        state_preparation: Union[str, Callable, List[str], List[Callable]] = None,
-        encoding: Union[str, Callable, List[str], List[Callable]] = Gates.RX,
+        state_preparation: Union[str, Callable, List[str], List[Callable], None] = None,
+        encoding: Union[str, Callable, List[str], List[Callable], None] = Gates.RX,
         trainable_frequencies: bool = False,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
@@ -42,6 +42,7 @@ class Model:
         as_pauli_circuit: bool = False,
         remove_zero_encoding: bool = True,
         mp_threshold: int = -1,
+        use_quantum_data: bool = False,
     ) -> None:
         """
         Initialize the quantum circuit model.
@@ -96,6 +97,8 @@ class Model:
             mp_threshold (int, optional): threshold above which the parameter
                 batch dimension is split across multiple processes.
                 Defaults to -1.
+            use_quantum_data (bool, optional): if the data is completely
+                quantum (i.e., a statevector instead of classical inputs).
 
         Returns:
             None
@@ -138,15 +141,27 @@ class Model:
             self._sp = [state_preparation]
 
         # --- Encoding ---
-        # first check if we have a str, list or callable
-        if isinstance(encoding, str):
+        assert (
+            not use_quantum_data
+            and encoding is not None
+            or use_quantum_data
+            and not data_reupload
+            and encoding is None
+        ), "Classical data needs encoding, but quantum data does not."
+
+        self.use_quantum_data = use_quantum_data
+
+        # first check if we have a None (quantum data), str, list or callable
+        if encoding is None:
+            self._enc = [lambda *args, **kwargs: None]
+        elif isinstance(encoding, str):
             # if str, use the pennylane fct
             self._enc = [getattr(Gates, f"{encoding}")]
         elif isinstance(encoding, list):
             # if list, check if str or callable
             if isinstance(encoding[0], str):
                 self._enc = [getattr(Gates, f"{enc}") for enc in encoding]
-            else:
+            elif encoding:
                 self._enc = encoding
         else:
             # default to callable
@@ -555,7 +570,11 @@ class Model:
             None
         """
         # check for zero, because due to input validation, input cannot be none
-        if self.remove_zero_encoding and not inputs.any():
+        if (
+            isinstance(inputs, Callable)
+            or self.remove_zero_encoding
+            and not inputs.any()
+        ):
             return
 
         for q in range(self.n_qubits):
@@ -607,6 +626,10 @@ class Model:
         for q in range(self.n_qubits):
             for _sp in self._sp:
                 _sp(wires=q, noise_params=self.noise_params)
+
+        # using quantum data
+        if isinstance(inputs, Callable):
+            inputs(wires=range(self.n_qubits), noise_params=self.noise_params)
 
         # circuit building
         for layer in range(0, self.n_layers):
@@ -846,7 +869,7 @@ class Model:
         return enc_params
 
     def _inputs_validation(
-        self, inputs: Union[None, List, float, int, np.ndarray]
+        self, inputs: Union[None, List, float, int, np.ndarray, Callable]
     ) -> np.ndarray:
         """
         Validate the inputs to be a 2D numpy array of shape (batch_size, n_inputs).
@@ -857,6 +880,13 @@ class Model:
         Returns:
             np.ndarray: The validated input.
         """
+        if isinstance(inputs, Callable):
+            assert self.use_quantum_data, (
+                "Only when using quantum data, a callable is required as input."
+            )
+
+            return inputs
+
         if inputs is None:
             # initialize to zero
             inputs = np.array([[0] * self.n_input_feat])
@@ -1032,7 +1062,7 @@ class Model:
     def __call__(
         self,
         params: Optional[np.ndarray] = None,
-        inputs: Optional[np.ndarray] = None,
+        inputs: Union[np.ndarray, Callable, None] = None,
         enc_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
@@ -1046,8 +1076,10 @@ class Model:
             params (Optional[np.ndarray]): Weight vector of shape
                 [n_layers, n_qubits*n_params_per_layer].
                 If None, model internal parameters are used.
-            inputs (Optional[np.ndarray]): Input vector of shape [1].
-                If None, zeros are used.
+            inputs (Union[np.ndarray, Callable, None]): In the case of
+                classical data, input vector of shape [1]. If None, zeros are
+                used. In the case of quantum data, a Callable should be
+                provided.
             enc_params (Optional[np.ndarray]): Weight vector of shape
                 [n_qubits, n_input_features]. If None, model internal encoding
                 parameters are used.
@@ -1089,7 +1121,7 @@ class Model:
     def _forward(
         self,
         params: Optional[np.ndarray] = None,
-        inputs: Optional[np.ndarray] = None,
+        inputs: Union[np.ndarray, Callable, None] = None,
         enc_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
@@ -1103,8 +1135,10 @@ class Model:
             params (Optional[np.ndarray]): Weight vector of shape
                 [n_layers, n_qubits*n_params_per_layer].
                 If None, model internal parameters are used.
-            inputs (Optional[np.ndarray]): Input vector of shape [1].
-                If None, zeros are used.
+            inputs (Union[np.ndarray, Callable, None]): In the case of
+                classical data, input vector of shape [1]. If None, zeros are
+                used. In the case of quantum data, a Callable should be
+                provided.
             enc_params (Optional[np.ndarray]): Weight vector of shape
                 [n_qubits, n_input_features]. If None, model internal encoding
                 parameters are used.
@@ -1145,7 +1179,10 @@ class Model:
         params = self._params_validation(params)
         inputs = self._inputs_validation(inputs)
         enc_params = self._enc_params_validation(enc_params)
-        inputs, params, self.batch_shape = self._assimilate_batch(inputs, params)
+
+        if not self.use_quantum_data:
+            inputs, params, self.batch_shape = self._assimilate_batch(inputs, params)
+
         # the qasm representation contains the bound parameters,
         # thus it is ok to hash that
         hs = hashlib.md5(
