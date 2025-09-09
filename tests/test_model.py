@@ -370,6 +370,35 @@ def test_state_preparation() -> None:
 
 
 @pytest.mark.smoketest
+def test_quantum_data() -> None:
+    def test_input_circ(wires, noise_params={}):
+        for w in wires:
+            Gates.H(w, noise_params)
+
+    test_cases = [
+        {
+            "input": None,
+        },
+        {
+            "input": test_input_circ,
+        },
+    ]
+
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        remove_zero_encoding=False,
+        use_quantum_data=True,
+        data_reupload=False,
+        encoding=None,
+    )
+
+    for test_case in test_cases:
+        _ = model(inputs=test_case["input"]))
+
+
+@pytest.mark.smoketest
 def test_encoding() -> None:
     test_cases = [
         {
