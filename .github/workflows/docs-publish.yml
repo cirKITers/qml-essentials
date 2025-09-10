@@ -1,7 +1,5 @@
-name: Documentation
+name: Documentation on Publish
 on:
-  pull_request:
-    branches: [ "main" ]
   workflow_call:
     inputs:
       test-run-id:

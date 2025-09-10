@@ -83,7 +83,7 @@ def test_multi_dim_input() -> None:
         encoding=["RX", "RX"],
     )
 
-    coeffs, freqs = Coefficients.get_spectrum(model, shift=True, trim=True)
+    coeffs, freqs = Coefficients.get_spectrum(model)
 
     assert (
         coeffs.shape == (model.degree * 2 + 1,) * model.n_input_feat
@@ -188,7 +188,7 @@ def test_coefficients_tree() -> None:
         fft_coeffs, fft_freqs = Coefficients.get_spectrum(model, shift=True)
 
         coeff_tree = FourierTree(model)
-        analytical_coeffs, analytical_freqs = coeff_tree.get_spectrum(force_mean=True)
+        analytical_coeffs, analytical_freqs = coeff_tree.get_spectrum()
 
         assert len(analytical_freqs[0]) == len(
             analytical_freqs[0]
@@ -225,6 +225,60 @@ def test_coefficients_tree() -> None:
             assert np.isclose(
                 exp_tree, exp_fourier, atol=1.0e-5
             ), "Analytic Fourier series evaluation not working"
+
+
+@pytest.mark.unittest
+def test_coefficients_tree_mq() -> None:
+    reference_inputs = np.linspace(-np.pi, np.pi, 10)
+
+    model = Model(
+        n_qubits=3,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+        output_qubit=-1,
+        as_pauli_circuit=False,
+    )
+
+    fft_coeffs, fft_freqs = Coefficients.get_spectrum(model, shift=True)
+
+    coeff_tree = FourierTree(model)
+    analytical_coeffs, analytical_freqs = coeff_tree.get_spectrum(force_mean=True)
+
+    assert len(analytical_freqs[0]) == len(
+        analytical_freqs[0]
+    ), "Wrong number of frequencies"
+    assert np.isclose(
+        np.sum(analytical_coeffs[0]).imag, 0.0, rtol=1.0e-5
+    ), "Imaginary part is not zero"
+
+    # Filter fft_coeffs for only the frequencies that occur in the spectrum
+    sel_fft_coeffs = np.take(fft_coeffs, analytical_freqs[0] + int(max(fft_freqs)))
+    assert all(
+        np.isclose(sel_fft_coeffs, analytical_coeffs[0], atol=1.0e-5)
+    ), "FFT and analytical coefficients are not equal."
+
+    for ref_input in reference_inputs:
+        exp_fourier_fft = Coefficients.evaluate_Fourier_series(
+            coefficients=fft_coeffs,
+            frequencies=fft_freqs,
+            inputs=ref_input,
+        )
+
+        exp_fourier = Coefficients.evaluate_Fourier_series(
+            coefficients=analytical_coeffs[0],
+            frequencies=analytical_freqs[0],
+            inputs=ref_input,
+        )
+
+        exp_tree = coeff_tree(inputs=ref_input, force_mean=True)
+
+        assert np.isclose(
+            exp_fourier_fft, exp_fourier, atol=1.0e-5
+        ), "FFT and analytical Fourier series do not match"
+
+        assert np.isclose(
+            exp_tree, exp_fourier, atol=1.0e-5
+        ), "Analytic Fourier series evaluation not working"
 
 
 @pytest.mark.unittest
@@ -267,6 +321,24 @@ def test_shift() -> None:
     ).all(), "Shift failed. Spectrum must be symmetric."
 
 
+@pytest.mark.unittest
+def test_trim() -> None:
+    model = Model(
+        n_qubits=3,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+        output_qubit=-1,
+    )
+
+    coeffs, freqs = Coefficients.get_spectrum(model, mts=2, trim=False)
+    coeffs_trimmed, freqs = Coefficients.get_spectrum(model, mts=2, trim=True)
+
+    assert (
+        coeffs.size - 1 == coeffs_trimmed.size
+    ), f"Wrong shape of coefficients: {coeffs_trimmed.size}, \
+        expected {coeffs.size-1}"
+
+
 @pytest.mark.smoketest
 def test_frequencies() -> None:
     model = Model(
@@ -279,3 +351,14 @@ def test_frequencies() -> None:
     assert (
         freqs.size == coeffs.size
     ), "Frequencies and coefficients must have the same length."
+
+
+@pytest.mark.smoketest
+def test_psd() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+    coeffs, _ = Coefficients.get_spectrum(model, shift=True)
+    _ = Coefficients.get_psd(coeffs)

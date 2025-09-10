@@ -42,7 +42,6 @@ theme:
 plugins:
   - search
   - mkdocstrings
-  - social
   - glightbox:
       auto_caption: true
       caption_position: top

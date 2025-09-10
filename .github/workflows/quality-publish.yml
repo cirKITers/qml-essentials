@@ -1,14 +1,12 @@
-name: Testing on Review
+name: Quality on Publish
 on:
-  pull_request:
-    types: [review_requested]
   workflow_call:
 permissions:
-  contents: write
+  contents: read
 jobs:
-  test-expensive:
+  quality:
     runs-on: self-hosted
-    if: ${{ (github.actor != 'github-actions[bot]') }}
+    if: ${{ (github.actor != 'dependabot[bot]') }}
     steps:
       - uses: actions/checkout@v5
       - name: Install poetry
@@ -20,5 +18,9 @@ jobs:
           cache: 'poetry'
       - name: Install dependencies
         run: poetry install --with dev
-      - name: Test with pytest
-        run: poetry run pytest --cov=qml_essentials --cov-report html --dist load -m "expensive" -n auto
+      - name: Lint with flake8
+        run: |
+          poetry run flake8 qml_essentials
+          poetry run flake8 tests
+      - name: Running license check
+        run: poetry run licensecheck --zero --license mit

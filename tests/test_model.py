@@ -1,18 +1,16 @@
+from typing import Optional
 import random
 from qml_essentials.model import Model
-from qml_essentials.ansaetze import Ansaetze, Circuit, Gates
+from qml_essentials.ansaetze import Circuit, Ansaetze, Gates
 import pytest
-import logging
 import inspect
+import logging
 import shutil
 import os
 import hashlib
-from typing import Optional
 import pennylane as qml
 import pennylane.numpy as np
 import time
-
-from typing import List, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +66,13 @@ def test_parameters() -> None:
             "shots": 1024,
             "execution_type": "expval",
             "output_qubit": 0,
+            "force_mean": False,
+            "exception": False,
+        },
+        {
+            "shots": None,
+            "execution_type": "state",
+            "output_qubit": -1,
             "force_mean": False,
             "exception": False,
         },
@@ -142,6 +147,10 @@ def test_parameters() -> None:
                         assert (
                             result.shape[0] == 4
                         ), f"Shape of {test_case['output_qubit']} is not correct."
+                    elif test_case["execution_type"] == "state":
+                        assert (
+                            result.shape[0] == 4
+                        ), f"Shape of {test_case['output_qubit']} is not correct."
             str(model)
 
 
@@ -154,9 +163,7 @@ def test_trainable_frequencies() -> None:
         trainable_frequencies=True,
     )
 
-    assert (
-        model.enc_params.requires_grad
-    ), "Encoding parameters enc_params do not require grad"
+    assert model.enc_params.requires_grad, "Encoding parameters enc_params require grad"
 
     # setting test data
     domain = [-np.pi, np.pi]
@@ -187,6 +194,11 @@ def test_trainable_frequencies() -> None:
 
     grads = qml.grad(cost_fct, argnum=1)(model.params, model.enc_params)
     assert np.any(np.abs(grads) > 1e-6), "Gradient wrt enc_params is too small"
+
+    # Smoketest to check model outside training
+    model(enc_params=np.array(model.enc_params, requires_grad=False))
+    model.trainable_frequencies = False
+    model(enc_params=np.array(model.enc_params, requires_grad=False))
 
 
 @pytest.mark.unittest
@@ -246,7 +258,7 @@ def test_batching() -> None:
 @pytest.mark.unittest
 def test_multiprocessing_density() -> None:
     # use n_samples that is not a multiple of the threshold
-    n_samples = 1000
+    n_samples = 1500
 
     model = Model(
         n_qubits=2,
@@ -287,14 +299,13 @@ def test_multiprocessing_density() -> None:
 
 @pytest.mark.unittest
 def test_multiprocessing_expval() -> None:
-    # use n_samples that is not a multiple of the threshold
     n_samples = 40000  # expval requires more samples for advantage
 
     model = Model(
         n_qubits=6,  # .. and larger circuits
-        n_layers=1,
+        n_layers=6,
         circuit_type="Circuit_19",
-        mp_threshold=1000,
+        mp_threshold=4000,
     )
 
     model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
@@ -306,7 +317,7 @@ def test_multiprocessing_expval() -> None:
 
     model = Model(
         n_qubits=6,
-        n_layers=1,
+        n_layers=6,
         circuit_type="Circuit_19",
     )
 

@@ -2,6 +2,7 @@ name: Testing on PR
 on:
   pull_request:
     branches: [ "main" ]
+  workflow_call:
 permissions:
   contents: write
 concurrency:
@@ -11,11 +12,11 @@ jobs:
   test-not-expensive:
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install poetry
         run: pipx install poetry
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: 'poetry'

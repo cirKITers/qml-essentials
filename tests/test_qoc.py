@@ -10,11 +10,6 @@ jax.config.update("jax_enable_x64", True)
 logger = logging.getLogger(__name__)
 
 
-# @pytest.fixture(autouse=True)
-# def reset_pulse_mgr():
-#     ansaetze.Gates._pulse_mgr = None
-
-
 @pytest.mark.unittest
 def test_optimize_RX():
     qoc = QOC()

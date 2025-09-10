@@ -5,35 +5,32 @@ on:
 permissions:
   contents: write
 jobs:
-  test-not-expensive:
-    name: Trigger Not Expensive Tests
-    uses: ./.github/workflows/test-on-pr.yml
-  test-expensive:
+  test-publish:
     name: Trigger Expensive Tests
-    uses: ./.github/workflows/test-on-review.yml
-  quality:
+    uses: ./.github/workflows/test-on-publish.yml
+  quality-publish:
     name: Trigger Quality
-    uses: ./.github/workflows/quality.yml
-  documentation:
-    needs: [test-expensive, test-not-expensive]
+    uses: ./.github/workflows/quality-publish.yml
+  documentation-publish:
+    needs: test-publish
     name: Trigger Documentation
-    uses: ./.github/workflows/docs.yml
+    uses: ./.github/workflows/docs-publish.yml
     with:
       test-run-id: ${{ github.run_id }}
   release:
-    needs: [test-expensive, test-not-expensive, quality, documentation]
+    needs: [test-publish, quality-publish, documentation-publish]
     name: Release
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-tags: true
         ssh-key: ${{ secrets.DEPLOY_KEY }}
     - name: Install poetry
       run: pipx install poetry
     - name: Set up Python 3.12
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: "3.12"
         cache: 'poetry'

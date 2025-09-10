@@ -22,7 +22,7 @@ class Circuit(ABC):
 
     @abstractmethod
     def n_params_per_layer(n_qubits: int) -> int:
-        return
+        raise NotImplementedError("n_params_per_layer method is not implemented")
 
     @abstractmethod
     def n_pulse_params_per_layer(n_qubits: int) -> int:
@@ -46,7 +46,7 @@ class Circuit(ABC):
             List of all controlled indices, or None if the circuit does not
             contain controlled rotation gates.
         """
-        return
+        raise NotImplementedError("get_control_indices method is not implemented")
 
     def get_control_angles(self, w: np.ndarray, n_qubits: int) -> Optional[np.ndarray]:
         """
@@ -68,7 +68,7 @@ class Circuit(ABC):
         """
         indices = self.get_control_indices(n_qubits)
         if indices is None:
-            return None
+            return np.array([])
 
         return w[indices[0] : indices[1] : indices[2]]
 
@@ -94,7 +94,7 @@ class Circuit(ABC):
 
     @abstractmethod
     def build(self, n_qubits: int, n_layers: int):
-        return
+        raise NotImplementedError("build method is not implemented")
 
     # CHECK
     def __call__(self, *args: Any, **kwds: Any) -> Any:
@@ -103,6 +103,7 @@ class Circuit(ABC):
 
 class UnitaryGates:
     rng = np.random.default_rng()
+    batch_gate_error = True
 
     @staticmethod
     def init_rng(seed: int):
@@ -148,6 +149,7 @@ class UnitaryGates:
             A PennyLane QubitChannel constructed from the Kraus operators representing
             the n-qubit depolarizing noise channel acting on the specified wires.
         """
+
         def n_qubit_depolarizing_kraus(p: float, n: int) -> List[np.ndarray]:
             if not (0.0 <= p <= 1.0):
                 raise ValueError(f"Probability p must be between 0 and 1, got {p}")
@@ -160,7 +162,7 @@ class UnitaryGates:
             Z = qml.matrix(qml.PauliZ(0))
             paulis = [Id, X, Y, Z]
 
-            dim = 2 ** n
+            dim = 2**n
             all_ops = []
 
             # Generate all n-qubit Pauli tensor products:
@@ -171,14 +173,14 @@ class UnitaryGates:
                 all_ops.append(P)
 
             # Identity operator corresponds to all zeros indices (Id^n)
-            K0 = np.sqrt(1 - p * (4 ** n - 1) / (4 ** n)) * np.eye(dim)
+            K0 = np.sqrt(1 - p * (4**n - 1) / (4**n)) * np.eye(dim)
 
             kraus_ops = []
             for i, P in enumerate(all_ops):
                 if i == 0:
                     # Skip the identity, already handled as K0
                     continue
-                kraus_ops.append(np.sqrt(p / (4 ** n)) * P)
+                kraus_ops.append(np.sqrt(p / (4**n)) * P)
 
             return [K0] + kraus_ops
 
@@ -213,11 +215,17 @@ class UnitaryGates:
 
             # noise on single qubits
             for wire in wires:
-                qml.BitFlip(noise_params.get("BitFlip", 0.0), wires=wire)
-                qml.PhaseFlip(noise_params.get("PhaseFlip", 0.0), wires=wire)
-                qml.DepolarizingChannel(
-                    noise_params.get("Depolarizing", 0.0), wires=wire
-                )
+                bf = noise_params.get("BitFlip", 0.0)
+                if bf > 0:
+                    qml.BitFlip(bf, wires=wire)
+
+                pf = noise_params.get("PhaseFlip", 0.0)
+                if pf > 0:
+                    qml.PhaseFlip(pf, wires=wire)
+
+                dp = noise_params.get("Depolarizing", 0.0)
+                if dp > 0:
+                    qml.DepolarizingChannel(dp, wires=wire)
 
             # noise on two-qubits
             if len(wires) > 1:
@@ -234,7 +242,7 @@ class UnitaryGates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
@@ -250,11 +258,16 @@ class UnitaryGates:
         float
             The modified rotation angle after applying the gate error.
         """
-        if (
-            noise_params is not None
-            and noise_params.get("GateError", None) is not None
-        ):
-            w += UnitaryGates.rng.normal(0, noise_params["GateError"])
+        if noise_params is not None and noise_params.get("GateError", None) is not None:
+            w += UnitaryGates.rng.normal(
+                0,
+                noise_params["GateError"],
+                (
+                    w.shape
+                    if isinstance(w, np.ndarray) and UnitaryGates.batch_gate_error
+                    else None
+                ),
+            )
         return w
 
     @staticmethod
@@ -264,11 +277,11 @@ class UnitaryGates:
 
         Parameters
         ----------
-        phi : float
+        phi : Union[float, np.ndarray, List[float]]
             The first rotation angle in radians.
-        theta : float
+        theta : Union[float, np.ndarray, List[float]]
             The second rotation angle in radians.
-        omega : float
+        omega : Union[float, np.ndarray, List[float]]
             The third rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation gate to.
@@ -296,7 +309,7 @@ class UnitaryGates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation gate to.
@@ -321,7 +334,7 @@ class UnitaryGates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation gate to.
@@ -346,7 +359,7 @@ class UnitaryGates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation gate to.
@@ -372,7 +385,7 @@ class UnitaryGates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the controlled rotation gate to.
@@ -398,7 +411,7 @@ class UnitaryGates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the controlled rotation gate to.
@@ -424,7 +437,7 @@ class UnitaryGates:
 
         Parameters
         ----------
-        w : float
+        w : Union[float, np.ndarray, List[float]]
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the controlled rotation gate to.
@@ -848,7 +861,6 @@ class Gates(metaclass=GatesMeta):
         # Pulse slicing + scaling
         n_params = PULSE_PARAM_COUNTS.get(gate_name, None)
         pulse_mgr = getattr(Gates, "_pulse_mgr", None)
-        print(f"pulse_mgr: {pulse_mgr}, type: {type(pulse_mgr)}")
         if gate_mode == "pulse" and isinstance(pulse_mgr, PulseParamManager):
             scalers = pulse_mgr.get(n_params)
             base = OPTIMIZED_PULSES.get(gate_name)
@@ -869,7 +881,6 @@ class Gates(metaclass=GatesMeta):
         try:
             yield
         finally:
-            # Reset back to None
             Gates._pulse_mgr = None
 
 class PulseParamManager:
@@ -888,7 +899,6 @@ class PulseParamManager:
 
 # TODO: After final HEA solution: extend it to the other ansaetze
 class Ansaetze:
-
     def get_available():
         return [
             Ansaetze.No_Ansatz,
@@ -1432,10 +1442,8 @@ class Ansaetze:
                 List of all controlled indices, or None if the circuit does not
                 contain controlled rotation gates.
             """
-            if n_qubits > 1:
-                return [-n_qubits, None, None]
-            else:
-                return None
+            # TODO: implement
+            return None
 
         @staticmethod
         def build(w: np.ndarray, n_qubits: int, **kwargs):
@@ -1665,7 +1673,10 @@ class Ansaetze:
                 List of all controlled indices, or None if the circuit does not
                 contain controlled rotation gates.
             """
-            return None
+            if n_qubits > 1:
+                return [-(n_qubits - 1), None, None]
+            else:
+                return None
 
         @staticmethod
         def build(w: np.ndarray, n_qubits: int, **kwargs):
@@ -1740,7 +1751,10 @@ class Ansaetze:
                 List of all controlled indices, or None if the circuit does not
                 contain controlled rotation gates.
             """
-            return None
+            if n_qubits > 1:
+                return [-(n_qubits - 1), None, None]
+            else:
+                return None
 
         @staticmethod
         def build(w: np.ndarray, n_qubits: int, **kwargs):
@@ -1896,7 +1910,10 @@ class Ansaetze:
                 List of all controlled indices, or None if the circuit does not
                 contain controlled rotation gates.
             """
-            return None
+            if n_qubits > 1:
+                return [-(n_qubits - 1), None, None]
+            else:
+                return None
 
         @staticmethod
         def build(w: np.ndarray, n_qubits: int, **kwargs):
@@ -1979,7 +1996,10 @@ class Ansaetze:
                 List of all controlled indices, or None if the circuit does not
                 contain controlled rotation gates.
             """
-            return None
+            if n_qubits > 1:
+                return [-(n_qubits - 1), None, None]
+            else:
+                return None
 
         @staticmethod
         def build(w: np.ndarray, n_qubits: int, **kwargs):
