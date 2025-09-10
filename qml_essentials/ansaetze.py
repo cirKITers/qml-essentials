@@ -7,6 +7,7 @@ import pennylane.numpy as np
 import pennylane as qml
 from jax import numpy as jnp
 import itertools
+from contextlib import contextmanager
 
 from typing import List, Union, Dict
 
@@ -14,7 +15,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
-
+# TODO: Custom circuits need n_pulse_params_per_layer method, modify to make it optional?
 class Circuit(ABC):
     def __init__(self):
         pass
@@ -86,9 +87,10 @@ class Circuit(ABC):
                     f"for {n_qubits} qubits"
                 )
 
-            Gates._pulse_mgr = PulseParamManager(kwargs["pulse_params"])
-
-        return self.build(w, n_qubits, **kwargs)
+            with Gates.pulse_manager_context(kwargs["pulse_params"]):
+                return self.build(w, n_qubits, **kwargs)
+        else:
+            return self.build(w, n_qubits, **kwargs)
 
     @abstractmethod
     def build(self, n_qubits: int, n_layers: int):
@@ -530,7 +532,7 @@ class UnitaryGates:
 
 
 class PulseGates:
-    # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT/CX and H pulse level
+    # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT/CX and H pulse level
     #   gates closely follow https://doi.org/10.5445/IR/1000184129
     # TODO: Mention deviations from the above?
     # TODO: Which gate decomposition to use for Rot, CRX, CRY, CRZ, CX, CY?
@@ -538,6 +540,7 @@ class PulseGates:
     # TODO: RZ takes as params only t, which theoretically is 0.5 and is
     #   confirmed numerically. Should this parameters be passed too when 
     #   RZ is found in other gate decompositions?
+    # TODO: Check that the len of pulse params passed to each gate is exactly as expected?
     omega_q = 10 * jnp.pi
     omega_c = 10 * jnp.pi
 
@@ -550,19 +553,6 @@ class PulseGates:
     X = jnp.array([[0, 1], [1, 0]])
     Y = jnp.array([[0, -1j], [1j, 0]])
     Z = jnp.array([[1, 0], [0, -1]])
-
-    # TODO: Refactor using OPTIMIZED_PULSES
-    opt_params_RX = [15.70989327341467, 29.5230665326707, 0.7499810441330634]
-
-    opt_params_RY = [7.8787724942614235, 22.001319411513432, 1.098524473819202]
-
-    opt_params_RZ = [0.5]
-
-    opt_params_CX = [7.944725340235801, 21.639825810701435, 0.9072431332410497, 0.9550977662365613]
-
-    opt_params_CZ = [0.962596375687258]
-
-    opt_params_H = [7.857992398977854, 21.572701026008765, 0.9000668764548863]
 
     @staticmethod
     def S(p, t, phi_c):
@@ -595,11 +585,10 @@ class PulseGates:
             Gaussian envelope. Defaults to optimized parameters and time.
         """
         if pulse_params is None:
-            pulse_params = [PulseGates.opt_pulse_params_RX[:2]]
-            t = PulseGates.opt_params_RX[-1]
+            opt = OPTIMIZED_PULSES["RX"]
+            pulse_params, t = opt[:2], opt[2]
         else:
-            pulse_params, t = [pulse_params[:2]], pulse_params[-1]
-            # pulse_params = [pulse_params] # TODO: Remove this line if everything works
+            pulse_params, t = [pulse_params[:2]], pulse_params[2]
 
         Sx = lambda p, t: PulseGates.S(p, t, phi_c=jnp.pi) * w
 
@@ -625,11 +614,10 @@ class PulseGates:
             Gaussian envelope. Defaults to optimized parameters and time.
         """
         if pulse_params is None:
-            pulse_params = [PulseGates.opt_params_RY[:2]]
-            t = PulseGates.opt_params_RY[-1]
+            opt = OPTIMIZED_PULSES["RY"]
+            pulse_params, t = opt[:2], opt[2]
         else:
-            pulse_params, t = [pulse_params[:2]], pulse_params[-1]
-            # pulse_params = [pulse_params] # TODO: Remove this line
+            pulse_params, t = [pulse_params[:2]], pulse_params[2]
 
         Sy = lambda p, t: PulseGates.S(p, t, phi_c=-jnp.pi/2) * w
 
@@ -655,7 +643,7 @@ class PulseGates:
             Defaults to 0.5 if None.
         """
         if pulse_params is None:
-            t = PulseGates.opt_params_RZ[0]
+            t = OPTIMIZED_PULSES["RZ"][0]
         elif isinstance(pulse_params, (float, int)):
             t = pulse_params
         else:
@@ -704,11 +692,11 @@ class PulseGates:
             Defaults to optimized parameters and times if None.
         """
         if pulse_params is None:
-            pulse_params = PulseGates.opt_params_CX[:3]
-            t_CZ = PulseGates.opt_t_CX_CZ[-1]
+            pulse_params = OPTIMIZED_PULSES["CX"][:3]
+            t_CZ = OPTIMIZED_PULSES["CX"][3]
         else:
-            pulse_params = pulse_params[:-1]
-            t_CZ = pulse_params[-1]
+            pulse_params = pulse_params[:3]
+            t_CZ = pulse_params[3]
 
         PulseGates.H(wires=wires[1], pulse_params=pulse_params)
         PulseGates.CZ(wires=wires, pulse_params=[t_CZ])
@@ -737,7 +725,7 @@ class PulseGates:
             Defaults to optimized time if None.
         """
         if pulse_params is None:
-            t = PulseGates.opt_params_CZ[0]
+            t = OPTIMIZED_PULSES["CZ"][0]
         elif isinstance(pulse_params, (float, int)):
             t = pulse_params
         else:
@@ -771,7 +759,7 @@ class PulseGates:
             Defaults to optimized parameters and time.
         """
         if pulse_params is None:
-            pulse_params = PulseGates.opt_params_H
+            pulse_params = OPTIMIZED_PULSES["H"]
 
         # qml.GlobalPhase(-jnp.pi / 2)
         Sc = lambda p, t: -1.0
@@ -860,7 +848,8 @@ class Gates(metaclass=GatesMeta):
         # Pulse slicing + scaling
         n_params = PULSE_PARAM_COUNTS.get(gate_name, None)
         pulse_mgr = getattr(Gates, "_pulse_mgr", None)
-        if gate_mode == "pulse" and pulse_mgr is not None:
+        print(f"pulse_mgr: {pulse_mgr}, type: {type(pulse_mgr)}")
+        if gate_mode == "pulse" and isinstance(pulse_mgr, PulseParamManager):
             scalers = pulse_mgr.get(n_params)
             base = OPTIMIZED_PULSES.get(gate_name)
             kwargs["pulse_params"] = scalers * base  # element-wise scaling
@@ -872,6 +861,16 @@ class Gates(metaclass=GatesMeta):
 
         return gate(*args, **kwargs)
 
+    @staticmethod
+    @contextmanager
+    def pulse_manager_context(pulse_params: np.ndarray):
+        """Temporarily set the global pulse manager for circuit building."""
+        Gates._pulse_mgr = PulseParamManager(pulse_params)
+        try:
+            yield
+        finally:
+            # Reset back to None
+            Gates._pulse_mgr = None
 
 class PulseParamManager:
     def __init__(self, pulse_params: np.ndarray):
@@ -916,17 +915,27 @@ class Ansaetze:
         def n_params_per_layer(n_qubits: int) -> int:
             return 0
 
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
+
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             pass
 
     class GHZ(Circuit):
         @staticmethod
         def n_params_per_layer(n_qubits: int) -> int:
+            return 0
+
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
             return 0
 
         @staticmethod
@@ -1061,6 +1070,11 @@ class Ansaetze:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 2
 
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
+
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
             """
@@ -1144,6 +1158,11 @@ class Ansaetze:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 2
 
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
+
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
             """
@@ -1224,6 +1243,11 @@ class Ansaetze:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 2
 
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
+
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
             """
@@ -1302,6 +1326,11 @@ class Ansaetze:
             """
             return n_qubits
 
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
+
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
             """
@@ -1379,6 +1408,11 @@ class Ansaetze:
             else:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 4
+
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1468,6 +1502,11 @@ class Ansaetze:
             """
             return n_qubits * 2
 
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
+
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
             """
@@ -1529,6 +1568,11 @@ class Ansaetze:
                 Number of parameters per layer
             """
             return n_qubits * 2
+
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1600,6 +1644,11 @@ class Ansaetze:
             """
             return n_qubits * 3 - 1
 
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
+
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
             """
@@ -1670,6 +1719,11 @@ class Ansaetze:
             """
             return n_qubits * 3 - 1
 
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
+
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
             """
@@ -1739,6 +1793,11 @@ class Ansaetze:
                 Number of parameters per layer
             """
             return n_qubits * 2  # constant gates not considered yet. has to be fixed
+
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1815,6 +1874,11 @@ class Ansaetze:
                 Number of parameters per layer
             """
             return n_qubits * 3 - 1
+
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1893,6 +1957,11 @@ class Ansaetze:
                 Number of parameters per layer
             """
             return n_qubits * 3 - 1
+
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1974,6 +2043,11 @@ class Ansaetze:
             if n_qubits < 2:
                 log.warning("Number of Qubits < 2, no entanglement available")
             return n_qubits * 6
+
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -2060,6 +2134,11 @@ class Ansaetze:
                 Number of parameters per layer
             """
             return n_qubits * 3
+
+        # TODO
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:

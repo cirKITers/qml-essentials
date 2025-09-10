@@ -216,7 +216,7 @@ def test_transform_input() -> None:
     # Test modified transform_input()
     model.transform_input = lambda inputs, enc_params: (np.arccos(inputs))
 
-    result_new = model(model.params, x)
+    result_new = model(model.params, x, pulse_params=None)
 
     assert np.allclose(x, result_new), "model.transform_input does not work as intended"
 
@@ -446,6 +446,7 @@ def test_cache() -> None:
                 "pqc": model.pqc.__class__.__name__,
                 "dru": model.data_reupload,
                 "params": model.params,
+                "pulse_params": model.pulse_params,
                 "enc_params": model.enc_params,
                 "noise_params": model.noise_params,
                 "execution_type": model.execution_type,
@@ -678,22 +679,27 @@ def test_ansaetze() -> None:
         def n_params_per_layer(n_qubits: int) -> int:
             return n_qubits * 3
 
+        # TODO: CHECK
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return 0
+
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, noise_params=None):
+        def build(w: np.ndarray, n_qubits: int, **kwargs):
             w_idx = 0
             for q in range(n_qubits):
-                Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RY(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
-                Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
+                Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
             if n_qubits > 1:
                 for q in range(n_qubits - 1):
-                    Gates.CZ(wires=[q, q + 1], noise_params=noise_params)
+                    Gates.CZ(wires=[q, q + 1], **kwargs)
 
     model = Model(
         n_qubits=2,
@@ -730,6 +736,85 @@ def test_ansaetze() -> None:
             cache=False,
             execution_type="density",
         )
+
+
+# TODO: After JAX migration, remove skip markers and CHECK
+@pytest.mark.unittest
+@pytest.mark.skip(reason="JAX migration required")
+def test_pulse_model() -> None:
+    model = Model(
+        n_qubits=4,
+        n_layers=2,
+        circuit_type="Hardware_Efficient",
+    )
+
+    # setting test data
+    domain = [-np.pi, np.pi]
+    omegas = np.array([1, 2, 3, 4])
+    coefficients = np.array([1, 1, 1, 1])
+    n_d = int(np.ceil(2 * np.max(np.abs(domain)) * np.max(omegas)))
+    x = np.linspace(domain[0], domain[1], num=n_d)
+
+    def f(x):
+        return 1 / np.linalg.norm(omegas) * np.sum(coefficients * np.cos(omegas.T * x))
+
+    y = np.stack([f(sample) for sample in x])
+
+    def cost_fct(params, pulse_params):
+        y_hat = model(
+            params=params,
+            pulse_params=pulse_params,
+            inputs=x,
+            force_mean=True,
+            gate_mode="pulse"
+        )
+        return np.mean((y_hat - y) ** 2)
+
+    opt = qml.AdamOptimizer(stepsize=0.01)
+    pulse_params_before = model.pulse_params.copy()
+    (model.params, model.pulse_params), cost_val = opt.step_and_cost(
+        cost_fct, model.params, model.pulse_params
+    )
+    pulse_params_after = model.pulse_params.copy()
+
+    assert not np.allclose(
+        pulse_params_before, pulse_params_after
+    ), "pulse_params did not update during training"
+
+    grads = qml.grad(cost_fct, argnum=1)(model.params, model.pulse_params)
+    assert np.any(np.abs(grads) > 1e-6), "Gradient wrt pulse_params is too small"
+
+
+# TODO: CHECK. Apply to all ansaetze? Merge into test_ansaetze?
+#   Mark as expensive (2-3 min)?
+@pytest.mark.unittest
+def test_pulse_model_inference():
+    model = Model(
+        n_qubits=4,
+        n_layers=2,
+        circuit_type="Hardware_Efficient",
+    )
+
+    x = np.linspace(-np.pi, np.pi, 10)
+
+    # forward pass with initial pulse_params
+    y_hat_original = model(inputs=x, gate_mode="pulse", force_mean=True)
+
+    # perturb pulse_params
+    original_params = model.pulse_params.copy()
+    model.pulse_params += 0.1
+
+    # forward pass with perturbed pulse_params
+    y_hat_perturbed = model(inputs=x, gate_mode="pulse", force_mean=True)
+
+    assert y_hat_original.shape[0] == x.shape[0], "Output batch size mismatch"
+
+    # ensure output changed after perturbing pulse_params
+    assert not np.allclose(
+        y_hat_original, y_hat_perturbed
+    ), "Pulse output did not change after modifying pulse_params"
+
+    model.pulse_params = original_params
 
 
 @pytest.mark.unittest

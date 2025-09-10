@@ -5,8 +5,8 @@ import pennylane as qml
 import pennylane.numpy as np
 import pytest
 import logging
-import jax
-jax.config.update("jax_enable_x64", True)
+# import jax
+# jax.config.update("jax_enable_x64", True)
 
 
 logger = logging.getLogger(__name__)
@@ -141,7 +141,7 @@ def test_pulse_RX_gate(w):
     dev = qml.device("default.qubit", wires=1)
 
     @qml.qnode(dev)
-    def ideal_circuit():
+    def unitary_circuit():
         qml.RX(w, wires=0)
         return qml.state()
 
@@ -150,7 +150,7 @@ def test_pulse_RX_gate(w):
         Gates.RX(w, wires=0, mode="pulse")
         return qml.state()
 
-    state_ideal = ideal_circuit()
+    state_ideal = unitary_circuit()
     state_pulse = pulse_circuit()
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
@@ -167,7 +167,7 @@ def test_pulse_RY_gate(w):
     dev = qml.device("default.qubit", wires=1)
 
     @qml.qnode(dev)
-    def ideal_circuit():
+    def unitary_circuit():
         qml.RY(w, wires=0)
         return qml.state()
 
@@ -176,7 +176,7 @@ def test_pulse_RY_gate(w):
         Gates.RY(w, wires=0, mode="pulse")
         return qml.state()
 
-    state_ideal = ideal_circuit()
+    state_ideal = unitary_circuit()
     state_pulse = pulse_circuit()
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
@@ -193,7 +193,7 @@ def test_pulse_RZ_gate(w):
     dev = qml.device("default.qubit", wires=1)
 
     @qml.qnode(dev)
-    def ideal_circuit():
+    def unitary_circuit():
         qml.Hadamard(wires=0)  # Prepare |+> so RZ acts non-trivially
         qml.RZ(w, wires=0)
         return qml.state()
@@ -204,7 +204,7 @@ def test_pulse_RZ_gate(w):
         Gates.RZ(w, wires=0, mode="pulse")
         return qml.state()
 
-    state_ideal = ideal_circuit()
+    state_ideal = unitary_circuit()
     state_pulse = pulse_circuit()
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
@@ -220,7 +220,7 @@ def test_pulse_H_gate():
     dev = qml.device("default.qubit", wires=1)
 
     @qml.qnode(dev)
-    def ideal_circuit():
+    def unitary_circuit():
         qml.Hadamard(wires=0)
         return qml.state()
 
@@ -229,7 +229,7 @@ def test_pulse_H_gate():
         Gates.H(wires=0, mode="pulse")
         return qml.state()
 
-    state_ideal = ideal_circuit()
+    state_ideal = unitary_circuit()
     state_pulse = pulse_circuit()
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
@@ -245,7 +245,7 @@ def test_pulse_CZ_gate():
     dev = qml.device("default.qubit", wires=2)
 
     @qml.qnode(dev)
-    def ideal_circuit():
+    def unitary_circuit():
         qml.H(wires=0)
         qml.H(wires=1)
         qml.CZ(wires=[0, 1])
@@ -258,7 +258,7 @@ def test_pulse_CZ_gate():
         Gates.CZ(wires=[0, 1], mode="pulse")
         return qml.state()
 
-    state_ideal = ideal_circuit()
+    state_ideal = unitary_circuit()
     state_pulse = pulse_circuit()
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
@@ -273,7 +273,7 @@ def test_pulse_CNOT_gate():
     dev = qml.device("default.qubit", wires=2)
 
     @qml.qnode(dev)
-    def ideal_circuit():
+    def unitary_circuit():
         qml.H(wires=0)
         qml.CNOT(wires=[0, 1])
         return qml.state()
@@ -284,7 +284,7 @@ def test_pulse_CNOT_gate():
         Gates.CX(wires=[0, 1], mode="pulse")
         return qml.state()
 
-    state_ideal = ideal_circuit()
+    state_ideal = unitary_circuit()
     state_pulse = pulse_circuit()
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2

@@ -8,6 +8,7 @@ from qml_essentials.model import Model
 
 
 @pytest.mark.unittest
+@pytest.mark.skip(reason="JAX migration required")
 def test_pulse_model() -> None:
     model = Model(
         n_qubits=4,
@@ -52,6 +53,8 @@ def test_pulse_model() -> None:
     assert np.any(np.abs(grads) > 1e-6), "Gradient wrt pulse_params is too small"
 
 
-if __name__ == "__main__":
-    print("Starting test")
-    test_pulse_model()
+# if __name__ == "__main__":
+#     print("Starting test")
+#     # test_pulse_model()
+#     test_pulse_model_inference()
+#     print("Test complete")

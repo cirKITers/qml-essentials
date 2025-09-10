@@ -117,9 +117,13 @@ class Entanglement:
             n_samples = np.power(2, model.n_qubits) * n_samples
 
         def _circuit(
-                params: np.ndarray, inputs: np.ndarray,
-                enc_params: Optional[np.ndarray] = None
+                params: np.ndarray,
+                inputs: np.ndarray,
+                pulse_params: Optional[np.ndarray] = None,
+                enc_params: Optional[np.ndarray] = None,
+                gate_mode: str = "unitary"
         ) -> List[np.ndarray]:
+            # TODO: Docstring
             """
             Compute the Bell measurement circuit.
 
@@ -131,7 +135,7 @@ class Entanglement:
             Returns:
                 List[np.ndarray]: The probabilities of the Bell measurement.
             """
-            model._variational(params, inputs, enc_params)
+            model._variational(params, inputs, pulse_params, enc_params, gate_mode)
 
             qml.map_wires(
                 model._variational,

@@ -23,26 +23,15 @@ log = logging.getLogger(__name__)
 #   I.e. pass trainable frequencies as an execution type and initialize enc_params
 #   with requires_grad=False
 
-# TODO: Migrate from pennylane.numpy to jax.numpy everywhere or
-#   Migrate from jax.numpy to pennylane.numpy in ansaetze and qoc
-
 """
 Notes
 
-- Modify get_specs and draw?
+- Modify get_specs and draw? -> Melvin
 
 - Modified hash and MultiprocessingPool, adapt somewhere else?
 
-- Add new arg for trainable pulse params or always optimize if gate_mode is pulse?
+- Added context manager for PulseParamManager in Ansaetze
 
-- If gate_mode pulse also means optimize, then pulse_params can be init at
-    forward instead of init? Or is gate_mode reduntant, are pulse params always
-    passed when gate_mode = pulse? Confused myself...
-
-- Pennylane pulse module works on JAX. Pulse parameters (in model and qoc) must be
-    optimized with jnp (double check). So, either
-    1. Migrate everything from pennylane.numpy to jax.numpy (better optimization anyway)
-    2. Add if else statements and use jnp when pulse and np when unitary
 """
 
 
@@ -569,11 +558,14 @@ class Model:
         )
 
     # CHECK
-    def initialize_pulse_params(self) -> None:
+    def initialize_pulse_params(self, repeat: int = None) -> None:
         # TODO: Add docstring
-        self.pulse_params: np.ndarray = np.ones(
-            self._pulse_params_shape, requires_grad=False
+        shape = (
+            self._pulse_params_shape
+            if repeat is None
+            else (*self._pulse_params_shape, repeat)
         )
+        self.pulse_params: np.ndarray = np.ones(shape, requires_grad=False)
 
         log.info(
             f"Initialized pulse parameters with shape {self.pulse_params.shape}."
@@ -638,8 +630,8 @@ class Model:
     def _circuit(
         self,
         params: np.ndarray,
-        pulse_params: np.ndarray,
         inputs: np.ndarray,
+        pulse_params: np.ndarray = None,
         enc_params: Optional[np.ndarray] = None,
         gate_mode: str = "unitary"
     ) -> Union[float, np.ndarray]:
@@ -661,8 +653,8 @@ class Model:
 
         self._variational(
             params=params,
-            pulse_params=pulse_params,
             inputs=inputs,
+            pulse_params=pulse_params,
             enc_params=enc_params,
             gate_mode=gate_mode
         )
@@ -672,19 +664,30 @@ class Model:
     def _variational(
         self,
         params: np.ndarray,
-        pulse_params: np.ndarray,
         inputs: np.ndarray,
+        pulse_params: np.ndarray = None,
         enc_params: Optional[np.ndarray] = None,
         gate_mode: str = "unitary"
     ) -> None:
-
         if enc_params is None:
-            warnings.warn(
-                "Explicit call to `_circuit` or `_variational` detected: "
-                "`enc_params` is None, using `self.enc_params` instead.",
-                RuntimeWarning,
-            )
+            # TODO: Raise warning if trainable frequencies is True, or similar. I.e., no
+            #   warning if user does not care for frequencies or enc_params
+            if self.trainable_frequencies:
+                warnings.warn(
+                    "Explicit call to `_circuit` or `_variational` detected: "
+                    "`enc_params` is None, using `self.enc_params` instead.",
+                    RuntimeWarning,
+                )
             enc_params = self.enc_params
+
+        if pulse_params is None:
+            if gate_mode == "pulse":
+                warnings.warn(
+                    "Explicit call to `_circuit` or `_variational` detected: "
+                    "`pulse_params` is None, using `self.pulse_params` instead.",
+                    RuntimeWarning,
+                )
+            pulse_params = self.pulse_params
 
         if self.noise_params is not None:
             self._apply_state_prep_noise()
@@ -812,8 +815,9 @@ class Model:
                 tg = circuit_depth * t_factor
                 qml.ThermalRelaxationError(1.0, t1, t2, tg, q)
 
-    # TODO: are pulse_params and gate_mode correctly absorbed in kwargs?
+    # TODO: remove enc_params (passed through kwargs)
     def draw(self, inputs=None, figure="text", *args, **kwargs):
+        # TODO: Docstring?
         """
         Draws the quantum circuit using the specified visualization method.
 
@@ -902,8 +906,6 @@ class Model:
             else:
                 self.pulse_params = pulse_params
 
-        # TODO: This assumes, if gate_mode = pulse then pulse_parameters should be
-        #   optimized. Is this correct or should there be a trainable_pulse_params arg?
         # flip requires_grad depending on current gate_mode
         if self.gate_mode == "pulse":
             self.pulse_params = np.array(self.pulse_params, requires_grad=True)
@@ -1075,7 +1077,6 @@ class Model:
             )
         else:
             log.info(f"Using {n_processes} processes")
-            # TODO: MultiprocessingPool is modified, adapt somewhere else?
             mpp = MultiprocessingPool(
                 n_processes=n_processes,
                 target=Model._parallel_f,
@@ -1096,7 +1097,7 @@ class Model:
             result = np.concat(result, axis=1 if self.execution_type == "expval" else 0)
         return result
 
-    # CHECK: unsure
+    # CHECK
     def _assimilate_batch(self, inputs, params, pulse_params):
         batch_shape = (
             inputs.shape[0],
@@ -1121,7 +1122,7 @@ class Model:
                 params[:, :, np.newaxis, :], batch_shape[0], axis=2
             ).reshape([*params.shape[:-1], np.prod(batch_shape)])
 
-            # TODO: Is this implementation correct?
+            # CHECK
             pulse_params = np.repeat(
                 pulse_params[:, :, np.newaxis, :], batch_shape[0], axis=2
             ).reshape([*pulse_params.shape[:-1], np.prod(batch_shape)])
@@ -1132,8 +1133,8 @@ class Model:
     def __call__(
         self,
         params: Optional[np.ndarray] = None,
-        pulse_params: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
+        pulse_params: Optional[np.ndarray] = None,
         enc_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
@@ -1181,8 +1182,8 @@ class Model:
         # Call forward method which handles the actual caching etc.
         return self._forward(
             params=params,
-            pulse_params=pulse_params,
             inputs=inputs,
+            pulse_params=pulse_params,
             enc_params=enc_params,
             noise_params=noise_params,
             cache=cache,
@@ -1195,8 +1196,8 @@ class Model:
     def _forward(
         self,
         params: Optional[np.ndarray] = None,
-        pulse_params: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
+        pulse_params: Optional[np.ndarray] = None,
         enc_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         cache: Optional[bool] = False,
@@ -1277,7 +1278,6 @@ class Model:
         )
         # the qasm representation contains the bound parameters,
         # thus it is ok to hash that
-        # TODO: hs is modified, adapt somewhere else?
         hs = hashlib.md5(
             repr(
                 {
