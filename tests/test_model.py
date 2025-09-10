@@ -231,24 +231,51 @@ def test_transform_input() -> None:
 
 @pytest.mark.unittest
 def test_batching() -> None:
-    model = Model(
-        n_qubits=2,
-        n_layers=1,
-        circuit_type="Circuit_19",
-    )
+    for ansatz in Ansaetze.get_available():
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type=ansatz.__name__,
+        )
 
-    n_samples = 3
-    model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
-    params = model.params
+        n_samples = 3
+        model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
+        params = model.params
 
-    res = np.zeros((n_samples, 4, 4), dtype=np.complex128)
-    for i in range(n_samples):
-        res[i] = model(params=params[:, :, i], execution_type="density")
+        res = np.zeros((n_samples, 4, 4), dtype=np.complex128)
+        for i in range(n_samples):
+            res[i] = model(params=params[:, :, i], execution_type="density")
 
-    assert res.shape == (n_samples, 4, 4), "Shape of batching is not correct"
-    assert (
-        res == model(params=params, execution_type="density")
-    ).all(), "Content of batching is not equal"
+        assert res.shape == (n_samples, 4, 4), "Shape of batching is not correct"
+        assert (
+            res == model(params=params, execution_type="density")
+        ).all(), "Content of batching is not equal"
+
+    ## Multi-Dim Input
+
+    # model = Model(
+    #     n_qubits=2,
+    #     n_layers=1,
+    #     circuit_type="Circuit_15",
+    #     encoding=[Gates.RX, Gates.RX],
+    # )
+
+    # n_samples = 3
+    # model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
+    # params = model.params
+
+    # res = np.zeros((n_samples, 4, 4), dtype=np.complex128)
+    # for i in range(n_samples):
+    #     res[i] = model(
+    #         inputs=np.random.rand(1, 2),
+    #         params=params[:, :, i],
+    #         execution_type="density",
+    #     )
+
+    # assert res.shape == (n_samples, 4, 4), "Shape of batching is not correct"
+    # assert (
+    #     res == model(params=params, execution_type="density")
+    # ).all(), "Content of batching is not equal"
 
 
 @pytest.mark.unittest
