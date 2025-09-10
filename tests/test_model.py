@@ -237,7 +237,7 @@ def test_batching() -> None:
             n_layers=1,
             circuit_type=ansatz.__name__,
         )
-
+        print(ansatz.__name__)
         n_samples = 3
         model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
         params = model.params
@@ -246,10 +246,14 @@ def test_batching() -> None:
         for i in range(n_samples):
             res[i] = model(params=params[:, :, i], execution_type="density")
 
-        assert res.shape == (n_samples, 4, 4), "Shape of batching is not correct"
+        assert res.shape == (
+            n_samples,
+            4,
+            4,
+        ), f"Shape of batching is not correct. Ansatz {ansatz.__name__}"
         assert (
             res == model(params=params, execution_type="density")
-        ).all(), "Content of batching is not equal"
+        ).all(), f"Content of batching is not equal. Ansatz {ansatz.__name__}"
 
     ## Multi-Dim Input
 
