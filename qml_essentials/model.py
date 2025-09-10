@@ -240,13 +240,14 @@ class Model:
 
         self.circuit_mixed: qml.QNode = qml.QNode(
             self._circuit,
-            qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
-            interface="autograd" if self.shots is not None else "auto",
-            diff_method="parameter-shift" if self.shots is not None else "best",
+            qml.device("default.mixed", wires=self.n_qubits),
+            interface="auto",
+            diff_method="parameter-shift",
         )
 
     @property
     def degree(self):
+
         return max(self.frequencies)
 
     @property
