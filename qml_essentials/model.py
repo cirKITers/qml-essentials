@@ -1031,6 +1031,7 @@ class Model:
         inputs,
         batch_shape,
         enc_params,
+        gate_mode,
     ):
         # TODO: Docstring
         """
@@ -1059,7 +1060,8 @@ class Model:
             params=params,
             pulse_params=pulse_params,
             inputs=inputs,
-            enc_params=enc_params
+            enc_params=enc_params,
+            gate_mode=gate_mode,
         )
 
     # CHECK
