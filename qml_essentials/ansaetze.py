@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 
-from torch import name
+# from torch import name
 import pennylane.numpy as np
 import pennylane as qml
 from jax import numpy as jnp
