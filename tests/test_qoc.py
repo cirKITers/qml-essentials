@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.unittest
 def test_optimize_RX():
-    qoc = QOC()
+    qoc = QOC(file_dir=None)
     optimized_params, best_loss, _ = qoc.optimize_RX(
         w=jnp.pi, init_pulse_params=jnp.array([1.0, 15.0, 1.0])
     )
@@ -22,7 +22,7 @@ def test_optimize_RX():
 
 @pytest.mark.unittest
 def test_optimize_RY():
-    qoc = QOC()
+    qoc = QOC(file_dir=None)
     optimized_params, best_loss, _ = qoc.optimize_RY(
         w=jnp.pi, init_pulse_params=jnp.array([1.0, 15.0, 1.0])
     )
@@ -32,7 +32,7 @@ def test_optimize_RY():
 
 @pytest.mark.unittest
 def test_optimize_H():
-    qoc = QOC()
+    qoc = QOC(file_dir=None)
     optimized_params, best_loss, _ = qoc.optimize_H(
         init_pulse_params=jnp.array([1.0, 15.0, 1.0])
     )
@@ -42,7 +42,7 @@ def test_optimize_H():
 
 @pytest.mark.unittest
 def test_optimize_CZ():
-    qoc = QOC()
+    qoc = QOC(file_dir=None)
     optimized_params, best_loss, _ = qoc.optimize_CZ(
         init_pulse_params=jnp.array([0.975])
     )
@@ -51,10 +51,10 @@ def test_optimize_CZ():
 
 
 @pytest.mark.unittest
-def test_optimize_CNOT():
-    qoc = QOC()
-    optimized_params, best_loss, _ = qoc.optimize_CNOT(
+def test_optimize_CX():
+    qoc = QOC(file_dir=None)
+    optimized_params, best_loss, _ = qoc.optimize_CX(
         init_pulse_params=jnp.array([1.0, 15.0, 1.0, 1.0]),
     )
     fidelity = 1 - best_loss
-    assert fidelity > 0.9, f"CNOT optimization fidelity too low: {fidelity:.4f}"
+    assert fidelity > 0.9, f"CX optimization fidelity too low: {fidelity:.4f}"

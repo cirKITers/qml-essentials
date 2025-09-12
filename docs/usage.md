@@ -36,7 +36,7 @@ For a more detailled reference on the methods and arguments that are available, 
 
 ## The essentials
 
-There is much more to this package, than just providing a Fourier model.
+There is much more to this package than just providing a Fourier model.
 You can calculate the [Expressibility](expressibility.md) or [Entangling Capability](entanglement.md) besides the [Coefficients](coefficients.md) which are unique to this kind of QML interpretation.
 You can also provide a custom circuit, by instantiating from the `Circuit` class in `qml_essentials.ansaetze.Circuit`.
 See page [*Ansaetze*](ansaetze.md) for more details and a list of available Ansatzes that we provide with this package.
@@ -44,12 +44,12 @@ See page [*Ansaetze*](ansaetze.md) for more details and a list of available Ansa
 ## Data-Reuploading
 
 This idea is one of the core features of our framework and builds upon the work by [*Schuld et al. (2020)*](https://doi.org/10.48550/arXiv.2008.08605).
-Essentially it allows us to represent a quantum circuit as a truncated Fourier series which is a powerfull feature that enables the model to mimic arbitrary non-linear functions.
+Essentially, it allows us to represent a quantum circuit as a truncated Fourier series, which is a powerful feature that enables the model to mimic arbitrary non-linear functions.
 The number of frequencies that the model can represent is constrained by the number of data encoding steps within the circuit.
 
 Typically, there is a reuploading step after each layer and on each qubit (`data_reupload=True`).
-However, our package also allows you to specify and array with the number of rows representing the qubits and number of columns representing the layers.
-Then a `True` means that encoding is applied at the corresponding position within the circuit.
+However, our package also allows you to specify an array with the number of rows representing the qubits and number of columns representing the layers.
+Then, a `True` means that encoding is applied at the corresponding position within the circuit.
 
 In the following example, the model has two reuploading steps (`model.degree` = 2) although it would be capable of representing four frequencies:
 
@@ -63,7 +63,7 @@ model = Model(
 ```
 
 Checkout the [*Coefficients*](coefficients.md) page for more details on how you can visualize such a model using tools from signal analysis.
-If you want to encode multi-dimensional data (checkout the [*Encoding*](usage.md#encoding) section on how to do that), you can specify another dimension in the `data_reupload` argument (which just extents naturally).
+If you want to encode multi-dimensional data (check out the [*Encoding*](usage.md#encoding) section on how to do that), you can specify another dimension in the `data_reupload` argument (which just extents naturally).
 ```python
 model = Model(
     n_qubits=2,
@@ -164,6 +164,48 @@ Instead of the probability, the entry for this type of error consists of another
 The units can be ignored as we are only interested in relative times, above values might belong to some superconducting system.
 Note that `t2` is required to be max. $2\times$`t1`.
 Based on `t_factor` and the circuit depth the execution time is estimated, and therefore the influence of thermal relaxation over time.
+
+## Pulse Level Simulation
+
+Our framework extends beyond unitary-level simulation by integrating **pulse-level simulation** through [PennyLane’s pulse module](https://docs.pennylane.ai/en/stable/code/qml_pulse.html).  
+This allows you to move from the **abstract unitary layer**, where gates are treated as instantaneous idealized operations, down to the **physical pulse layer**, where gates are represented by time-dependent microwave control fields.  
+
+In the pulse representation, each gate is decomposed into Gaussian-shaped pulses parameterized by:
+
+- **$A$**: amplitude of the pulse
+- **$\sigma$**: width (standard deviation) of the Gaussian envelope
+- **$t$**: pulse duration
+
+By default, the framework provides optimized pulse parameters based on typical superconducting qubit frequencies ($\omega_q = 10\pi$, $\omega_c = 10\pi$).  
+
+Switching between **unitary-level** and **pulse-level** execution is seamless and controlled via the `gate_mode` argument:
+
+```python
+# Pulse-level simulation
+y = model(params, inputs, gate_mode="pulse")
+
+# Default unitary-level simulation
+y = model(params, inputs, gate_mode="unitary")
+```
+
+Pulse-level gates can also be instantiated directly:
+
+```python
+from qml_essentials.ansaetze import Gates
+
+# RX gate represented by its microwave pulse
+Gates.RX(w, wires=0, gate_mode="pulse")
+
+# With custom pulse parameters [A, sigma, t]
+pulse_params = [0.5, 0.2, 1.0]  # TODO: is a list the right way to pass the pulse_params?
+Gates.RX(w, wires=0, pulse_params=pulse_params, gate_mode="pulse")
+```
+
+For more details:
+
+- See [*Ansaetze*](ansaetze.md) for a deeper explanation of our **pulse-level gates and ansaetze**, as well as details on **Quantum Optimal Control (QOC)**, which enables optimizing pulses directly for target unitaries.  
+- See [*Training*](training.md) for how to **train pulse parameters jointly with rotation angles**.  
+
 
 ## Caching
 

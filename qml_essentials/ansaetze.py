@@ -601,7 +601,7 @@ class PulseGates:
             opt = OPTIMIZED_PULSES["RX"]
             pulse_params, t = opt[:2], opt[2]
         else:
-            pulse_params, t = [pulse_params[:2]], pulse_params[2]
+            pulse_params, t = pulse_params[:2], pulse_params[2]
 
         Sx = lambda p, t: PulseGates.S(p, t, phi_c=jnp.pi) * w
 
@@ -609,7 +609,7 @@ class PulseGates:
         _H = qml.Hermitian(_H, wires=wires)
         H_eff = Sx * _H
 
-        return qml.evolve(H_eff)(pulse_params, t)
+        return qml.evolve(H_eff)([pulse_params], t)
 
     @staticmethod
     def RY(w, wires, pulse_params=None):
@@ -630,7 +630,7 @@ class PulseGates:
             opt = OPTIMIZED_PULSES["RY"]
             pulse_params, t = opt[:2], opt[2]
         else:
-            pulse_params, t = [pulse_params[:2]], pulse_params[2]
+            pulse_params, t = pulse_params[:2], pulse_params[2]
 
         Sy = lambda p, t: PulseGates.S(p, t, phi_c=-jnp.pi/2) * w
 
@@ -638,7 +638,7 @@ class PulseGates:
         _H = qml.Hermitian(_H, wires=wires)
         H_eff = Sy * _H
 
-        return qml.evolve(H_eff)(pulse_params, t)
+        return qml.evolve(H_eff)([pulse_params], t)
 
     @staticmethod
     def RZ(w, wires, pulse_params=None):

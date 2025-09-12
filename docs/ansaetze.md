@@ -21,7 +21,9 @@ To get an overview of all the available Ansaetze, checkout the [references](http
 If you want to implement your own ansatz, you can do so by inheriting from the `Circuit` class:
 ```python
 import pennylane as qml
+import pennylane.numpy as np
 from qml_essentials.ansaetze import Circuit
+from typing import Optional
 
 class MyHardwareEfficient(Circuit):
     @staticmethod
@@ -29,21 +31,25 @@ class MyHardwareEfficient(Circuit):
         return n_qubits * 3
 
     @staticmethod
+    def n_pulse_params_per_layer(n_qubits: int) -> int:
+        return (3 + 1) * n_qubits + 1 * (n_qubits - 1)
+
+    @staticmethod
     def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
         return None
 
     @staticmethod
-    def build(w: np.ndarray, n_qubits: int, noise_params=None):
+    def build(w: np.ndarray, n_qubits: int, **kwargs):
         w_idx = 0
         for q in range(n_qubits):
-            qml.RY(w[w_idx], wires=q)
+            qml.RY(w[w_idx], wires=q, **kwargs)
             w_idx += 1
-            qml.RZ(w[w_idx], wires=q)
+            qml.RZ(w[w_idx], wires=q, **kwargs)
             w_idx += 1
 
         if n_qubits > 1:
             for q in range(n_qubits - 1):
-                qml.CZ(wires=[q, q + 1])
+                qml.CZ(wires=[q, q + 1], **kwargs)
 ```
 
 and then pass it to the model:
@@ -56,8 +62,10 @@ model = Model(
     circuit_type=MyHardwareEfficient,
 )
 ```
+The `**kwargs` allow both [noise simulation](#noise) and [pulse simulation](#pulse-simulation).
+Every custom `Circuit` must define `n_pulse_params_per_layer`, but you can return `0` if pulse simulation is not used. In this example, `RY` has 3 parameters, `RZ` has 1, and `CZ` has 1, so we return `(3 + 1) * n_qubits + 1 * (n_qubits - 1)`.
 
-Checkout page [*Usage*](usage.md) on how to proceed from here.
+Check out page [*Usage*](usage.md) on how to proceed from here.
 
 ## Custom Encoding
 
@@ -68,14 +76,14 @@ You can change this behavior, by setting the optional `encoding` argument to
 - a callable or a list of callables
 
 A callable must take an input, the wire where it's acting on and an optional noise_params dictionary.
-Let's look at an example, where we wan't to encode a two-dimensional input:
+Let's look at an example, where we want to encode a two-dimensional input:
 ```python
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Gates
 
-def MyCustomEncoding(w, wires, noise_params=None):
-    Gates.RX(w[0], wires, noise_params=noise_params)
-    Gates.RY(w[1], wires, noise_params=noise_params)
+def MyCustomEncoding(w, wires, **kwars):
+    Gates.RX(w[0], wires, **kwargs)
+    Gates.RY(w[1], wires, **kwargs)
 
 model = Model(
     n_qubits=2,
@@ -87,11 +95,10 @@ model = Model(
 model(inputs=[1, 2])
 ```
 
-
 ## Noise
-
-You might have noticed, that the `build` method takes an additional input `noise_params`, which we did not used so far.
-In general, all of the Ansatzes, that are implemented in this package allow this additional input which is a dictionary containing all the noise parameters of the circuit (here all with probability $0.0$):
+<!-- TODO: Fix this section. Noise is handled slightly different-->
+You might have noticed, that the `build` method takes the additional input **kwargs, which we did not used so far.
+In general, all of the Ansatzes that are implemented in this package allow the additional input below which is a dictionary containing all the noise parameters of the circuit (here all with probability $0.0$):
 ```python
 noise_params = {
     "BitFlip": 0.0,
@@ -104,35 +111,9 @@ noise_params = {
 ```
 
 Providing this optional input will apply the corresponding noise to the model where the Bit Flip, Phase Flip, Depolarizing and Two-Qubit Depolarizing Channels are applied after each gate and the Amplitude and Phase Damping are applied at the end of the circuit.
-To achieve this, we implement our own set of noisy gates, that build upon the Pennylane gates. To demonstrate this, let's extend our example above:
-```python
-from qml_essentials.ansaetze import Gates, Circuit
 
-class MyNoisyHardwareEfficient(Circuit):
-    @staticmethod
-    def n_params_per_layer(n_qubits: int) -> int:
-        return n_qubits * 3
+To demonstrate this, let's recall the custom ansatz `MyHarwareEfficient` defined in [Custom Ansatz](#custom-ansatz) and extend the model's usage:
 
-    @staticmethod
-    def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
-        return None
-
-    @staticmethod
-    def build(w: np.ndarray, n_qubits: int, noise_params=None):
-        w_idx = 0
-        for q in range(n_qubits):
-            Gates.RY(w[w_idx], wires=q, noise_params=noise_params)
-            w_idx += 1
-            Gates.RZ(w[w_idx], wires=q, noise_params=noise_params)
-            w_idx += 1
-
-        if n_qubits > 1:
-            for q in range(n_qubits - 1):
-                Gates.CZ(wires=[q, q + 1], noise_params=noise_params)
-```
-
-As you can see, we slightly modified the example, by importing the `Gates` class from `ansaetze` and by adding the `noise_params` input to each of the gates.
-When using a noisy circuit, make sure to run the model with the `density` execution type:
 ```python
 model(
     model.params,
@@ -147,6 +128,140 @@ model(
         "MultiQubitDepolarizing": 0.06
 })
 ```
+
+> **Note:** When using a noisy circuit, make sure to run the model with the `density` execution type.
+
+## Pulse Simulation
+
+Our framework allows constructing circuits at the **pulse level**, where each gate is implemented as a time-dependent control pulse rather than an abstract unitary.  
+This provides a more realistic simulation of superconducting qubit hardware.  
+
+### Pulse Parameters per Gate
+
+Each implemented gate takes the following number of pulse parameters:
+
+| Gate  | Pulse Parameters | Description |
+|-------|-----------------|-------------|
+| Rot   | -               | Not implemented |
+| RX    | 3               | (A, σ, t) amplitude, width, and pulse duration |
+| RY    | 3               | (A, σ, t) amplitude, width, and pulse duration |
+| RZ    | 1               | t: pulse duration |
+| CRX   | -               | Not implemented |
+| CRY   | -               | Not implemented |
+| CRZ   | -               | Not implemented |
+| CX    | 4               | (A_H, σ_H, t_H, t_CZ) parameters for decomposed pulse sequence |
+| CY    | -               | Not implemented |
+| CZ    | 1               | t_CZ: pulse duration |
+| H     | 3               | (A_H, σ_H, t_H) passed to underlying RY decomposition |
+
+You can use the built-in mapping `PULSE_PARAM_COUNTS` to access the number of pulse parameters in-code:
+
+```python
+from qml_essentials.ansaetze import PULSE_PARAM_COUNTS
+
+n_pulse_params_RX = PULSE_PARAM_COUNTS["RX"]  # 3
+n_pulse_params_CX = PULSE_PARAM_COUNTS["CX"]  # 4
+```
+
+Similarly, you can use the built-in mapping `OPTIMIZED_PULSES` to access the optimized pulse parameters for each gate: 
+
+```python
+from qml_essentials.ansaetze import OPTIMIZED_PULSES
+
+opt_pulse_params_RX = OPTIMIZED_PULSES["RX"]  # jnp.array([15.709893, 29.52306, 0.74998104])
+opt_pulse_params_CX = OPTIMIZED_PULSES["CX"]  # jnp.array([7.9447253, 21.6398258, 0.90724313, 0.95509776])
+```
+
+### Calling Gates in Pulse Mode
+
+To execute a gate in pulse mode, provide `gate_mode="pulse"` when calling the gate.  
+Optional `pulse_params` can be passed; if omitted, optimized default values are used:
+
+```python
+w = 3.14159
+
+# RX gate with default optimized pulse parameters
+Gates.RX(w, wires=0, gate_mode="pulse")
+
+# RX gate with custom pulse parameters
+pulse_params = [0.5, 0.2, 1.0]  # A, σ, t
+Gates.RX(w, wires=0, gate_mode="pulse", pulse_params=pulse_params)
+```
+
+### Building Ansatzes in Pulse Mode
+
+When building an ansatz in pulse mode (via a `Model`), the framework internally passes an array of ones as **element-wise scalers** for the optimized parameters.  
+If `pulse_params` are provided for a model or gate, these are treated similarly as element-wise scalers to modify the default pulses. We again take advantage of the **kwargs and call:
+
+```python
+model(model.params, inputs=None, gate_mode="pulse")
+```
+
+> **Note:** Pulse-level simulation currently **does not support noise channels**. Mixing with noise will raise an error.  
+
+### Quantum Optimal Control (QOC)
+
+Our package provides a QOC interface for directly optimizing pulse parameters for specific gates.  
+
+#### QOC Class Initialization
+
+The `QOC` class constructor supports the following arguments:
+
+- `make_plots=False` — whether to generate and save plots after optimization  
+- `file_dir="qoc/results"`- directory to save optimization results
+- `fig_dir="qoc/figures"` — directory to save figures if `make_plots=True`  
+- `fig_points=70` — number of points to plot for each pulse  
+
+```python
+from qml_essentials.qoc import QOC
+
+# Initialize a QOC object
+qoc = QOC(
+    make_plots=True,
+    file_dir="qoc",
+    fig_dir="qoc",
+    fig_points=100
+)
+```
+
+#### Optimizing Pulse Parameters
+
+The `optimize_*` functions (e.g., `optimize_RX`) optimize pulse parameters to best approximate a target unitary gate.  
+For example, `optimize_RX` uses gradient-based optimization to minimize the difference between the pulse-based RX(w) circuit expectation value and the target gate-based RX(w).
+
+Arguments:
+
+- `steps: int = 1000` — maximum number of optimization steps  
+- `patience: int = 100` — number of steps without improvement before early stopping  
+- `w: float = jnp.pi` — target rotation angle  
+- `init_pulse_params: jnp.array = jnp.array([1.0, 15.0, 1.0])` — initial guess for the pulse parameters (A, σ, t)  
+- `print_every: int = 50` — print progress every N steps  
+
+Returns:
+
+- `tuple` — `(optimized_params, loss, losses)` where `optimized_params` is a `jnp.ndarray` of optimized pulse parameters (the best found during training), `loss` is the best loss, and `losses` is a list of loss values during optimization. Here, loss is defined as `1 - fidelity`.
+
+Example usage:
+
+```python
+# Optimize pulse parameters for an RX rotation
+optimized_pulse_params, best_loss, loss_values = qoc.optimize_RX(
+    steps=2000,
+    patience=200,
+    w=jnp.pi/2,
+    init_pulse_params=jnp.array([0.8, 10.0, 1.2]),
+    print_every=100
+)
+print(f"Optimized parameters for RX: {optimized_pulse_params}\n")
+print(f"Best achieved fidelity: {1 - best_loss}")
+
+# Optimize pulse parameters for an RY rotation
+optimized_pulse_params, best_loss, loss_values = qoc.optimize_RY()
+print(f"Optimized parameters for RY: {optimized_pulse_params}\n")
+print(f"Best achieved fidelity: {1 - best_loss:.6f}")
+```
+
+Currently, QOC is implemented for all qubit gates with pulse-level support (RX, RY, RZ, H, CX, CZ).  
 
 ## Overview
 
@@ -225,4 +340,3 @@ Oh and in case you need a refresh on the rotational axes and their corresponding
 ### GHZ
 ![GHZ](figures/GHZ_light.png#circuit#only-light)
 ![GHZ](figures/GHZ_dark.png#circuit#only-dark)
-

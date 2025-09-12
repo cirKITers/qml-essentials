@@ -9,15 +9,14 @@ import optax
 import pennylane as qml
 from qml_essentials.ansaetze import Gates
 import matplotlib.pyplot as plt
-# from torch.utils.tensorboard import SummaryWriter
 
 
 class QOC:
     def __init__(
         self,
-        log_dir="tensorboard/qoc",
         make_plots=False,
-        fig_dir="docs/figures",
+        file_dir="qoc/results",
+        fig_dir="qoc/figures",
         fig_points=70
     ):
         """
@@ -26,17 +25,15 @@ class QOC:
         Args:
             log_dir (str): Directory for TensorBoard logs.
             make_plots (bool): Whether to generate and save plots.
+            file_dir (str): Directory to save optimization results.
             fig_dir (str): Directory to save figures.
             fig_points (int): Number of points for plotting rotations.
         """
         self.ws = jnp.linspace(0, 2 * jnp.pi, fig_points)
 
-        # self.writer = SummaryWriter(log_dir=log_dir)
-        self.writer = None
         self.make_plots = make_plots
+        self.file_dir = file_dir
         self.fig_dir = fig_dir
-        if make_plots:
-            os.makedirs(fig_dir, exist_ok=True)
 
         self.current_gate = None
 
@@ -148,7 +145,7 @@ class QOC:
 
             operation = r"$RX_0(w)$·$RX_1(w)$·$CZ_{0, 1}$·$RX_1(-w)$·$RX_0(-w)$"
 
-        elif self.current_gate == "CNOT":
+        elif self.current_gate == "CX":
             dev = qml.device("default.qubit", wires=2)
 
             @qml.qnode(dev, interface="jax")
@@ -171,7 +168,7 @@ class QOC:
                     qml.expval(qml.PauliZ(1))
                 ]
 
-            operation = r"$RX_0(w)$·$CNOT_{0,1}$"
+            operation = r"$RX_0(w)$·$CX_{0,1}$"
 
         return pulse_circuit, ideal_circuit, operation
 
@@ -209,10 +206,11 @@ class QOC:
             ax.set_xticklabels(xtick_labels)
 
         plt.tight_layout()
+        os.makedirs(self.fig_dir, exist_ok=True)
         plt.savefig(f"{self.fig_dir}/qoc_{self.current_gate}(w).png")
         plt.close()
 
-    def save_results(self, opt_pulse_params, filename="qml_essentials/qoc_results.csv"):
+    def save_results(self, opt_pulse_params):
         """
         Save optimized pulse parameters to CSV file.
 
@@ -221,7 +219,10 @@ class QOC:
             filename (str): Path to CSV file.
         """
         header = ["gate"] + [f"param_{i+1}" for i in range(len(opt_pulse_params))]
-        file_exists = os.path.isfile(filename)
+        if self.file_dir is not None:
+            os.makedirs(self.file_dir, exist_ok=True)
+            filename = os.path.join(self.file_dir, "qoc_results.csv")
+            file_exists = os.path.isfile(filename)
 
         with open(filename, mode='a', newline='') as f:
             writer = csv.writer(f)
@@ -302,12 +303,6 @@ class QOC:
             pulse_params, opt_state, loss = opt_step(pulse_params, opt_state, *args)
             losses.append(loss)
 
-            # Log to TensorBoard
-            if self.writer is not None:
-                self.writer.add_scalar(
-                    f"Loss/train/{self.current_gate}", loss.item(), step
-                )
-
             if loss < best_loss:
                 best_loss = loss
                 best_pulse_params = pulse_params
@@ -321,9 +316,6 @@ class QOC:
             if no_improve_counter >= patience:
                 print(f"Early stopping at step {step + 1} due to no improvement.")
                 break
-
-        if self.writer is not None:
-            self.writer.flush()
 
         return best_pulse_params, best_loss, losses
 
@@ -582,7 +574,7 @@ class QOC:
 
         return pulse_params, loss, losses
 
-    def optimize_CNOT(
+    def optimize_CX(
         self,
         steps=1000,
         patience: int = 100,
@@ -590,11 +582,11 @@ class QOC:
         print_every: int = 50
     ):
         """
-        Optimize pulse parameters for the CNOT gate to best approximate the
-        unitary CNOT gate.
+        Optimize pulse parameters for the CX gate to best approximate the
+        unitary CX gate.
 
         Uses gradient-based optimization to minimize the difference between the
-        pulse-based CNOT circuit expectation value and the target gate-based CNOT.
+        pulse-based CX circuit expectation value and the target gate-based CX.
 
         Args:
             steps (int): Number of optimization steps (default: 600).
@@ -607,7 +599,7 @@ class QOC:
             tuple: Optimized parameters (jnp.ndarray) and list of loss values during
                 optimization.
         """
-        self.current_gate = "CNOT"
+        self.current_gate = "CX"
 
         dev = qml.device("default.qubit", wires=2)
 
@@ -636,16 +628,16 @@ class QOC:
         # Saving the optimized parameters
         self.save_results(pulse_params)
 
-        # Plotting the CNOT rotation
+        # Plotting the CX rotation
         if self.make_plots:
-            print("Plotting CNOT rotation...")
+            print("Plotting CX rotation...")
             self.plot_rotation(pulse_params)
 
         return pulse_params, loss, losses
 
 
 if __name__ == "__main__":
-    qoc = QOC(make_plots=True, fig_points=40)
+    qoc = QOC(make_plots=False, fig_points=40, file_dir="qml_essentials")
     
     # # - Run optimization for RX gate -
     # print("Optimizing RX gate...")
@@ -689,11 +681,11 @@ if __name__ == "__main__":
     # print(f"Best achieved fidelity: {1 - best_loss}")
     # print("-" * 20, "\n")
 
-    # # - Run optimization for CNOT gate -
-    # print("Optimizing CNOT gate...")
-    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CNOT(
+    # # - Run optimization for CX gate -
+    # print("Optimizing CX gate...")
+    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CX(
     #     init_pulse_params=jnp.array([1.0, 15.0, 1.0, 1.0]), print_every=50
     # )
-    # print(f"Optimized parameters for CNOT: {optimized_pulse_params}\n")
+    # print(f"Optimized parameters for CX: {optimized_pulse_params}\n")
     # print(f"Best achieved fidelity: {1 - best_loss}")
     # print("-" * 20, "\n")
