@@ -224,11 +224,11 @@ class QOC:
             filename = os.path.join(self.file_dir, "qoc_results.csv")
             file_exists = os.path.isfile(filename)
 
-        with open(filename, mode='a', newline='') as f:
-            writer = csv.writer(f)
-            if not file_exists:
-                writer.writerow(header)
-            writer.writerow([self.current_gate] + list(map(float, opt_pulse_params)))
+            with open(filename, mode='a', newline='') as f:
+                writer = csv.writer(f)
+                if not file_exists:
+                    writer.writerow(header)
+                writer.writerow([self.current_gate] + list(map(float, opt_pulse_params)))
 
     def loss_fn(self, state, target_state):
         """
