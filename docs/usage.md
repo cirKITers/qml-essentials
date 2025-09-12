@@ -201,12 +201,12 @@ pulse_params = [0.5, 0.2, 1.0]
 Gates.RX(w, wires=0, pulse_params=pulse_params, gate_mode="pulse")
 ```
 and then used in [custom Ansaetze](ansaetze.md#custom_ansatz) or directly as [encoding gates](ansaetze.md#custom_encoding).
-See our documentation on [Quantum Optimal Control (QOC)]() for more details on how to choose pulse parameters.
+See our documentation on [Quantum Optimal Control (QOC)](ansaetze.md#quantum_optimal_control_qoc) for more details on how to choose pulse parameters.
 
 For more details:
 
-- See [*Ansaetze*](ansaetze.md) for a deeper explanation of our pulse-level gates and ansaetze, as well as details on Quantum Optimal Control (QOC), which enables optimizing pulses directly for target unitaries.  
-- See [*Training*](training.md) for how to train pulse parameters jointly with rotation angles.  
+- See [*Ansaetze*](ansaetze.md#pulse_simulation) for a deeper explanation of our pulse-level gates and ansaetze, as well as details on Quantum Optimal Control (QOC), which enables optimizing pulses directly for target unitaries.  
+- See [*Training*](training.md#pulse_level) for how to train pulse parameters jointly with rotation angles.  
 
 
 ## Caching
