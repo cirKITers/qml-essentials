@@ -26,8 +26,6 @@ log = logging.getLogger(__name__)
 """
 Notes
 
-- Modify get_specs and draw? -> Melvin
-
 - Modified hash and MultiprocessingPool, adapt somewhere else?
 
 - Added context manager for PulseParamManager in Ansaetze
@@ -257,7 +255,8 @@ class Model:
         # CHECK
         pulse_params_per_layer = self.pqc.n_pulse_params_per_layer(self.n_qubits)
         self._pulse_params_shape: Tuple[int, int] = (
-            impl_n_layers, pulse_params_per_layer
+            impl_n_layers,
+            pulse_params_per_layer,
         )
 
         self.batch_shape = (1, 1)
@@ -417,14 +416,14 @@ class Model:
 
         self._noise_params = kvs
 
-    # TODO: implement pulse_params setter, so when None defaults to array of 1s
-    # @property
-    # def pulse_params(self):
+        # TODO: implement pulse_params setter, so when None defaults to array of 1s
+        # @property
+        # def pulse_params(self):
         pass
 
-    # TODO: see above
-    # @pulse_params.setter
-    # def pulse_params():
+        # TODO: see above
+        # @pulse_params.setter
+        # def pulse_params():
         pass
 
     @property
@@ -570,9 +569,7 @@ class Model:
         )
         self.pulse_params: np.ndarray = np.ones(shape, requires_grad=False)
 
-        log.info(
-            f"Initialized pulse parameters with shape {self.pulse_params.shape}."
-        )
+        log.info(f"Initialized pulse parameters with shape {self.pulse_params.shape}.")
 
     def transform_input(self, inputs: np.ndarray, enc_params: Optional[np.ndarray]):
         """
@@ -636,7 +633,7 @@ class Model:
         inputs: np.ndarray,
         pulse_params: np.ndarray = None,
         enc_params: Optional[np.ndarray] = None,
-        gate_mode: str = "unitary"
+        gate_mode: str = "unitary",
     ) -> Union[float, np.ndarray]:
         # TODO: Update docstring
         """
@@ -659,7 +656,7 @@ class Model:
             inputs=inputs,
             pulse_params=pulse_params,
             enc_params=enc_params,
-            gate_mode=gate_mode
+            gate_mode=gate_mode,
         )
         return self._observable()
 
@@ -670,7 +667,7 @@ class Model:
         inputs: np.ndarray,
         pulse_params: np.ndarray = None,
         enc_params: Optional[np.ndarray] = None,
-        gate_mode: str = "unitary"
+        gate_mode: str = "unitary",
     ) -> None:
         if enc_params is None:
             # TODO: Raise warning if trainable frequencies is True, or similar. I.e., no
@@ -702,7 +699,7 @@ class Model:
                     wires=q,
                     pulse_params=sp_pulse_params,  # TODO: maybe pass None instead?
                     noise_params=self.noise_params,
-                    gate_mode=gate_mode
+                    gate_mode=gate_mode,
                 )
 
         # circuit building
@@ -713,7 +710,7 @@ class Model:
                 self.n_qubits,
                 pulse_params=pulse_params[layer],
                 noise_params=self.noise_params,
-                gate_mode=gate_mode
+                gate_mode=gate_mode,
             )
 
             # encoding layers
@@ -736,7 +733,7 @@ class Model:
                 self.n_qubits,
                 pulse_params=pulse_params[-1],
                 noise_params=self.noise_params,
-                gate_mode=gate_mode
+                gate_mode=gate_mode,
             )
 
         # channel noise
@@ -1106,7 +1103,7 @@ class Model:
                 pulse_params=pulse_params,
                 inputs=inputs,
                 enc_params=enc_params,
-                gate_mode=gate_mode
+                gate_mode=gate_mode,
             )
         else:
             log.info(f"Using {n_processes} processes")
@@ -1196,7 +1193,7 @@ class Model:
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
-        gate_mode: str = "unitary"
+        gate_mode: str = "unitary",
     ) -> np.ndarray:
         # TODO: Update docstring
         """
@@ -1245,7 +1242,7 @@ class Model:
             cache=cache,
             execution_type=execution_type,
             force_mean=force_mean,
-            gate_mode=gate_mode
+            gate_mode=gate_mode,
         )
 
     # CHECK
@@ -1259,7 +1256,7 @@ class Model:
         cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
-        gate_mode: str = "unitary"
+        gate_mode: str = "unitary",
     ) -> np.ndarray:
         # TODO: Update docstring
         """
@@ -1417,21 +1414,3 @@ class Model:
             np.save(file_path, result)
 
         return result
-
-    # TODO: Modify get_specs to handle pulse mode and pulse params?
-    def get_specs(self, inputs: Optional[np.ndarray] = None) -> dict:
-        """
-        Get pennylane specs for the model.
-
-        Args:
-            inputs (Optional[np.ndarray]): The inputs, with which to call the
-                circuit. Defaults to None.
-
-        Returns:
-            dict: Dictionary of specs. The key "resources" contains information
-                about the circuit size and gate statistics.
-        """
-        inputs = self._inputs_validation(inputs)
-        spec_model = deepcopy(self)
-        spec_model.noise_params = None  # remove noise
-        return qml.specs(spec_model.circuit)(self.params, inputs)
