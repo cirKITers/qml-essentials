@@ -168,24 +168,24 @@ Based on `t_factor` and the circuit depth the execution time is estimated, and t
 ## Pulse Level Simulation
 
 Our framework extends beyond unitary-level simulation by integrating **pulse-level simulation** through [PennyLane’s pulse module](https://docs.pennylane.ai/en/stable/code/qml_pulse.html).  
-This allows you to move from the **abstract unitary layer**, where gates are treated as instantaneous idealized operations, down to the **physical pulse layer**, where gates are represented by time-dependent microwave control fields.  
+This allows you to move from the abstract unitary layer, where gates are treated as instantaneous idealized operations, down to the physical pulse layer, where gates are represented by time-dependent microwave control fields.  
 
 In the pulse representation, each gate is decomposed into Gaussian-shaped pulses parameterized by:
 
-- **$A$**: amplitude of the pulse
-- **$\sigma$**: width (standard deviation) of the Gaussian envelope
-- **$t$**: pulse duration
+- $A$: amplitude of the pulse
+- $\sigma$: width (standard deviation) of the Gaussian envelope
+- $t$: pulse duration
 
 By default, the framework provides optimized pulse parameters based on typical superconducting qubit frequencies ($\omega_q = 10\pi$, $\omega_c = 10\pi$).  
 
-Switching between **unitary-level** and **pulse-level** execution is seamless and controlled via the `gate_mode` argument:
+Switching between unitary-level and pulse-level execution is seamless and controlled via the `gate_mode` argument:
 
 ```python
-# Pulse-level simulation
-y = model(params, inputs, gate_mode="pulse")
-
 # Default unitary-level simulation
-y = model(params, inputs, gate_mode="unitary")
+model(params, inputs)
+
+# Pulse-level simulation
+model(params, inputs, gate_mode="pulse")
 ```
 
 Pulse-level gates can also be instantiated directly:
@@ -197,14 +197,16 @@ from qml_essentials.ansaetze import Gates
 Gates.RX(w, wires=0, gate_mode="pulse")
 
 # With custom pulse parameters [A, sigma, t]
-pulse_params = [0.5, 0.2, 1.0]  # TODO: is a list the right way to pass the pulse_params?
+pulse_params = [0.5, 0.2, 1.0]
 Gates.RX(w, wires=0, pulse_params=pulse_params, gate_mode="pulse")
 ```
+and then used in [custom Ansaetze](ansaetze.md#custom_ansatz) or directly as [encoding gates](ansaetze.md#custom_encoding).
+See our documentation on [Quantum Optimal Control (QOC)](ansaetze.md#quantum_optimal_control_qoc) for more details on how to choose pulse parameters.
 
 For more details:
 
-- See [*Ansaetze*](ansaetze.md) for a deeper explanation of our **pulse-level gates and ansaetze**, as well as details on **Quantum Optimal Control (QOC)**, which enables optimizing pulses directly for target unitaries.  
-- See [*Training*](training.md) for how to **train pulse parameters jointly with rotation angles**.  
+- See [*Ansaetze*](ansaetze.md#pulse_simulation) for a deeper explanation of our pulse-level gates and ansaetze, as well as details on Quantum Optimal Control (QOC), which enables optimizing pulses directly for target unitaries.  
+- See [*Training*](training.md#pulse_level) for how to train pulse parameters jointly with rotation angles.  
 
 
 ## Caching

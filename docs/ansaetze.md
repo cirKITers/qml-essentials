@@ -140,25 +140,26 @@ model(
 ## Pulse Simulation
 
 Our framework allows constructing circuits at the **pulse level**, where each gate is implemented as a time-dependent control pulse rather than an abstract unitary.  
-This provides a more realistic simulation of superconducting qubit hardware.  
+This provides a more fine grained access to the simulation of the underlying physical process.
+While we provide a developer-oriented overview in this section, we would like to highlight [Tilmann's Bachelor's Thesis](https://doi.org/10.5445/IR/1000184129) if you want to have a more detailled read into pulse-level simulation and quantum Fourier models.
 
 ### Pulse Parameters per Gate
 
 Each implemented gate takes the following number of pulse parameters:
 
-| Gate  | Pulse Parameters | Description |
-|-------|-----------------|-------------|
-| Rot   | -               | Not implemented |
-| RX    | 3               | (A, σ, t) amplitude, width, and pulse duration |
-| RY    | 3               | (A, σ, t) amplitude, width, and pulse duration |
-| RZ    | 1               | t: pulse duration |
-| CRX   | -               | Not implemented |
-| CRY   | -               | Not implemented |
-| CRZ   | -               | Not implemented |
-| CX    | 4               | (A_H, σ_H, t_H, t_CZ) parameters for decomposed pulse sequence |
-| CY    | -               | Not implemented |
-| CZ    | 1               | t_CZ: pulse duration |
-| H     | 3               | (A_H, σ_H, t_H) passed to underlying RY decomposition |
+| Gate         | Pulse Parameters | Description                                                                                             |
+| ------------ | ---------------- | ------------------------------------------------------------------------------------------------------- |
+| $\text{Rot}$ | -                | Not implemented                                                                                         |
+| $\text{RX }$ | 3                | ($A$, $\sigma$, $t$) amplitude, width, and pulse duration                                               |
+| $\text{RY }$ | 3                | ($A$, $\sigma$, $t$) amplitude, width, and pulse duration                                               |
+| $\text{RZ }$ | 1                | t: pulse duration                                                                                       |
+| $\text{CRX}$ | -                | Not implemented                                                                                         |
+| $\text{CRY}$ | -                | Not implemented                                                                                         |
+| $\text{CRZ}$ | -                | Not implemented                                                                                         |
+| $\text{CX }$ | 4                | ($A_\text{H}$, $\sigma_\text{H}$, $t_\text{H}$, $t_\text{CZ}$) parameters for decomposed pulse sequence |
+| $\text{CY }$ | -                | Not implemented                                                                                         |
+| $\text{CZ }$ | 1                | $t_\text{CZ}$: pulse duration                                                                           |
+| $\text{H  }$ | 3                | ($A_\text{H}$, $\sigma_\text{H}$, $t_\text{H}$) passed to underlying RY decomposition                   |
 
 You can use the `PulseInformation` class to access both the number and optimized values of the pulse parameters for each gate:
 
