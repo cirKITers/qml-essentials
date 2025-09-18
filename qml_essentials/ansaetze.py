@@ -870,12 +870,29 @@ class GatesMeta(type):
 
 
 class Gates(metaclass=GatesMeta):
-    # TODO: Update docstring
     """
-    Gate accessor that dynamically routes calls such as
-    'Gates.RX(...)' to either the UnitaryGates or
-    PulseGates backend, depending on the 'mode' keyword
-    argument (defaults to 'unitary').
+    Dynamic accessor for quantum gates.
+
+    Routes calls like `Gates.RX(...)` to either `UnitaryGates` or `PulseGates`
+    depending on the `gate_mode` keyword (defaults to 'unitary').
+
+    During circuit building, the pulse manager can be activated via
+    `pulse_manager_context`, which slices the global model pulse parameters
+    and passes them to each gate. Model pulse parameters act as element-wise
+    scalers on the gate's optimized pulse parameters.
+
+    Parameters
+    ----------
+    gate_mode : str, optional
+        Determines the backend. 'unitary' for UnitaryGates, 'pulse' for PulseGates.
+        Defaults to 'unitary'.
+
+    Examples
+    --------
+    >>> Gates.RX(w, wires)
+    >>> Gates.RX(w, wires, gate_mode="unitary")
+    >>> Gates.RX(w, wires, gate_mode="pulse")
+    >>> Gates.RX(w, wires, pulse_params, gate_mode="pulse")
     """
     def __getattr__(self, gate_name):
         def handler(**kwargs):
@@ -948,7 +965,6 @@ class PulseParamManager:
         return params
 
 
-# TODO: Complete n_pulse_params_per_layer for each ansatz
 class Ansaetze:
     def get_available():
         return [
