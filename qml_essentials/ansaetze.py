@@ -1,8 +1,7 @@
-# flake8: noqa: E731
+# flake8: noqa: E731  # TODO: Remove?
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 
-# from torch import name
 import pennylane.numpy as np
 import pennylane as qml
 from jax import numpy as jnp
@@ -15,7 +14,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
-# TODO: Custom circuits need n_pulse_params_per_layer method, modify to make it optional?
+
 class Circuit(ABC):
     def __init__(self):
         pass
@@ -24,9 +23,14 @@ class Circuit(ABC):
     def n_params_per_layer(n_qubits: int) -> int:
         raise NotImplementedError("n_params_per_layer method is not implemented")
 
-    @abstractmethod
     def n_pulse_params_per_layer(n_qubits: int) -> int:
-        return
+        """
+        Return the number of pulse parameters per layer.
+
+        Subclasses that do not use pulse-level simulation do not need to override this.
+        If called and not overridden, this will raise NotImplementedError.
+        """
+        raise NotImplementedError("n_pulse_params_per_layer method is not implemented")
 
     @abstractmethod
     def get_control_indices(self, n_qubits: int) -> List[int]:
@@ -74,7 +78,30 @@ class Circuit(ABC):
 
     # CHECK
     def _build(self, w: np.ndarray, n_qubits: int, **kwargs):
-        # TODO: Docstring
+        """
+        Builds one layer of the circuit using either unitary or pulse-level parameters.
+
+        Parameters
+        ----------
+        w : np.ndarray
+            Array of parameters for the current layer.
+        n_qubits : int
+            Number of qubits in the circuit.
+        **kwargs
+            Additional keyword arguments. Supports:
+            - gate_mode : str, optional
+                "unitary" (default) or "pulse" to use pulse-level simulation.
+            - pulse_params : jnp.ndarray, optional
+                Array of pulse parameters to use if gate_mode="pulse".
+            - noise_params : dict, optional
+                Dictionary of noise parameters.
+
+        Raises
+        ------
+        ValueError
+            If the number of provided pulse parameters does not match the expected
+            number per layer.
+        """
         gate_mode = kwargs.get("gate_mode", "unitary")
 
         if gate_mode == "pulse" and "pulse_params" in kwargs:
@@ -548,11 +575,6 @@ class PulseGates:
     # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT/CX and H pulse level
     #   gates closely follow https://doi.org/10.5445/IR/1000184129
     # TODO: Mention deviations from the above?
-    # TODO: Which gate decomposition to use for Rot, CRX, CRY, CRZ, CX, CY?
-    #   Favor CNOT/CX or CZ? Currently using CZ
-    # TODO: RZ takes as params only t, which theoretically is 0.5 and is
-    #   confirmed numerically. Should this parameters be passed too when 
-    #   RZ is found in other gate decompositions?
     # TODO: Check that the len of pulse params passed to each gate is exactly as expected?
     omega_q = 10 * jnp.pi
     omega_c = 10 * jnp.pi
@@ -598,7 +620,7 @@ class PulseGates:
             Gaussian envelope. Defaults to optimized parameters and time.
         """
         if pulse_params is None:
-            opt = OPTIMIZED_PULSES["RX"]
+            opt = PulseInformation.optimized_params("RX")
             pulse_params, t = opt[:2], opt[2]
         else:
             pulse_params, t = pulse_params[:2], pulse_params[2]
@@ -627,7 +649,7 @@ class PulseGates:
             Gaussian envelope. Defaults to optimized parameters and time.
         """
         if pulse_params is None:
-            opt = OPTIMIZED_PULSES["RY"]
+            opt = PulseInformation.optimized_params("RY")
             pulse_params, t = opt[:2], opt[2]
         else:
             pulse_params, t = pulse_params[:2], pulse_params[2]
@@ -656,13 +678,14 @@ class PulseGates:
             Defaults to 0.5 if None.
         """
         if pulse_params is None:
-            t = OPTIMIZED_PULSES["RZ"][0]
+            t = PulseInformation.optimized_params("RZ")[0]
         elif isinstance(pulse_params, (float, int)):
             t = pulse_params
         else:
             t = pulse_params[0]
 
         _H = qml.Hermitian(PulseGates.Z, wires=wires)
+        # TODO: Put comment why p, t has no effect here
         Sz = lambda p, t: w
 
         H_eff = Sz * _H
@@ -705,8 +728,8 @@ class PulseGates:
             Defaults to optimized parameters and times if None.
         """
         if pulse_params is None:
-            pulse_params = OPTIMIZED_PULSES["CX"][:3]
-            t_CZ = OPTIMIZED_PULSES["CX"][3]
+            opt = PulseInformation.optimized_params("CX")
+            pulse_params, t_CZ = opt[:3], opt[3]
         else:
             pulse_params = pulse_params[:3]
             t_CZ = pulse_params[3]
@@ -738,7 +761,7 @@ class PulseGates:
             Defaults to optimized time if None.
         """
         if pulse_params is None:
-            t = OPTIMIZED_PULSES["CZ"][0]
+            t = PulseInformation.optimized_params("CZ")[0]
         elif isinstance(pulse_params, (float, int)):
             t = pulse_params
         else:
@@ -749,7 +772,7 @@ class PulseGates:
         I_Z = jnp.kron(PulseGates.Id, PulseGates.Z)
         Z_Z = jnp.kron(PulseGates.Z, PulseGates.Z)
 
-        # TODO: optimize this parameter too?
+        # TODO: explain why p, t not in signal
         Scz = lambda p, t: jnp.pi
 
         _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
@@ -772,9 +795,10 @@ class PulseGates:
             Defaults to optimized parameters and time.
         """
         if pulse_params is None:
-            pulse_params = OPTIMIZED_PULSES["H"]
+            pulse_params = PulseInformation.optimized_params("H")
 
         # qml.GlobalPhase(-jnp.pi / 2)
+        # TODO: Explain why p, t not in signal
         Sc = lambda p, t: -1.0
 
         _H = jnp.pi / 2 * jnp.eye(2, dtype=jnp.complex64)
@@ -789,35 +813,52 @@ class PulseGates:
         return
 
 
-# TODO: Store these in a PulseInfo class better?
-PULSE_PARAM_COUNTS = {
-    "Rot": 0, # TODO
-    "RX": 3,
-    "RY": 3,
-    "RZ": 1,
-    "CRX": 0, # TODO
-    "CRY": 0, # TODO
-    "CRZ": 0, # TODO
-    "CX": 4,
-    "CY": 0, # TODO
-    "CZ": 1,
-    "H": 3
-}
+class PulseInformation:
+    """
+    Stores pulse parameter counts and optimized pulse parameters for quantum gates.
+    """
+    PULSE_PARAM_COUNTS: Dict[str, int] = {
+        "Rot": 0,  # TODO
+        "RX": 3,
+        "RY": 3,
+        "RZ": 1,
+        "CRX": 0,  # TODO
+        "CRY": 0,  # TODO
+        "CRZ": 0,  # TODO
+        "CX": 4,
+        "CY": 0,   # TODO
+        "CZ": 1,
+        "H": 3
+    }
 
-OPTIMIZED_PULSES = {
-    "Rot": None,  # TODO
-    "RX": jnp.array([15.70989327341467, 29.5230665326707, 0.7499810441330634]),
-    "RY": jnp.array([7.8787724942614235, 22.001319411513432, 1.098524473819202]),
-    "RZ": jnp.array([0.5]),
-    "CRX": None,  # TODO
-    "CRY": None,  # TODO
-    "CRZ": None,  # TODO
-    "CX": jnp.array([7.944725340235801, 21.639825810701435,
-                     0.9072431332410497, 0.9550977662365613]),
-    "CY": None,  # TODO
-    "CZ": jnp.array([0.962596375687258]),
-    "H": jnp.array([7.857992398977854, 21.572701026008765, 0.9000668764548863]),
-}
+    OPTIMIZED_PULSES: Dict[str, Optional[jnp.ndarray]] = {
+        "Rot": None,  # TODO
+        "RX": jnp.array([15.70989327341467, 29.5230665326707, 0.7499810441330634]),
+        "RY": jnp.array([7.8787724942614235, 22.001319411513432, 1.098524473819202]),
+        "RZ": jnp.array([0.5]),
+        "CRX": None,  # TODO
+        "CRY": None,  # TODO
+        "CRZ": None,  # TODO
+        "CX": jnp.array([7.944725340235801, 21.639825810701435,
+                         0.9072431332410497, 0.9550977662365613]),
+        "CY": None,  # TODO
+        "CZ": jnp.array([0.962596375687258]),
+        "H": jnp.array([7.857992398977854, 21.572701026008765, 0.9000668764548863]),
+    }
+
+    @classmethod
+    def num_params(cls, gate: str) -> int:
+        """Return the number of pulse parameters for a given gate."""
+        if gate not in cls.PULSE_PARAM_COUNTS:
+            raise ValueError(f"Unknown gate '{gate}'")
+        return cls.PULSE_PARAM_COUNTS[gate]
+
+    @classmethod
+    def optimized_params(cls, gate: str) -> Optional[jnp.ndarray]:
+        """Return the optimized pulse parameters for a given gate (or None if TODO)."""
+        if gate not in cls.OPTIMIZED_PULSES:
+            raise ValueError(f"Unknown gate '{gate}'")
+        return cls.OPTIMIZED_PULSES[gate]
 
 
 # Meta class to avoid instantiating the Gates class
@@ -826,6 +867,7 @@ class GatesMeta(type):
         def handler(*args, **kwargs):
             return Gates._inner_getattr(gate_name, *args, **kwargs)
         return handler
+
 
 class Gates(metaclass=GatesMeta):
     # TODO: Update docstring
@@ -859,11 +901,14 @@ class Gates(metaclass=GatesMeta):
 
         # CHECK
         # Pulse slicing + scaling
-        n_params = PULSE_PARAM_COUNTS.get(gate_name, None)
+        try:
+            n_params = PulseInformation.num_params(gate_name)
+        except ValueError:
+            n_params = None
         pulse_mgr = getattr(Gates, "_pulse_mgr", None)
         if gate_mode == "pulse" and isinstance(pulse_mgr, PulseParamManager):
             scalers = pulse_mgr.get(n_params)
-            base = OPTIMIZED_PULSES.get(gate_name)
+            base = PulseInformation.optimized_params(gate_name)
             kwargs["pulse_params"] = scalers * base  # element-wise scaling
 
         # Call the selected gate backend
@@ -883,6 +928,7 @@ class Gates(metaclass=GatesMeta):
         finally:
             Gates._pulse_mgr = None
 
+
 class PulseParamManager:
     def __init__(self, pulse_params: np.ndarray):
         self.pulse_params = pulse_params
@@ -897,7 +943,7 @@ class PulseParamManager:
         return params
 
 
-# TODO: After final HEA solution: extend it to the other ansaetze
+# TODO: Complete n_pulse_params_per_layer for each ansatz
 class Ansaetze:
     def get_available():
         return [
@@ -925,7 +971,6 @@ class Ansaetze:
         def n_params_per_layer(n_qubits: int) -> int:
             return 0
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
             return 0
@@ -943,10 +988,25 @@ class Ansaetze:
         def n_params_per_layer(n_qubits: int) -> int:
             return 0
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return 0
+            """
+            Returns the number of pulse parameters per layer for the GHZ circuit.
+
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit.
+
+            Returns
+            -------
+            int
+                Total number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = PulseInformation.num_params("H")
+            n_params += (n_qubits - 1) * PulseInformation.num_params("CX")
+
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -975,31 +1035,48 @@ class Ansaetze:
             Parameters
             ----------
             n_qubits : int
-                Number of qubits in the circuit
+                Number of qubits in the circuit.
 
             Returns
             -------
             int
-                Number of parameters required for one layer of the circuit
+                Number of parameters required for one layer of the circuit.
             """
             if n_qubits < 2:
                 log.warning("Number of Qubits < 2, no entanglement available")
             return n_qubits * 3
 
-        # CHECK
+        # CHECK
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            # TODO: Docstring
-            single_qubit = n_qubits * (2 * PULSE_PARAM_COUNTS["RY"] + PULSE_PARAM_COUNTS["RZ"])
+            """
+            Returns the number of pulse parameters per layer for the
+            Hardware Efficient Ansatz.
 
-            if n_qubits > 1:
-                multi_qubit = n_qubits // 2 + (n_qubits - 1) // 2
-                multi_qubit += 1 if n_qubits > 2 else 0
-                multi_qubit *= PULSE_PARAM_COUNTS["CX"]
-                return single_qubit + multi_qubit
+            This counts all parameters needed if the circuit is used at the
+            pulse level. It includes contributions from single-qubit rotations
+            (`RY` and `RZ`) and multi-qubit gates (`CX`) if more than one qubit
+            is present.
 
-            else:
-                return single_qubit
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit
+
+            Returns
+            -------
+            int
+                Number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = 2 * PulseInformation.num_params("RY")
+            n_params += PulseInformation.num_params("RZ")
+            n_params *= n_qubits
+
+            n_CX = (n_qubits // 2) + ((n_qubits - 1) // 2)
+            n_CX += 1 if n_qubits > 2 else 0
+            n_params += n_CX * PulseInformation.num_params("CX")
+
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1080,10 +1157,33 @@ class Ansaetze:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 2
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return 0
+            """
+            Returns the number of pulse parameters per layer for Circuit_19.
+
+            This includes contributions from single-qubit rotations (`RX`, `RZ`) on all
+            qubits, and controlled rotations (`CRX`) on each qubit if more than one
+            qubit is present.
+
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit
+
+            Returns
+            -------
+            int
+                Number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = PulseInformation.num_params("RX")
+            n_params += PulseInformation.num_params("RZ")
+            n_params *= n_qubits
+
+            if n_qubits > 1:
+                n_params += PulseInformation.num_params("CRX") * n_qubits
+
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1168,10 +1268,33 @@ class Ansaetze:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 2
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return 0
+            """
+            Returns the number of pulse parameters per layer for Circuit_18.
+
+            This includes contributions from single-qubit rotations (`RX`, `RZ`) on all
+            qubits, and controlled rotations (`CRZ`) on each qubit if more than one
+            qubit is present.
+
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit
+
+            Returns
+            -------
+            int
+                Number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = PulseInformation.num_params("RX")
+            n_params += PulseInformation.num_params("RZ")
+            n_params *= n_qubits
+
+            if n_qubits > 1:
+                n_params += PulseInformation.num_params("CRZ") * n_qubits
+
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1253,10 +1376,32 @@ class Ansaetze:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 2
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return 0
+            """
+            Returns the number of pulse parameters per layer for Circuit_15.
+
+            This includes contributions from single-qubit rotations (`RY`) on all
+            qubits, and controlled rotations (`CX`) on each qubit if more than one
+            qubit is present.
+
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit
+
+            Returns
+            -------
+            int
+                Number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = 2 * PulseInformation.num_params("RY")
+            n_params *= n_qubits
+
+            if n_qubits > 1:
+                n_params += PulseInformation.num_params("CX") * n_qubits
+
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1336,10 +1481,32 @@ class Ansaetze:
             """
             return n_qubits
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return 0
+            """
+            Returns the number of pulse parameters per layer for Circuit_9.
+
+            This includes contributions from single-qubit rotations (`H`, `RX`) on all
+            qubits, and controlled rotations (`CZ`) on each qubit except one if more
+            than one qubit is present.
+
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit
+
+            Returns
+            -------
+            int
+                Number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = PulseInformation.num_params("H")
+            n_params += PulseInformation.num_params("RX")
+            n_params *= n_qubits
+
+            n_params += (n_qubits - 1) * PulseInformation.num_params("CZ")
+
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1379,12 +1546,11 @@ class Ansaetze:
             for q in range(n_qubits):
                 Gates.H(wires=q, **kwargs)
 
-            if n_qubits > 1:
-                for q in range(n_qubits - 1):
-                    Gates.CZ(
-                        wires=[n_qubits - q - 2, n_qubits - q - 1],
-                        **kwargs,
-                    )
+            for q in range(n_qubits - 1):
+                Gates.CZ(
+                    wires=[n_qubits - q - 2, n_qubits - q - 1],
+                    **kwargs,
+                )
 
             for q in range(n_qubits):
                 Gates.RX(w[w_idx], wires=q, **kwargs)
@@ -1419,9 +1585,32 @@ class Ansaetze:
                 log.warning("Number of Qubits < 2, no entanglement available")
                 return 4
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
+            """
+            Returns the number of pulse parameters per layer for Circuit_6.
+
+            This includes contributions from single-qubit rotations (`RX`, `RZ`) on all
+            qubits, and controlled rotations (`CRX`) on each qubit twice except repeats
+            if more than one qubit is present.
+
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit
+
+            Returns
+            -------
+            int
+                Number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = 2 * PulseInformation.num_params("RX")
+            n_params += 2 * PulseInformation.num_params("RZ")
+            n_params *= n_qubits
+
+            n_CRX = n_qubits * (n_qubits - 1)
+            n_params += n_CRX * PulseInformation.num_params("CRX")
+
             return 0
 
         @staticmethod
@@ -1510,10 +1699,29 @@ class Ansaetze:
             """
             return n_qubits * 2
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return 0
+            """
+            Returns the number of pulse parameters per layer for Circuit_9.
+
+            This includes contributions from single-qubit rotations (`RX`, `RZ`) on all
+            qubits only.
+
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit
+
+            Returns
+            -------
+            int
+                Number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = PulseInformation.num_params("RX")
+            n_params += PulseInformation.num_params("RZ")
+            n_params *= n_qubits
+
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1577,9 +1785,32 @@ class Ansaetze:
             """
             return n_qubits * 2
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
+            """
+            Returns the number of pulse parameters per layer for Circuit_2.
+
+            This includes contributions from single-qubit rotations (`RX`, `RZ`) on all
+            qubits, and controlled rotations (`CX`) on each qubit except one if more
+            than one qubit is present.
+
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit
+
+            Returns
+            -------
+            int
+                Number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = PulseInformation.num_params("RX")
+            n_params += PulseInformation.num_params("RZ")
+            n_params *= n_qubits
+
+            if n_qubits > 1:
+                n_params += (n_qubits - 1) * PulseInformation.num_params("CX")
+
             return 0
 
         @staticmethod
@@ -1623,12 +1854,11 @@ class Ansaetze:
                 Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
-            if n_qubits > 1:
-                for q in range(n_qubits - 1):
-                    Gates.CX(
-                        wires=[n_qubits - q - 1, n_qubits - q - 2],
-                        **kwargs,
-                    )
+            for q in range(n_qubits - 1):
+                Gates.CX(
+                    wires=[n_qubits - q - 1, n_qubits - q - 2],
+                    **kwargs,
+                )
 
     class Circuit_3(Circuit):
         @staticmethod
@@ -1652,10 +1882,32 @@ class Ansaetze:
             """
             return n_qubits * 3 - 1
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return 0
+            """
+            Returns the number of pulse parameters per layer for Circuit_3.
+
+            This includes contributions from single-qubit rotations (`RX`, `RZ`) on all
+            qubits, and controlled rotations (`CRZ`) on each qubit except one if more
+            than one qubit is present.
+
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit
+
+            Returns
+            -------
+            int
+                Number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = PulseInformation.num_params("RX")
+            n_params = PulseInformation.num_params("RZ")
+            n_params *= n_qubits
+
+            n_params += (n_qubits - 1) * PulseInformation.num_params("CRZ")
+
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1701,14 +1953,13 @@ class Ansaetze:
                 Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
-            if n_qubits > 1:
-                for q in range(n_qubits - 1):
-                    Gates.CRZ(
-                        w[w_idx],
-                        wires=[n_qubits - q - 1, n_qubits - q - 2],
-                        **kwargs,
-                    )
-                    w_idx += 1
+            for q in range(n_qubits - 1):
+                Gates.CRZ(
+                    w[w_idx],
+                    wires=[n_qubits - q - 1, n_qubits - q - 2],
+                    **kwargs,
+                )
+                w_idx += 1
 
     class Circuit_4(Circuit):
         @staticmethod
@@ -1730,9 +1981,31 @@ class Ansaetze:
             """
             return n_qubits * 3 - 1
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
+            """
+            Returns the number of pulse parameters per layer for Circuit_4.
+
+            This includes contributions from single-qubit rotations (`RX`, `RZ`) on all
+            qubits, and controlled rotations (`CRX`) on each qubit except one if more
+            than one qubit is present.
+
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit
+
+            Returns
+            -------
+            int
+                Number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = PulseInformation.num_params("RX")
+            n_params += PulseInformation.num_params("RZ")
+            n_params *= n_qubits
+
+            n_params += (n_qubits - 1) * PulseInformation.num_params("CRX")
+
             return 0
 
         @staticmethod
@@ -1779,14 +2052,13 @@ class Ansaetze:
                 Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
-            if n_qubits > 1:
-                for q in range(n_qubits - 1):
-                    Gates.CRX(
-                        w[w_idx],
-                        wires=[n_qubits - q - 1, n_qubits - q - 2],
-                        **kwargs,
-                    )
-                    w_idx += 1
+            for q in range(n_qubits - 1):
+                Gates.CRX(
+                    w[w_idx],
+                    wires=[n_qubits - q - 1, n_qubits - q - 2],
+                    **kwargs,
+                )
+                w_idx += 1
 
     class Circuit_10(Circuit):
         @staticmethod
@@ -1808,10 +2080,34 @@ class Ansaetze:
             """
             return n_qubits * 2  # constant gates not considered yet. has to be fixed
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return 0
+            """
+            Returns the number of pulse parameters per layer for Circuit_10.
+
+            This includes contributions from single-qubit rotations (`RY`) on all
+            qubits, controlled rotations (`CZ`) on each qubit except one if more
+            than one qubit is present and a final controlled rotation (`CZ`) if
+            more than two qubits are present.
+
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit.
+
+            Returns
+            -------
+            int
+                Number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = 2 * PulseInformation.num_params("RY")
+            n_params *= n_qubits
+
+            n_params += (n_qubits - 1) * PulseInformation.num_params("CZ")
+
+            n_params += PulseInformation.num_params("CZ") if n_qubits > 2 else 0
+
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1821,7 +2117,7 @@ class Ansaetze:
             Parameters
             ----------
             n_qubits : int
-                Number of qubits in the circuit
+                Number of qubits in the circuit.
 
             Returns
             -------
@@ -1853,17 +2149,16 @@ class Ansaetze:
                 Gates.RY(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
-            if n_qubits > 1:
-                for q in range(n_qubits - 1):
-                    Gates.CZ(
-                        wires=[
-                            (n_qubits - q - 2) % n_qubits,
-                            (n_qubits - q - 1) % n_qubits,
-                        ],
-                        **kwargs,
-                    )
-                if n_qubits > 2:
-                    Gates.CZ(wires=[n_qubits - 1, 0], **kwargs)
+            for q in range(n_qubits - 1):
+                Gates.CZ(
+                    wires=[
+                        (n_qubits - q - 2) % n_qubits,
+                        (n_qubits - q - 1) % n_qubits,
+                    ],
+                    **kwargs,
+                )
+            if n_qubits > 2:
+                Gates.CZ(wires=[n_qubits - 1, 0], **kwargs)
 
             for q in range(n_qubits):
                 Gates.RY(w[w_idx], wires=q, **kwargs)
@@ -1889,10 +2184,32 @@ class Ansaetze:
             """
             return n_qubits * 3 - 1
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return 0
+            """
+            Returns the number of pulse parameters per layer for Circuit_16.
+
+            This includes contributions from single-qubit rotations (`RX`, `RZ`) on all
+            qubits, and controlled rotations (`CRZ`) if more than one qubit is present.
+
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit.
+
+            Returns
+            -------
+            int
+                Number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = PulseInformation.num_params("RX")
+            n_params += PulseInformation.num_params("RZ")
+            n_params *= n_qubits
+
+            n_CRZ = n_qubits * (n_qubits - 1) // 2
+            n_params += n_CRZ * PulseInformation("CRZ")
+
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -1975,10 +2292,32 @@ class Ansaetze:
             """
             return n_qubits * 3 - 1
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return 0
+            """
+            Returns the number of pulse parameters per layer for Circuit_17.
+
+            This includes contributions from single-qubit rotations (`RX`, `RZ`) on all
+            qubits, and controlled rotations (`CRX`) if more than one qubit is present.
+
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit.
+
+            Returns
+            -------
+            int
+                Number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = PulseInformation.num_params("RX")
+            n_params += PulseInformation.num_params("RZ")
+            n_params *= n_qubits
+
+            n_CRZ = n_qubits * (n_qubits - 1) // 2
+            n_params += n_CRZ * PulseInformation("CRX")
+
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -2064,10 +2403,32 @@ class Ansaetze:
                 log.warning("Number of Qubits < 2, no entanglement available")
             return n_qubits * 6
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return 0
+            """
+            Returns the number of pulse parameters per layer for Strongly_Entangling
+            circuit.
+
+            This includes contributions from single-qubit rotations (`Rot`) on all
+            qubits, and controlled rotations (`CX`) if more than one qubit is present.
+
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit.
+
+            Returns
+            -------
+            int
+                Number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = 2 * PulseInformation.num_params("Rot")
+            n_params *= n_qubits
+
+            if n_qubits > 1:
+                n_params += n_qubits * 2 * PulseInformation.num_params("CX")
+
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -2155,10 +2516,28 @@ class Ansaetze:
             """
             return n_qubits * 3
 
-        # TODO
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return 0
+            """
+            Returns the number of pulse parameters per layer for No_Entangling circuit.
+
+            This includes contributions from single-qubit rotations (`Rot`) on all
+            qubits only.
+
+            Parameters
+            ----------
+            n_qubits : int
+                Number of qubits in the circuit.
+
+            Returns
+            -------
+            int
+                Number of pulse parameters required for one layer of the circuit.
+            """
+            n_params = PulseInformation.num_params("Rot")
+            n_params *= n_qubits
+
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:

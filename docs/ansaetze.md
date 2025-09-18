@@ -22,7 +22,7 @@ If you want to implement your own ansatz, you can do so by inheriting from the `
 ```python
 import pennylane as qml
 import pennylane.numpy as np
-from qml_essentials.ansaetze import Circuit
+from qml_essentials.ansaetze import Circuit, PulseInformation
 from typing import Optional
 
 class MyHardwareEfficient(Circuit):
@@ -32,7 +32,14 @@ class MyHardwareEfficient(Circuit):
 
     @staticmethod
     def n_pulse_params_per_layer(n_qubits: int) -> int:
-        return (3 + 1) * n_qubits + 1 * (n_qubits - 1)
+        n_params_RY = PulseInformation.num_params("RY")
+        n_params_RZ = PulseInformation.num_params("RZ")
+        n_params_CZ = PulseInformation.num_params("CZ")
+
+        n_pulse_params = (num_params_RY + num_params_RZ) * n_qubits
+        n_pulse_params += num_params_CZ * (n_qubits - 1)
+
+        return pulse_params
 
     @staticmethod
     def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -63,7 +70,7 @@ model = Model(
 )
 ```
 The `**kwargs` allow both [noise simulation](#noise) and [pulse simulation](#pulse-simulation).
-Every custom `Circuit` must define `n_pulse_params_per_layer`, but you can return `0` if pulse simulation is not used. In this example, `RY` has 3 parameters, `RZ` has 1, and `CZ` has 1, so we return `(3 + 1) * n_qubits + 1 * (n_qubits - 1)`.
+A custom `Circuit` should define `n_pulse_params_per_layer` if it will use pulse simulation at some point, but may be omitted otherwise.
 
 Check out page [*Usage*](usage.md) on how to proceed from here.
 
@@ -96,7 +103,6 @@ model(inputs=[1, 2])
 ```
 
 ## Noise
-<!-- TODO: Fix this section. Noise is handled slightly different-->
 You might have noticed, that the `build` method takes the additional input **kwargs, which we did not used so far.
 In general, all of the Ansatzes that are implemented in this package allow the additional input below which is a dictionary containing all the noise parameters of the circuit (here all with probability $0.0$):
 ```python
@@ -154,22 +160,18 @@ Each implemented gate takes the following number of pulse parameters:
 | CZ    | 1               | t_CZ: pulse duration |
 | H     | 3               | (A_H, σ_H, t_H) passed to underlying RY decomposition |
 
-You can use the built-in mapping `PULSE_PARAM_COUNTS` to access the number of pulse parameters in-code:
+You can use the `PulseInformation` class to access both the number and optimized values of the pulse parameters for each gate:
 
 ```python
-from qml_essentials.ansaetze import PULSE_PARAM_COUNTS
+from qml_essentials.ansaetze import PulseInformation
 
-n_pulse_params_RX = PULSE_PARAM_COUNTS["RX"]  # 3
-n_pulse_params_CX = PULSE_PARAM_COUNTS["CX"]  # 4
-```
+# Number of pulse parameters
+n_pulse_params_RX = PulseInformation.num_params("RX")  # 3
+n_pulse_params_CX = PulseInformation.num_params("CX")  # 4
 
-Similarly, you can use the built-in mapping `OPTIMIZED_PULSES` to access the optimized pulse parameters for each gate: 
-
-```python
-from qml_essentials.ansaetze import OPTIMIZED_PULSES
-
-opt_pulse_params_RX = OPTIMIZED_PULSES["RX"]  # jnp.array([15.709893, 29.52306, 0.74998104])
-opt_pulse_params_CX = OPTIMIZED_PULSES["CX"]  # jnp.array([7.9447253, 21.6398258, 0.90724313, 0.95509776])
+# Optimized pulse parameters
+opt_pulse_params_RX = PulseInformation.optimized_params("RX")  # jnp.array([15.709893, 29.52306, 0.74998104])
+opt_pulse_params_CX = PulseInformation.optimized_params("CX")  # jnp.array([7.9447253, 21.6398258, 0.90724313, 0.95509776])
 ```
 
 ### Calling Gates in Pulse Mode

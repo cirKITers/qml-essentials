@@ -9,7 +9,7 @@ from copy import deepcopy
 import math
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
-from qml_essentials.ansaetze import OPTIMIZED_PULSES
+from qml_essentials.ansaetze import PulseInformation
 from qml_essentials.utils import PauliCircuit, QuanTikz, MultiprocessingPool
 
 
@@ -22,17 +22,6 @@ log = logging.getLogger(__name__)
 # TODO: Make trainable frequencies implementation consistent with pulse mode
 #   I.e. pass trainable frequencies as an execution type and initialize enc_params
 #   with requires_grad=False
-
-"""
-Notes
-
-- Modify get_specs and draw? -> Melvin
-
-- Modified hash and MultiprocessingPool, adapt somewhere else?
-
-- Added context manager for PulseParamManager in Ansaetze
-
-"""
 
 
 class Model:
@@ -160,8 +149,10 @@ class Model:
         for sp in self._sp:
             sp_name = sp.__name__ if hasattr(sp, "__name__") else str(sp)
 
-            if sp_name in OPTIMIZED_PULSES:
-                params = np.array(OPTIMIZED_PULSES[sp_name], requires_grad=False)
+            if sp_name in PulseInformation.OPTIMIZED_PULSES:
+                params = np.array(
+                    PulseInformation.optimized_params(sp_name), requires_grad=False
+                )
                 self.sp_pulse_params.append(params)
             else:
                 # gate has no pulse parametrization
@@ -1417,21 +1408,3 @@ class Model:
             np.save(file_path, result)
 
         return result
-
-    # TODO: Modify get_specs to handle pulse mode and pulse params?
-    def get_specs(self, inputs: Optional[np.ndarray] = None) -> dict:
-        """
-        Get pennylane specs for the model.
-
-        Args:
-            inputs (Optional[np.ndarray]): The inputs, with which to call the
-                circuit. Defaults to None.
-
-        Returns:
-            dict: Dictionary of specs. The key "resources" contains information
-                about the circuit size and gate statistics.
-        """
-        inputs = self._inputs_validation(inputs)
-        spec_model = deepcopy(self)
-        spec_model.noise_params = None  # remove noise
-        return qml.specs(spec_model.circuit)(self.params, inputs)
