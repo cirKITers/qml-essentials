@@ -798,7 +798,7 @@ def test_pulse_model() -> None:
 
 # TODO: CHECK. Apply to all ansaetze? Merge into test_ansaetze?
 #   Mark as expensive (2-3 min)?
-@pytest.mark.unittest
+@pytest.mark.expensive
 def test_pulse_model_inference():
     model = Model(
         n_qubits=4,

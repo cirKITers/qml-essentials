@@ -2228,7 +2228,7 @@ class Ansaetze:
             n_params *= n_qubits
 
             n_CRZ = n_qubits * (n_qubits - 1) // 2
-            n_params += n_CRZ * PulseInformation("CRZ")
+            n_params += n_CRZ * PulseInformation.num_params("CRZ")
 
             return n_params
 
@@ -2336,7 +2336,7 @@ class Ansaetze:
             n_params *= n_qubits
 
             n_CRZ = n_qubits * (n_qubits - 1) // 2
-            n_params += n_CRZ * PulseInformation("CRX")
+            n_params += n_CRZ * PulseInformation.num_params("CRX")
 
             return n_params
 
