@@ -1,4 +1,3 @@
-# flake8: noqa: E731  # TODO: Remove?
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 
@@ -575,7 +574,8 @@ class PulseGates:
     # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT/CX and H pulse level
     #   gates closely follow https://doi.org/10.5445/IR/1000184129
     # TODO: Mention deviations from the above?
-    # TODO: Check that the len of pulse params passed to each gate is exactly as expected?
+    # TODO: Check that the len of pulse params passed to each gate is exactly as
+    #   expected?
     omega_q = 10 * jnp.pi
     omega_c = 10 * jnp.pi
 
@@ -600,7 +600,7 @@ class PulseGates:
         return f * x
 
     @staticmethod
-    def Rot(phi, theta, omega, wires, pulse_params=None): # TODO
+    def Rot(phi, theta, omega, wires, pulse_params=None):  # TODO
         # RZ(phi) · RY(theta) · RZ(omega)
         qml.Rot(phi, theta, omega, wires=wires)
 
@@ -693,22 +693,22 @@ class PulseGates:
         return qml.evolve(H_eff)([0], t)
 
     @staticmethod
-    def CRX(w, wires, pulse_params=None): # TODO
-        # H_t · CRZ(w) · H_t
+    def CRX(w, wires, pulse_params=None):  # TODO
+        # H_t · CRZ(w) · H_t
         # =
         # H_t · RZ(w/2)_t · CZ · RZ(-w/2)_t · H_t
         qml.CRX(w, wires=wires)
 
     @staticmethod
-    def CRY(w, wires, pulse_params=None): # TODO
+    def CRY(w, wires, pulse_params=None):  # TODO
         # RX(-pi/2)_t · CRZ(w) · RX(pi/2)_t
         # =
         # RX(-pi/2)_t · RZ(w/2)_t · CZ · RZ(-w/2)_t · RX(pi/2)_t
         qml.CRY(w, wires=wires)
 
     @staticmethod
-    def CRZ(w, wires, pulse_params=None): # TODO
-        # RZ(w/2)_t · CZ · RZ(-w/2)_t
+    def CRZ(w, wires, pulse_params=None):  # TODO
+        # RZ(w/2)_t · CZ · RZ(-w/2)_t
         qml.CRZ(w, wires=wires)
 
     @staticmethod
@@ -741,7 +741,7 @@ class PulseGates:
         return
 
     @staticmethod
-    def CY(wires, pulse_params=None): # TODO
+    def CY(wires, pulse_params=None):  # TODO
         # RZ(-pi/2)_t · CX · RZ(pi/2)_t
         # =
         # RZ(-pi/2)_t · H_t · CZ · H_t · RZ(pi/2)_t
@@ -772,7 +772,7 @@ class PulseGates:
         I_Z = jnp.kron(PulseGates.Id, PulseGates.Z)
         Z_Z = jnp.kron(PulseGates.Z, PulseGates.Z)
 
-        # TODO: explain why p, t not in signal
+        # TODO: explain why p, t not in signal
         Scz = lambda p, t: jnp.pi
 
         _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
@@ -798,7 +798,7 @@ class PulseGates:
             pulse_params = PulseInformation.optimized_params("H")
 
         # qml.GlobalPhase(-jnp.pi / 2)
-        # TODO: Explain why p, t not in signal
+        # TODO: Explain why p, t not in signal
         Sc = lambda p, t: -1.0
 
         _H = jnp.pi / 2 * jnp.eye(2, dtype=jnp.complex64)
@@ -881,7 +881,7 @@ class Gates(metaclass=GatesMeta):
         def handler(**kwargs):
             return self._inner_getattr(gate_name, **kwargs)
         return handler
-    
+
     @staticmethod
     def _inner_getattr(gate_name, *args, **kwargs):
         gate_mode = kwargs.pop("gate_mode", "unitary")
@@ -895,7 +895,9 @@ class Gates(metaclass=GatesMeta):
             gate_backend = PulseGates
             allowed_args += ["pulse_params"]
         else:
-            raise ValueError(f"Unknown gate mode: {gate_mode}. Use 'unitary' or 'pulse'.")
+            raise ValueError(
+                f"Unknown gate mode: {gate_mode}. Use 'unitary' or 'pulse'."
+            )
 
         kwargs = {k: v for k, v in kwargs.items() if k in allowed_args}
 
@@ -914,7 +916,10 @@ class Gates(metaclass=GatesMeta):
         # Call the selected gate backend
         gate = getattr(gate_backend, gate_name, None)
         if gate is None:
-            raise AttributeError(f"'{gate_backend.__class__.__name__}' object has no attribute '{gate_name}'")
+            raise AttributeError(
+                f"'{gate_backend.__class__.__name__}' object "
+                f"has no attribute '{gate_name}'"
+            )
 
         return gate(*args, **kwargs)
 
