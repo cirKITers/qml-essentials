@@ -665,7 +665,7 @@ class Model:
         self,
         params: np.ndarray,
         inputs: np.ndarray,
-        pulse_params: np.ndarray = None,
+        pulse_params: Optional[np.ndarray] = None,
         enc_params: Optional[np.ndarray] = None,
         gate_mode: str = "unitary",
     ) -> None:

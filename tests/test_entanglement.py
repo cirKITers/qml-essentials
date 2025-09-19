@@ -398,7 +398,6 @@ def test_relative_entropy_order() -> None:
     ), f"Order of entanglement should be {circuits}."
 
 
-# TODO: This test fails. Because of entanglement or pulses?
 @pytest.mark.smoketest
 def test_entanglement_of_formation() -> None:
     separable_model = Model(

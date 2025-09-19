@@ -1,13 +1,13 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any, Optional, List, Union, Dict
+import numbers
 
 import pennylane.numpy as np
 import pennylane as qml
+import jax
 from jax import numpy as jnp
 import itertools
 from contextlib import contextmanager
-
-from typing import List, Union, Dict
 
 import logging
 
@@ -899,6 +899,8 @@ class Gates(metaclass=GatesMeta):
             return self._inner_getattr(gate_name, **kwargs)
         return handler
 
+    # TODO: Modularize?
+    #   E.g. filter_kwargs(), are_valid_pulse_params(), pulse_params_slice_scale()
     @staticmethod
     def _inner_getattr(gate_name, *args, **kwargs):
         gate_mode = kwargs.pop("gate_mode", "unitary")
@@ -918,7 +920,31 @@ class Gates(metaclass=GatesMeta):
 
         kwargs = {k: v for k, v in kwargs.items() if k in allowed_args}
 
-        # CHECK
+        # Type check on pulse parameters
+        pulse_params = kwargs.get("pulse_params")
+        if pulse_params is not None:
+            # flatten pulse parameters
+            if isinstance(pulse_params, (list, tuple)):
+                flat_params = pulse_params
+
+            elif isinstance(pulse_params, jax.core.Tracer):
+                flat_params = [pulse_params]
+
+            elif isinstance(pulse_params, (np.ndarray, jnp.ndarray)):
+                flat_params = pulse_params.flatten().tolist()
+
+            else:
+                raise TypeError(f"Unsupported pulse_params type: {type(pulse_params)}")
+
+            # checks elements in flat parameters are real numbers or jax Tracer
+            if not all(
+                isinstance(x, (numbers.Real, jax.core.Tracer)) for x in flat_params
+            ):
+                raise TypeError(
+                    "All elements in pulse_params must be int or float, "
+                    f"got {pulse_params}, type {type(pulse_params)}. "
+                )
+
         # Pulse slicing + scaling
         try:
             n_params = PulseInformation.num_params(gate_name)

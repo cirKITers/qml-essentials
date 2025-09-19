@@ -1,7 +1,7 @@
 from typing import Optional
 import random
 from qml_essentials.model import Model
-from qml_essentials.ansaetze import Circuit, Ansaetze, Gates
+from qml_essentials.ansaetze import Circuit, Ansaetze, Gates, PulseInformation
 import pytest
 import inspect
 import logging
@@ -13,8 +13,6 @@ import pennylane.numpy as np
 import time
 
 logger = logging.getLogger(__name__)
-
-# TODO: Add pulse level model tests
 
 
 @pytest.mark.unittest
@@ -690,10 +688,15 @@ def test_ansaetze() -> None:
         def n_params_per_layer(n_qubits: int) -> int:
             return n_qubits * 3
 
-        # TODO: CHECK
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return 0
+            n_params = PulseInformation.num_params("RY")
+            n_params += PulseInformation.num_params("RZ")
+            n_params *= n_qubits
+
+            n_params += (n_qubits - 1) * PulseInformation.num_params("CZ")
+
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -708,9 +711,8 @@ def test_ansaetze() -> None:
                 Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
-            if n_qubits > 1:
-                for q in range(n_qubits - 1):
-                    Gates.CZ(wires=[q, q + 1], **kwargs)
+            for q in range(n_qubits - 1):
+                Gates.CZ(wires=[q, q + 1], **kwargs)
 
     model = Model(
         n_qubits=2,

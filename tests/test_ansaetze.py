@@ -4,6 +4,7 @@ from qml_essentials.ansaetze import Ansaetze, Circuit, Gates, UnitaryGates
 from qml_essentials.ansaetze import PulseInformation
 import pennylane as qml
 import pennylane.numpy as np
+from jax import numpy as jnp
 import pytest
 import inspect
 
@@ -247,10 +248,16 @@ def test_ansaetze() -> None:
         def n_params_per_layer(n_qubits: int) -> int:
             return n_qubits * 3
 
-        # TODO: Complete this method?
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return 0
+            n_params = PulseInformation.num_params("RY")
+            n_params += PulseInformation.num_params("RZ")
+            n_params *= n_qubits
+
+            n_params += (n_qubits - 1) * PulseInformation.num_params("CRY")
+            n_params += (n_qubits - 1) * PulseInformation.num_params("CY")
+
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -265,11 +272,10 @@ def test_ansaetze() -> None:
                 Gates.RZ(w[w_idx], wires=q, **kwargs)
                 w_idx += 1
 
-            if n_qubits > 1:
-                for q in range(n_qubits - 1):
-                    Gates.CRY(w[w_idx], wires=[q, q + 1], **kwargs)
-                    Gates.CY(wires=[q + 1, q], **kwargs)
-                    w_idx += 1
+            for q in range(n_qubits - 1):
+                Gates.CRY(w[w_idx], wires=[q, q + 1], **kwargs)
+                Gates.CY(wires=[q + 1, q], **kwargs)
+                w_idx += 1
 
     model = Model(
         n_qubits=2,
@@ -552,3 +558,16 @@ def test_pulse_CX_gate():
 
     phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
     assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off: {phase_diff}"
+
+
+@pytest.mark.unittest
+def test_invalid_pulse_params():
+    invalid_pulse_params = [
+        np.array(["10", 5, "1"]),
+        [10, 5, "1"],
+        (10, 5, "1"),
+    ]
+
+    for pp in invalid_pulse_params:
+        with pytest.raises(TypeError):
+            Gates.RX(np.pi, 0, pulse_params=pp, gate_mode="pulse")
