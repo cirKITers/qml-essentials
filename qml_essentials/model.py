@@ -17,8 +17,8 @@ import logging
 
 log = logging.getLogger(__name__)
 
-# TODO: Include pulse functionality in docs
-# TODO: Implement tests for pulse functionality
+# TODO: Remove "# CHECK"s once happy with the pulse implementation
+# TODO: Implement more tests for pulse functionality?
 # TODO: Make trainable frequencies implementation consistent with pulse mode
 #   I.e. pass trainable frequencies as an execution type and initialize enc_params
 #   with requires_grad=False
@@ -409,16 +409,6 @@ class Model:
 
         self._noise_params = kvs
 
-        # TODO: implement pulse_params setter, so when None defaults to array of 1s
-        # @property
-        # def pulse_params(self):
-        pass
-
-        # TODO: see above
-        # @pulse_params.setter
-        # def pulse_params():
-        pass
-
     @property
     def execution_type(self) -> str:
         """
@@ -554,7 +544,20 @@ class Model:
 
     # CHECK
     def initialize_pulse_params(self, repeat: int = None) -> None:
-        # TODO: Add docstring
+        """
+        Initializes the pulse parameters of the model.
+
+        Pulse parameters are stored as an array of ones, acting as
+        element-wise scalers on the optimized pulse parameters of each
+        gate.
+
+        Args:
+            repeat: The number of times to repeat the pulse parameters.
+                If None, the number of layers is used.
+
+        Returns:
+            None
+        """
         shape = (
             self._pulse_params_shape
             if repeat is None
@@ -628,16 +631,20 @@ class Model:
         enc_params: Optional[np.ndarray] = None,
         gate_mode: str = "unitary",
     ) -> Union[float, np.ndarray]:
-        # TODO: Update docstring
         """
-        Creates a circuit with noise.
+        Creates a quantum circuit, optionally with noise or pulse simulation.
 
         Args:
             params (np.ndarray): weight vector of shape
+                # TODO: Is n_qubits (and trainable_frequencies) below correct?
                 [n_layers, n_qubits*(n_params_per_layer+trainable_frequencies)]
             inputs (np.ndarray): input vector of size 1
+            pulse_params Optional[np.ndarray]: pulse parameter scaler weights of shape
+                [n_layers, n_pulse_params_per_layer]
             enc_params Optional[np.ndarray]: encoding weight vector
                 of shape [n_qubits, n_inputs]
+            gate_mode (str): Backend mode for gate execution. Can be
+                "unitary" (default) or "pulse".
         Returns:
             Union[float, np.ndarray]: Expectation value of PauliZ(0)
                 of the circuit if state_vector is False and expval is True,
@@ -662,6 +669,24 @@ class Model:
         enc_params: Optional[np.ndarray] = None,
         gate_mode: str = "unitary",
     ) -> None:
+        """
+        Builds the variational quantum circuit with state preparation,
+        variational ansatz layers, and intertwined encoding layers.
+
+        Args:
+            params (np.ndarray): weight vector of shape
+                [n_layers, n_qubits*(n_params_per_layer+trainable_frequencies)]
+            inputs (np.ndarray): input vector of size 1
+            pulse_params Optional[np.ndarray]: pulse parameter scaler weights of shape
+                [n_layers, n_pulse_params_per_layer]
+            enc_params Optional[np.ndarray]: encoding weight vector
+                of shape [n_qubits, n_inputs]
+            gate_mode (str): Backend mode for gate execution. Can be
+                "unitary" (default) or "pulse".
+
+        Returns:
+            None
+        """
         if enc_params is None:
             # TODO: Raise warning if trainable frequencies is True, or similar. I.e., no
             #   warning if user does not care for frequencies or enc_params
@@ -826,9 +851,8 @@ class Model:
 
         return specs["resources"].depth
 
-    # TODO: remove enc_params (passed through kwargs)
+    # CHECK
     def draw(self, inputs=None, figure="text", *args, **kwargs):
-        # TODO: Docstring?
         """
         Draws the quantum circuit using the specified visualization method.
 
@@ -844,6 +868,7 @@ class Model:
             Additional arguments to be passed to the visualization method.
         **kwargs:
             Additional keyword arguments to be passed to the visualization method.
+            Can include `pulse_params`, `gate_mode`, `enc_params`, or `noise_params`.
 
         Raises:
             AssertionError: If the 'figure' argument is not one of the accepted values.
@@ -865,7 +890,6 @@ class Model:
             result = qml.draw_mpl(self.circuit)(
                 params=self.params,
                 inputs=inputs,
-                enc_params=self.enc_params,
                 *args,
                 **kwargs,
             )
@@ -874,13 +898,12 @@ class Model:
                 self.circuit,
                 params=self.params,
                 inputs=inputs,
-                enc_params=self.enc_params,
                 *args,
                 **kwargs,
             )
         else:
             result = qml.draw(self.circuit)(
-                params=self.params, inputs=inputs, enc_params=self.enc_params
+                params=self.params, inputs=inputs
             )
         return result
 
@@ -892,10 +915,13 @@ class Model:
 
     def _params_validation(self, params) -> np.ndarray:
         """
-        Sets the parameters when calling the quantum circuit
+        Sets the parameters when calling the quantum circuit.
 
         Args:
-            params (np.ndarray): The parameters used for the call
+            params (np.ndarray): The parameters used for the call.
+
+        Returns:
+            np.ndarray: Validated parameters.
         """
         if params is None:
             params = self.params
@@ -913,7 +939,16 @@ class Model:
 
     # CHECK
     def _pulse_params_validation(self, pulse_params) -> np.ndarray:
-        # TODO: Docstring
+        """
+        Sets the pulse parameters when calling the quantum circuit.
+
+        Args:
+            pulse_params (np.ndarray): The pulse parameter scalers used for the call.
+
+        Returns:
+            np.ndarray: Validated pulse parameters, with `requires_grad` set according
+            to the current `gate_mode`.
+        """
         if pulse_params is None:
             pulse_params = self.pulse_params
         else:
@@ -1010,20 +1045,20 @@ class Model:
         return inputs
 
     # CHECK
+    # TODO: Type hints?
     @staticmethod
     def _parallel_f(
         procnum,
         result,
         f,
         batch_size,
-        params,
-        pulse_params,
-        inputs,
+        params: np.ndarray,
+        pulse_params: np.ndarray,
+        inputs: np.ndarray,
         batch_shape,
         enc_params,
-        gate_mode,
+        gate_mode: str,
     ):
-        # TODO: Docstring
         """
         Helper function for parallelizing a function f over parameters.
         Sices the batch dimension based on the procnum and batch size.
@@ -1034,8 +1069,10 @@ class Model:
             f: The function to be parallelized.
             batch_size: The batch size.
             params: The parameters array.
+            pulse_params (np.ndarray): Pulse parameter scalers for pulse-mode gates.
             inputs: The inputs array.
             enc_params: The encoding parameters array.
+            gate_mode (str): Mode for gate execution ("unitary" or "pulse").
         """
         min_idx = max(procnum * batch_size, 0)
 
@@ -1055,8 +1092,8 @@ class Model:
         )
 
     # CHECK
+    # TODO: Type hints?
     def _mp_executor(self, f, params, pulse_params, inputs, enc_params, gate_mode):
-        # TODO: Docstring
         """
         Execute a function f in parallel over parameters.
 
@@ -1066,10 +1103,13 @@ class Model:
             params: A 3D numpy array of parameters where the first dimension is
                 the layer index, the second dimension is the parameter index in
                 the layer, and the third dimension is the sample index.
+            pulse_params (np.ndarray): array of pulse parameter scalers for pulse-mode
+                gates.
             inputs: A 2D numpy array of inputs where the first dimension is
                 the sample index and the second dimension is the input feature index.
             enc_params: A 1D numpy array of encoding parameters where the dimension is
                 the qubit index.
+            gate_mode (str): Mode for gate execution ("unitary" or "pulse").
 
         Returns:
             A numpy array of the output of f applied to each batch of
@@ -1188,9 +1228,9 @@ class Model:
         force_mean: bool = False,
         gate_mode: str = "unitary",
     ) -> np.ndarray:
-        # TODO: Update docstring
         """
-        Perform a forward pass of the quantum circuit.
+        Perform a forward pass of the quantum circuit with optional noise or
+        pulse level simulation.
 
         Args:
             params (Optional[np.ndarray]): Weight vector of shape
@@ -1198,6 +1238,8 @@ class Model:
                 If None, model internal parameters are used.
             inputs (Optional[np.ndarray]): Input vector of shape [1].
                 If None, zeros are used.
+            pulse_params (Optional[np.ndarray]): Pulse parameter scalers for pulse-mode
+                gates.
             enc_params (Optional[np.ndarray]): Weight vector of shape
                 [n_qubits, n_input_features]. If None, model internal encoding
                 parameters are used.
@@ -1213,6 +1255,8 @@ class Model:
             force_mean (bool, optional): Whether to average
                 when performing n-local measurements.
                 Defaults to False.
+            gate_mode (str, optional): Gate backend mode ("unitary" or "pulse").
+                Defaults to "unitary".
 
         Returns:
             np.ndarray: The output of the quantum circuit.
@@ -1251,7 +1295,6 @@ class Model:
         force_mean: bool = False,
         gate_mode: str = "unitary",
     ) -> np.ndarray:
-        # TODO: Update docstring
         """
         Perform a forward pass of the quantum circuit.
 
@@ -1261,6 +1304,8 @@ class Model:
                 If None, model internal parameters are used.
             inputs (Optional[np.ndarray]): Input vector of shape [1].
                 If None, zeros are used.
+            pulse_params (Optional[np.ndarray]): Pulse parameter scalers for pulse-mode
+                gates.
             enc_params (Optional[np.ndarray]): Weight vector of shape
                 [n_qubits, n_input_features]. If None, model internal encoding
                 parameters are used.
@@ -1276,6 +1321,9 @@ class Model:
             force_mean (bool, optional): Whether to average
                 when performing n-local measurements.
                 Defaults to False.
+            gate_mode (str, optional): Gate backend mode ("unitary" or "pulse").
+                Defaults to "unitary".
+
 
         Returns:
             np.ndarray: The output of the quantum circuit.
@@ -1291,6 +1339,10 @@ class Model:
         Raises:
             NotImplementedError: If the number of shots is not None or if the
                 expectation value is True.
+            ValueError:
+                - If `pulse_params` are provided but `gate_mode` is not "pulse".
+                - If `noise_params` are provided while `gate_mode` is "pulse" (noise
+                not supported in pulse mode).
         """
         # set the parameters as object attributes
         if noise_params is not None:
