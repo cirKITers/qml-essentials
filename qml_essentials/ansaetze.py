@@ -570,6 +570,64 @@ class UnitaryGates:
         UnitaryGates.Noise(wires, noise_params)
 
 
+class PulseInformation:
+    """
+    Stores pulse parameter counts and optimized pulse parameters for quantum gates.
+    """
+    PULSE_PARAM_COUNTS: Dict[str, int] = {
+        "Rot": 0,  # TODO
+        "RX": 3,
+        "RY": 3,
+        "RZ": 1,
+        "CRY": 0,  # TODO
+        "CRZ": 0,  # TODO
+        "CY": 0,   # TODO
+        "CZ": 1,
+        "H": 3
+    }
+    PULSE_PARAM_COUNTS["CX"] = 2 * PULSE_PARAM_COUNTS["H"] + PULSE_PARAM_COUNTS["CZ"]
+    PULSE_PARAM_COUNTS["CRX"] = 2 * PULSE_PARAM_COUNTS["H"] + PULSE_PARAM_COUNTS["CRZ"]
+
+    OPTIMIZED_PULSES: Dict[str, Optional[jnp.ndarray]] = {
+        "Rot": None,  # TODO
+        "RX": jnp.array([15.70989327341467, 29.5230665326707, 0.7499810441330634]),
+        "RY": jnp.array([7.8787724942614235, 22.001319411513432, 1.098524473819202]),
+        "RZ": jnp.array([0.5]),
+        "CRX": None,  # TODO
+        "CRY": None,  # TODO
+        "CRZ": None,  # TODO
+        "CX": jnp.array([
+            7.951920934692106, 21.655479574101687,
+            0.8929524493211076, 0.9548359253748596,
+            7.94488020182026, 21.61729834699293,
+            0.9067943033364354
+        ]),
+        "CY": None,  # TODO
+        "CZ": jnp.array([0.962596375687258]),
+        "H": jnp.array([7.857992398977854, 21.572701026008765, 0.9000668764548863]),
+    }
+
+    @classmethod
+    def num_params(cls, gate: str) -> int:
+        """Return the number of pulse parameters for a given gate."""
+        if gate not in cls.PULSE_PARAM_COUNTS:
+            raise ValueError(f"Unknown gate '{gate}'")
+        return cls.PULSE_PARAM_COUNTS[gate]
+
+    @classmethod
+    def optimized_params(cls, gate: str) -> Optional[jnp.ndarray]:
+        """Return the optimized pulse parameters for a given gate (or None if TODO)."""
+        if gate not in cls.OPTIMIZED_PULSES:
+            raise ValueError(f"Unknown gate '{gate}'")
+        return cls.OPTIMIZED_PULSES[gate]
+
+
+pinfo = PulseInformation
+
+
+# TODO: Update slicing quantity of params in gates by PulseInfo
+# TODO: Update pulse_params type in docstrings
+# TODO: Update docstrings
 class PulseGates:
     # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT/CX and H pulse level
     #   gates closely follow https://doi.org/10.5445/IR/1000184129
@@ -591,6 +649,7 @@ class PulseGates:
 
     @staticmethod
     def S(p, t, phi_c):
+        # TODO: Docstring
         A, sigma = p
         t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
 
@@ -615,15 +674,17 @@ class PulseGates:
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation to.
-        pulse_params : Tuple[List[float], float], optional
-            Tuple containing pulse parameters `[A, sigma]` and time `t` for the
+        pulse_params : np.ndarray, optional
+            Array containing pulse parameters `A`, `sigma` and time `t` for the
             Gaussian envelope. Defaults to optimized parameters and time.
         """
+        n_RX = pinfo.num_params("RX")
+        idx = n_RX - 1
         if pulse_params is None:
-            opt = PulseInformation.optimized_params("RX")
-            pulse_params, t = opt[:2], opt[2]
+            opt = pinfo.optimized_params("RX")
+            pulse_params, t = opt[:idx], opt[idx]
         else:
-            pulse_params, t = pulse_params[:2], pulse_params[2]
+            pulse_params, t = pulse_params[:idx], pulse_params[idx]
 
         Sx = lambda p, t: PulseGates.S(p, t, phi_c=jnp.pi) * w
 
@@ -644,15 +705,17 @@ class PulseGates:
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation to.
-        pulse_params : Tuple[List[float], float], optional
-            Tuple containing pulse parameters `[A, sigma]` and time `t` for the
+        pulse_params : np.ndarray, optional
+            Array containing pulse parameters `A`, `sigma` and time `t` for the
             Gaussian envelope. Defaults to optimized parameters and time.
         """
+        n_RY = pinfo.num_params("RY")
+        idx = n_RY - 1
         if pulse_params is None:
-            opt = PulseInformation.optimized_params("RY")
-            pulse_params, t = opt[:2], opt[2]
+            opt = pinfo.optimized_params("RY")
+            pulse_params, t = opt[:idx], opt[idx]
         else:
-            pulse_params, t = pulse_params[:2], pulse_params[2]
+            pulse_params, t = pulse_params[:idx], pulse_params[idx]
 
         Sy = lambda p, t: PulseGates.S(p, t, phi_c=-jnp.pi/2) * w
 
@@ -673,16 +736,17 @@ class PulseGates:
             The rotation angle in radians.
         wires : Union[int, List[int]]
             The wire(s) to apply the rotation to.
-        pulse_params : float or None, optional
+        pulse_params : float, optional
             Duration of the pulse. Rotation angle = w * 2 * t.
             Defaults to 0.5 if None.
         """
+        n_RZ = pinfo.num_params("RZ")
         if pulse_params is None:
-            t = PulseInformation.optimized_params("RZ")[0]
+            t = pinfo.optimized_params("RZ")[n_RZ]
         elif isinstance(pulse_params, (float, int)):
             t = pulse_params
         else:
-            t = pulse_params[0]
+            t = pulse_params[n_RZ]
 
         _H = qml.Hermitian(PulseGates.Z, wires=wires)
         # TODO: Put comment why p, t has no effect here
@@ -693,11 +757,46 @@ class PulseGates:
         return qml.evolve(H_eff)([0], t)
 
     @staticmethod
-    def CRX(w, wires, pulse_params=None):  # TODO
-        # H_t · CRZ(w) · H_t
-        # =
-        # H_t · RZ(w/2)_t · CZ · RZ(-w/2)_t · H_t
-        qml.CRX(w, wires=wires)
+    def CRX(w, wires, pulse_params=None):
+        """
+        Applies a controlled-RX(w) gate using a decomposition.
+
+        Decomposition:
+            CRX(theta) = H_t · CRZ(w) · H_t
+
+        Parameters
+        ----------
+        w : float
+            Rotation angle.
+        wires : List[int]
+            The control and target wires.
+        pulse_params : np.ndarray
+            Pulse parameters for the composing gates. Defaults
+            to optimized parameters if None.
+        """
+        n_H = pinfo.num_params("H")
+        n_CRZ = pinfo.num_params("CRZ")
+
+        idx1 = n_H
+        idx2 = idx1 + n_CRZ
+        idx3 = idx2 + n_H
+
+        if pulse_params is None:
+            opt = pinfo.optimized_params("CRX")
+            params_H_1 = opt[:idx1]
+            params_CRZ = opt[idx1:idx2]
+            params_H_2 = opt[idx2:idx3]
+
+        else:
+            params_H_1 = pulse_params[:idx1]
+            params_CRZ = pulse_params[idx1:idx2]
+            params_H_2 = pulse_params[idx2:idx3]
+
+        target = wires[1]
+
+        PulseGates.H(wires=target, pulse_params=params_H_1)
+        PulseGates.CRZ(w, wires, pulse_params=params_CRZ)
+        PulseGates.H(wires=target, pulse_params=params_H_2)
 
     @staticmethod
     def CRY(w, wires, pulse_params=None):  # TODO
@@ -714,29 +813,42 @@ class PulseGates:
     @staticmethod
     def CX(wires, pulse_params=None):
         """
-        Applies a CNOT gate composed of Hadamard and controlled-Z pulses.
+        Applies a CNOT gate using a decomposition.
+
+        Decomposition:
+            CNOT = H_t · CZ · H_t
 
         Parameters
         ----------
         wires : List[int]
             The control and target wires for the CNOT gate.
-        pulse_params : Tuple[List[float], Tuple[float, float]], optional
-            Tuple containing pulse parameters `[A, sigma]` and a tuple of two times:
-            - time for the Hadamard gates
-            - time for the controlled-Z gate
-
-            Defaults to optimized parameters and times if None.
+        pulse_params : np.ndarray, optional
+            Pulse parameters for the composing gates. Defaults
+            to optimized parameters if None.
         """
-        if pulse_params is None:
-            opt = PulseInformation.optimized_params("CX")
-            pulse_params, t_CZ = opt[:3], opt[3]
-        else:
-            pulse_params = pulse_params[:3]
-            t_CZ = pulse_params[3]
+        n_H = pinfo.num_params("H")
+        n_CZ = pinfo.num_params("CZ")
 
-        PulseGates.H(wires=wires[1], pulse_params=pulse_params)
-        PulseGates.CZ(wires=wires, pulse_params=[t_CZ])
-        PulseGates.H(wires=wires[1], pulse_params=pulse_params)
+        idx1 = n_H
+        idx2 = idx1 + n_CZ
+        idx3 = idx2 + n_H
+
+        if pulse_params is None:
+            opt = pinfo.optimized_params("CX")
+            params_H_1 = opt[:idx1]
+            t_CZ = opt[idx1:idx2]
+            params_H_2 = opt[idx2:idx3]
+
+        else:
+            params_H_1 = pulse_params[:idx1]
+            t_CZ = pulse_params[idx1:idx2]
+            params_H_2 = pulse_params[idx2:idx3]
+
+        target = wires[1]
+
+        PulseGates.H(wires=target, pulse_params=params_H_1)
+        PulseGates.CZ(wires=wires, pulse_params=t_CZ)
+        PulseGates.H(wires=target, pulse_params=params_H_2)
 
         return
 
@@ -756,16 +868,17 @@ class PulseGates:
         ----------
         wires : List[int]
             The wire(s) to apply the controlled Z gate to.
-        pulse_params : float or None, optional
+        pulse_params : float, optional
             Time or time interval for the evolution.
             Defaults to optimized time if None.
         """
+        idx = pinfo.num_params("CZ") - 1
         if pulse_params is None:
-            t = PulseInformation.optimized_params("CZ")[0]
+            t = pinfo.optimized_params("CZ")[idx]
         elif isinstance(pulse_params, (float, int)):
             t = pulse_params
         else:
-            t = pulse_params[0]
+            t = pulse_params[idx]
 
         I_I = jnp.kron(PulseGates.Id, PulseGates.Id)
         Z_I = jnp.kron(PulseGates.Z, PulseGates.Id)
@@ -790,12 +903,14 @@ class PulseGates:
         ----------
         wires : Union[int, List[int]]
             The wire(s) to apply the Hadamard gate to.
-        pulse_params : Tuple[List[float], float], optional
-            Tuple containing pulse parameters `[A, sigma]` and time `t`.
-            Defaults to optimized parameters and time.
+        pulse_params : np.ndarray, optional
+            Pulse parameters for the composing gates. Defaults
+            to optimized parameters and time.
         """
         if pulse_params is None:
-            pulse_params = PulseInformation.optimized_params("H")
+            pulse_params = pinfo.optimized_params("H")
+        else:
+            pulse_params = pulse_params
 
         # qml.GlobalPhase(-jnp.pi / 2)
         # TODO: Explain why p, t not in signal
@@ -811,54 +926,6 @@ class PulseGates:
         PulseGates.RY(jnp.pi / 2, wires=wires, pulse_params=pulse_params)
 
         return
-
-
-class PulseInformation:
-    """
-    Stores pulse parameter counts and optimized pulse parameters for quantum gates.
-    """
-    PULSE_PARAM_COUNTS: Dict[str, int] = {
-        "Rot": 0,  # TODO
-        "RX": 3,
-        "RY": 3,
-        "RZ": 1,
-        "CRX": 0,  # TODO
-        "CRY": 0,  # TODO
-        "CRZ": 0,  # TODO
-        "CX": 4,
-        "CY": 0,   # TODO
-        "CZ": 1,
-        "H": 3
-    }
-
-    OPTIMIZED_PULSES: Dict[str, Optional[jnp.ndarray]] = {
-        "Rot": None,  # TODO
-        "RX": jnp.array([15.70989327341467, 29.5230665326707, 0.7499810441330634]),
-        "RY": jnp.array([7.8787724942614235, 22.001319411513432, 1.098524473819202]),
-        "RZ": jnp.array([0.5]),
-        "CRX": None,  # TODO
-        "CRY": None,  # TODO
-        "CRZ": None,  # TODO
-        "CX": jnp.array([7.944725340235801, 21.639825810701435,
-                         0.9072431332410497, 0.9550977662365613]),
-        "CY": None,  # TODO
-        "CZ": jnp.array([0.962596375687258]),
-        "H": jnp.array([7.857992398977854, 21.572701026008765, 0.9000668764548863]),
-    }
-
-    @classmethod
-    def num_params(cls, gate: str) -> int:
-        """Return the number of pulse parameters for a given gate."""
-        if gate not in cls.PULSE_PARAM_COUNTS:
-            raise ValueError(f"Unknown gate '{gate}'")
-        return cls.PULSE_PARAM_COUNTS[gate]
-
-    @classmethod
-    def optimized_params(cls, gate: str) -> Optional[jnp.ndarray]:
-        """Return the optimized pulse parameters for a given gate (or None if TODO)."""
-        if gate not in cls.OPTIMIZED_PULSES:
-            raise ValueError(f"Unknown gate '{gate}'")
-        return cls.OPTIMIZED_PULSES[gate]
 
 
 # Meta class to avoid instantiating the Gates class
@@ -947,13 +1014,13 @@ class Gates(metaclass=GatesMeta):
 
         # Pulse slicing + scaling
         try:
-            n_params = PulseInformation.num_params(gate_name)
+            n_params = pinfo.num_params(gate_name)
         except ValueError:
             n_params = None
         pulse_mgr = getattr(Gates, "_pulse_mgr", None)
         if gate_mode == "pulse" and isinstance(pulse_mgr, PulseParamManager):
             scalers = pulse_mgr.get(n_params)
-            base = PulseInformation.optimized_params(gate_name)
+            base = pinfo.optimized_params(gate_name)
             kwargs["pulse_params"] = scalers * base  # element-wise scaling
 
         # Call the selected gate backend
@@ -1050,8 +1117,8 @@ class Ansaetze:
             int
                 Total number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("H")
-            n_params += (n_qubits - 1) * PulseInformation.num_params("CX")
+            n_params = pinfo.num_params("H")
+            n_params += (n_qubits - 1) * pinfo.num_params("CX")
 
             return n_params
 
@@ -1115,13 +1182,13 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = 2 * PulseInformation.num_params("RY")
-            n_params += PulseInformation.num_params("RZ")
+            n_params = 2 * pinfo.num_params("RY")
+            n_params += pinfo.num_params("RZ")
             n_params *= n_qubits
 
             n_CX = (n_qubits // 2) + ((n_qubits - 1) // 2)
             n_CX += 1 if n_qubits > 2 else 0
-            n_params += n_CX * PulseInformation.num_params("CX")
+            n_params += n_CX * pinfo.num_params("CX")
 
             return n_params
 
@@ -1223,12 +1290,12 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
+            n_params = pinfo.num_params("RX")
+            n_params += pinfo.num_params("RZ")
             n_params *= n_qubits
 
             if n_qubits > 1:
-                n_params += PulseInformation.num_params("CRX") * n_qubits
+                n_params += pinfo.num_params("CRX") * n_qubits
 
             return n_params
 
@@ -1334,12 +1401,12 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
+            n_params = pinfo.num_params("RX")
+            n_params += pinfo.num_params("RZ")
             n_params *= n_qubits
 
             if n_qubits > 1:
-                n_params += PulseInformation.num_params("CRZ") * n_qubits
+                n_params += pinfo.num_params("CRZ") * n_qubits
 
             return n_params
 
@@ -1442,11 +1509,11 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = 2 * PulseInformation.num_params("RY")
+            n_params = 2 * pinfo.num_params("RY")
             n_params *= n_qubits
 
             if n_qubits > 1:
-                n_params += PulseInformation.num_params("CX") * n_qubits
+                n_params += pinfo.num_params("CX") * n_qubits
 
             return n_params
 
@@ -1547,11 +1614,11 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("H")
-            n_params += PulseInformation.num_params("RX")
+            n_params = pinfo.num_params("H")
+            n_params += pinfo.num_params("RX")
             n_params *= n_qubits
 
-            n_params += (n_qubits - 1) * PulseInformation.num_params("CZ")
+            n_params += (n_qubits - 1) * pinfo.num_params("CZ")
 
             return n_params
 
@@ -1651,12 +1718,12 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = 2 * PulseInformation.num_params("RX")
-            n_params += 2 * PulseInformation.num_params("RZ")
+            n_params = 2 * pinfo.num_params("RX")
+            n_params += 2 * pinfo.num_params("RZ")
             n_params *= n_qubits
 
             n_CRX = n_qubits * (n_qubits - 1)
-            n_params += n_CRX * PulseInformation.num_params("CRX")
+            n_params += n_CRX * pinfo.num_params("CRX")
 
             return 0
 
@@ -1764,8 +1831,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
+            n_params = pinfo.num_params("RX")
+            n_params += pinfo.num_params("RZ")
             n_params *= n_qubits
 
             return n_params
@@ -1851,12 +1918,12 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
+            n_params = pinfo.num_params("RX")
+            n_params += pinfo.num_params("RZ")
             n_params *= n_qubits
 
             if n_qubits > 1:
-                n_params += (n_qubits - 1) * PulseInformation.num_params("CX")
+                n_params += (n_qubits - 1) * pinfo.num_params("CX")
 
             return 0
 
@@ -1948,11 +2015,11 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params = PulseInformation.num_params("RZ")
+            n_params = pinfo.num_params("RX")
+            n_params = pinfo.num_params("RZ")
             n_params *= n_qubits
 
-            n_params += (n_qubits - 1) * PulseInformation.num_params("CRZ")
+            n_params += (n_qubits - 1) * pinfo.num_params("CRZ")
 
             return n_params
 
@@ -2047,11 +2114,11 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
+            n_params = pinfo.num_params("RX")
+            n_params += pinfo.num_params("RZ")
             n_params *= n_qubits
 
-            n_params += (n_qubits - 1) * PulseInformation.num_params("CRX")
+            n_params += (n_qubits - 1) * pinfo.num_params("CRX")
 
             return 0
 
@@ -2147,12 +2214,12 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = 2 * PulseInformation.num_params("RY")
+            n_params = 2 * pinfo.num_params("RY")
             n_params *= n_qubits
 
-            n_params += (n_qubits - 1) * PulseInformation.num_params("CZ")
+            n_params += (n_qubits - 1) * pinfo.num_params("CZ")
 
-            n_params += PulseInformation.num_params("CZ") if n_qubits > 2 else 0
+            n_params += pinfo.num_params("CZ") if n_qubits > 2 else 0
 
             return n_params
 
@@ -2249,12 +2316,12 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
+            n_params = pinfo.num_params("RX")
+            n_params += pinfo.num_params("RZ")
             n_params *= n_qubits
 
             n_CRZ = n_qubits * (n_qubits - 1) // 2
-            n_params += n_CRZ * PulseInformation.num_params("CRZ")
+            n_params += n_CRZ * pinfo.num_params("CRZ")
 
             return n_params
 
@@ -2357,12 +2424,12 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
+            n_params = pinfo.num_params("RX")
+            n_params += pinfo.num_params("RZ")
             n_params *= n_qubits
 
             n_CRZ = n_qubits * (n_qubits - 1) // 2
-            n_params += n_CRZ * PulseInformation.num_params("CRX")
+            n_params += n_CRZ * pinfo.num_params("CRX")
 
             return n_params
 
@@ -2469,11 +2536,11 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = 2 * PulseInformation.num_params("Rot")
+            n_params = 2 * pinfo.num_params("Rot")
             n_params *= n_qubits
 
             if n_qubits > 1:
-                n_params += n_qubits * 2 * PulseInformation.num_params("CX")
+                n_params += n_qubits * 2 * pinfo.num_params("CX")
 
             return n_params
 
@@ -2581,7 +2648,7 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("Rot")
+            n_params = pinfo.num_params("Rot")
             n_params *= n_qubits
 
             return n_params

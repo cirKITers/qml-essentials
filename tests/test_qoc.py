@@ -54,7 +54,7 @@ def test_optimize_CZ():
 def test_optimize_CX():
     qoc = QOC(file_dir=None)
     optimized_params, best_loss, _ = qoc.optimize_CX(
-        init_pulse_params=jnp.array([1.0, 15.0, 1.0, 1.0]),
+        init_pulse_params=jnp.array([1.0, 15.0, 1.0, 1.0, 1.0, 15.0, 1.0]),
     )
     fidelity = 1 - best_loss
     assert fidelity > 0.9, f"CX optimization fidelity too low: {fidelity:.4f}"

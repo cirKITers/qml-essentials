@@ -1,7 +1,7 @@
 from typing import Optional
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Circuit, Gates, UnitaryGates
-from qml_essentials.ansaetze import PulseInformation
+from qml_essentials.ansaetze import PulseInformation as pinfo
 import pennylane as qml
 import pennylane.numpy as np
 from jax import numpy as jnp
@@ -250,12 +250,12 @@ def test_ansaetze() -> None:
 
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            n_params = PulseInformation.num_params("RY")
-            n_params += PulseInformation.num_params("RZ")
+            n_params = pinfo.num_params("RY")
+            n_params += pinfo.num_params("RZ")
             n_params *= n_qubits
 
-            n_params += (n_qubits - 1) * PulseInformation.num_params("CRY")
-            n_params += (n_qubits - 1) * PulseInformation.num_params("CY")
+            n_params += (n_qubits - 1) * pinfo.num_params("CRY")
+            n_params += (n_qubits - 1) * pinfo.num_params("CY")
 
             return n_params
 
@@ -342,7 +342,7 @@ def test_pulse_RX_gate(w):
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = PulseInformation.optimized_params("RX")
+        pulse_params = pinfo.optimized_params("RX")
         Gates.RX(w, wires=0, pulse_params=pulse_params, gate_mode="pulse")
         return qml.state()
 
@@ -380,7 +380,7 @@ def test_pulse_RY_gate(w):
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = PulseInformation.optimized_params("RY")
+        pulse_params = pinfo.optimized_params("RY")
         Gates.RY(w, wires=0, pulse_params=pulse_params, gate_mode="pulse")
         return qml.state()
 
@@ -420,7 +420,7 @@ def test_pulse_RZ_gate(w):
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = PulseInformation.optimized_params("RZ")
+        pulse_params = pinfo.optimized_params("RZ")
         qml.Hadamard(wires=0)
         Gates.RZ(w, wires=0, pulse_params=pulse_params, gate_mode="pulse")
         return qml.state()
@@ -458,7 +458,7 @@ def test_pulse_H_gate():
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = PulseInformation.optimized_params("H")
+        pulse_params = pinfo.optimized_params("H")
         Gates.H(wires=0, pulse_params=pulse_params, gate_mode="pulse")
         return qml.state()
 
@@ -499,7 +499,7 @@ def test_pulse_CZ_gate():
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = PulseInformation.optimized_params("CZ")
+        pulse_params = pinfo.optimized_params("CZ")
         qml.H(wires=0)
         qml.H(wires=1)
         Gates.CZ(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
@@ -539,7 +539,7 @@ def test_pulse_CX_gate():
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = PulseInformation.optimized_params("CX")
+        pulse_params = pinfo.optimized_params("CX")
         qml.H(wires=0)
         Gates.CX(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
         return qml.state()
@@ -549,11 +549,11 @@ def test_pulse_CX_gate():
     state_custom_pulse = custom_pulse_circuit()
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
-    assert np.isclose(fidelity, 1.0, atol=1e-1), f"Fidelity too low: {fidelity}"
+    assert np.isclose(fidelity, 1.0, atol=1e-2), f"Fidelity too low: {fidelity}"
 
     custom_fidelity = np.abs(np.vdot(state_ideal, state_custom_pulse)) ** 2
     assert np.isclose(
-        custom_fidelity, 1.0, atol=1e-1
+        custom_fidelity, 1.0, atol=1e-2
     ), f"Fidelity too low for custom pulse: {custom_fidelity}"
 
     phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
