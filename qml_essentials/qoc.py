@@ -12,6 +12,7 @@ import warnings
 
 class QOC:
     # TODO: Add tests to qoc for the new gates (Rot, CY, CRX, CRY, CRZ)
+    # TODO: Figure out why CRX, CRY, CRZ can't be fully optimized
     def __init__(
         self,
         make_plots=False,

@@ -642,6 +642,7 @@ class PulseGates:
     #   gates closely follow https://doi.org/10.5445/IR/1000184129
     # TODO: Mention deviations from the above?
     # TODO: Raise error if len of pulse params is shorter/larger than expected
+    # TODO: Add tests to new gates (Rot, CY, CRX, CRY, CRZ)
     omega_q = 10 * jnp.pi
     omega_c = 10 * jnp.pi
 
@@ -666,7 +667,7 @@ class PulseGates:
 
         return f * x
 
-    @staticmethod  # TODO: Test
+    @staticmethod
     def Rot(phi, theta, omega, wires, pulse_params=None):
         """
         Applies a general single-qubit rotation using a decomposition.
@@ -802,7 +803,7 @@ class PulseGates:
 
         return qml.evolve(H_eff)([0], t)
 
-    @staticmethod  # TODO: Test
+    @staticmethod
     def CRX(w, wires, pulse_params=None):
         """
         Applies a controlled-RX(w) gate using a decomposition.
@@ -846,7 +847,7 @@ class PulseGates:
         return
 
     @staticmethod
-    def CRY(w, wires, pulse_params=None):  # TODO: Test
+    def CRY(w, wires, pulse_params=None):
         """
         Applies a controlled-RY(w) gate using a decomposition.
 
@@ -889,7 +890,7 @@ class PulseGates:
         return
 
     @staticmethod
-    def CRZ(w, wires, pulse_params=None):  # TODO: Test
+    def CRZ(w, wires, pulse_params=None):
         """
         Applies a controlled-RZ(w) gate using a decomposition.
 
@@ -974,7 +975,7 @@ class PulseGates:
         return
 
     @staticmethod
-    def CY(wires, pulse_params=None):  # TODO: Test
+    def CY(wires, pulse_params=None):
         """
         Applies a controlled-Y gate using a decomposition.
 
