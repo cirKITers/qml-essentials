@@ -11,7 +11,7 @@ import warnings
 
 
 class QOC:
-    # TODO: Add tests to qoc for the new gates (Rot, CRX)
+    # TODO: Add tests to qoc for the new gates (Rot, CY, CRX, CRY, CRZ)
     def __init__(
         self,
         make_plots=False,
@@ -660,6 +660,71 @@ class QOC:
 
         return pulse_params, loss, losses
 
+    def optimize_CY(
+        self,
+        steps=1000,
+        patience: int = 100,
+        init_pulse_params: jnp.ndarray = jnp.array([
+            0.5, 15.0, 10.0, 1.0, 15.0, 10.0, 1.0, 1.0, 0.5
+        ]),
+        print_every: int = 50
+    ):
+        """
+        Optimize pulse parameters for the CY gate to best approximate the
+        unitary CY gate.
+
+        Uses gradient-based optimization to minimize the difference between the
+        pulse-based H_c · CY circuit expectation value and the target
+        unitary-based H_c · CY.
+
+        Args:
+            steps (int): Number of optimization steps. Default: 1000.
+            patience (int): Amount of epochs without improvement before early stopping.
+                Default: 100.
+            init_pulse_params (jnp.ndarray): Initial pulse parameters.
+                Default: [1.0, 15.0, 1.0, 1.0, 1.0, 15.0, 1.0].
+            print_every (int): Frequency of printing loss during optimization.
+                Default: 50.
+
+        Returns:
+            tuple: Optimized parameters (jnp.ndarray) and list of loss values during
+                optimization.
+        """
+        self.current_gate = "CY"
+
+        dev = qml.device("default.qubit", wires=2)
+
+        @qml.qnode(dev, interface="jax")
+        def pulse_circuit(w, pulse_params):
+            qml.H(wires=0)
+            Gates.CY(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
+            return qml.state()
+
+        @qml.qnode(dev)
+        def unitary_circuit():
+            qml.H(wires=0)
+            qml.CY(wires=[0, 1])
+            return qml.state()
+
+        target = unitary_circuit()
+
+        # Optimizing
+        cost = lambda pulse_params: self.cost_fn(
+            pulse_params, pulse_circuit, None, target
+        )
+        pulse_params, loss, losses = self.run_optimization(
+            cost, init_pulse_params, steps, patience, print_every
+        )
+
+        # Saving the optimized parameters
+        self.save_results(pulse_params)
+
+        # Plotting the CY rotation
+        if self.make_plots:
+            warnings.warn("Plotting not implemented yet", UserWarning)
+
+        return pulse_params, loss, losses
+
     def optimize_CX(
         self,
         steps=1000,
@@ -675,10 +740,10 @@ class QOC:
 
         Uses gradient-based optimization to minimize the difference between the
         pulse-based H_c · CX circuit expectation value and the target
-        unitary-based H_C · CX.
+        unitary-based H_c · CX.
 
         Args:
-            steps (int): Number of optimization steps. Default: 1900.
+            steps (int): Number of optimization steps. Default: 1000.
             patience (int): Amount of epochs without improvement before early stopping.
                 Default: 100.
             init_pulse_params (jnp.ndarray): Initial pulse parameters.
@@ -745,7 +810,9 @@ class QOC:
         unitary-based H_c · CRX(w).
 
         Args:
-            steps (int): Number of optimization steps (default: 1000).
+            steps (int): Number of optimization steps. Default: 1000.
+            patience (int): Amount of epochs without improvement before early stopping.
+                Default: 100.
             w (float): Rotation angle.
             init_pulse_params (jnp.ndarray): Initial pulse parameters.
             print_every (int): Frequency of printing loss.
@@ -767,6 +834,65 @@ class QOC:
         def unitary_circuit(w):
             qml.H(wires=0)
             qml.CRX(w, wires=[0, 1])
+            return qml.state()
+
+        target = unitary_circuit(w)
+
+        cost = lambda pulse_params: self.cost_fn(pulse_params, pulse_circuit, w, target)
+        pulse_params, loss, losses = self.run_optimization(
+            cost, init_pulse_params, steps, patience, print_every
+        )
+
+        self.save_results(pulse_params)
+
+        if self.make_plots:
+            warnings.warn("Plotting not implemented yet", UserWarning)
+
+        return pulse_params, loss, losses
+
+    def optimize_CRY(
+        self,
+        steps=1000,
+        patience: int = 100,
+        w: float = jnp.pi,
+        init_pulse_params: jnp.ndarray = jnp.array([
+            10.0, 15.0, 1.0, 0.5, 1.0, 0.5, 10.0, 15.0, 1.0
+        ]),
+        print_every: int = 50
+    ):
+        """
+        Optimize pulse parameters for the CRY(w) gate to best approximate
+        the unitary CRY(w) gate.
+
+        Uses gradient-based optimization to minimize the difference between the
+        pulse-based H_c · CRY(w) circuit expectation value and the target
+        unitary-based H_c · CRY(w).
+
+        Args:
+            steps (int): Number of optimization steps. Default: 1000.
+            patience (int): Amount of epochs without improvement before early stopping.
+                Default: 100.
+            w (float): Rotation angle.
+            init_pulse_params (jnp.ndarray): Initial pulse parameters.
+            print_every (int): Frequency of printing loss.
+
+        Returns:
+            tuple: Optimized parameters (jnp.ndarray) and list of loss values.
+        """
+        self.current_gate = "CRY"
+
+        dev = qml.device("default.qubit", wires=2)
+
+        @qml.qnode(dev, interface="jax")
+        def pulse_circuit(w, pulse_params):
+            qml.H(wires=0)
+            Gates.CRY(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
+            return qml.state()
+
+        @qml.qnode(dev)
+        def unitary_circuit(w):
+            qml.H(wires=0)
+            qml.CRY(w, wires=[0, 1])
             return qml.state()
 
         target = unitary_circuit(w)
@@ -901,6 +1027,13 @@ if __name__ == "__main__":
     # print(f"Best achieved fidelity: {1 - best_loss}")
     # print("-" * 20, "\n")
 
+    # - Run optimization for CY gate -
+    # print("Optimizing CY gate...")
+    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CY(print_every=50)
+    # print(f"Optimized parameters for CY: {optimized_pulse_params}\n")
+    # print(f"Best achieved fidelity: {1 - best_loss}")
+    # print("-" * 20, "\n")
+
     # - Run optimization for CX gate -
     # print("Optimizing CX gate...")
     # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CX(print_every=50)
@@ -915,9 +1048,16 @@ if __name__ == "__main__":
     # print(f"Best achieved fidelity: {1 - best_loss}")
     # print("-" * 20, "\n")
 
+    # - Run optimization for CRY gate -
+    # print("Optimizing CRY gate...")
+    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRY(w=jnp.pi)
+    # print(f"Optimized parameters for CRY: {optimized_pulse_params}\n")
+    # print(f"Best achieved fidelity: {1 - best_loss}")
+    # print("-" * 20, "\n")
+
     # - Run optimization for CRZ gate -
-    print("Optimizing CRZ gate...")
-    optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRZ()
-    print(f"Optimized parameters for CRZ: {optimized_pulse_params}\n")
-    print(f"Best achieved fidelity: {1 - best_loss}")
-    print("-" * 20, "\n")
+    # print("Optimizing CRZ gate...")
+    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRZ()
+    # print(f"Optimized parameters for CRZ: {optimized_pulse_params}\n")
+    # print(f"Best achieved fidelity: {1 - best_loss}")
+    # print("-" * 20, "\n")

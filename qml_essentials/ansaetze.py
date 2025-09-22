@@ -595,14 +595,26 @@ class PulseInformation:
         "RX": jnp.array([15.70989327341467, 29.5230665326707, 0.7499810441330634]),
         "RY": jnp.array([7.8787724942614235, 22.001319411513432, 1.098524473819202]),
         "RZ": jnp.array([0.5]),
-        "CRX": None,  # TODO
-        "CRY": None,  # TODO
-        "CRZ": None,  # TODO
+        "CRX": jnp.array([
+            9.345887537573672, 12.785220434787014, 0.7109351566377278, 0.5,
+            15.102609209445896, 0.5, 2.9162064326095, 0.019005851299126367,
+            10.000000000000078
+        ]),
+        "CRY": jnp.array([
+            19.113133239181412, 23.385853735839447, 1.2499994641504941, 0.5,
+            1.0796514845999126, 0.5, 12.313295392726795, 17.310360723575805,
+            0.8499715424933506
+        ]),
+        "CRZ": jnp.array([0.5, 1.7037270017441872, 0.5]),
         "CX": jnp.array([
             7.951920934692106, 21.655479574101687, 0.8929524493211076,
             0.9548359253748596, 7.94488020182026, 21.61729834699293, 0.9067943033364354
         ]),
-        "CY": None,  # TODO
+        "CY": jnp.array([
+            0.5, 13.679990291069169, 6.86497650976022, 1.0547555119435108,
+            14.96056469588421, 13.040583781891456, 0.33844677502596704,
+            0.8709563476069772, 0.5
+        ]),
         "CZ": jnp.array([0.962596375687258]),
         "H": jnp.array([7.857992398977854, 21.572701026008765, 0.9000668764548863]),
     }
@@ -629,8 +641,7 @@ class PulseGates:
     # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT/CX and H pulse level
     #   gates closely follow https://doi.org/10.5445/IR/1000184129
     # TODO: Mention deviations from the above?
-    # TODO: Check that the len of pulse params passed to each gate is exactly as
-    #   expected?
+    # TODO: Raise error if len of pulse params is shorter/larger than expected
     omega_q = 10 * jnp.pi
     omega_c = 10 * jnp.pi
 
@@ -791,7 +802,7 @@ class PulseGates:
 
         return qml.evolve(H_eff)([0], t)
 
-    @staticmethod  # TODO: Test and optimize
+    @staticmethod  # TODO: Test
     def CRX(w, wires, pulse_params=None):
         """
         Applies a controlled-RX(w) gate using a decomposition.
@@ -835,7 +846,7 @@ class PulseGates:
         return
 
     @staticmethod
-    def CRY(w, wires, pulse_params=None):  # TODO: Test and optimize
+    def CRY(w, wires, pulse_params=None):  # TODO: Test
         """
         Applies a controlled-RY(w) gate using a decomposition.
 
@@ -878,7 +889,7 @@ class PulseGates:
         return
 
     @staticmethod
-    def CRZ(w, wires, pulse_params=None):  # TODO: Test and optimize
+    def CRZ(w, wires, pulse_params=None):  # TODO: Test
         """
         Applies a controlled-RZ(w) gate using a decomposition.
 
@@ -963,7 +974,7 @@ class PulseGates:
         return
 
     @staticmethod
-    def CY(wires, pulse_params=None):  # TODO: Test and optimize
+    def CY(wires, pulse_params=None):  # TODO: Test
         """
         Applies a controlled-Y gate using a decomposition.
 
