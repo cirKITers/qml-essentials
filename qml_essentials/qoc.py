@@ -7,9 +7,11 @@ import optax
 import pennylane as qml
 from qml_essentials.ansaetze import Gates
 import matplotlib.pyplot as plt
+import warnings
 
 
 class QOC:
+    # TODO: Add tests to qoc for the new gates (Rot, CRX)
     def __init__(
         self,
         make_plots=False,
@@ -47,8 +49,9 @@ class QOC:
         if self.current_gate in ["RX", "RY"]:
             @qml.qnode(dev, interface="jax")
             def pulse_circuit(w, pulse_params=None):
-                # pulse_params = (pulse_pulse_params, t)
-                getattr(Gates, self.current_gate)(w, 0, pulse_params, gate_mode="pulse")
+                getattr(Gates, self.current_gate)(
+                    w, 0, pulse_params=pulse_params, gate_mode="pulse"
+                )
                 return [
                     qml.expval(qml.PauliX(0)),
                     qml.expval(qml.PauliY(0)),
@@ -93,7 +96,9 @@ class QOC:
             @qml.qnode(dev, interface="jax")
             def pulse_circuit(w, pulse_params=None):
                 qml.RX(w, wires=0)
-                getattr(Gates, self.current_gate)(0, pulse_params, gate_mode="pulse")
+                getattr(Gates, self.current_gate)(
+                    0, pulse_params=pulse_params, gate_mode="pulse"
+                )
                 return [
                     qml.expval(qml.PauliX(0)),
                     qml.expval(qml.PauliY(0)),
@@ -119,7 +124,7 @@ class QOC:
             def pulse_circuit(w, pulse_params=None):
                 qml.RX(w, wires=0)
                 qml.RX(w, wires=1)
-                Gates.CZ([0, 1], pulse_params, gate_mode="pulse")
+                Gates.CZ([0, 1], pulse_params=pulse_params, gate_mode="pulse")
                 qml.RX(-w, wires=1)
                 qml.RX(-w, wires=0)
                 return [
@@ -149,7 +154,7 @@ class QOC:
             @qml.qnode(dev, interface="jax")
             def pulse_circuit(w, pulse_params=None):
                 qml.RX(w, wires=0)
-                Gates.CX([0, 1], pulse_params, gate_mode="pulse")
+                Gates.CX([0, 1], pulse_params=pulse_params, gate_mode="pulse")
                 return [
                     qml.expval(qml.PauliX(1)),
                     qml.expval(qml.PauliY(1)),
@@ -170,15 +175,13 @@ class QOC:
 
         return pulse_circuit, unitary_circuit, operation
 
-    # TODO: Update method
-    def plot_rotation(self, pulse_params: tuple):
+    def plot_rotation(self, pulse_params):
         """
         Plot expectation values of pulse- and unitary-based circuits for the
         current gate as a function of rotation angle.
 
         Args:
-            pulse_params (tuple): (pulse_pulse_params, t) or
-            (pulse_pulse_params, (t_H, t_CZ)) depending on gate.
+            pulse_params: pulse parameters of pulse level gate.
         """
         pulse_circuit, unitary_circuit, operation = self.get_circuits()
 
@@ -247,14 +250,12 @@ class QOC:
         fidelity = jnp.abs(jnp.vdot(target_state, state)) ** 2
         return 1 - fidelity
 
-    # TODO: Update docstring (and method?)
     def cost_fn(self, pulse_params, circuit, w, target_state):
         """
         Compute cost for optimization by evaluating circuit and loss.
 
         Args:
-            pulse_params (tuple): (pulse_pulse_params, t)
-                or (pulse_pulse_params, (t_H, t_CZ)).
+            pulse_params: pulse parameters of pulse level gate.
             circuit (callable): QNode circuit accepting (w, pulse_params).
             w (float): Rotation angle.
             target_state (array): Target quantum state.
@@ -324,6 +325,73 @@ class QOC:
 
         return best_pulse_params, best_loss, losses
 
+    def optimize_Rot(
+            self,
+            steps: int = 1000,
+            patience: int = 100,
+            phi: float = jnp.pi/2,
+            theta: float = jnp.pi/2,
+            omega: float = jnp.pi/2,
+            init_pulse_params: jnp.array = jnp.array([0.5, 1.0, 15.0, 1.0, 0.5]),
+            print_every: int = 50
+    ):
+        """
+        Optimize pulse parameters for the Rot(theta, phi, lam) gate.
+
+        Uses gradient-based optimization to minimize the difference between the
+        pulse-based Rot(phi, theta, omega) circuit expectation value and the target
+        unitary-based Rot(phi, theta, omega).
+
+        Args:
+            steps (int): Number of optimization steps. Default: 1000.
+            patience (int): Patience for early stopping. Default: 100.
+            theta, phi, lam (float): Rotation angles for the Rot gate.
+                Default: π / 2 for all three.
+            init_pulse_params (jnp.ndarray): Initial pulse parameters.
+                Default: [0.5, 1.0, 15.0, 1.0, 0.5].
+            print_every (int): Frequency of printing loss.
+
+        Returns:
+            tuple: Optimized parameters and list of loss values.
+        """
+        self.current_gate = "Rot"
+        w = (phi, theta, omega)
+
+        dev = qml.device("default.qubit", wires=1)
+
+        @qml.qnode(dev, interface="jax")
+        def pulse_circuit(w, pulse_params):
+            phi, theta, omega = w
+            Gates.Rot(
+                phi, theta, omega, 0, pulse_params=pulse_params, gate_mode="pulse"
+            )
+            return qml.state()
+
+        @qml.qnode(dev)
+        def unitary_circuit(w):
+            phi, theta, omega = w
+            qml.Rot(phi, theta, omega, wires=0)
+            return qml.state()
+
+        target = unitary_circuit(w)
+
+        # Optimizing
+        cost = lambda pulse_params: self.cost_fn(pulse_params, pulse_circuit, w, target)
+        pulse_params, loss, losses = self.run_optimization(
+            cost, init_pulse_params, steps, patience, print_every
+        )
+
+        # Saving the optimized parameters
+        self.save_results(pulse_params)
+
+        # Plotting the rotation
+        if self.make_plots:
+            warnings.warn("Plotting not implemented yet", UserWarning)
+            # print("Plotting Rot gate rotation...")
+            # self.plot_rotation(pulse_params)
+
+        return pulse_params, loss, losses
+
     def optimize_RX(
             self,
             steps: int = 1000,
@@ -340,7 +408,9 @@ class QOC:
         pulse-based RX(w) circuit expectation value and the target gate-based RX(w).
 
         Args:
-            steps (int): Number of optimization steps. Default: 600.
+            steps (int): Number of optimization steps. Default: 1000.
+            patience (int): Amount of epochs without improvement before early stopping.
+                Default: 100.
             w (float): Rotation angle in radians with which to run the optimization.
                Default: π.
             init_pulse_params (jnp.ndarray): Initial pulse parameters (A, sigma) and
@@ -397,10 +467,12 @@ class QOC:
         the unitary RY(w) gate.
 
         Uses gradient-based optimization to minimize the difference between the
-        pulse-based RY(w) circuit expectation value and the target gate-based RY(w).
+        pulse-based RY(w) circuit expectation value and the target unitary-based RY(w).
 
         Args:
-            steps (int): Number of optimization steps. Default: 600.
+            steps (int): Number of optimization steps. Default: 1000.
+            patience (int): Amount of epochs without improvement before early stopping.
+                Default: 100.
             w (float): Rotation angle in radians with which to run the optimization.
                 Default: π.
             init_pulse_params (jnp.ndarray): Initial pulse parameters (A, sigma) and
@@ -478,6 +550,8 @@ class QOC:
 
         Args:
             steps (int): Number of optimization steps. Default: 1000.
+            patience (int): Amount of epochs without improvement before early stopping.
+                Default: 100.
             init_pulse_params (jnp.ndarray): Initial pulse parameters (A, sigma, t)
                 Default: [1.0, 15.0, 1.0].
             print_every (int): Frequency of printing loss during optimization.
@@ -493,7 +567,7 @@ class QOC:
 
         @qml.qnode(dev, interface="jax")
         def pulse_circuit(w, pulse_params):
-            Gates.H(0, pulse_params, gate_mode="pulse")
+            Gates.H(0, pulse_params=pulse_params, gate_mode="pulse")
             return qml.state()
 
         @qml.qnode(dev)
@@ -533,10 +607,13 @@ class QOC:
         the unitary CZ gate.
 
         Uses gradient-based optimization to minimize the difference between the
-        pulse-based CZ circuit expectation value and the target gate-based CZ.
+        pulse-based H_c · H_t · CZ circuit expectation value and the target
+        unitary-based H_c · H_t · CZ.
 
         Args:
-            steps (int): Number of optimization steps. Default: 600.
+            steps (int): Number of optimization steps. Default: 1000.
+            patience (int): Amount of epochs without improvement before early stopping.
+                Default: 100.
             init_pulse_params (jnp.ndarray): Initial pulse duration. Default: [1.0].
             print_every (int): Frequency of printing loss during optimization.
                 Default: 50.
@@ -597,10 +674,13 @@ class QOC:
         unitary CX gate.
 
         Uses gradient-based optimization to minimize the difference between the
-        pulse-based CX circuit expectation value and the target gate-based CX.
+        pulse-based H_c · CX circuit expectation value and the target
+        unitary-based H_C · CX.
 
         Args:
-            steps (int): Number of optimization steps (default: 600).
+            steps (int): Number of optimization steps. Default: 1900.
+            patience (int): Amount of epochs without improvement before early stopping.
+                Default: 100.
             init_pulse_params (jnp.ndarray): Initial pulse parameters.
                 Default: [1.0, 15.0, 1.0, 1.0, 1.0, 15.0, 1.0].
             print_every (int): Frequency of printing loss during optimization.
@@ -646,6 +726,123 @@ class QOC:
 
         return pulse_params, loss, losses
 
+    def optimize_CRX(
+        self,
+        steps=1000,
+        patience: int = 100,
+        w: float = jnp.pi,
+        init_pulse_params: jnp.ndarray = jnp.array([
+            10.0, 15.0, 1.0, 0.5, 1.0, 0.5, 10.0, 15.0, 1.0
+        ]),
+        print_every: int = 50
+    ):
+        """
+        Optimize pulse parameters for the CRX(w) gate to best approximate
+        the unitary CRX(w) gate.
+
+        Uses gradient-based optimization to minimize the difference between the
+        pulse-based H_c · CRX(w) circuit expectation value and the target
+        unitary-based H_c · CRX(w).
+
+        Args:
+            steps (int): Number of optimization steps (default: 1000).
+            w (float): Rotation angle.
+            init_pulse_params (jnp.ndarray): Initial pulse parameters.
+            print_every (int): Frequency of printing loss.
+
+        Returns:
+            tuple: Optimized parameters (jnp.ndarray) and list of loss values.
+        """
+        self.current_gate = "CRX"
+
+        dev = qml.device("default.qubit", wires=2)
+
+        @qml.qnode(dev, interface="jax")
+        def pulse_circuit(w, pulse_params):
+            qml.H(wires=0)
+            Gates.CRX(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
+            return qml.state()
+
+        @qml.qnode(dev)
+        def unitary_circuit(w):
+            qml.H(wires=0)
+            qml.CRX(w, wires=[0, 1])
+            return qml.state()
+
+        target = unitary_circuit(w)
+
+        cost = lambda pulse_params: self.cost_fn(pulse_params, pulse_circuit, w, target)
+        pulse_params, loss, losses = self.run_optimization(
+            cost, init_pulse_params, steps, patience, print_every
+        )
+
+        self.save_results(pulse_params)
+
+        if self.make_plots:
+            warnings.warn("Plotting not implemented yet", UserWarning)
+
+        return pulse_params, loss, losses
+
+    def optimize_CRZ(
+        self,
+        steps=1000,
+        patience: int = 100,
+        w: float = jnp.pi,
+        init_pulse_params: jnp.ndarray = jnp.array([0.5, 2.0, 0.5]),
+        print_every: int = 50
+    ):
+        """
+        Optimize pulse parameters for the CRZ(w) gate to best approximate
+        the unitary CRZ(w) gate.
+
+        Uses gradient-based optimization to minimize the difference between the
+        pulse-based H_c · H_t · CRZ(w) circuit expectation value and the target
+        unitary-based H_c · H_t · CRZ(w).
+
+        Args:
+            steps (int): Number of optimization steps. Default: 1000.
+            patience (int): Early stopping patience. Default: 100.
+            w (float): Rotation angle.
+            init_pulse_params (jnp.ndarray): Initial pulse parameters.
+            print_every (int): Frequency of printing loss.
+
+        Returns:
+            tuple: Optimized parameters (jnp.ndarray) and list of loss values.
+        """
+        self.current_gate = "CRZ"
+
+        dev = qml.device("default.qubit", wires=2)
+
+        # Pulse circuit with full parametric decomposition
+        @qml.qnode(dev, interface="jax")
+        def pulse_circuit(w, pulse_params):
+            qml.H(wires=0)
+            qml.H(wires=1)
+            Gates.CRZ(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
+            return qml.state()
+
+        @qml.qnode(dev)
+        def unitary_circuit(w):
+            qml.H(wires=0)
+            qml.H(wires=1)
+            qml.CRZ(w, wires=[0, 1])
+            return qml.state()
+
+        target = unitary_circuit(w)
+
+        # Cost function
+        cost = lambda pulse_params: self.cost_fn(pulse_params, pulse_circuit, w, target)
+        pulse_params, loss, losses = self.run_optimization(
+            cost, init_pulse_params, steps, patience, print_every
+        )
+
+        self.save_results(pulse_params)
+
+        if self.make_plots:
+            warnings.warn("Plotting not implemented yet", UserWarning)
+
+        return pulse_params, loss, losses
+
 
 if __name__ == "__main__":
     qoc = QOC(
@@ -654,6 +851,13 @@ if __name__ == "__main__":
         fig_dir="docs/figures",
         file_dir="qml_essentials"
     )
+
+    # - Run optimization for Rot gate -
+    # print("Optimizing Rot gate...")
+    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_Rot()
+    # print(f"Optimized parameters for Rot: {optimized_pulse_params}\n")
+    # print(f"Best achieved fidelity: {1 - best_loss}")
+    # print("-" * 20, "\n")
 
     # # - Run optimization for RX gate -
     # print("Optimizing RX gate...")
@@ -703,3 +907,17 @@ if __name__ == "__main__":
     # print(f"Optimized parameters for CX: {optimized_pulse_params}\n")
     # print(f"Best achieved fidelity: {1 - best_loss}")
     # print("-" * 20, "\n")
+
+    # - Run optimization for CRX gate -
+    # print("Optimizing CRX gate...")
+    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRX(w=jnp.pi)
+    # print(f"Optimized parameters for CRX: {optimized_pulse_params}\n")
+    # print(f"Best achieved fidelity: {1 - best_loss}")
+    # print("-" * 20, "\n")
+
+    # - Run optimization for CRZ gate -
+    print("Optimizing CRZ gate...")
+    optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRZ()
+    print(f"Optimized parameters for CRZ: {optimized_pulse_params}\n")
+    print(f"Best achieved fidelity: {1 - best_loss}")
+    print("-" * 20, "\n")

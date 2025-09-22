@@ -22,7 +22,8 @@ If you want to implement your own ansatz, you can do so by inheriting from the `
 ```python
 import pennylane as qml
 import pennylane.numpy as np
-from qml_essentials.ansaetze import Circuit, PulseInformation
+from qml_essentials.ansaetze import Circuit
+from qml_essentials.ansaetze import PulseInformation as pinfo
 from typing import Optional
 
 class MyHardwareEfficient(Circuit):
@@ -32,9 +33,9 @@ class MyHardwareEfficient(Circuit):
 
     @staticmethod
     def n_pulse_params_per_layer(n_qubits: int) -> int:
-        n_params_RY = PulseInformation.num_params("RY")
-        n_params_RZ = PulseInformation.num_params("RZ")
-        n_params_CZ = PulseInformation.num_params("CZ")
+        n_params_RY = pinfo.num_params("RY")
+        n_params_RZ = pinfo.num_params("RZ")
+        n_params_CZ = pinfo.num_params("CZ")
 
         n_pulse_params = (num_params_RY + num_params_RZ) * n_qubits
         n_pulse_params += num_params_CZ * (n_qubits - 1)
@@ -164,15 +165,15 @@ Each implemented gate takes the following number of pulse parameters:
 You can use the `PulseInformation` class to access both the number and optimized values of the pulse parameters for each gate:
 
 ```python
-from qml_essentials.ansaetze import PulseInformation
+from qml_essentials.ansaetze import PulseInformation as pinfo
 
 # Number of pulse parameters
-n_pulse_params_RX = PulseInformation.num_params("RX")  # 3
-n_pulse_params_CX = PulseInformation.num_params("CX")  # 4
+n_pulse_params_RX = pinfo.num_params("RX")  # 3
+n_pulse_params_CX = pinfo.num_params("CX")  # 4
 
 # Optimized pulse parameters
-opt_pulse_params_RX = PulseInformation.optimized_params("RX")  # jnp.array([15.709893, 29.52306, 0.74998104])
-opt_pulse_params_CX = PulseInformation.optimized_params("CX")  # jnp.array([7.9447253, 21.6398258, 0.90724313, 0.95509776])
+opt_pulse_params_RX = pinfo.optimized_params("RX")  # jnp.array([15.709893, 29.52306, 0.74998104])
+opt_pulse_params_CX = pinfo.optimized_params("CX")  # jnp.array([7.9447253, 21.6398258, 0.90724313, 0.95509776])
 ```
 
 ### Calling Gates in Pulse Mode

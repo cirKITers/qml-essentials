@@ -1,7 +1,8 @@
 from typing import Optional
 import random
 from qml_essentials.model import Model
-from qml_essentials.ansaetze import Circuit, Ansaetze, Gates, PulseInformation
+from qml_essentials.ansaetze import Circuit, Ansaetze, Gates
+from qml_essentials.ansaetze import PulseInformation as pinfo
 import pytest
 import inspect
 import logging
@@ -690,11 +691,11 @@ def test_ansaetze() -> None:
 
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
-            n_params = PulseInformation.num_params("RY")
-            n_params += PulseInformation.num_params("RZ")
+            n_params = pinfo.num_params("RY")
+            n_params += pinfo.num_params("RZ")
             n_params *= n_qubits
 
-            n_params += (n_qubits - 1) * PulseInformation.num_params("CZ")
+            n_params += (n_qubits - 1) * pinfo.num_params("CZ")
 
             return n_params
 

@@ -9,7 +9,7 @@ from copy import deepcopy
 import math
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
-from qml_essentials.ansaetze import PulseInformation
+from qml_essentials.ansaetze import PulseInformation as pinfo
 from qml_essentials.utils import PauliCircuit, QuanTikz, MultiprocessingPool
 
 
@@ -149,9 +149,9 @@ class Model:
         for sp in self._sp:
             sp_name = sp.__name__ if hasattr(sp, "__name__") else str(sp)
 
-            if sp_name in PulseInformation.OPTIMIZED_PULSES:
+            if sp_name in pinfo.OPTIMIZED_PULSES:
                 params = np.array(
-                    PulseInformation.optimized_params(sp_name), requires_grad=False
+                    pinfo.optimized_params(sp_name), requires_grad=False
                 )
                 self.sp_pulse_params.append(params)
             else:

@@ -299,7 +299,7 @@ class UnitaryGates:
     @staticmethod
     def Rot(phi, theta, omega, wires, noise_params=None):
         """
-        Applies a rotation gate to the given wires and adds `Noise`
+        Applies a rotation gate to the given wires and adds `Noise`.
 
         Parameters
         ----------
@@ -575,21 +575,23 @@ class PulseInformation:
     Stores pulse parameter counts and optimized pulse parameters for quantum gates.
     """
     PULSE_PARAM_COUNTS: Dict[str, int] = {
-        "Rot": 0,  # TODO
         "RX": 3,
         "RY": 3,
         "RZ": 1,
-        "CRY": 0,  # TODO
-        "CRZ": 0,  # TODO
-        "CY": 0,   # TODO
         "CZ": 1,
         "H": 3
     }
+    PULSE_PARAM_COUNTS["Rot"] = 2 * PULSE_PARAM_COUNTS["RZ"] + PULSE_PARAM_COUNTS["RY"]
     PULSE_PARAM_COUNTS["CX"] = 2 * PULSE_PARAM_COUNTS["H"] + PULSE_PARAM_COUNTS["CZ"]
+    PULSE_PARAM_COUNTS["CY"] = 2 * PULSE_PARAM_COUNTS["RZ"] + PULSE_PARAM_COUNTS["CX"]
+    PULSE_PARAM_COUNTS["CRZ"] = 2 * PULSE_PARAM_COUNTS["RZ"] + PULSE_PARAM_COUNTS["CZ"]
+    PULSE_PARAM_COUNTS["CRY"] = 2 * PULSE_PARAM_COUNTS["RX"] + PULSE_PARAM_COUNTS["CRZ"]
     PULSE_PARAM_COUNTS["CRX"] = 2 * PULSE_PARAM_COUNTS["H"] + PULSE_PARAM_COUNTS["CRZ"]
 
     OPTIMIZED_PULSES: Dict[str, Optional[jnp.ndarray]] = {
-        "Rot": None,  # TODO
+        "Rot": jnp.array([
+            0.5, 7.857992399021039, 21.57270102638842, 0.9000668764608991, 0.5
+        ]),
         "RX": jnp.array([15.70989327341467, 29.5230665326707, 0.7499810441330634]),
         "RY": jnp.array([7.8787724942614235, 22.001319411513432, 1.098524473819202]),
         "RZ": jnp.array([0.5]),
@@ -597,10 +599,8 @@ class PulseInformation:
         "CRY": None,  # TODO
         "CRZ": None,  # TODO
         "CX": jnp.array([
-            7.951920934692106, 21.655479574101687,
-            0.8929524493211076, 0.9548359253748596,
-            7.94488020182026, 21.61729834699293,
-            0.9067943033364354
+            7.951920934692106, 21.655479574101687, 0.8929524493211076,
+            0.9548359253748596, 7.94488020182026, 21.61729834699293, 0.9067943033364354
         ]),
         "CY": None,  # TODO
         "CZ": jnp.array([0.962596375687258]),
@@ -625,9 +625,6 @@ class PulseInformation:
 pinfo = PulseInformation
 
 
-# TODO: Update slicing quantity of params in gates by PulseInfo
-# TODO: Update pulse_params type in docstrings
-# TODO: Update docstrings
 class PulseGates:
     # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT/CX and H pulse level
     #   gates closely follow https://doi.org/10.5445/IR/1000184129
@@ -658,10 +655,48 @@ class PulseGates:
 
         return f * x
 
-    @staticmethod
-    def Rot(phi, theta, omega, wires, pulse_params=None):  # TODO
-        # RZ(phi) · RY(theta) · RZ(omega)
-        qml.Rot(phi, theta, omega, wires=wires)
+    @staticmethod  # TODO: Test
+    def Rot(phi, theta, omega, wires, pulse_params=None):
+        """
+        Applies a general single-qubit rotation using a decomposition.
+
+        Decomposition:
+            Rot(phi, theta, omega) = RZ(phi) · RY(theta) · RZ(omega)
+
+        Parameters
+        ----------
+        phi : float
+            The first rotation angle.
+        theta : float
+            The second rotation angle.
+        omega : float
+            The third rotation angle.
+        wires : List[int]
+            The wire(s) to apply the rotation to.
+        pulse_params : np.ndarray, optional
+            Pulse parameters for the composing gates. Defaults
+            to optimized parameters if None.
+        """
+        n_RZ = pinfo.num_params("RZ")
+        n_RY = pinfo.num_params("RY")
+
+        idx1 = n_RZ
+        idx2 = idx1 + n_RY
+        idx3 = idx2 + n_RZ
+
+        if pulse_params is None:
+            opt = pinfo.optimized_params("Rot")
+            params_RZ_1 = opt[:idx1]
+            params_RY = opt[idx1:idx2]
+            params_RZ_2 = opt[idx2:idx3]
+        else:
+            params_RZ_1 = pulse_params[:idx1]
+            params_RY = pulse_params[idx1:idx2]
+            params_RZ_2 = pulse_params[idx2:idx3]
+
+        PulseGates.RZ(phi, wires=wires, pulse_params=params_RZ_1)
+        PulseGates.RY(theta, wires=wires, pulse_params=params_RY)
+        PulseGates.RZ(omega, wires=wires, pulse_params=params_RZ_2)
 
     @staticmethod
     def RX(w, wires, pulse_params=None):
@@ -756,13 +791,13 @@ class PulseGates:
 
         return qml.evolve(H_eff)([0], t)
 
-    @staticmethod
+    @staticmethod  # TODO: Test and optimize
     def CRX(w, wires, pulse_params=None):
         """
         Applies a controlled-RX(w) gate using a decomposition.
 
         Decomposition:
-            CRX(theta) = H_t · CRZ(w) · H_t
+            CRX(w) = H_t · CRZ(w) · H_t
 
         Parameters
         ----------
@@ -786,7 +821,6 @@ class PulseGates:
             params_H_1 = opt[:idx1]
             params_CRZ = opt[idx1:idx2]
             params_H_2 = opt[idx2:idx3]
-
         else:
             params_H_1 = pulse_params[:idx1]
             params_CRZ = pulse_params[idx1:idx2]
@@ -798,17 +832,93 @@ class PulseGates:
         PulseGates.CRZ(w, wires, pulse_params=params_CRZ)
         PulseGates.H(wires=target, pulse_params=params_H_2)
 
-    @staticmethod
-    def CRY(w, wires, pulse_params=None):  # TODO
-        # RX(-pi/2)_t · CRZ(w) · RX(pi/2)_t
-        # =
-        # RX(-pi/2)_t · RZ(w/2)_t · CZ · RZ(-w/2)_t · RX(pi/2)_t
-        qml.CRY(w, wires=wires)
+        return
 
     @staticmethod
-    def CRZ(w, wires, pulse_params=None):  # TODO
-        # RZ(w/2)_t · CZ · RZ(-w/2)_t
-        qml.CRZ(w, wires=wires)
+    def CRY(w, wires, pulse_params=None):  # TODO: Test and optimize
+        """
+        Applies a controlled-RY(w) gate using a decomposition.
+
+        Decomposition:
+            CRY(w) = RX(-π/2)_t · CRZ(w) · RX(π/2)_t
+
+        Parameters
+        ----------
+        w : float
+            Rotation angle.
+        wires : List[int]
+            The control and target wires.
+        pulse_params : np.ndarray
+            Pulse parameters for the composing gates. Defaults
+            to optimized parameters if None.
+        """
+        n_RX = pinfo.num_params("RX")
+        n_CRZ = pinfo.num_params("CRZ")
+
+        idx1 = n_RX
+        idx2 = idx1 + n_CRZ
+        idx3 = idx2 + n_RX
+
+        if pulse_params is None:
+            opt = pinfo.optimized_params("CRY")
+            params_RX_1 = opt[:idx1]
+            params_CRZ = opt[idx1:idx2]
+            params_RX_2 = opt[idx2:idx3]
+        else:
+            params_RX_1 = pulse_params[:idx1]
+            params_CRZ = pulse_params[idx1:idx2]
+            params_RX_2 = pulse_params[idx2:idx3]
+
+        target = wires[1]
+
+        PulseGates.RX(-np.pi/2, wires=target, pulse_params=params_RX_1)
+        PulseGates.CRZ(w, wires=wires, pulse_params=params_CRZ)
+        PulseGates.RX(np.pi/2, wires=target, pulse_params=params_RX_2)
+
+        return
+
+    @staticmethod
+    def CRZ(w, wires, pulse_params=None):  # TODO: Test and optimize
+        """
+        Applies a controlled-RZ(w) gate using a decomposition.
+
+        Decomposition:
+            CRZ(w) = RZ(w/2)_t · CZ · RZ(-w/2)_t
+
+        Parameters
+        ----------
+        w : float
+            Rotation angle.
+        wires : List[int]
+            The control and target wires.
+        pulse_params : np.ndarray
+            Pulse parameters for the composing gates. Defaults
+            to optimized parameters if None.
+        """
+        n_RZ = pinfo.num_params("RZ")
+        n_CZ = pinfo.num_params("CZ")
+
+        idx1 = n_RZ
+        idx2 = idx1 + n_CZ
+        idx3 = idx2 + n_RZ
+
+        if pulse_params is None:
+            opt = pinfo.optimized_params("CRZ")
+            params_RZ_1 = opt[:idx1]
+            params_CZ = opt[idx1:idx2]
+            params_RZ_2 = opt[idx2:idx3]
+        else:
+            params_RZ_1 = pulse_params[:idx1]
+            params_CZ = pulse_params[idx1:idx2]
+            params_RZ_2 = pulse_params[idx2:idx3]
+
+        target = wires[1]
+
+        PulseGates.RZ(w/2, wires=target, pulse_params=params_RZ_1)
+        PulseGates.CZ(wires=wires, pulse_params=params_CZ)
+        PulseGates.RZ(-w/2, wires=target, pulse_params=params_RZ_2)
+
+        return
 
     @staticmethod
     def CX(wires, pulse_params=None):
@@ -853,11 +963,45 @@ class PulseGates:
         return
 
     @staticmethod
-    def CY(wires, pulse_params=None):  # TODO
-        # RZ(-pi/2)_t · CX · RZ(pi/2)_t
-        # =
-        # RZ(-pi/2)_t · H_t · CZ · H_t · RZ(pi/2)_t
-        qml.CY(wires=wires)
+    def CY(wires, pulse_params=None):  # TODO: Test and optimize
+        """
+        Applies a controlled-Y gate using a decomposition.
+
+        Decomposition:
+            CY = RZ(-π/2)_t · CX · RZ(π/2)_t
+
+        Parameters
+        ----------
+        wires : List[int]
+            The control and target wires.
+        pulse_params : np.ndarray
+            Pulse parameters for the composing gates. Defaults
+            to optimized parameters if None.
+        """
+        n_RZ = pinfo.num_params("RZ")
+        n_CX = pinfo.num_params("CX")
+
+        idx1 = n_RZ
+        idx2 = idx1 + n_CX
+        idx3 = idx2 + n_RZ
+
+        if pulse_params is None:
+            opt = pinfo.optimized_params("CY")
+            params_RZ_1 = opt[:idx1]
+            params_CX = opt[idx1:idx2]
+            params_RZ_2 = opt[idx2:idx3]
+        else:
+            params_RZ_1 = pulse_params[:idx1]
+            params_CX = pulse_params[idx1:idx2]
+            params_RZ_2 = pulse_params[idx2:idx3]
+
+        target = wires[1]
+
+        PulseGates.RZ(-np.pi/2, wires=target, pulse_params=params_RZ_1)
+        PulseGates.CX(wires=wires, pulse_params=params_CX)
+        PulseGates.RZ(np.pi/2, wires=target, pulse_params=params_RZ_2)
+
+        return
 
     @staticmethod
     def CZ(wires, pulse_params=None):
