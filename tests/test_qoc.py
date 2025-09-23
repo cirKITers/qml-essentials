@@ -2,6 +2,7 @@ from qml_essentials.qoc import QOC
 import pytest
 import logging
 import jax
+
 jax.config.update("jax_enable_x64", True)
 
 

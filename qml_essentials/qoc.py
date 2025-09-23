@@ -1,7 +1,5 @@
 import os
 import csv
-import jax
-import jax.numpy as jnp
 import optax
 import pennylane as qml
 from qml_essentials.ansaetze import Gates
@@ -18,7 +16,7 @@ class QOC:
         make_plots=False,
         file_dir="qoc/results",
         fig_dir="qoc/figures",
-        fig_points=70
+        fig_points=70,
     ):
         """
         Initialize Quantum Optimal Control with Pulse-level Gates.
@@ -48,6 +46,7 @@ class QOC:
         dev = qml.device("default.qubit", wires=1)
 
         if self.current_gate in ["RX", "RY"]:
+
             @qml.qnode(dev, interface="jax")
             def pulse_circuit(w, pulse_params=None):
                 getattr(Gates, self.current_gate)(
@@ -56,7 +55,7 @@ class QOC:
                 return [
                     qml.expval(qml.PauliX(0)),
                     qml.expval(qml.PauliY(0)),
-                    qml.expval(qml.PauliZ(0))
+                    qml.expval(qml.PauliZ(0)),
                 ]
 
             @qml.qnode(dev)
@@ -65,12 +64,13 @@ class QOC:
                 return [
                     qml.expval(qml.PauliX(0)),
                     qml.expval(qml.PauliY(0)),
-                    qml.expval(qml.PauliZ(0))
+                    qml.expval(qml.PauliZ(0)),
                 ]
 
             operation = f"{self.current_gate}(w)"
 
         elif self.current_gate == "RZ":
+
             @qml.qnode(dev, interface="jax")
             def pulse_circuit(w, *_):
                 qml.RX(jnp.pi / 2, wires=0)
@@ -78,7 +78,7 @@ class QOC:
                 return [
                     qml.expval(qml.PauliX(0)),
                     qml.expval(qml.PauliY(0)),
-                    qml.expval(qml.PauliZ(0))
+                    qml.expval(qml.PauliZ(0)),
                 ]
 
             @qml.qnode(dev)
@@ -88,12 +88,13 @@ class QOC:
                 return [
                     qml.expval(qml.PauliX(0)),
                     qml.expval(qml.PauliY(0)),
-                    qml.expval(qml.PauliZ(0))
+                    qml.expval(qml.PauliZ(0)),
                 ]
 
             operation = f"RX(π / 2)·{self.current_gate}(w)"
 
         elif self.current_gate == "H":
+
             @qml.qnode(dev, interface="jax")
             def pulse_circuit(w, pulse_params=None):
                 qml.RX(w, wires=0)
@@ -103,7 +104,7 @@ class QOC:
                 return [
                     qml.expval(qml.PauliX(0)),
                     qml.expval(qml.PauliY(0)),
-                    qml.expval(qml.PauliZ(0))
+                    qml.expval(qml.PauliZ(0)),
                 ]
 
             @qml.qnode(dev)
@@ -113,7 +114,7 @@ class QOC:
                 return [
                     qml.expval(qml.PauliX(0)),
                     qml.expval(qml.PauliY(0)),
-                    qml.expval(qml.PauliZ(0))
+                    qml.expval(qml.PauliZ(0)),
                 ]
 
             operation = f"RX(w)·{self.current_gate}"
@@ -131,7 +132,7 @@ class QOC:
                 return [
                     qml.expval(qml.PauliX(1)),
                     qml.expval(qml.PauliY(1)),
-                    qml.expval(qml.PauliZ(1))
+                    qml.expval(qml.PauliZ(1)),
                 ]
 
             @qml.qnode(dev)
@@ -144,7 +145,7 @@ class QOC:
                 return [
                     qml.expval(qml.PauliX(1)),
                     qml.expval(qml.PauliY(1)),
-                    qml.expval(qml.PauliZ(1))
+                    qml.expval(qml.PauliZ(1)),
                 ]
 
             operation = r"$RX_0(w)$·$RX_1(w)$·$CZ_{0, 1}$·$RX_1(-w)$·$RX_0(-w)$"
@@ -159,7 +160,7 @@ class QOC:
                 return [
                     qml.expval(qml.PauliX(1)),
                     qml.expval(qml.PauliY(1)),
-                    qml.expval(qml.PauliZ(1))
+                    qml.expval(qml.PauliZ(1)),
                 ]
 
             @qml.qnode(dev)
@@ -169,7 +170,7 @@ class QOC:
                 return [
                     qml.expval(qml.PauliX(1)),
                     qml.expval(qml.PauliY(1)),
-                    qml.expval(qml.PauliZ(1))
+                    qml.expval(qml.PauliZ(1)),
                 ]
 
             operation = r"$RX_0(w)$·$CX_{0,1}$"
@@ -197,14 +198,14 @@ class QOC:
         bases = ["X", "Y", "Z"]
         for i, basis in enumerate(bases):
             axs[i].plot(self.ws, pulse_expvals[:, i], label="Pulse-based")
-            axs[i].plot(self.ws, ideal_expvals[:, i], '--', label="Unitary-based")
+            axs[i].plot(self.ws, ideal_expvals[:, i], "--", label="Unitary-based")
             axs[i].set_xlabel("Rotation angle w (rad)")
             axs[i].set_ylabel(f"⟨{basis}⟩")
             axs[i].set_title(f"{operation} in {basis}-basis")
             axs[i].grid(True)
             axs[i].legend()
 
-        xticks = [0, jnp.pi/2, jnp.pi, 3*jnp.pi/2, 2*jnp.pi]
+        xticks = [0, jnp.pi / 2, jnp.pi, 3 * jnp.pi / 2, 2 * jnp.pi]
         xtick_labels = ["0", "π/2", "π", "3π/2", "2π"]
         for ax in axs:
             ax.set_xticks(xticks)
@@ -229,7 +230,7 @@ class QOC:
             filename = os.path.join(self.file_dir, "qoc_results.csv")
             file_exists = os.path.isfile(filename)
 
-            with open(filename, mode='a', newline='') as f:
+            with open(filename, mode="a", newline="") as f:
                 writer = csv.writer(f)
                 if not file_exists:
                     writer.writerow(header)
@@ -327,14 +328,14 @@ class QOC:
         return best_pulse_params, best_loss, losses
 
     def optimize_Rot(
-            self,
-            steps: int = 1000,
-            patience: int = 100,
-            phi: float = jnp.pi/2,
-            theta: float = jnp.pi/2,
-            omega: float = jnp.pi/2,
-            init_pulse_params: jnp.array = jnp.array([0.5, 1.0, 15.0, 1.0, 0.5]),
-            print_every: int = 50
+        self,
+        steps: int = 1000,
+        patience: int = 100,
+        phi: float = jnp.pi / 2,
+        theta: float = jnp.pi / 2,
+        omega: float = jnp.pi / 2,
+        init_pulse_params: jnp.array = jnp.array([0.5, 1.0, 15.0, 1.0, 0.5]),
+        print_every: int = 50,
     ):
         """
         Optimize pulse parameters for the Rot(theta, phi, lam) gate.
@@ -395,12 +396,12 @@ class QOC:
         return pulse_params, loss, losses
 
     def optimize_RX(
-            self,
-            steps: int = 1000,
-            patience: int = 100,
-            w: float = jnp.pi,
-            init_pulse_params: jnp.array = jnp.array([1.0, 15.0, 1.0]),
-            print_every: int = 50
+        self,
+        steps: int = 1000,
+        patience: int = 100,
+        w: float = jnp.pi,
+        init_pulse_params: jnp.array = jnp.array([1.0, 15.0, 1.0]),
+        print_every: int = 50,
     ):
         """
         Optimize pulse parameters for the RX(w) gate to best approximate
@@ -460,12 +461,12 @@ class QOC:
         return pulse_params, loss, losses
 
     def optimize_RY(
-            self,
-            steps: int = 1000,
-            patience: int = 100,
-            w: float = jnp.pi,
-            init_pulse_params: jnp.array = jnp.array([1.0, 15.0, 1.0]),
-            print_every: int = 50
+        self,
+        steps: int = 1000,
+        patience: int = 100,
+        w: float = jnp.pi,
+        init_pulse_params: jnp.array = jnp.array([1.0, 15.0, 1.0]),
+        print_every: int = 50,
     ):
         """
         Optimize pulse parameters for the RY(w) gate to best approximate
@@ -547,7 +548,7 @@ class QOC:
         steps=1000,
         patience: int = 100,
         init_pulse_params: jnp.array = jnp.array([1.0, 15.0, 1.0]),
-        print_every: int = 50
+        print_every: int = 50,
     ):
         """
         Optimize pulse parameters for the Hadamard (H) gate to best approximate
@@ -609,7 +610,7 @@ class QOC:
         steps=1000,
         patience: int = 100,
         init_pulse_params: jnp.ndarray = jnp.array([1.0]),
-        print_every: int = 50
+        print_every: int = 50,
     ):
         """
         Optimize pulse parameters for the CZ gate to best approximate
@@ -674,10 +675,10 @@ class QOC:
         self,
         steps=1000,
         patience: int = 100,
-        init_pulse_params: jnp.ndarray = jnp.array([
-            0.5, 15.0, 10.0, 1.0, 15.0, 10.0, 1.0, 1.0, 0.5
-        ]),
-        print_every: int = 50
+        init_pulse_params: jnp.ndarray = jnp.array(
+            [0.5, 15.0, 10.0, 1.0, 15.0, 10.0, 1.0, 1.0, 0.5]
+        ),
+        print_every: int = 50,
     ):
         """
         Optimize pulse parameters for the CY gate to best approximate the
@@ -740,10 +741,10 @@ class QOC:
         self,
         steps=1000,
         patience: int = 100,
-        init_pulse_params: jnp.ndarray = jnp.array([
-            1.0, 15.0, 1.0, 1.0, 1.0, 15.0, 1.0
-        ]),
-        print_every: int = 50
+        init_pulse_params: jnp.ndarray = jnp.array(
+            [1.0, 15.0, 1.0, 1.0, 1.0, 15.0, 1.0]
+        ),
+        print_every: int = 50,
     ):
         """
         Optimize pulse parameters for the CX gate to best approximate the
@@ -808,10 +809,10 @@ class QOC:
         steps=1000,
         patience: int = 100,
         w: float = jnp.pi,
-        init_pulse_params: jnp.ndarray = jnp.array([
-            10.0, 15.0, 1.0, 0.5, 1.0, 0.5, 10.0, 15.0, 1.0
-        ]),
-        print_every: int = 50
+        init_pulse_params: jnp.ndarray = jnp.array(
+            [10.0, 15.0, 1.0, 0.5, 1.0, 0.5, 10.0, 15.0, 1.0]
+        ),
+        print_every: int = 50,
     ):
         """
         Optimize pulse parameters for the CRX(w) gate to best approximate
@@ -870,10 +871,10 @@ class QOC:
         steps=1000,
         patience: int = 100,
         w: float = jnp.pi,
-        init_pulse_params: jnp.ndarray = jnp.array([
-            10.0, 15.0, 1.0, 0.5, 1.0, 0.5, 10.0, 15.0, 1.0
-        ]),
-        print_every: int = 50
+        init_pulse_params: jnp.ndarray = jnp.array(
+            [10.0, 15.0, 1.0, 0.5, 1.0, 0.5, 10.0, 15.0, 1.0]
+        ),
+        print_every: int = 50,
     ):
         """
         Optimize pulse parameters for the CRY(w) gate to best approximate
@@ -933,7 +934,7 @@ class QOC:
         patience: int = 100,
         w: float = jnp.pi,
         init_pulse_params: jnp.ndarray = jnp.array([0.5, 2.0, 0.5]),
-        print_every: int = 50
+        print_every: int = 50,
     ):
         """
         Optimize pulse parameters for the CRZ(w) gate to best approximate
@@ -996,7 +997,7 @@ if __name__ == "__main__":
         make_plots=False,
         fig_points=40,
         fig_dir="docs/figures",
-        file_dir="qml_essentials"
+        file_dir="qml_essentials",
     )
 
     # - Run optimization for Rot gate -
