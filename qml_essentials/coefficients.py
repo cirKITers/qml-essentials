@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import pennylane as qml
 from pennylane.operation import Operator
 import pennylane.ops.op_math as qml_op
+from scipy.stats import pearsonr, spearmanr
 from typing import List, Tuple, Optional, Any, Dict, Union
 
 from qml_essentials.model import Model
@@ -922,3 +923,136 @@ class FourierTree:
         """
         observable = observable.tensor(pauli)
         return observable
+
+
+class FCC:
+    @staticmethod
+    def get_fcc(
+        model: Model,
+        n_samples: int,
+        seed: int,
+        method: str = "pearson",
+        weight: bool = False,
+    ):
+        """
+        Shortcut method to get just the FCC.
+        This includes
+        1. Calculating the coefficients (using `n_samples` and `seed`)
+        2. Correlating the result from 1) using `method`
+        3. Weighting the correlation matrix (if `weight` is True)
+        4. Averaging the result
+
+        Args:
+            model (Model): _description_
+            n_samples (int): _description_
+            seed (int): _description_
+            method (str, optional): _description_. Defaults to "pearson".
+            weight (bool, optional): _description_. Defaults to False.
+
+        Returns:
+            _type_: _description_
+        """
+        _, coeffs = FCC.calculate_coefficients(model, n_samples, seed)
+        coeff_correlation = FCC.correlate(coeffs, coeffs, method=method)
+
+        return FCC.calculate_fcc(coeff_correlation, weight=weight)
+
+    @staticmethod
+    def calculate_fcc(
+        coeff_coeff_correlation: np.ndarray,
+        weight: bool = False,
+    ):
+        """
+        Method to calculate the FCC based on an existing correlation matrix.
+        This includes
+        1. Weighting the correlation matrix (if `weight` is True)
+        2. Averaging the result
+
+        Args:
+            coeff_coeff_correlation (np.ndarray): _description_
+            weight (bool, optional): _description_. Defaults to False.
+
+        Returns:
+            _type_: _description_
+        """
+        coeff_coeff_correlation = (
+            FCC._weighting(coeff_coeff_correlation)
+            if weight
+            else coeff_coeff_correlation
+        )
+
+        return np.mean(coeff_coeff_correlation)
+
+    @staticmethod
+    def calculate_coefficients(
+        model: Model, n_samples: int, seed: int, noise_params: Dict = None
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Calculates the Fourier coefficients of a given model using `n_samples` and `seed`.
+        Optionally, `noise_params` can be passed to perform noisy simulation.
+
+        Args:
+            model (Model): The QFM model
+            n_samples (int): Number of samples to calculate average of coefficients
+            seed (int): Seed to initialize random parameters
+            noise_params (Dict, optional): Noise parameters. Defaults to None.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: Parameters and Coefficients
+        """
+        if n_samples > 0:
+            total_samples = int(
+                np.power(2, model.n_qubits) * n_samples * model.n_input_feat
+            )
+            rng = np.random.default_rng(seed)
+            model.initialize_params(rng=rng, repeat=total_samples)
+        else:
+            total_samples = 1
+
+        coeffs, _ = Coefficients.calculate_coefficients(
+            model, noise_params=noise_params
+        )
+
+        return model.params.reshape(-1, total_samples), coeffs.reshape(
+            -1, total_samples
+        )
+
+    @staticmethod
+    def correlate(a: np.ndarray, b: np.ndarray, method: str = "pearson") -> np.ndarray:
+        """
+        Correlates two arrays using `method`.
+        Currently, `pearson` and `spearman` are supported.
+
+        Args:
+            a (np.ndarray): Array a
+            b (np.ndarray): Array b
+            method (str, optional): Correlation method. Defaults to "pearson".
+
+        Raises:
+            ValueError: If the method is not supported.
+
+        Returns:
+            np.ndarray: Correlation matrix of `a` and `b`.
+        """
+        if method == "pearson":
+            result = pearsonr(a, b, alternative="two-sided")
+        elif method == "spearman":
+            result = spearmanr(a, b)
+        else:
+            raise ValueError(
+                f"Unknown correlation method: {method}. \
+                             Must be 'pearson' or 'spearman'."
+            )
+
+        return result
+
+    @staticmethod
+    def _weighting(correlation: np.ndarray):
+        """
+        Performs weighting on the given correlation matrix.
+        Here, low-frequent coefficients are weighted more heavily.
+
+        Args:
+            correlation (np.ndarray): Correlation matrix
+        """
+        raise NotImplementedError("Weighting method is not implemented")
