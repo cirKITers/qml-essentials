@@ -5,12 +5,11 @@ import numbers
 import pennylane.numpy as np
 import pennylane as qml
 import jax
-jax.config.update("jax_enable_x64", True)
 from jax import numpy as jnp
 import itertools
 from contextlib import contextmanager
-
 import logging
+jax.config.update("jax_enable_x64", True)
 
 log = logging.getLogger(__name__)
 
@@ -754,7 +753,8 @@ class PulseGates:
         else:
             pulse_params, t = pulse_params[:idx], pulse_params[idx]
 
-        Sx = lambda p, t: PulseGates.S(p, t, phi_c=jnp.pi) * w
+        def Sx(p, t):
+            return PulseGates.S(p, t, phi_c=jnp.pi) * w
 
         _H = PulseGates.H_static.conj().T @ PulseGates.X @ PulseGates.H_static
         _H = qml.Hermitian(_H, wires=wires)
@@ -785,7 +785,8 @@ class PulseGates:
         else:
             pulse_params, t = pulse_params[:idx], pulse_params[idx]
 
-        Sy = lambda p, t: PulseGates.S(p, t, phi_c=-jnp.pi/2) * w
+        def Sy(p, t):
+            return PulseGates.S(p, t, phi_c=-jnp.pi/2) * w
 
         _H = PulseGates.H_static.conj().T @ PulseGates.Y @ PulseGates.H_static
         _H = qml.Hermitian(_H, wires=wires)
@@ -817,8 +818,10 @@ class PulseGates:
             t = pulse_params[idx]
 
         _H = qml.Hermitian(PulseGates.Z, wires=wires)
+
         # TODO: Put comment why p, t has no effect here
-        Sz = lambda p, t: w
+        def Sz(p, t):
+            return w
 
         H_eff = Sz * _H
 
@@ -1063,7 +1066,8 @@ class PulseGates:
         Z_Z = jnp.kron(PulseGates.Z, PulseGates.Z)
 
         # TODO: explain why p, t not in signal
-        Scz = lambda p, t: jnp.pi
+        def Scz(p, t):
+            return jnp.pi
 
         _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
         _H = qml.Hermitian(_H, wires=wires)
@@ -1091,7 +1095,8 @@ class PulseGates:
 
         # qml.GlobalPhase(-jnp.pi / 2)
         # TODO: Explain why p, t not in signal
-        Sc = lambda p, t: -1.0
+        def Sc(p, t):
+            return -1.0
 
         _H = jnp.pi / 2 * jnp.eye(2, dtype=jnp.complex64)
         _H = qml.Hermitian(_H, wires=wires)
@@ -1173,7 +1178,6 @@ class Gates(metaclass=GatesMeta):
                 flat_params = pulse_params
 
             elif isinstance(pulse_params, jax.core.Tracer):
-                # flat_params = [pulse_params]
                 flat_params = jnp.ravel(pulse_params)
 
             elif isinstance(pulse_params, (np.ndarray, jnp.ndarray)):

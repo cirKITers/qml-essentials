@@ -12,16 +12,23 @@ from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
 from qml_essentials.ansaetze import PulseInformation as pinfo
 from qml_essentials.utils import PauliCircuit, QuanTikz, MultiprocessingPool
 
-
 import logging
 
 log = logging.getLogger(__name__)
 
-# TODO: Remove "# CHECK"s once happy with the pulse implementation
-# TODO: Implement more tests for pulse functionality?
+"""
+MEETING
+2. Remove comments (TODOs and CHECKs)? Remove TODOs that are related to pulses but
+    not affected by JAX migration. Remove TODOs that are in an open Issue
+3. Create Issues (JAX migration, Trainable Frequencies, {CRZ, CRY, CRX} optimization,
+    others)
+5. CRZ, CRY, CRX are not properly optimized. Create Issue
+"""
 # TODO: Make trainable frequencies implementation consistent with pulse mode
 #   I.e. pass trainable frequencies as an execution type and initialize enc_params
 #   with requires_grad=False
+
+# TODO: Write short description on PR comment of everything that was implemented
 
 
 class Model:
@@ -260,8 +267,6 @@ class Model:
 
         # ..here! where we only require a rng
         self.initialize_params(np.random.default_rng(random_seed))
-        # CHECK
-        self.initialize_pulse_params()
 
         # Initialize two circuits, one with the default device and
         # one with the mixed device
@@ -493,6 +498,7 @@ class Model:
         Returns:
             None
         """
+        # Initializing params
         params_shape = (
             self._params_shape if repeat is None else [*self._params_shape, repeat]
         )
@@ -542,22 +548,7 @@ class Model:
             using strategy {initialization}."
         )
 
-    # CHECK
-    def initialize_pulse_params(self, repeat: int = None) -> None:
-        """
-        Initializes the pulse parameters of the model.
-
-        Pulse parameters are stored as an array of ones, acting as
-        element-wise scalers on the optimized pulse parameters of each
-        gate.
-
-        Args:
-            repeat: The number of times to repeat the pulse parameters.
-                If None, the number of layers is used.
-
-        Returns:
-            None
-        """
+        # Initializing pulse params
         shape = (
             self._pulse_params_shape
             if repeat is None

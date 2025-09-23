@@ -1,5 +1,4 @@
 import os
-os.environ["JAX_ENABLE_X64"] = "1"
 import csv
 import jax
 import jax.numpy as jnp
@@ -8,11 +7,12 @@ import pennylane as qml
 from qml_essentials.ansaetze import Gates
 import matplotlib.pyplot as plt
 import warnings
+jax.config.update("jax_enable_x64", True)
 
 
 class QOC:
-    # TODO: Add tests to qoc for the new gates (Rot, CY, CRX, CRY, CRZ)
-    # TODO: Figure out why CRX, CRY, CRZ can't be fully optimized
+    # TODO: Potentially refactor all the optimize_*()... The only differences
+    #   are the circuits
     def __init__(
         self,
         make_plots=False,
@@ -377,7 +377,10 @@ class QOC:
         target = unitary_circuit(w)
 
         # Optimizing
-        cost = lambda pulse_params: self.cost_fn(pulse_params, pulse_circuit, w, target)
+        def cost(pulse_params):
+            return self.cost_fn(
+                pulse_params, circuit=pulse_circuit, w=w, target_state=target
+            )
         pulse_params, loss, losses = self.run_optimization(
             cost, init_pulse_params, steps, patience, print_every
         )
@@ -388,8 +391,6 @@ class QOC:
         # Plotting the rotation
         if self.make_plots:
             warnings.warn("Plotting not implemented yet", UserWarning)
-            # print("Plotting Rot gate rotation...")
-            # self.plot_rotation(pulse_params)
 
         return pulse_params, loss, losses
 
@@ -440,7 +441,10 @@ class QOC:
         target = unitary_circuit(w)
 
         # Optimizing
-        cost = lambda pulse_params: self.cost_fn(pulse_params, pulse_circuit, w, target)
+        def cost(pulse_params):
+            return self.cost_fn(
+                pulse_params, circuit=pulse_circuit, w=w, target_state=target
+            )
         pulse_params, loss, losses = self.run_optimization(
             cost, init_pulse_params, steps, patience, print_every
         )
@@ -502,7 +506,10 @@ class QOC:
         target = unitary_circuit(w)
 
         # Optimizing
-        cost = lambda pulse_params: self.cost_fn(pulse_params, pulse_circuit, w, target)
+        def cost(pulse_params):
+            return self.cost_fn(
+                pulse_params, circuit=pulse_circuit, w=w, target_state=target
+            )
         pulse_params, loss, losses = self.run_optimization(
             cost, init_pulse_params, steps, patience, print_every
         )
@@ -579,9 +586,10 @@ class QOC:
         target = unitary_circuit()
 
         # Optimizing
-        cost = lambda pulse_params: self.cost_fn(
-            pulse_params, pulse_circuit, None, target
-        )
+        def cost(pulse_params):
+            return self.cost_fn(
+                pulse_params, circuit=pulse_circuit, w=None, target_state=target
+            )
         pulse_params, loss, losses = self.run_optimization(
             cost, init_pulse_params, steps, patience, print_every
         )
@@ -644,9 +652,10 @@ class QOC:
         target = unitary_circuit()
 
         # Optimizing
-        cost = lambda pulse_params: self.cost_fn(
-            pulse_params, pulse_circuit, None, target
-        )
+        def cost(pulse_params):
+            return self.cost_fn(
+                pulse_params, circuit=pulse_circuit, w=None, target_state=target
+            )
         pulse_params, loss, losses = self.run_optimization(
             cost, init_pulse_params, steps, patience, print_every
         )
@@ -710,9 +719,10 @@ class QOC:
         target = unitary_circuit()
 
         # Optimizing
-        cost = lambda pulse_params: self.cost_fn(
-            pulse_params, pulse_circuit, None, target
-        )
+        def cost(pulse_params):
+            return self.cost_fn(
+                pulse_params, circuit=pulse_circuit, w=None, target_state=target
+            )
         pulse_params, loss, losses = self.run_optimization(
             cost, init_pulse_params, steps, patience, print_every
         )
@@ -775,9 +785,10 @@ class QOC:
         target = unitary_circuit()
 
         # Optimizing
-        cost = lambda pulse_params: self.cost_fn(
-            pulse_params, pulse_circuit, None, target
-        )
+        def cost(pulse_params):
+            return self.cost_fn(
+                pulse_params, circuit=pulse_circuit, w=None, target_state=target
+            )
         pulse_params, loss, losses = self.run_optimization(
             cost, init_pulse_params, steps, patience, print_every
         )
@@ -839,7 +850,10 @@ class QOC:
 
         target = unitary_circuit(w)
 
-        cost = lambda pulse_params: self.cost_fn(pulse_params, pulse_circuit, w, target)
+        def cost(pulse_params):
+            return self.cost_fn(
+                pulse_params, circuit=pulse_circuit, w=w, target_state=target
+            )
         pulse_params, loss, losses = self.run_optimization(
             cost, init_pulse_params, steps, patience, print_every
         )
@@ -898,7 +912,10 @@ class QOC:
 
         target = unitary_circuit(w)
 
-        cost = lambda pulse_params: self.cost_fn(pulse_params, pulse_circuit, w, target)
+        def cost(pulse_params):
+            return self.cost_fn(
+                pulse_params, circuit=pulse_circuit, w=w, target_state=target
+            )
         pulse_params, loss, losses = self.run_optimization(
             cost, init_pulse_params, steps, patience, print_every
         )
@@ -958,7 +975,10 @@ class QOC:
         target = unitary_circuit(w)
 
         # Cost function
-        cost = lambda pulse_params: self.cost_fn(pulse_params, pulse_circuit, w, target)
+        def cost(pulse_params):
+            return self.cost_fn(
+                pulse_params, circuit=pulse_circuit, w=w, target_state=target
+            )
         pulse_params, loss, losses = self.run_optimization(
             cost, init_pulse_params, steps, patience, print_every
         )

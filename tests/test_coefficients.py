@@ -117,7 +117,6 @@ def test_batch() -> None:
     )
 
     model.initialize_params(rng=pnp.random.default_rng(1000), repeat=n_samples)
-    model.initialize_pulse_params(repeat=n_samples)
     params = model.params
     coeffs_parallel, _ = Coefficients.get_spectrum(model, shift=True, trim=True)
 
@@ -140,7 +139,6 @@ def test_batch() -> None:
     )
 
     model.initialize_params(rng=pnp.random.default_rng(1000), repeat=n_samples)
-    model.initialize_pulse_params(repeat=n_samples)
     params = model.params
     coeffs_parallel, _ = Coefficients.get_spectrum(model, shift=True, trim=True)
 
