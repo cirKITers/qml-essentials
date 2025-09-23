@@ -5,6 +5,7 @@ import numbers
 import pennylane.numpy as np
 import pennylane as qml
 import jax
+jax.config.update("jax_enable_x64", True)
 from jax import numpy as jnp
 import itertools
 from contextlib import contextmanager
@@ -786,13 +787,13 @@ class PulseGates:
             Duration of the pulse. Rotation angle = w * 2 * t.
             Defaults to 0.5 if None.
         """
-        n_RZ = pinfo.num_params("RZ")
+        idx = pinfo.num_params("RZ") - 1
         if pulse_params is None:
-            t = pinfo.optimized_params("RZ")[n_RZ]
+            t = pinfo.optimized_params("RZ")[idx]
         elif isinstance(pulse_params, (float, int)):
             t = pulse_params
         else:
-            t = pulse_params[n_RZ]
+            t = pulse_params[idx]
 
         _H = qml.Hermitian(PulseGates.Z, wires=wires)
         # TODO: Put comment why p, t has no effect here
@@ -1141,9 +1142,10 @@ class Gates(metaclass=GatesMeta):
             )
 
         kwargs = {k: v for k, v in kwargs.items() if k in allowed_args}
+        pulse_params = kwargs.get("pulse_params")
+        pulse_mgr = getattr(Gates, "_pulse_mgr", None)
 
         # Type check on pulse parameters
-        pulse_params = kwargs.get("pulse_params")
         if pulse_params is not None:
             # flatten pulse parameters
             if isinstance(pulse_params, (list, tuple)):
@@ -1167,12 +1169,17 @@ class Gates(metaclass=GatesMeta):
                     f"got {pulse_params}, type {type(pulse_params)}. "
                 )
 
-        # Pulse slicing + scaling
-        try:
+        # Len check on pulse parameters
+        if pulse_params is not None and not isinstance(pulse_mgr, PulseParamManager):
             n_params = pinfo.num_params(gate_name)
-        except ValueError:
-            n_params = None
-        pulse_mgr = getattr(Gates, "_pulse_mgr", None)
+            if len(flat_params) != n_params:
+                raise ValueError(
+                    f"Gate '{gate_name}' expects {n_params} pulse parameters, "
+                    f"got {len(flat_params)}"
+                )
+
+        # Pulse slicing + scaling
+        n_params = pinfo.num_params(gate_name)
         if gate_mode == "pulse" and isinstance(pulse_mgr, PulseParamManager):
             scalers = pulse_mgr.get(n_params)
             base = pinfo.optimized_params(gate_name)

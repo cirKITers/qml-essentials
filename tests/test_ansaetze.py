@@ -4,12 +4,13 @@ from qml_essentials.ansaetze import Ansaetze, Circuit, Gates, UnitaryGates
 from qml_essentials.ansaetze import PulseInformation as pinfo
 import pennylane as qml
 import pennylane.numpy as np
+import jax
+jax.config.update("jax_enable_x64", True)
+from jax import numpy as jnp
 import pytest
 import inspect
 
 import logging
-# import jax
-# jax.config.update("jax_enable_x64", True)
 
 
 logger = logging.getLogger(__name__)
@@ -852,12 +853,22 @@ def test_pulse_CRX_gate_smoke(w):
 
 @pytest.mark.unittest
 def test_invalid_pulse_params():
-    invalid_pulse_params = [
+    invalid_type_pulse_params = [
         np.array(["10", 5, "1"]),
         [10, 5, "1"],
         (10, 5, "1"),
     ]
 
-    for pp in invalid_pulse_params:
+    for pp in invalid_type_pulse_params:
         with pytest.raises(TypeError):
+            Gates.RX(np.pi, 0, pulse_params=pp, gate_mode="pulse")
+
+    invalid_len_pulse_params = [
+        jnp.array([10, 5, 1, 1]),
+        [10, 10, 5, 5, 1, 1],
+        (10,)
+    ]
+
+    for pp in invalid_len_pulse_params:
+        with pytest.raises(ValueError):
             Gates.RX(np.pi, 0, pulse_params=pp, gate_mode="pulse")
