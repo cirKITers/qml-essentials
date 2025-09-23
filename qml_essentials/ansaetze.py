@@ -75,7 +75,6 @@ class Circuit(ABC):
 
         return w[indices[0] : indices[1] : indices[2]]
 
-    # CHECK
     def _build(self, w: np.ndarray, n_qubits: int, **kwargs):
         """
         Builds one layer of the circuit using either unitary or pulse-level parameters.
@@ -122,7 +121,6 @@ class Circuit(ABC):
     def build(self, n_qubits: int, n_layers: int):
         raise NotImplementedError("build method is not implemented")
 
-    # CHECK
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         self._build(*args, **kwds)
 
@@ -654,7 +652,7 @@ class PulseInformation:
 
     @staticmethod
     def optimized_params(gate: str) -> Optional[jnp.ndarray]:
-        """Return the optimized pulse parameters for a given gate (or None if TODO)."""
+        """Return the optimized pulse parameters for a given gate."""
         if gate not in PulseInformation.OPTIMIZED_PULSES:
             raise ValueError(f"Unknown gate '{gate}'")
         return PulseInformation.OPTIMIZED_PULSES[gate]
@@ -1115,7 +1113,7 @@ class PulseGates:
         else:
             pulse_params = pulse_params
 
-        # qml.GlobalPhase(-jnp.pi / 2)
+        # qml.GlobalPhase(-jnp.pi / 2)  # this could act as substitute to Sc
         # TODO: Explain why p, t not in signal
         def Sc(p, t):
             return -1.0
@@ -1173,8 +1171,6 @@ class Gates(metaclass=GatesMeta):
 
         return handler
 
-    # TODO: Modularize?
-    #   E.g. filter_kwargs(), are_valid_pulse_params(), pulse_params_slice_scale()
     @staticmethod
     def _inner_getattr(gate_name, *args, **kwargs):
         gate_mode = kwargs.pop("gate_mode", "unitary")
@@ -1346,7 +1342,6 @@ class Ansaetze:
             for q in range(n_qubits - 1):
                 Gates.CX([q, q + 1], **kwargs)
 
-    # CHECK
     class Hardware_Efficient(Circuit):
         @staticmethod
         def n_params_per_layer(n_qubits: int) -> int:
@@ -1373,7 +1368,6 @@ class Ansaetze:
                 log.warning("Number of Qubits < 2, no entanglement available")
             return n_qubits * 3
 
-        # CHECK
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
             """

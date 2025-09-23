@@ -121,13 +121,13 @@ class Entanglement:
                 enc_params: Optional[np.ndarray] = None,
                 gate_mode: str = "unitary"
         ) -> List[np.ndarray]:
-            # TODO: Docstring
             """
             Compute the Bell measurement circuit.
 
             Args:
                 params (np.ndarray): The model parameters.
                 inputs (np.ndarray): The input to the model.
+                pulse_params (np.ndarray): The model pulse parameters.
                 enc_params (Optional[np.ndarray]): The frequency encoding parameters.
 
             Returns:
@@ -432,7 +432,6 @@ class Entanglement:
             enc_params: Optional[np.ndarray] = None,
             gate_mode: str = "unitary",
         ) -> List[np.ndarray]:
-            # TODO: Docstring
             """
             Constructs a circuit to compute the concentratable entanglement using the
             swap test by creating two copies of the models circuit and map the output
@@ -441,6 +440,7 @@ class Entanglement:
             Args:
                 params (np.ndarray): The model parameters.
                 inputs (np.ndarray): The input data for the model.
+                pulse_params (np.ndarray): The model pulse parameters.
                 enc_params (Optional[np.ndarray]): Optional encoding parameters.
 
             Returns:

@@ -1,5 +1,7 @@
 import os
 import csv
+import jax
+from jax import numpy as jnp
 import optax
 import pennylane as qml
 from qml_essentials.ansaetze import Gates
@@ -177,6 +179,7 @@ class QOC:
 
         return pulse_circuit, unitary_circuit, operation
 
+    # TODO: Update method for new gates (Rot, CY, CRZ, CRY, CRX)
     def plot_rotation(self, pulse_params):
         """
         Plot expectation values of pulse- and unitary-based circuits for the

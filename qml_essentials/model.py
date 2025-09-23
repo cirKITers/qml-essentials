@@ -16,20 +16,6 @@ import logging
 
 log = logging.getLogger(__name__)
 
-"""
-MEETING
-2. Remove comments (TODOs and CHECKs)? Remove TODOs that are related to pulses but
-    not affected by JAX migration. Remove TODOs that are in an open Issue
-3. Create Issues (JAX migration, Trainable Frequencies, {CRZ, CRY, CRX} optimization,
-    others)
-5. CRZ, CRY, CRX are not properly optimized. Create Issue
-"""
-# TODO: Make trainable frequencies implementation consistent with pulse mode
-#   I.e. pass trainable frequencies as an execution type and initialize enc_params
-#   with requires_grad=False
-
-# TODO: Write short description on PR comment of everything that was implemented
-
 
 class Model:
     """
@@ -252,7 +238,6 @@ class Model:
         self._params_shape: Tuple[int, int] = (impl_n_layers, params_per_layer)
         log.info(f"Parameters per layer: {params_per_layer}")
 
-        # CHECK
         pulse_params_per_layer = self.pqc.n_pulse_params_per_layer(self.n_qubits)
         self._pulse_params_shape: Tuple[int, int] = (
             impl_n_layers,
@@ -613,7 +598,6 @@ class Model:
                         noise_params=noise_params,
                     )
 
-    # CHECK
     def _circuit(
         self,
         params: np.ndarray,
@@ -622,12 +606,12 @@ class Model:
         enc_params: Optional[np.ndarray] = None,
         gate_mode: str = "unitary",
     ) -> Union[float, np.ndarray]:
+        # TODO: Is the shape of params below correct?
         """
         Creates a quantum circuit, optionally with noise or pulse simulation.
 
         Args:
             params (np.ndarray): weight vector of shape
-                # TODO: Is n_qubits (and trainable_frequencies) below correct?
                 [n_layers, n_qubits*(n_params_per_layer+trainable_frequencies)]
             inputs (np.ndarray): input vector of size 1
             pulse_params Optional[np.ndarray]: pulse parameter scaler weights of shape
@@ -651,7 +635,6 @@ class Model:
         )
         return self._observable()
 
-    # CHECK
     def _variational(
         self,
         params: np.ndarray,
@@ -706,7 +689,7 @@ class Model:
             for _sp, sp_pulse_params in zip(self._sp, self.sp_pulse_params):
                 _sp(
                     wires=q,
-                    pulse_params=sp_pulse_params,  # TODO: maybe pass None instead?
+                    pulse_params=sp_pulse_params,
                     noise_params=self.noise_params,
                     gate_mode=gate_mode,
                 )
@@ -842,7 +825,6 @@ class Model:
 
         return specs["resources"].depth
 
-    # CHECK
     def draw(self, inputs=None, figure="text", *args, **kwargs):
         """
         Draws the quantum circuit using the specified visualization method.
@@ -928,7 +910,6 @@ class Model:
 
         return params
 
-    # CHECK
     def _pulse_params_validation(self, pulse_params) -> np.ndarray:
         """
         Sets the pulse parameters when calling the quantum circuit.
@@ -1035,7 +1016,6 @@ class Model:
 
         return inputs
 
-    # CHECK
     @staticmethod
     def _parallel_f(
         procnum,
@@ -1081,7 +1061,6 @@ class Model:
             gate_mode=gate_mode,
         )
 
-    # CHECK
     def _mp_executor(self, f, params, pulse_params, inputs, enc_params, gate_mode):
         """
         Execute a function f in parallel over parameters.
@@ -1152,7 +1131,6 @@ class Model:
             result = np.concat(result, axis=1 if self.execution_type == "expval" else 0)
         return result
 
-    # CHECK
     def _assimilate_batch(self, inputs, params, pulse_params):
         batch_shape = (
             inputs.shape[0],
@@ -1177,7 +1155,6 @@ class Model:
                 params[:, :, np.newaxis, :], batch_shape[0], axis=2
             ).reshape([*params.shape[:-1], np.prod(batch_shape)])
 
-            # CHECK
             pulse_params = np.repeat(
                 pulse_params[:, :, np.newaxis, :], batch_shape[0], axis=2
             ).reshape([*pulse_params.shape[:-1], np.prod(batch_shape)])
@@ -1204,7 +1181,6 @@ class Model:
                     return True
         return False
 
-    # CHECK
     def __call__(
         self,
         params: Optional[np.ndarray] = None,
@@ -1271,7 +1247,6 @@ class Model:
             gate_mode=gate_mode,
         )
 
-    # CHECK
     def _forward(
         self,
         params: Optional[np.ndarray] = None,
@@ -1409,7 +1384,6 @@ class Model:
                 )
             else:
                 if not isinstance(self.circuit, qml.QNode):
-                    # TODO: No modifications to this circuit, correct?
                     result = self.circuit(
                         inputs=inputs,
                     )
