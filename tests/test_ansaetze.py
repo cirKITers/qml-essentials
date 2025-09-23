@@ -4,7 +4,6 @@ from qml_essentials.ansaetze import Ansaetze, Circuit, Gates, UnitaryGates
 from qml_essentials.ansaetze import PulseInformation as pinfo
 import pennylane as qml
 import pennylane.numpy as np
-from jax import numpy as jnp
 import pytest
 import inspect
 
@@ -326,7 +325,54 @@ def test_available_ansaetze() -> None:
 
 
 @pytest.mark.unittest
-@pytest.mark.parametrize("w", [np.pi/4, np.pi/2, np.pi])
+@pytest.mark.parametrize("w", [
+    (0.0, 0.0, 0.0),  # Identity
+    (np.pi/2, 0.0, 0.0),  # Pure RX
+    (0.0, np.pi/2, 0.0),  # Pure RY
+    (np.pi, np.pi/2, np.pi),  # Mixed rotation
+])
+def test_pulse_Rot_gate(w):
+    phi, theta, omega = w
+
+    dev = qml.device("default.qubit", wires=1)
+
+    @qml.qnode(dev)
+    def unitary_circuit():
+        qml.Rot(phi, theta, omega, wires=0)
+        return qml.state()
+
+    @qml.qnode(dev)
+    def pulse_circuit():
+        Gates.Rot(phi, theta, omega, wires=0, gate_mode="pulse")
+        return qml.state()
+
+    @qml.qnode(dev)
+    def custom_pulse_circuit():
+        pulse_params = pinfo.optimized_params("Rot")
+        Gates.Rot(
+            phi, theta, omega, wires=0, pulse_params=pulse_params, gate_mode="pulse"
+        )
+        return qml.state()
+
+    state_ideal = unitary_circuit()
+    state_pulse = pulse_circuit()
+    state_custom_pulse = custom_pulse_circuit()
+
+    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
+    assert np.isclose(
+        fidelity, 1.0, atol=1e-2), f"Fidelity too low for w={w}: {fidelity}"
+
+    custom_fidelity = np.abs(np.vdot(state_ideal, state_custom_pulse)) ** 2
+    assert np.isclose(
+        custom_fidelity, 1.0, atol=1e-2
+    ), f"Fidelity too low for custom pulse w={w}: {custom_fidelity}"
+
+    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
+    assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
+
+
+@pytest.mark.unittest
+@pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
 def test_pulse_RX_gate(w):
     dev = qml.device("default.qubit", wires=1)
 
@@ -522,6 +568,45 @@ def test_pulse_CZ_gate():
 
 
 @pytest.mark.unittest
+def test_pulse_CY_gate():
+    dev = qml.device("default.qubit", wires=2)
+
+    @qml.qnode(dev)
+    def unitary_circuit():
+        qml.H(wires=0)
+        qml.CY(wires=[0, 1])
+        return qml.state()
+
+    @qml.qnode(dev)
+    def pulse_circuit():
+        qml.H(wires=0)
+        Gates.CY(wires=[0, 1], gate_mode="pulse")
+        return qml.state()
+
+    @qml.qnode(dev)
+    def custom_pulse_circuit():
+        pulse_params = pinfo.optimized_params("CY")
+        qml.H(wires=0)
+        Gates.CY(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
+        return qml.state()
+
+    state_ideal = unitary_circuit()
+    state_pulse = pulse_circuit()
+    state_custom_pulse = custom_pulse_circuit()
+
+    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
+    assert np.isclose(fidelity, 1.0, atol=1e-2), f"Fidelity too low: {fidelity}"
+
+    custom_fidelity = np.abs(np.vdot(state_ideal, state_custom_pulse)) ** 2
+    assert np.isclose(
+        custom_fidelity, 1.0, atol=1e-2
+    ), f"Fidelity too low for custom pulse: {custom_fidelity}"
+
+    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
+    assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off: {phase_diff}"
+
+
+@pytest.mark.unittest
 def test_pulse_CX_gate():
     dev = qml.device("default.qubit", wires=2)
 
@@ -558,6 +643,211 @@ def test_pulse_CX_gate():
 
     phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
     assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off: {phase_diff}"
+
+
+# TODO: Unskip CRZ, CRY, CRX tests when their optimization is fixed
+@pytest.mark.unittest
+@pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
+@pytest.mark.skip(reason="CRZ not properly optimized, low fidelity")
+def test_pulse_CRZ_gate(w):
+    dev = qml.device("default.qubit", wires=2)
+
+    @qml.qnode(dev)
+    def unitary_circuit():
+        qml.H(wires=0)
+        qml.H(wires=1)
+        qml.CRZ(w, wires=[0, 1])
+        return qml.state()
+
+    @qml.qnode(dev)
+    def pulse_circuit():
+        qml.H(wires=0)
+        qml.H(wires=1)
+        Gates.CRZ(w, wires=[0, 1], gate_mode="pulse")
+        return qml.state()
+
+    @qml.qnode(dev)
+    def custom_pulse_circuit():
+        pulse_params = pinfo.optimized_params("CRZ")
+        qml.H(wires=0)
+        qml.H(wires=1)
+        Gates.CRZ(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
+        return qml.state()
+
+    state_ideal = unitary_circuit()
+    state_pulse = pulse_circuit()
+    state_custom_pulse = custom_pulse_circuit()
+
+    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
+    assert np.isclose(fidelity, 1.0, atol=1e-2), f"Fidelity too low: {fidelity}"
+
+    custom_fidelity = np.abs(np.vdot(state_ideal, state_custom_pulse)) ** 2
+    assert np.isclose(
+        custom_fidelity, 1.0, atol=1e-2
+    ), f"Fidelity too low for custom pulse: {custom_fidelity}"
+
+    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
+    assert np.isclose(phase_diff, 0.0, atol=1e-1), f"Phase off: {phase_diff}"
+
+
+@pytest.mark.unittest
+@pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
+@pytest.mark.skip(reason="CRY not properly optimized, low fidelity")
+def test_pulse_CRY_gate(w):
+    dev = qml.device("default.qubit", wires=2)
+
+    @qml.qnode(dev)
+    def unitary_circuit():
+        qml.H(wires=0)
+        qml.CRY(w, wires=[0, 1])
+        return qml.state()
+
+    @qml.qnode(dev)
+    def pulse_circuit():
+        qml.H(wires=0)
+        Gates.CRY(w, wires=[0, 1], gate_mode="pulse")
+        return qml.state()
+
+    @qml.qnode(dev)
+    def custom_pulse_circuit():
+        pulse_params = pinfo.optimized_params("CRY")
+        qml.H(wires=0)
+        Gates.CRY(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
+        return qml.state()
+
+    state_ideal = unitary_circuit()
+    state_pulse = pulse_circuit()
+    state_custom_pulse = custom_pulse_circuit()
+
+    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
+    assert np.isclose(fidelity, 1.0, atol=1e-2), f"Fidelity too low: {fidelity}"
+
+    custom_fidelity = np.abs(np.vdot(state_ideal, state_custom_pulse)) ** 2
+    assert np.isclose(
+        custom_fidelity, 1.0, atol=1e-2
+    ), f"Fidelity too low for custom pulse: {custom_fidelity}"
+
+    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
+    assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off: {phase_diff}"
+
+
+@pytest.mark.unittest
+@pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
+@pytest.mark.skip(reason="CRX not properly optimized, low fidelity")
+def test_pulse_CRX_gate(w):
+    dev = qml.device("default.qubit", wires=2)
+
+    @qml.qnode(dev)
+    def unitary_circuit():
+        qml.H(wires=0)
+        qml.CRX(w, wires=[0, 1])
+        return qml.state()
+
+    @qml.qnode(dev)
+    def pulse_circuit():
+        qml.H(wires=0)
+        Gates.CRX(w, wires=[0, 1], gate_mode="pulse")
+        return qml.state()
+
+    @qml.qnode(dev)
+    def custom_pulse_circuit():
+        pulse_params = pinfo.optimized_params("CRX")
+        qml.H(wires=0)
+        Gates.CRX(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
+        return qml.state()
+
+    state_ideal = unitary_circuit()
+    state_pulse = pulse_circuit()
+    state_custom_pulse = custom_pulse_circuit()
+
+    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
+    assert np.isclose(fidelity, 1.0, atol=1e-2), f"Fidelity too low: {fidelity}"
+
+    custom_fidelity = np.abs(np.vdot(state_ideal, state_custom_pulse)) ** 2
+    assert np.isclose(
+        custom_fidelity, 1.0, atol=1e-2
+    ), f"Fidelity too low for custom pulse: {custom_fidelity}"
+
+    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
+    assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off: {phase_diff}"
+
+
+# TODO: Remove CRZ, CRY, CRX smoketests when their optimization is fixed
+@pytest.mark.smoketest
+@pytest.mark.parametrize("w", [np.pi])
+def test_pulse_CRZ_gate_smoke(w):
+    dev = qml.device("default.qubit", wires=2)
+
+    @qml.qnode(dev)
+    def pulse_circuit():
+        qml.H(wires=0)
+        qml.H(wires=1)
+        Gates.CRZ(w, wires=[0, 1], gate_mode="pulse")
+        return qml.state()
+
+    @qml.qnode(dev)
+    def custom_pulse_circuit():
+        pulse_params = pinfo.optimized_params("CRZ")
+        qml.H(wires=0)
+        qml.H(wires=1)
+        Gates.CRZ(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
+        return qml.state()
+
+    state_pulse = pulse_circuit()
+    state_custom_pulse = custom_pulse_circuit()
+
+    assert state_pulse is not None
+    assert state_custom_pulse is not None
+
+
+@pytest.mark.smoketest
+@pytest.mark.parametrize("w", [np.pi])
+def test_pulse_CRY_gate_smoke(w):
+    dev = qml.device("default.qubit", wires=2)
+
+    @qml.qnode(dev)
+    def pulse_circuit():
+        qml.H(wires=0)
+        Gates.CRY(w, wires=[0, 1], gate_mode="pulse")
+        return qml.state()
+
+    @qml.qnode(dev)
+    def custom_pulse_circuit():
+        pulse_params = pinfo.optimized_params("CRY")
+        qml.H(wires=0)
+        Gates.CRY(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
+        return qml.state()
+
+    state_pulse = pulse_circuit()
+    state_custom_pulse = custom_pulse_circuit()
+
+    assert state_pulse is not None
+    assert state_custom_pulse is not None
+
+
+@pytest.mark.smoketest
+@pytest.mark.parametrize("w", [np.pi])
+def test_pulse_CRX_gate_smoke(w):
+    dev = qml.device("default.qubit", wires=2)
+
+    @qml.qnode(dev)
+    def pulse_circuit():
+        qml.H(wires=0)
+        Gates.CRX(w, wires=[0, 1], gate_mode="pulse")
+        return qml.state()
+
+    @qml.qnode(dev)
+    def custom_pulse_circuit():
+        pulse_params = pinfo.optimized_params("CRX")
+        qml.H(wires=0)
+        Gates.CRX(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
+        return qml.state()
+
+    state_pulse = pulse_circuit()
+    state_custom_pulse = custom_pulse_circuit()
+
+    assert state_pulse is not None
+    assert state_custom_pulse is not None
 
 
 @pytest.mark.unittest

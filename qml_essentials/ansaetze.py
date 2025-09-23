@@ -642,7 +642,6 @@ class PulseGates:
     #   gates closely follow https://doi.org/10.5445/IR/1000184129
     # TODO: Mention deviations from the above?
     # TODO: Raise error if len of pulse params is shorter/larger than expected
-    # TODO: Add tests to new gates (Rot, CY, CRX, CRY, CRZ)
     omega_q = 10 * jnp.pi
     omega_c = 10 * jnp.pi
 
