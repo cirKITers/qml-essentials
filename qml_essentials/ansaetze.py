@@ -642,7 +642,6 @@ class PulseGates:
     # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT/CX and H pulse level
     #   gates closely follow https://doi.org/10.5445/IR/1000184129
     # TODO: Mention deviations from the above?
-    # TODO: Raise error if len of pulse params is shorter/larger than expected
     omega_q = 10 * jnp.pi
     omega_c = 10 * jnp.pi
 
@@ -658,7 +657,29 @@ class PulseGates:
 
     @staticmethod
     def S(p, t, phi_c):
-        # TODO: Docstring
+        """
+        Generates a shaped pulse envelope modulated by a carrier.
+
+        The pulse is a Gaussian envelope multiplied by a cosine carrier, commonly
+        used in implementing rotation gates (e.g., RX, RY).
+
+        Parameters
+        ----------
+        p : sequence of float
+            Pulse parameters `[A, sigma]`:
+            - A : float, amplitude of the Gaussian
+            - sigma : float, width of the Gaussian
+        t : float or sequence of float
+            Time or time interval over which the pulse is applied. If a sequence,
+            `t_c` is taken as the midpoint `(t[0] + t[1]) / 2`.
+        phi_c : float
+            Phase of the carrier cosine.
+
+        Returns
+        -------
+        jnp.ndarray
+            The shaped pulse at each time step `t`.
+        """
         A, sigma = p
         t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
 
@@ -1152,7 +1173,8 @@ class Gates(metaclass=GatesMeta):
                 flat_params = pulse_params
 
             elif isinstance(pulse_params, jax.core.Tracer):
-                flat_params = [pulse_params]
+                # flat_params = [pulse_params]
+                flat_params = jnp.ravel(pulse_params)
 
             elif isinstance(pulse_params, (np.ndarray, jnp.ndarray)):
                 flat_params = pulse_params.flatten().tolist()
@@ -1179,8 +1201,8 @@ class Gates(metaclass=GatesMeta):
                 )
 
         # Pulse slicing + scaling
-        n_params = pinfo.num_params(gate_name)
         if gate_mode == "pulse" and isinstance(pulse_mgr, PulseParamManager):
+            n_params = pinfo.num_params(gate_name)
             scalers = pulse_mgr.get(n_params)
             base = pinfo.optimized_params(gate_name)
             kwargs["pulse_params"] = scalers * base  # element-wise scaling

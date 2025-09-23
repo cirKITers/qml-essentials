@@ -799,7 +799,7 @@ def test_pulse_model() -> None:
     assert np.any(np.abs(grads) > 1e-6), "Gradient wrt pulse_params is too small"
 
 
-# TODO: CHECK. Apply to all ansaetze? Merge into test_ansaetze?
+# TODO: CHECK. Apply to all ansaetze? Merge into test_ansaetze()?
 #   Mark as expensive (2-3 min)?
 @pytest.mark.expensive
 def test_pulse_model_inference():

@@ -1045,7 +1045,6 @@ class Model:
         return inputs
 
     # CHECK
-    # TODO: Type hints?
     @staticmethod
     def _parallel_f(
         procnum,
@@ -1092,7 +1091,6 @@ class Model:
         )
 
     # CHECK
-    # TODO: Type hints?
     def _mp_executor(self, f, params, pulse_params, inputs, enc_params, gate_mode):
         """
         Execute a function f in parallel over parameters.
