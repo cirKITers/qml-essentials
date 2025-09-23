@@ -1,9 +1,8 @@
-import jax.numpy as jnp
 from qml_essentials.qoc import QOC
-from qml_essentials import ansaetze
 import pytest
 import logging
 import jax
+
 jax.config.update("jax_enable_x64", True)
 
 
