@@ -1,11 +1,12 @@
 from qml_essentials.model import Model
-from qml_essentials.coefficients import Coefficients, FourierTree
+from qml_essentials.coefficients import Coefficients, FourierTree, FCC
 from pennylane.fourier import coefficients as pcoefficients
 
 import numpy as np
 import pennylane.numpy as pnp
 import logging
 import pytest
+from scipy.stats import pearsonr, spearmanr
 
 from functools import partial
 
@@ -360,3 +361,79 @@ def test_psd() -> None:
     )
     coeffs, _ = Coefficients.get_spectrum(model, shift=True)
     _ = Coefficients.get_psd(coeffs)
+
+
+@pytest.mark.unittest
+def test_pearson_correlation() -> None:
+    N = 1000
+    K = 5
+    seed = 1000
+    rng = np.random.default_rng(seed)
+
+    # create a random array of shape N, K
+    coeffs = rng.normal(size=(N, K))
+    pearson = FCC._pearson(coeffs)
+
+    for i in range(coeffs.shape[1]):
+        for j in range(coeffs.shape[1]):
+            reference = pearsonr(coeffs[:, i], coeffs[:, j]).correlation
+            assert np.isclose(
+                pearson[i, j], reference, atol=1.0e-5
+            ), f"Pearson correlation does not match reference. For index {i}, {j}, got {pearson[i, j]}, expected {reference}"
+
+
+@pytest.mark.unittest
+def test_spearman_correlation() -> None:
+    N = 1000
+    K = 5
+    seed = 1000
+    rng = np.random.default_rng(seed)
+
+    # create a random array of shape N, K
+    coeffs = rng.normal(size=(N, K))
+    pearson = FCC._spearman(coeffs)
+
+    for i in range(coeffs.shape[1]):
+        for j in range(coeffs.shape[1]):
+            reference = spearmanr(coeffs[:, i], coeffs[:, j]).correlation
+            assert np.isclose(
+                pearson[i, j], reference, atol=1.0e-5
+            ), f"Pearson correlation does not match reference. For index {i}, {j}, got {pearson[i, j]}, expected {reference}"
+
+
+@pytest.mark.expensive
+@pytest.mark.unittest
+def test_fcc() -> None:
+    test_cases = [
+        {
+            "circuit_type": "Circuit_15",
+            "fcc": 0.004,
+        },
+        {
+            "circuit_type": "Circuit_19",
+            "fcc": 0.010,
+        },
+        {
+            "circuit_type": "Circuit_17",
+            "fcc": 0.115,
+        },
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=6,
+            n_layers=1,
+            circuit_type=test_case["circuit_type"],
+            output_qubit=-1,
+            encoding=["RY"],
+        )
+        fcc = FCC.get_fcc(
+            model=model,
+            n_samples=500,
+            seed=1000,
+            scale=True,
+        )
+        print(f"FCC for {test_case['circuit_type']}: \t{fcc}")
+        assert np.isclose(
+            fcc, test_case["fcc"], atol=1.0e-3
+        ), f"Wrong FCC for {test_case['circuit_type']}. Got {fcc}, expected {test_case['fcc']}."
