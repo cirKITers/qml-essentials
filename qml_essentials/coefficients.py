@@ -20,8 +20,9 @@ class Coefficients:
         mts: int = 1,
         shift=False,
         trim=False,
+        positive_only=False,
         **kwargs,
-    ) -> np.ndarray:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Extracts the coefficients of a given model using a FFT (np-fft).
 
@@ -42,7 +43,7 @@ class Coefficients:
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
-            np.ndarray: The sampled Fourier coefficients.
+            Tuple[np.ndarray, np.ndarray]: Tuple containing the coefficients and frequencies.
         """
         kwargs.setdefault("force_mean", True)
         kwargs.setdefault("execution_type", "expval")
@@ -64,11 +65,13 @@ class Coefficients:
                     freqs = np.delete(freqs, len(freqs) // 2, axis=ax)
 
         if shift:
-            return np.fft.fftshift(
-                coeffs, axes=list(range(model.n_input_feat))
-            ), np.fft.fftshift(freqs)
-        else:
-            return coeffs, freqs
+            coeffs = np.fft.fftshift(coeffs, axes=list(range(model.n_input_feat)))
+            freqs = np.fft.fftshift(freqs)
+
+        if positive_only:
+            return coeffs[freqs > 0], freqs[freqs > 0]
+
+        return coeffs, freqs
 
     @staticmethod
     def _fourier_transform(
