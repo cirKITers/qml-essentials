@@ -2,6 +2,7 @@
 
 # General files
 *.bkp
+tensorboard/
 
 # Test output
 tikz_test.tex
@@ -139,6 +140,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.vscode/
 
 # Spyder project settings
 .spyderproject

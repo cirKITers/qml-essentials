@@ -117,7 +117,9 @@ class Entanglement:
         def _circuit(
             params: np.ndarray,
             inputs: np.ndarray,
+            pulse_params: Optional[np.ndarray] = None,
             enc_params: Optional[np.ndarray] = None,
+            gate_mode: str = "unitary",
         ) -> List[np.ndarray]:
             """
             Compute the Bell measurement circuit.
@@ -125,12 +127,13 @@ class Entanglement:
             Args:
                 params (np.ndarray): The model parameters.
                 inputs (np.ndarray): The input to the model.
+                pulse_params (np.ndarray): The model pulse parameters.
                 enc_params (Optional[np.ndarray]): The frequency encoding parameters.
 
             Returns:
                 List[np.ndarray]: The probabilities of the Bell measurement.
             """
-            model._variational(params, inputs, enc_params)
+            model._variational(params, inputs, pulse_params, enc_params, gate_mode)
 
             qml.map_wires(
                 model._variational,
@@ -425,7 +428,9 @@ class Entanglement:
         def _circuit(
             params: np.ndarray,
             inputs: np.ndarray,
+            pulse_params: Optional[np.ndarray] = None,
             enc_params: Optional[np.ndarray] = None,
+            gate_mode: str = "unitary",
         ) -> List[np.ndarray]:
             """
             Constructs a circuit to compute the concentratable entanglement using the
@@ -435,6 +440,7 @@ class Entanglement:
             Args:
                 params (np.ndarray): The model parameters.
                 inputs (np.ndarray): The input data for the model.
+                pulse_params (np.ndarray): The model pulse parameters.
                 enc_params (Optional[np.ndarray]): Optional encoding parameters.
 
             Returns:
@@ -442,10 +448,10 @@ class Entanglement:
             """
 
             qml.map_wires(model._variational, {i: i + n for i in range(n)})(
-                params, inputs, enc_params
+                params, inputs, pulse_params, enc_params, gate_mode
             )
             qml.map_wires(model._variational, {i: i + 2 * n for i in range(n)})(
-                params, inputs, enc_params
+                params, inputs, pulse_params, enc_params, gate_mode
             )
 
             # Perform swap test

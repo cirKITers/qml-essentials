@@ -72,7 +72,14 @@ class MultiprocessingPool:
         return_dict = manager.dict()
 
         jobs = []
-        n_procs = max(int(len(os.sched_getaffinity(0)) * self.cpu_scaler), 1)
+        # Portable CPU detection
+        try:
+            n_procs = len(os.sched_getaffinity(0))
+        except AttributeError:
+            n_procs = os.cpu_count() or 1
+        n_procs = max(int(n_procs * self.cpu_scaler), 1)
+        # n_procs = max(int(len(os.sched_getaffinity(0)) * self.cpu_scaler), 1)
+
         c_procs = 0
         for it in range(self.n_processes):
             m = self.DillProcess(
