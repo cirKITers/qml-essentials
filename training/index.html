@@ -394,6 +394,19 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -405,6 +418,43 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#trainable_frequencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Trainable frequencies
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pulse_level" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pulse Level
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -451,6 +501,32 @@
   
     
   
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#trainable_frequencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Trainable frequencies
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pulse_level" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pulse Level
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
   
 </nav>
                   </div>
@@ -555,6 +631,7 @@ Now that we have our "dataset", let's move on and build a model:
 <p><a class="glightbox" href="../figures/trained_series_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Ground Truth and Prediction" data-desc-position="top"><img alt="Ground Truth and Prediction" src="../figures/trained_series_light.png#center#only-light" /></a>
 <a class="glightbox" href="../figures/trained_series_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Ground Truth and Prediction" data-desc-position="top"><img alt="Ground Truth and Prediction" src="../figures/trained_series_dark.png#center#only-dark" /></a></p>
 <p>As you can see, the model is able to learn the Fourier series with the <span class="arithmatex">\(4\)</span> frequencies.</p>
+<h2 id="trainable_frequencies">Trainable frequencies<a class="headerlink" href="#trainable_frequencies" title="Permanent link">#</a></h2>
 <p>For the model we just trained, we considered the best possible scenario: evenly spaced, integer omegas. But, as shown by <a href="https://arxiv.org/abs/2008.08605">Schuld et al. (2020)</a>, we'll need an increasing and inefficient amount of qubits for larger omegas. What is more, the model will fail altogether if the frequencies are un-evenly spaced. Luckily, <a href="https://arxiv.org/abs/2309.03279">Jaderberg et al. (2024)</a> showed how we can let the model choose its own frequencies by including a set of encoding parameters that act on the input before the encoding layers of the circuit. We demonstrate this functionality below. </p>
 <p>First, let's slighly modify the omegas from the first example and re-generate the data:
 <div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">domain</span> <span class="o">=</span> <span class="p">[</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">]</span>
@@ -667,6 +744,13 @@ Now that we have our "dataset", let's move on and build a model:
 to allow for trainable frequencies. You may try different input transformations before the encoding by modifying the <code>model.transform_input</code> method. For example, if an <code>RX</code> gate performs the encoding, you may apply the identity operator by 
 <div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">model</span><span class="o">.</span><span class="n">transform_input</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">qubit</span><span class="p">,</span> <span class="n">idx</span><span class="p">,</span> <span class="n">enc_params</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">arccos</span><span class="p">(</span><span class="n">inputs</span><span class="p">[:,</span> <span class="n">idx</span><span class="p">])</span>
 </span></code></pre></div></p>
+<h2 id="pulse_level">Pulse Level<a class="headerlink" href="#pulse_level" title="Permanent link">#</a></h2>
+<blockquote>
+<p><strong>Note:</strong> Not implemented yet</p>
+</blockquote>
+<ul>
+<li>How to train pulse parameters</li>
+</ul>
 <p>Btw, if you're in a hurry, we have a Jupyter notebook with the exact same examples <a href="https://github.com/cirKITers/qml-essentials/blob/main/docs/training.ipynb">here</a> <img alt="🙃" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f643.svg" title=":upside_down_face:" />.</p>
 <p>Wondering what to do next? You can try a few different models, and see how they perform. If you're curious, checkout how this correlates with the <a href="../entanglement/"><em>Entanglement</em></a> and <a href="../expressibility/"><em>Expressibility</em></a> of the model.</p>
 

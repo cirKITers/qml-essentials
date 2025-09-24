@@ -29,11 +29,11 @@ for ansatz in ansaetze:
     overview_txt += f"### {ansatz.__name__.replace('_', ' ')}\n"
     overview_txt += (
         f"![{ansatz.__name__.replace('_', ' ')}]",
-        f"(figures/{ansatz.__name__}_light.png#circuit#only-light)\n"
+        f"(figures/{ansatz.__name__}_light.png#circuit#only-light)\n",
     )
     overview_txt += (
         f"![{ansatz.__name__.replace('_', ' ')}]",
-        f"(figures/{ansatz.__name__}_dark.png#circuit#only-dark)\n"
+        f"(figures/{ansatz.__name__}_dark.png#circuit#only-dark)\n",
     )
     overview_txt += "\n"
 
