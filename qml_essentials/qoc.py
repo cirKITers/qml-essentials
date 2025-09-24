@@ -7,7 +7,10 @@ import pennylane as qml
 from qml_essentials.ansaetze import Gates
 import matplotlib.pyplot as plt
 import warnings
+import logging
+
 jax.config.update("jax_enable_x64", True)
+log = logging.getLogger(__name__)
 
 
 class QOC:
@@ -277,7 +280,7 @@ class QOC:
         init_pulse_params,
         steps,
         patience,
-        print_every,
+        log_interval,
         *args,
     ):
         """
@@ -287,7 +290,7 @@ class QOC:
             cost (callable): Cost function to minimize.
             init_pulse_params (array): Initial parameters.
             steps (int): Number of optimization steps.
-            print_every (int): Print frequency.
+            log_interval (int): Print frequency.
             *args: Extra args for cost.
             patience (int): Early stopping patience (default: 20).
 
@@ -321,11 +324,11 @@ class QOC:
             else:
                 no_improve_counter += 1
 
-            if (step + 1) % print_every == 0:
-                print(f"Step {step + 1}/{steps}, Loss: {loss:.2e}")
+            if (step + 1) % log_interval == 0:
+                log.info(f"Step {step + 1}/{steps}, Loss: {loss:.2e}")
 
             if no_improve_counter >= patience:
-                print(f"Early stopping at step {step + 1} due to no improvement.")
+                log.info(f"Early stopping at step {step + 1} due to no improvement.")
                 break
 
         return best_pulse_params, best_loss, losses
@@ -338,7 +341,7 @@ class QOC:
         theta: float = jnp.pi / 2,
         omega: float = jnp.pi / 2,
         init_pulse_params: jnp.array = jnp.array([0.5, 1.0, 15.0, 1.0, 0.5]),
-        print_every: int = 50,
+        log_interval: int = 50,
     ):
         """
         Optimize pulse parameters for the Rot(theta, phi, lam) gate.
@@ -354,7 +357,7 @@ class QOC:
                 Default: π / 2 for all three.
             init_pulse_params (jnp.ndarray): Initial pulse parameters.
                 Default: [0.5, 1.0, 15.0, 1.0, 0.5].
-            print_every (int): Frequency of printing loss.
+            log_interval (int): Frequency of printing loss.
 
         Returns:
             tuple: Optimized parameters and list of loss values.
@@ -385,8 +388,9 @@ class QOC:
             return self.cost_fn(
                 pulse_params, circuit=pulse_circuit, w=w, target_state=target
             )
+
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, print_every
+            cost, init_pulse_params, steps, patience, log_interval
         )
 
         # Saving the optimized parameters
@@ -404,7 +408,7 @@ class QOC:
         patience: int = 100,
         w: float = jnp.pi,
         init_pulse_params: jnp.array = jnp.array([1.0, 15.0, 1.0]),
-        print_every: int = 50,
+        log_interval: int = 50,
     ):
         """
         Optimize pulse parameters for the RX(w) gate to best approximate
@@ -421,7 +425,7 @@ class QOC:
                Default: π.
             init_pulse_params (jnp.ndarray): Initial pulse parameters (A, sigma) and
                 time. Default: [1.0, 15.0, 1.0].
-            print_every (int): Frequency of printing loss during optimization.
+            log_interval (int): Frequency of printing loss during optimization.
                Default: 50.
 
         Returns:
@@ -449,8 +453,9 @@ class QOC:
             return self.cost_fn(
                 pulse_params, circuit=pulse_circuit, w=w, target_state=target
             )
+
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, print_every
+            cost, init_pulse_params, steps, patience, log_interval
         )
 
         # Saving the optimized parameters
@@ -458,7 +463,7 @@ class QOC:
 
         # Plotting the RX rotation
         if self.make_plots:
-            print("Plotting RX rotation...")
+            log.info("Plotting RX rotation...")
             self.plot_rotation(pulse_params)
 
         return pulse_params, loss, losses
@@ -469,7 +474,7 @@ class QOC:
         patience: int = 100,
         w: float = jnp.pi,
         init_pulse_params: jnp.array = jnp.array([1.0, 15.0, 1.0]),
-        print_every: int = 50,
+        log_interval: int = 50,
     ):
         """
         Optimize pulse parameters for the RY(w) gate to best approximate
@@ -486,7 +491,7 @@ class QOC:
                 Default: π.
             init_pulse_params (jnp.ndarray): Initial pulse parameters (A, sigma) and
                 time. Default: [1.0, 15.0, 1.0].
-            print_every (int): Frequency of printing loss during optimization.
+            log_interval (int): Frequency of printing loss during optimization.
                 Default: 50.
 
         Returns:
@@ -514,8 +519,9 @@ class QOC:
             return self.cost_fn(
                 pulse_params, circuit=pulse_circuit, w=w, target_state=target
             )
+
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, print_every
+            cost, init_pulse_params, steps, patience, log_interval
         )
 
         # Saving the optimized parameters
@@ -523,7 +529,7 @@ class QOC:
 
         # Plotting the RY rotation
         if self.make_plots:
-            print("Plotting RY rotation...")
+            log.info("Plotting RY rotation...")
             self.plot_rotation(pulse_params)
 
         return pulse_params, loss, losses
@@ -541,7 +547,7 @@ class QOC:
         """
         self.current_gate = "RZ"
         if self.make_plots:
-            print("Plotting RZ rotation...")
+            log.info("Plotting RZ rotation...")
             self.plot_rotation([])
 
         return None, None
@@ -551,7 +557,7 @@ class QOC:
         steps=1000,
         patience: int = 100,
         init_pulse_params: jnp.array = jnp.array([1.0, 15.0, 1.0]),
-        print_every: int = 50,
+        log_interval: int = 50,
     ):
         """
         Optimize pulse parameters for the Hadamard (H) gate to best approximate
@@ -566,7 +572,7 @@ class QOC:
                 Default: 100.
             init_pulse_params (jnp.ndarray): Initial pulse parameters (A, sigma, t)
                 Default: [1.0, 15.0, 1.0].
-            print_every (int): Frequency of printing loss during optimization.
+            log_interval (int): Frequency of printing loss during optimization.
                 Default: 50.
 
         Returns:
@@ -594,8 +600,9 @@ class QOC:
             return self.cost_fn(
                 pulse_params, circuit=pulse_circuit, w=None, target_state=target
             )
+
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, print_every
+            cost, init_pulse_params, steps, patience, log_interval
         )
 
         # Saving the optimized parameters
@@ -603,7 +610,7 @@ class QOC:
 
         # Plotting the RX rotation
         if self.make_plots:
-            print("Plotting H rotation...")
+            log.info("Plotting H rotation...")
             self.plot_rotation(pulse_params)
 
         return pulse_params, loss, losses
@@ -613,7 +620,7 @@ class QOC:
         steps=1000,
         patience: int = 100,
         init_pulse_params: jnp.ndarray = jnp.array([1.0]),
-        print_every: int = 50,
+        log_interval: int = 50,
     ):
         """
         Optimize pulse parameters for the CZ gate to best approximate
@@ -628,7 +635,7 @@ class QOC:
             patience (int): Amount of epochs without improvement before early stopping.
                 Default: 100.
             init_pulse_params (jnp.ndarray): Initial pulse duration. Default: [1.0].
-            print_every (int): Frequency of printing loss during optimization.
+            log_interval (int): Frequency of printing loss during optimization.
                 Default: 50.
 
         Returns:
@@ -660,8 +667,9 @@ class QOC:
             return self.cost_fn(
                 pulse_params, circuit=pulse_circuit, w=None, target_state=target
             )
+
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, print_every
+            cost, init_pulse_params, steps, patience, log_interval
         )
 
         # Saving the optimized parameters
@@ -669,7 +677,7 @@ class QOC:
 
         # Plotting the CZ rotation
         if self.make_plots:
-            print("Plotting CZ rotation...")
+            log.info("Plotting CZ rotation...")
             self.plot_rotation(pulse_params)
 
         return pulse_params, loss, losses
@@ -681,7 +689,7 @@ class QOC:
         init_pulse_params: jnp.ndarray = jnp.array(
             [0.5, 15.0, 10.0, 1.0, 15.0, 10.0, 1.0, 1.0, 0.5]
         ),
-        print_every: int = 50,
+        log_interval: int = 50,
     ):
         """
         Optimize pulse parameters for the CY gate to best approximate the
@@ -697,7 +705,7 @@ class QOC:
                 Default: 100.
             init_pulse_params (jnp.ndarray): Initial pulse parameters.
                 Default: [1.0, 15.0, 1.0, 1.0, 1.0, 15.0, 1.0].
-            print_every (int): Frequency of printing loss during optimization.
+            log_interval (int): Frequency of printing loss during optimization.
                 Default: 50.
 
         Returns:
@@ -727,8 +735,9 @@ class QOC:
             return self.cost_fn(
                 pulse_params, circuit=pulse_circuit, w=None, target_state=target
             )
+
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, print_every
+            cost, init_pulse_params, steps, patience, log_interval
         )
 
         # Saving the optimized parameters
@@ -747,7 +756,7 @@ class QOC:
         init_pulse_params: jnp.ndarray = jnp.array(
             [1.0, 15.0, 1.0, 1.0, 1.0, 15.0, 1.0]
         ),
-        print_every: int = 50,
+        log_interval: int = 50,
     ):
         """
         Optimize pulse parameters for the CX gate to best approximate the
@@ -763,7 +772,7 @@ class QOC:
                 Default: 100.
             init_pulse_params (jnp.ndarray): Initial pulse parameters.
                 Default: [1.0, 15.0, 1.0, 1.0, 1.0, 15.0, 1.0].
-            print_every (int): Frequency of printing loss during optimization.
+            log_interval (int): Frequency of printing loss during optimization.
                 Default: 50.
 
         Returns:
@@ -793,8 +802,9 @@ class QOC:
             return self.cost_fn(
                 pulse_params, circuit=pulse_circuit, w=None, target_state=target
             )
+
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, print_every
+            cost, init_pulse_params, steps, patience, log_interval
         )
 
         # Saving the optimized parameters
@@ -802,7 +812,7 @@ class QOC:
 
         # Plotting the CX rotation
         if self.make_plots:
-            print("Plotting CX rotation...")
+            log.info("Plotting CX rotation...")
             self.plot_rotation(pulse_params)
 
         return pulse_params, loss, losses
@@ -815,7 +825,7 @@ class QOC:
         init_pulse_params: jnp.ndarray = jnp.array(
             [10.0, 15.0, 1.0, 0.5, 1.0, 0.5, 10.0, 15.0, 1.0]
         ),
-        print_every: int = 50,
+        log_interval: int = 50,
     ):
         """
         Optimize pulse parameters for the CRX(w) gate to best approximate
@@ -831,7 +841,7 @@ class QOC:
                 Default: 100.
             w (float): Rotation angle.
             init_pulse_params (jnp.ndarray): Initial pulse parameters.
-            print_every (int): Frequency of printing loss.
+            log_interval (int): Frequency of printing loss.
 
         Returns:
             tuple: Optimized parameters (jnp.ndarray) and list of loss values.
@@ -858,8 +868,9 @@ class QOC:
             return self.cost_fn(
                 pulse_params, circuit=pulse_circuit, w=w, target_state=target
             )
+
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, print_every
+            cost, init_pulse_params, steps, patience, log_interval
         )
 
         self.save_results(pulse_params)
@@ -877,7 +888,7 @@ class QOC:
         init_pulse_params: jnp.ndarray = jnp.array(
             [10.0, 15.0, 1.0, 0.5, 1.0, 0.5, 10.0, 15.0, 1.0]
         ),
-        print_every: int = 50,
+        log_interval: int = 50,
     ):
         """
         Optimize pulse parameters for the CRY(w) gate to best approximate
@@ -893,7 +904,7 @@ class QOC:
                 Default: 100.
             w (float): Rotation angle.
             init_pulse_params (jnp.ndarray): Initial pulse parameters.
-            print_every (int): Frequency of printing loss.
+            log_interval (int): Frequency of printing loss.
 
         Returns:
             tuple: Optimized parameters (jnp.ndarray) and list of loss values.
@@ -920,8 +931,9 @@ class QOC:
             return self.cost_fn(
                 pulse_params, circuit=pulse_circuit, w=w, target_state=target
             )
+
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, print_every
+            cost, init_pulse_params, steps, patience, log_interval
         )
 
         self.save_results(pulse_params)
@@ -937,7 +949,7 @@ class QOC:
         patience: int = 100,
         w: float = jnp.pi,
         init_pulse_params: jnp.ndarray = jnp.array([0.5, 2.0, 0.5]),
-        print_every: int = 50,
+        log_interval: int = 50,
     ):
         """
         Optimize pulse parameters for the CRZ(w) gate to best approximate
@@ -952,7 +964,7 @@ class QOC:
             patience (int): Early stopping patience. Default: 100.
             w (float): Rotation angle.
             init_pulse_params (jnp.ndarray): Initial pulse parameters.
-            print_every (int): Frequency of printing loss.
+            log_interval (int): Frequency of printing loss.
 
         Returns:
             tuple: Optimized parameters (jnp.ndarray) and list of loss values.
@@ -983,8 +995,9 @@ class QOC:
             return self.cost_fn(
                 pulse_params, circuit=pulse_circuit, w=w, target_state=target
             )
+
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, print_every
+            cost, init_pulse_params, steps, patience, log_interval
         )
 
         self.save_results(pulse_params)
@@ -1004,85 +1017,85 @@ if __name__ == "__main__":
     )
 
     # - Run optimization for Rot gate -
-    # print("Optimizing Rot gate...")
+    # log.info("Optimizing Rot gate...")
     # optimized_pulse_params, best_loss, loss_values = qoc.optimize_Rot()
-    # print(f"Optimized parameters for Rot: {optimized_pulse_params}\n")
-    # print(f"Best achieved fidelity: {1 - best_loss}")
-    # print("-" * 20, "\n")
+    # log.info(f"Optimized parameters for Rot: {optimized_pulse_params}\n")
+    # log.info(f"Best achieved fidelity: {1 - best_loss}")
+    # log.info("-" * 20, "\n")
 
     # # - Run optimization for RX gate -
-    # print("Optimizing RX gate...")
+    # log.info("Optimizing RX gate...")
     # optimized_pulse_params, best_loss, loss_values = qoc.optimize_RX(
     #     w=jnp.pi, init_pulse_params=jnp.array([1.0, 15.0, 1.0])
     # )
-    # print(f"Optimized parameters for RX: {optimized_pulse_params}\n")
-    # print(f"Best achieved fidelity: {1 - best_loss}")
-    # print("-" * 20, "\n")
+    # log.info(f"Optimized parameters for RX: {optimized_pulse_params}\n")
+    # log.info(f"Best achieved fidelity: {1 - best_loss}")
+    # log.info("-" * 20, "\n")
 
     # # - Run optimization for RY gate -
-    # print("Optimizing RY gate...")
+    # log.info("Optimizing RY gate...")
     # optimized_pulse_params, best_loss, loss_values = qoc.optimize_RY(
     #     w=jnp.pi, init_pulse_params=jnp.array([1.0, 15.0, 1.0])
     # )
-    # print(f"Optimized parameters for RY: {optimized_pulse_params}\n")
-    # print(f"Best achieved fidelity: {1 - best_loss:.6f}")
-    # print("-" * 20, "\n")
+    # log.info(f"Optimized parameters for RY: {optimized_pulse_params}\n")
+    # log.info(f"Best achieved fidelity: {1 - best_loss:.6f}")
+    # log.info("-" * 20, "\n")
 
     # # - Run optimization for RZ gate -
-    # print("Plotting RZ gate rotation...")
+    # log.info("Plotting RZ gate rotation...")
     # qoc.optimize_RZ()
-    # print("Plotted RZ gate rotation")
-    # print("-" * 20, "\n")
+    # log.info("Plotted RZ gate rotation")
+    # log.info("-" * 20, "\n")
 
     # # - Run optimization for H gate -
-    # print("Optimizing H gate...")
+    # log.info("Optimizing H gate...")
     # optimized_pulse_params, best_loss, loss_values = qoc.optimize_H(
     #     init_pulse_params=jnp.array([1.0, 15.0, 1.0])
     # )
-    # print(f"Optimized parameters for H: {optimized_pulse_params}\n")
-    # print(f"Best achieved fidelity: {1 - best_loss}")
-    # print("-" * 20, "\n")
+    # log.info(f"Optimized parameters for H: {optimized_pulse_params}\n")
+    # log.info(f"Best achieved fidelity: {1 - best_loss}")
+    # log.info("-" * 20, "\n")
 
     # # - Run optimization for CZ gate -
-    # print("Optimizing CZ gate...")
+    # log.info("Optimizing CZ gate...")
     # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CZ(
-    #     init_pulse_params=jnp.array([0.975]), print_every=5
+    #     init_pulse_params=jnp.array([0.975]), log_interval=5
     # )
-    # print(f"Optimized parameters for CZ: {optimized_pulse_params}\n")
-    # print(f"Best achieved fidelity: {1 - best_loss}")
-    # print("-" * 20, "\n")
+    # log.info(f"Optimized parameters for CZ: {optimized_pulse_params}\n")
+    # log.info(f"Best achieved fidelity: {1 - best_loss}")
+    # log.info("-" * 20, "\n")
 
     # - Run optimization for CY gate -
-    # print("Optimizing CY gate...")
-    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CY(print_every=50)
-    # print(f"Optimized parameters for CY: {optimized_pulse_params}\n")
-    # print(f"Best achieved fidelity: {1 - best_loss}")
-    # print("-" * 20, "\n")
+    # log.info("Optimizing CY gate...")
+    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CY(log_interval=50)
+    # log.info(f"Optimized parameters for CY: {optimized_pulse_params}\n")
+    # log.info(f"Best achieved fidelity: {1 - best_loss}")
+    # log.info("-" * 20, "\n")
 
     # - Run optimization for CX gate -
-    # print("Optimizing CX gate...")
-    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CX(print_every=50)
-    # print(f"Optimized parameters for CX: {optimized_pulse_params}\n")
-    # print(f"Best achieved fidelity: {1 - best_loss}")
-    # print("-" * 20, "\n")
+    # log.info("Optimizing CX gate...")
+    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CX(log_interval=50)
+    # log.info(f"Optimized parameters for CX: {optimized_pulse_params}\n")
+    # log.info(f"Best achieved fidelity: {1 - best_loss}")
+    # log.info("-" * 20, "\n")
 
     # - Run optimization for CRX gate -
-    # print("Optimizing CRX gate...")
+    # log.info("Optimizing CRX gate...")
     # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRX(w=jnp.pi)
-    # print(f"Optimized parameters for CRX: {optimized_pulse_params}\n")
-    # print(f"Best achieved fidelity: {1 - best_loss}")
-    # print("-" * 20, "\n")
+    # log.info(f"Optimized parameters for CRX: {optimized_pulse_params}\n")
+    # log.info(f"Best achieved fidelity: {1 - best_loss}")
+    # log.info("-" * 20, "\n")
 
     # - Run optimization for CRY gate -
-    # print("Optimizing CRY gate...")
+    # log.info("Optimizing CRY gate...")
     # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRY(w=jnp.pi)
-    # print(f"Optimized parameters for CRY: {optimized_pulse_params}\n")
-    # print(f"Best achieved fidelity: {1 - best_loss}")
-    # print("-" * 20, "\n")
+    # log.info(f"Optimized parameters for CRY: {optimized_pulse_params}\n")
+    # log.info(f"Best achieved fidelity: {1 - best_loss}")
+    # log.info("-" * 20, "\n")
 
     # - Run optimization for CRZ gate -
-    # print("Optimizing CRZ gate...")
+    # log.info("Optimizing CRZ gate...")
     # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRZ()
-    # print(f"Optimized parameters for CRZ: {optimized_pulse_params}\n")
-    # print(f"Best achieved fidelity: {1 - best_loss}")
-    # print("-" * 20, "\n")
+    # log.info(f"Optimized parameters for CRZ: {optimized_pulse_params}\n")
+    # log.info(f"Best achieved fidelity: {1 - best_loss}")
+    # log.info("-" * 20, "\n")

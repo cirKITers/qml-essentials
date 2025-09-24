@@ -9,6 +9,7 @@ from jax import numpy as jnp
 import pytest
 import inspect
 import logging
+
 jax.config.update("jax_enable_x64", True)
 
 
@@ -57,8 +58,7 @@ def test_batch_gate_error():
     res_b = model(inputs=inputs, noise_params={"GateError": 50})
     # check if each output is the same
     assert np.allclose(res_b, np.flip(res_b)), (
-        "Expected all outputs to be the same "
-        "when batch_gate_error is False"
+        "Expected all outputs to be the same " "when batch_gate_error is False"
     )
 
 
@@ -325,12 +325,15 @@ def test_available_ansaetze() -> None:
 
 
 @pytest.mark.unittest
-@pytest.mark.parametrize("w", [
-    (0.0, 0.0, 0.0),  # Identity
-    (np.pi/2, 0.0, 0.0),  # Pure RX
-    (0.0, np.pi/2, 0.0),  # Pure RY
-    (np.pi, np.pi/2, np.pi),  # Mixed rotation
-])
+@pytest.mark.parametrize(
+    "w",
+    [
+        (0.0, 0.0, 0.0),  # Identity
+        (np.pi / 2, 0.0, 0.0),  # Pure RX
+        (0.0, np.pi / 2, 0.0),  # Pure RY
+        (np.pi, np.pi / 2, np.pi),  # Mixed rotation
+    ],
+)
 def test_pulse_Rot_gate(w):
     phi, theta, omega = w
 
@@ -360,7 +363,8 @@ def test_pulse_Rot_gate(w):
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
     assert np.isclose(
-        fidelity, 1.0, atol=1e-2), f"Fidelity too low for w={w}: {fidelity}"
+        fidelity, 1.0, atol=1e-2
+    ), f"Fidelity too low for w={w}: {fidelity}"
 
     custom_fidelity = np.abs(np.vdot(state_ideal, state_custom_pulse)) ** 2
     assert np.isclose(
@@ -398,7 +402,8 @@ def test_pulse_RX_gate(w):
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
     assert np.isclose(
-        fidelity, 1.0, atol=1e-2), f"Fidelity too low for w={w}: {fidelity}"
+        fidelity, 1.0, atol=1e-2
+    ), f"Fidelity too low for w={w}: {fidelity}"
 
     custom_fidelity = np.abs(np.vdot(state_ideal, state_custom_pulse)) ** 2
     assert np.isclose(
@@ -436,7 +441,8 @@ def test_pulse_RY_gate(w):
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
     assert np.isclose(
-        fidelity, 1.0, atol=1e-2), f"Fidelity too low for w={w}: {fidelity}"
+        fidelity, 1.0, atol=1e-2
+    ), f"Fidelity too low for w={w}: {fidelity}"
 
     custom_fidelity = np.abs(np.vdot(state_ideal, state_custom_pulse)) ** 2
     assert np.isclose(
@@ -477,7 +483,8 @@ def test_pulse_RZ_gate(w):
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
     assert np.isclose(
-        fidelity, 1.0, atol=1e-2), f"Fidelity too low for w={w}: {fidelity}"
+        fidelity, 1.0, atol=1e-2
+    ), f"Fidelity too low for w={w}: {fidelity}"
 
     custom_fidelity = np.abs(np.vdot(state_ideal, state_custom_pulse)) ** 2
     assert np.isclose(
@@ -514,7 +521,8 @@ def test_pulse_H_gate():
 
     fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
     assert np.isclose(
-        fidelity, 1.0, atol=1e-2), f"Fidelity too low for H gate: {fidelity}"
+        fidelity, 1.0, atol=1e-2
+    ), f"Fidelity too low for H gate: {fidelity}"
 
     custom_fidelity = np.abs(np.vdot(state_ideal, state_custom_pulse)) ** 2
     assert np.isclose(
@@ -862,11 +870,7 @@ def test_invalid_pulse_params():
         with pytest.raises(TypeError):
             Gates.RX(np.pi, 0, pulse_params=pp, gate_mode="pulse")
 
-    invalid_len_pulse_params = [
-        jnp.array([10, 5, 1, 1]),
-        [10, 10, 5, 5, 1, 1],
-        (10,)
-    ]
+    invalid_len_pulse_params = [jnp.array([10, 5, 1, 1]), [10, 10, 5, 5, 1, 1], (10,)]
 
     for pp in invalid_len_pulse_params:
         with pytest.raises(ValueError):

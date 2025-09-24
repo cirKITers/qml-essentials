@@ -143,9 +143,7 @@ class Model:
             sp_name = sp.__name__ if hasattr(sp, "__name__") else str(sp)
 
             if sp_name in pinfo.OPTIMIZED_PULSES:
-                params = np.array(
-                    pinfo.optimized_params(sp_name), requires_grad=False
-                )
+                params = np.array(pinfo.optimized_params(sp_name), requires_grad=False)
                 self.sp_pulse_params.append(params)
             else:
                 # gate has no pulse parametrization
@@ -875,9 +873,7 @@ class Model:
                 **kwargs,
             )
         else:
-            result = qml.draw(self.circuit)(
-                params=self.params, inputs=inputs
-            )
+            result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
         return result
 
     def __repr__(self) -> str:

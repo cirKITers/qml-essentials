@@ -780,7 +780,7 @@ def test_pulse_model() -> None:
             pulse_params=pulse_params,
             inputs=x,
             force_mean=True,
-            gate_mode="pulse"
+            gate_mode="pulse",
         )
         return np.mean((y_hat - y) ** 2)
 
@@ -800,6 +800,7 @@ def test_pulse_model() -> None:
 
 
 @pytest.mark.expensive
+@pytest.mark.unittest
 def test_pulse_model_inference():
     model = Model(
         n_qubits=4,
