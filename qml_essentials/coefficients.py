@@ -1,12 +1,12 @@
 from __future__ import annotations
-import numpy as np
 import math
 from collections import defaultdict
 from dataclasses import dataclass
 import pennylane as qml
+import pennylane.numpy as np
 from pennylane.operation import Operator
 import pennylane.ops.op_math as qml_op
-from scipy.stats import pearsonr, spearmanr
+from scipy.stats import rankdata
 from typing import List, Tuple, Optional, Any, Dict, Union
 
 from qml_essentials.model import Model
@@ -934,8 +934,10 @@ class FCC:
         model: Model,
         n_samples: int,
         seed: int,
-        method: str = "pearson",
-        weight: bool = False,
+        method: Optional[str] = "pearson",
+        scale: Optional[bool] = False,
+        weight: Optional[bool] = False,
+        **kwargs,
     ):
         """
         Shortcut method to get just the FCC.
@@ -955,14 +957,17 @@ class FCC:
         Returns:
             _type_: _description_
         """
-        _, coeffs = FCC.calculate_coefficients(model, n_samples, seed)
-        coeff_correlation = FCC.correlate(coeffs, coeffs, method=method)
+        _, coeffs, freqs = FCC.calculate_coefficients(
+            model, n_samples, seed, scale, **kwargs
+        )
+        coeff_correlation = FCC.correlate(coeffs.transpose(), method=method)
 
-        return FCC.calculate_fcc(coeff_correlation, weight=weight)
+        return FCC.calculate_fcc(coeff_correlation, freqs, weight=weight)
 
     @staticmethod
     def calculate_fcc(
         coeff_coeff_correlation: np.ndarray,
+        freqs: np.ndarray,
         weight: bool = False,
     ):
         """
@@ -978,17 +983,35 @@ class FCC:
         Returns:
             _type_: _description_
         """
+        # perform weighting if requested
         coeff_coeff_correlation = (
             FCC._weighting(coeff_coeff_correlation)
             if weight
             else coeff_coeff_correlation
         )
 
-        return np.mean(coeff_coeff_correlation)
+        # positive coefficients only (lower right quadrant)
+        coeff_coeff_correlation_trimmed = coeff_coeff_correlation[
+            coeff_coeff_correlation.shape[0] // 2 :,
+            coeff_coeff_correlation.shape[1] // 2 :,
+        ]
+
+        # set np.nan into the redundant parts of the matrix
+        # i.e. only use the lower triangular part
+        for i in range(coeff_coeff_correlation_trimmed.shape[0]):
+            for j in range(coeff_coeff_correlation_trimmed.shape[1]):
+                if i <= j:
+                    coeff_coeff_correlation_trimmed[i, j] = np.nan
+
+        return np.nanmean(np.abs(coeff_coeff_correlation_trimmed))
 
     @staticmethod
     def calculate_coefficients(
-        model: Model, n_samples: int, seed: int, noise_params: Dict = None
+        model: Model,
+        n_samples: int,
+        seed: int,
+        scale: bool = False,
+        **kwargs,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Calculates the Fourier coefficients of a given model using `n_samples` and `seed`.
@@ -1001,27 +1024,28 @@ class FCC:
             noise_params (Dict, optional): Noise parameters. Defaults to None.
 
         Returns:
-            Tuple[np.ndarray, np.ndarray]: Parameters and Coefficients
+            Tuple[np.ndarray, np.ndarray]: Parameters and Coefficients of size NxK
         """
         if n_samples > 0:
-            total_samples = int(
-                np.power(2, model.n_qubits) * n_samples * model.n_input_feat
-            )
+            if scale:
+                total_samples = int(
+                    np.power(2, model.n_qubits) * n_samples * model.n_input_feat
+                )
+            else:
+                total_samples = n_samples
             rng = np.random.default_rng(seed)
             model.initialize_params(rng=rng, repeat=total_samples)
         else:
             total_samples = 1
 
-        coeffs, _ = Coefficients.calculate_coefficients(
-            model, noise_params=noise_params
+        coeffs, freqs = Coefficients.get_spectrum(
+            model, shift=True, trim=True, **kwargs
         )
 
-        return model.params.reshape(-1, total_samples), coeffs.reshape(
-            -1, total_samples
-        )
+        return model.params, coeffs, freqs
 
     @staticmethod
-    def correlate(a: np.ndarray, b: np.ndarray, method: str = "pearson") -> np.ndarray:
+    def correlate(mat: np.ndarray, method: str = "pearson") -> np.ndarray:
         """
         Correlates two arrays using `method`.
         Currently, `pearson` and `spearman` are supported.
@@ -1038,14 +1062,156 @@ class FCC:
             np.ndarray: Correlation matrix of `a` and `b`.
         """
         if method == "pearson":
-            result = pearsonr(a, b, alternative="two-sided")
+            result = FCC._pearson(mat)
         elif method == "spearman":
-            result = spearmanr(a, b)
+            result = FCC._spearman(mat)
         else:
             raise ValueError(
                 f"Unknown correlation method: {method}. \
                              Must be 'pearson' or 'spearman'."
             )
+
+        return result
+
+    @staticmethod
+    def _pearson(mat: np.ndarray, cov: Optional[bool] = False, minp: Optional[int] = 1):
+        """
+        Based on Pandas correlation method as implemented here:
+        https://github.com/pandas-dev/pandas/blob/main/pandas/_libs/algos.pyx
+
+        Compute Pearson correlation between columns of `mat`,
+        permitting missing values (NaN or ±Inf).
+
+        Args:
+            mat : array_like, shape (N, K)
+                Input data.
+            minp : int, optional
+                Minimum number of paired observations required to form a correlation.
+                If the number of valid pairs for (i, j) is < minp, the result is NaN.
+
+        Returns:
+            corr : ndarray, shape (K, K)
+                Pearson correlation matrix.
+        """
+
+        mat = np.asarray(mat, dtype=np.float64)
+        N, K = mat.shape
+
+        # pre‐compute finite‐mask
+        mask = np.isfinite(mat)
+
+        # output
+        result = np.empty((K, K), dtype=np.float64)
+
+        # loop over column‐pairs
+        for i in range(K):
+            for j in range(i + 1):
+                # find rows where both columns are finite
+                m = mask[:, i] & mask[:, j]
+                n = np.count_nonzero(m)
+                if n < minp:
+                    # too few pairs
+                    value = np.nan
+                else:
+                    x = mat[m, i]
+                    y = mat[m, j]
+
+                    # compute means
+                    mean_x = x.mean()
+                    mean_y = y.mean()
+
+                    # demeaned data
+                    dx = x - mean_x
+                    dy = y - mean_y
+
+                    # sum of squares and cross‐prod
+                    ssx = np.dot(dx, dx)
+                    ssy = np.dot(dy, dy)
+                    cxy = np.dot(dx, dy)
+
+                    if cov:
+                        # sample covariance (denominator n−1)
+                        value = cxy / (n - 1) if n > 1 else np.nan
+                    else:
+                        # Pearson r = cov / (σx σy)
+                        denom = np.sqrt(ssx * ssy)
+                        if denom == 0.0:
+                            value = np.nan
+                        else:
+                            value = cxy / denom
+                            # clip numerical drift
+                            if value > 1.0:
+                                value = 1.0
+                            elif value < -1.0:
+                                value = -1.0
+
+                result[i, j] = result[j, i] = value
+
+        return result
+
+    def _spearman(mat: np.ndarray, minp: Optional[int] = 1) -> np.ndarray:
+        """
+        Based on Pandas correlation method as implemented here:
+        https://github.com/pandas-dev/pandas/blob/main/pandas/_libs/algos.pyx
+
+        Compute Spearman correlation between columns of `mat`,
+        permitting missing values (NaN or ±Inf).
+
+        Args:
+            mat : array_like, shape (N, K)
+                Input data.
+            minp : int, optional
+                Minimum number of paired observations required to form a correlation.
+                If the number of valid pairs for (i, j) is < minp, the result is NaN.
+
+        Returns:
+            corr : ndarray, shape (K, K)
+                Spearman correlation matrix.
+        """
+
+        mat = np.asarray(mat, dtype=float)
+        if mat.ndim != 2:
+            raise ValueError("`mat` must be 2D")
+
+        N, K = mat.shape
+        # trivial all-NaN answer if too few rows
+        if N < minp:
+            return np.full((K, K), np.nan, dtype=float)
+
+        # mask of finite entries
+        mask = np.isfinite(mat)  # shape (N, K), dtype=bool
+
+        # precompute ranks column-wise ignoring NaNs
+        ranks = np.full((N, K), np.nan, dtype=float)
+        for j in range(K):
+            valid = mask[:, j]
+            if valid.any():
+                # rankdata by default gives average ranks for ties
+                ranks[valid, j] = rankdata(mat[valid, j], method="average")
+
+        # allocate result
+        result = np.empty((K, K), dtype=float)
+        # loop lower triangle (including diagonal)
+        for i in range(K):
+            for j in range(i + 1):
+                # find rows where both columns are finite
+                valid = mask[:, i] & mask[:, j]
+                nobs = valid.sum()
+
+                if nobs < minp:
+                    rho = np.nan
+                else:
+                    xi = ranks[valid, i]
+                    yj = ranks[valid, j]
+                    # subtract means
+                    xi = xi - xi.mean()
+                    yj = yj - yj.mean()
+                    num = np.dot(xi, yj)
+                    den = np.sqrt(np.dot(xi, xi) * np.dot(yj, yj))
+                    rho = num / den if den > 0 else np.nan
+
+                result[i, j] = rho
+                result[j, i] = rho
 
         return result
 
