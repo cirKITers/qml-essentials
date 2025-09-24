@@ -938,7 +938,7 @@ class FCC:
         scale: Optional[bool] = False,
         weight: Optional[bool] = False,
         **kwargs,
-    ):
+    ) -> float:
         """
         Shortcut method to get just the FCC.
         This includes
@@ -948,28 +948,66 @@ class FCC:
         4. Averaging the result
 
         Args:
-            model (Model): _description_
-            n_samples (int): _description_
-            seed (int): _description_
-            method (str, optional): _description_. Defaults to "pearson".
-            weight (bool, optional): _description_. Defaults to False.
+            model (Model): The QFM model
+            n_samples (int): Number of samples to calculate average of coefficients
+            seed (int): Seed to initialize random parameters
+            method (Optional[str], optional): Correlation method. Defaults to "pearson".
+            scale (Optional[bool], optional): Whether to scale the number of samples.
+                Defaults to False.
+            weight (Optional[bool], optional): Whether to weight the correlation matrix.
+                Defaults to False.
+            **kwargs: Additional keyword arguments for the model function.
 
         Returns:
-            _type_: _description_
+            float: The FCC
+        """
+        coeff_correlation, freqs = FCC.get_fourier_fingerprint(
+            model, n_samples, seed, method, scale, weight, **kwargs
+        )
+
+        return FCC.calculate_fcc(coeff_correlation, freqs=freqs, weight=weight)
+
+    def get_fourier_fingerprint(
+        model: Model,
+        n_samples: int,
+        seed: int,
+        method: Optional[str] = "pearson",
+        scale: Optional[bool] = False,
+        weight: Optional[bool] = False,
+        **kwargs,
+    ) -> np.ndarray:
+        """
+        Shortcut method to get just the fourier fingerprint.
+        This includes
+        1. Calculating the coefficients (using `n_samples` and `seed`)
+        2. Correlating the result from 1) using `method`
+        3. Weighting the correlation matrix (if `weight` is True)
+
+        Args:
+            model (Model): The QFM model
+            n_samples (int): Number of samples to calculate average of coefficients
+            seed (int): Seed to initialize random parameters
+            method (Optional[str], optional): Correlation method. Defaults to "pearson".
+            scale (Optional[bool], optional): Whether to scale the number of samples.
+                Defaults to False.
+            weight (Optional[bool], optional): Whether to weight the correlation matrix.
+                Defaults to False.
+            **kwargs: Additional keyword arguments for the model function.
+
+        Returns:
+            np.ndarray : The Fourier fingerprint
         """
         _, coeffs, freqs = FCC.calculate_coefficients(
             model, n_samples, seed, scale, **kwargs
         )
-        coeff_correlation = FCC.correlate(coeffs.transpose(), method=method)
-
-        return FCC.calculate_fcc(coeff_correlation, freqs, weight=weight)
+        return FCC.correlate(coeffs.transpose(), method=method), freqs
 
     @staticmethod
     def calculate_fcc(
-        coeff_coeff_correlation: np.ndarray,
+        fourier_fingerprint: np.ndarray,
         freqs: np.ndarray,
         weight: bool = False,
-    ):
+    ) -> float:
         """
         Method to calculate the FCC based on an existing correlation matrix.
         This includes
@@ -977,33 +1015,37 @@ class FCC:
         2. Averaging the result
 
         Args:
-            coeff_coeff_correlation (np.ndarray): _description_
-            weight (bool, optional): _description_. Defaults to False.
+            coeff_coeff_correlation (np.ndarray): Correlation matrix of coefficients
+            freqs (np.ndarray): Array of frequencies
+            weight (bool, optional): Whether to weight the correlation matrix.
+                Defaults to False.
 
         Returns:
-            _type_: _description_
+            float: The FCC
         """
         # perform weighting if requested
-        coeff_coeff_correlation = (
-            FCC._weighting(coeff_coeff_correlation)
-            if weight
-            else coeff_coeff_correlation
+        fourier_fingerprint = (
+            FCC._weighting(fourier_fingerprint) if weight else fourier_fingerprint
         )
 
+        # TODO: this part can be heavily optimized, by e.g. using the "positive_only"
+        # flag when calculating the coefficients. However this would change the numerical
+        # values (while the order should be still the same).
+
         # positive coefficients only (lower right quadrant)
-        coeff_coeff_correlation_trimmed = coeff_coeff_correlation[
-            coeff_coeff_correlation.shape[0] // 2 :,
-            coeff_coeff_correlation.shape[1] // 2 :,
+        corr_trimmed = fourier_fingerprint[
+            fourier_fingerprint.shape[0] // 2 :,
+            fourier_fingerprint.shape[1] // 2 :,
         ]
 
         # set np.nan into the redundant parts of the matrix
         # i.e. only use the lower triangular part
-        for i in range(coeff_coeff_correlation_trimmed.shape[0]):
-            for j in range(coeff_coeff_correlation_trimmed.shape[1]):
+        for i in range(corr_trimmed.shape[0]):
+            for j in range(corr_trimmed.shape[1]):
                 if i <= j:
-                    coeff_coeff_correlation_trimmed[i, j] = np.nan
+                    corr_trimmed[i, j] = np.nan
 
-        return np.nanmean(np.abs(coeff_coeff_correlation_trimmed))
+        return np.nanmean(np.abs(corr_trimmed))
 
     @staticmethod
     def calculate_coefficients(
@@ -1021,7 +1063,9 @@ class FCC:
             model (Model): The QFM model
             n_samples (int): Number of samples to calculate average of coefficients
             seed (int): Seed to initialize random parameters
-            noise_params (Dict, optional): Noise parameters. Defaults to None.
+            scale (bool, optional): Whether to scale the number of samples.
+                Defaults to False.
+            **kwargs: Additional keyword arguments for the model function.
 
         Returns:
             Tuple[np.ndarray, np.ndarray]: Parameters and Coefficients of size NxK
@@ -1051,8 +1095,7 @@ class FCC:
         Currently, `pearson` and `spearman` are supported.
 
         Args:
-            a (np.ndarray): Array a
-            b (np.ndarray): Array b
+            mat (np.ndarray): Array of shape (N, K)
             method (str, optional): Correlation method. Defaults to "pearson".
 
         Raises:
@@ -1061,10 +1104,11 @@ class FCC:
         Returns:
             np.ndarray: Correlation matrix of `a` and `b`.
         """
+        # note that for the general n-D case, we have to flatten along the last axis
         if method == "pearson":
-            result = FCC._pearson(mat)
+            result = FCC._pearson(mat.reshape(mat.shape[0], -1))
         elif method == "spearman":
-            result = FCC._spearman(mat)
+            result = FCC._spearman(mat.reshape(mat.shape[0], -1))
         else:
             raise ValueError(
                 f"Unknown correlation method: {method}. \
@@ -1074,7 +1118,9 @@ class FCC:
         return result
 
     @staticmethod
-    def _pearson(mat: np.ndarray, cov: Optional[bool] = False, minp: Optional[int] = 1):
+    def _pearson(
+        mat: np.ndarray, cov: Optional[bool] = False, minp: Optional[int] = 1
+    ) -> np.ndarray:
         """
         Based on Pandas correlation method as implemented here:
         https://github.com/pandas-dev/pandas/blob/main/pandas/_libs/algos.pyx
@@ -1103,6 +1149,7 @@ class FCC:
         # output
         result = np.empty((K, K), dtype=np.float64)
 
+        # TODO: optimize in future iterations
         # loop over column‐pairs
         for i in range(K):
             for j in range(i + 1):
@@ -1191,6 +1238,8 @@ class FCC:
 
         # allocate result
         result = np.empty((K, K), dtype=float)
+
+        # TODO: optimize in future iterations
         # loop lower triangle (including diagonal)
         for i in range(K):
             for j in range(i + 1):
@@ -1216,7 +1265,7 @@ class FCC:
         return result
 
     @staticmethod
-    def _weighting(correlation: np.ndarray):
+    def _weighting(correlation: np.ndarray) -> np.ndarray:
         """
         Performs weighting on the given correlation matrix.
         Here, low-frequent coefficients are weighted more heavily.
