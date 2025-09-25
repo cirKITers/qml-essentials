@@ -965,7 +965,7 @@ class FCC:
             model, n_samples, seed, method, scale, weight, **kwargs
         )
 
-        return FCC.calculate_fcc(coeff_correlation, freqs=freqs, weight=weight)
+        return FCC._calculate_fcc(coeff_correlation, freqs=freqs, weight=weight)
 
     def get_fourier_fingerprint(
         model: Model,
@@ -997,13 +997,13 @@ class FCC:
         Returns:
             np.ndarray : The Fourier fingerprint
         """
-        _, coeffs, freqs = FCC.calculate_coefficients(
+        _, coeffs, freqs = FCC._calculate_coefficients(
             model, n_samples, seed, scale, **kwargs
         )
-        return FCC.correlate(coeffs.transpose(), method=method), freqs
+        return FCC._correlate(coeffs.transpose(), method=method), freqs
 
     @staticmethod
-    def calculate_fcc(
+    def _calculate_fcc(
         fourier_fingerprint: np.ndarray,
         freqs: np.ndarray,
         weight: bool = False,
@@ -1048,7 +1048,7 @@ class FCC:
         return np.nanmean(np.abs(corr_trimmed))
 
     @staticmethod
-    def calculate_coefficients(
+    def _calculate_coefficients(
         model: Model,
         n_samples: int,
         seed: int,
@@ -1089,7 +1089,7 @@ class FCC:
         return model.params, coeffs, freqs
 
     @staticmethod
-    def correlate(mat: np.ndarray, method: str = "pearson") -> np.ndarray:
+    def _correlate(mat: np.ndarray, method: str = "pearson") -> np.ndarray:
         """
         Correlates two arrays using `method`.
         Currently, `pearson` and `spearman` are supported.
