@@ -339,18 +339,32 @@ def test_trim() -> None:
         expected {coeffs.size-1}"
 
 
-@pytest.mark.smoketest
+@pytest.mark.unittest
 def test_frequencies() -> None:
     model = Model(
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_19",
     )
-    coeffs, freqs = Coefficients.get_spectrum(model, shift=True)
+    coeffs, freqs = Coefficients.get_spectrum(model)
 
     assert (
-        freqs.size == coeffs.size
-    ), "Frequencies and coefficients must have the same length."
+        freqs.shape == coeffs.shape
+    ), f"(1D) Frequencies ({freqs.shape}) and coefficients ({coeffs.shape}) must have the same length."
+
+    ## 2d
+
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        encoding=["RX", "RY"],
+    )
+    coeffs, freqs = Coefficients.get_spectrum(model)
+
+    assert (
+        freqs.shape == coeffs.shape
+    ), f"(2D) Frequencies ({freqs.shape}) and coefficients ({coeffs.shape}) must have the same length."
 
 
 @pytest.mark.smoketest
