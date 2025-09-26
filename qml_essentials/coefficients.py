@@ -7,6 +7,7 @@ import pennylane.numpy as np
 from pennylane.operation import Operator
 import pennylane.ops.op_math as qml_op
 from scipy.stats import rankdata
+from functools import reduce
 from typing import List, Tuple, Optional, Any, Dict, Union
 
 from qml_essentials.model import Model
@@ -935,7 +936,7 @@ class FCC:
         n_samples: int,
         seed: int,
         method: Optional[str] = "pearson",
-        scale: Optional[bool] = False,
+        scale: Optional[bool] = True,
         weight: Optional[bool] = False,
         **kwargs,
     ) -> float:
@@ -972,7 +973,7 @@ class FCC:
         n_samples: int,
         seed: int,
         method: Optional[str] = "pearson",
-        scale: Optional[bool] = False,
+        scale: Optional[bool] = True,
         weight: Optional[bool] = False,
         **kwargs,
     ) -> np.ndarray:
@@ -1032,20 +1033,18 @@ class FCC:
         # flag when calculating the coefficients. However this would change the numerical
         # values (while the order should be still the same).
 
-        # positive coefficients only (lower right quadrant)
-        corr_trimmed = fourier_fingerprint[
-            fourier_fingerprint.shape[0] // 2 :,
-            fourier_fingerprint.shape[1] // 2 :,
-        ]
-
-        # set np.nan into the redundant parts of the matrix
-        # i.e. only use the lower triangular part
-        for i in range(corr_trimmed.shape[0]):
-            for j in range(corr_trimmed.shape[1]):
-                if i <= j:
-                    corr_trimmed[i, j] = np.nan
-
-        return np.nanmean(np.abs(corr_trimmed))
+        # disregard all the negativ frequencies
+        freqs[freqs < 0] = np.nan
+        # compute the outer product of the frequency vectors for arbitrary dimensions
+        nd_freqs = reduce(np.multiply, np.ix_(*freqs))
+        # "simulate" what would happen on correlating the coefficients
+        corr_freqs = np.outer(nd_freqs, nd_freqs)
+        # mask all frequencies that are nan now (i.e. all correlations with a negative frequency component)
+        corr_mask = np.where(np.isnan(corr_freqs), corr_freqs, 1)
+        # from this, disregard all the other redundant correlations (i.e. c_0_1 = c_1_0)
+        corr_mask[np.tril_indices(corr_mask.shape[0], 0)] = np.nan
+        # apply the mask on the fingerprint
+        return np.nanmean(np.abs(corr_mask * fourier_fingerprint))
 
     @staticmethod
     def _calculate_coefficients(
@@ -1104,11 +1103,22 @@ class FCC:
         Returns:
             np.ndarray: Correlation matrix of `a` and `b`.
         """
-        # note that for the general n-D case, we have to flatten along the last axis
+        assert len(mat.shape) >= 2, "Input matrix must have at least 2 dimensions"
+
+        # Note that for the general n-D case, we have to flatten along
+        # the first axis (last one is batch).
+        # Note that the order here is important so we can easily filter out
+        # negative coefficients later.
+        # Consider the following example: [[1,2,3],[4,5,6],[7,8,9]]
+        # we want to get [1, 4, 7, 2, 5, 8, 3, 6, 9]
+        # such that after correlation, all positive indexed coefficients
+        # will be in the bottom right quadrant
         if method == "pearson":
             result = FCC._pearson(mat.reshape(mat.shape[0], -1))
+            # result = FCC._pearson(mat.reshape(mat.shape[-1], -1, order="F"))
         elif method == "spearman":
             result = FCC._spearman(mat.reshape(mat.shape[0], -1))
+            # result = FCC._spearman(mat.reshape(mat.shape[-1], -1, order="F"))
         else:
             raise ValueError(
                 f"Unknown correlation method: {method}. \
@@ -1215,11 +1225,6 @@ class FCC:
             corr : ndarray, shape (K, K)
                 Spearman correlation matrix.
         """
-
-        mat = np.asarray(mat, dtype=float)
-        if mat.ndim != 2:
-            raise ValueError("`mat` must be 2D")
-
         N, K = mat.shape
         # trivial all-NaN answer if too few rows
         if N < minp:
