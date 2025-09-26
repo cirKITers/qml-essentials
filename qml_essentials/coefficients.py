@@ -96,12 +96,13 @@ class Coefficients:
 
         coeffs = np.fft.fftn(outputs, axes=list(range(model.n_input_feat)))
 
-        # assert (
-        #     mts * n_freqs,
-        # ) * model.n_input_feat == coeffs.shape, f"Expected shape\
-        # {(mts * n_freqs,) * model.n_input_feat} but got {coeffs.shape}"
-
-        freqs = np.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
+        # TODO: in the future, this should take into account that there can be a
+        # different number of frequencies per dimension
+        freqs = [
+            np.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
+            for _ in range(model.n_input_feat)
+        ]
+        # freqs = np.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
 
         # TODO: this could cause issues with multidim input
         # FIXME: account for different frequencies in multidim input scenarios
@@ -110,7 +111,6 @@ class Coefficients:
         return (
             coeffs / np.prod(outputs.shape[0 : model.n_input_feat]),
             freqs,
-            # np.repeat(freqs[:, np.newaxis], model.n_input_feat, axis=1).squeeze(),
         )
 
     @staticmethod
@@ -153,7 +153,7 @@ class Coefficients:
         if not isinstance(inputs, (np.ndarray, list)):
             inputs = [inputs]
 
-        frequencies = np.stack(np.meshgrid(*[frequencies] * dims)).T.reshape(-1, dims)
+        frequencies = np.stack(np.meshgrid(*frequencies)).T.reshape(-1, dims)
         freq_inputs = np.einsum("...j,j->...", frequencies, inputs)
         coeffs = coefficients.flatten()
         freq_inputs = freq_inputs.flatten()
