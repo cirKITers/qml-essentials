@@ -936,7 +936,7 @@ class FCC:
         n_samples: int,
         seed: int,
         method: Optional[str] = "pearson",
-        scale: Optional[bool] = True,
+        scale: Optional[bool] = False,
         weight: Optional[bool] = False,
         **kwargs,
     ) -> float:
@@ -973,7 +973,7 @@ class FCC:
         n_samples: int,
         seed: int,
         method: Optional[str] = "pearson",
-        scale: Optional[bool] = True,
+        scale: Optional[bool] = False,
         weight: Optional[bool] = False,
         **kwargs,
     ) -> np.ndarray:
@@ -1013,7 +1013,8 @@ class FCC:
         Method to calculate the FCC based on an existing correlation matrix.
         This includes
         1. Weighting the correlation matrix (if `weight` is True)
-        2. Averaging the result
+        2. Removing redundant elements
+        3. Averaging the result
 
         Args:
             coeff_coeff_correlation (np.ndarray): Correlation matrix of coefficients
