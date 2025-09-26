@@ -69,9 +69,6 @@ class Coefficients:
             coeffs = np.fft.fftshift(coeffs, axes=list(range(model.n_input_feat)))
             freqs = np.fft.fftshift(freqs)
 
-        if positive_only:
-            return coeffs[freqs > 0], freqs[freqs > 0]
-
         return coeffs, freqs
 
     @staticmethod
@@ -111,7 +108,7 @@ class Coefficients:
         # normalize the output (using product if multidim)
         return (
             coeffs / np.prod(outputs.shape[0 : model.n_input_feat]),
-            freqs,
+            np.array(freqs).squeeze(),
         )
 
     @staticmethod
