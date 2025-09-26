@@ -1,6 +1,7 @@
 from qml_essentials.model import Model
 from qml_essentials.coefficients import Coefficients, FourierTree, FCC
 from pennylane.fourier import coefficients as pcoefficients
+import hashlib
 
 import numpy as np
 import pennylane.numpy as pnp
@@ -197,7 +198,7 @@ def test_coefficients_tree() -> None:
         ), "Imaginary part is not zero"
 
         # Filter fft_coeffs for only the frequencies that occur in the spectrum
-        sel_fft_coeffs = np.take(fft_coeffs, analytical_freqs[0] + int(max(fft_freqs)))
+        sel_fft_coeffs = np.take(fft_coeffs, analytical_freqs[0] + int(fft_freqs.max()))
         assert all(
             np.isclose(sel_fft_coeffs, analytical_coeffs[0], atol=1.0e-5)
         ), "FFT and analytical coefficients are not equal."
@@ -251,7 +252,7 @@ def test_coefficients_tree_mq() -> None:
     ), "Imaginary part is not zero"
 
     # Filter fft_coeffs for only the frequencies that occur in the spectrum
-    sel_fft_coeffs = np.take(fft_coeffs, analytical_freqs[0] + int(max(fft_freqs)))
+    sel_fft_coeffs = np.take(fft_coeffs, analytical_freqs[0] + int(fft_freqs.max()))
     assert all(
         np.isclose(sel_fft_coeffs, analytical_coeffs[0], atol=1.0e-5)
     ), "FFT and analytical coefficients are not equal."
@@ -436,6 +437,7 @@ def test_fcc() -> None:
             circuit_type=test_case["circuit_type"],
             output_qubit=-1,
             encoding=["RY"],
+            mp_threshold=3000,
         )
         fcc = FCC.get_fcc(
             model=model,
@@ -449,42 +451,87 @@ def test_fcc() -> None:
         ), f"Wrong FCC for {test_case['circuit_type']}. Got {fcc}, expected {test_case['fcc']}."
 
 
-@pytest.mark.expensive
-@pytest.mark.smoketest
-@pytest.mark.parametrize("n_samples", 100)
-def test_fcc_2d(n_samples) -> None:
+@pytest.mark.unittest
+def test_fourier_fingerprint() -> None:
     """
-    This test replicates the results obtained for the FCC
-    as shown in Fig. 3b from the paper
-    "Fourier Fingerprints of Ansatzes in Quantum Machine Learning"
-    https://doi.org/10.48550/arXiv.2508.20868
+    This test checks if the calculation of the Fourier fingerprint
+    returns the expected result by using hashs.
     """
     test_cases = [
         {
+            "circuit_type": "Circuit_15",
+            "hash": "19cf3e00d03bed47852ec3f7f0f63885",
+        },
+        {
             "circuit_type": "Circuit_19",
-            "fcc": 0.036,
+            "hash": "4bec965b0b28d50aaff51435944ec4d7",
+        },
+        {
+            "circuit_type": "Circuit_17",
+            "hash": "15b027c598cf649475679220c51d1c20",
+        },
+        {
+            "circuit_type": "Hardware_Efficient",
+            "hash": "ecf80abbf54b53c32986ce8b5f0955b6",
         },
     ]
 
     for test_case in test_cases:
         model = Model(
-            n_qubits=6,
+            n_qubits=3,
+            n_layers=1,
+            circuit_type=test_case["circuit_type"],
+            output_qubit=-1,
+            encoding=["RY"],
+        )
+        fp = FCC.get_fourier_fingerprint(
+            model=model,
+            n_samples=500,
+            seed=1000,
+            scale=True,
+        )
+        hs = hashlib.md5(repr(fp).encode("utf-8")).hexdigest()
+        # print(hs)
+        assert (
+            hs == test_case["hash"]
+        ), f"Wrong hash for {test_case['circuit_type']}. Got {hs}, expected {test_case['hash']}"
+
+
+@pytest.mark.expensive
+@pytest.mark.unittest
+def test_fcc_2d() -> None:
+    """
+    This test replicates the results obtained for the FCC
+    as shown in Fig. 3b from the paper
+    "Fourier Fingerprints of Ansatzes in Quantum Machine Learning"
+    https://doi.org/10.48550/arXiv.2508.20868
+
+    Note that we only test one circuit here with and also with a lower
+    number of samples, because it get's computationally too expensive otherwise.
+    """
+    test_cases = [
+        {
+            "circuit_type": "Circuit_19",
+            "fcc": 0.062,
+        },
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=2,
             n_layers=1,
             circuit_type=test_case["circuit_type"],
             output_qubit=-1,
             encoding=["RX", "RY"],
-            mp_threshold=1000,
+            mp_threshold=3000,
         )
         fcc = FCC.get_fcc(
             model=model,
-            n_samples=n_samples,
+            n_samples=50,
             seed=1000,
             scale=True,
         )
-        print(f"FCC for {test_case['circuit_type']}: \t{fcc}")
-        # assert np.isclose(
-        #     fcc, test_case["fcc"], atol=1.0e-3
-        # ), f"Wrong FCC for {test_case['circuit_type']}. Got {fcc}, expected {test_case['fcc']}."
-
-
-test_fcc_2d(100)
+        # print(f"FCC for {test_case['circuit_type']}: \t{fcc}")
+        assert np.isclose(
+            fcc, test_case["fcc"], atol=1.0e-3
+        ), f"Wrong FCC for {test_case['circuit_type']}. Got {fcc}, expected {test_case['fcc']}."
