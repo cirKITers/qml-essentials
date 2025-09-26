@@ -966,7 +966,7 @@ class FCC:
             model, n_samples, seed, method, scale, weight, **kwargs
         )
 
-        return FCC._calculate_fcc(coeff_correlation, freqs=freqs, weight=weight)
+        return FCC.calculate_fcc(coeff_correlation, freqs=freqs, weight=weight)
 
     def get_fourier_fingerprint(
         model: Model,
@@ -1004,7 +1004,7 @@ class FCC:
         return FCC._correlate(coeffs.transpose(), method=method), freqs
 
     @staticmethod
-    def _calculate_fcc(
+    def calculate_fcc(
         fourier_fingerprint: np.ndarray,
         freqs: np.ndarray,
         weight: bool = False,
