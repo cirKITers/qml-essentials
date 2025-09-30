@@ -12,6 +12,10 @@ from typing import List, Tuple, Optional, Any, Dict, Union
 
 from qml_essentials.model import Model
 
+import logging
+
+log = logging.getLogger(__name__)
+
 
 class Coefficients:
     @staticmethod
@@ -21,7 +25,6 @@ class Coefficients:
         mts: int = 1,
         shift=False,
         trim=False,
-        positive_only=False,
         **kwargs,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -1027,7 +1030,7 @@ class FCC:
             FCC._weighting(fourier_fingerprint) if weight else fourier_fingerprint
         )
 
-        # TODO: this part can be heavily optimized, by e.g. using the "positive_only"
+        # TODO: this part can be heavily optimized, by e.g. using a "positive_only"
         # flag when calculating the coefficients. However this would change the numerical
         # values (while the order should be still the same).
 
@@ -1072,6 +1075,7 @@ class FCC:
                 total_samples = int(
                     np.power(2, model.n_qubits) * n_samples * model.n_input_feat
                 )
+                log.info(f"Using {total_samples} samples.")
             else:
                 total_samples = n_samples
             rng = np.random.default_rng(seed)
