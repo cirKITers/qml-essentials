@@ -184,7 +184,7 @@ Using a logarithmic color bar, one obtains the following 2D-spectrum:
 
 Note that "X1" refers to the "RX" encoding and "X2" to the "RY" encoding.
 
-# Fourier Coefficient Calculation (FCC)
+## Fourier Coefficient Correlation (FCC)
 
 The FCC, as introduced in [Fourier Fingerprints of Ansatzes in Quantum Machine Learning](https://doi.org/10.48550/arXiv.2508.20868), is a metric that aims to predict the expected performance of an arbitrary Ansatz based on the the correlation between its Fourier modes.
 In this framework, the FCC for a given `model` can be obtained as follows:
@@ -214,6 +214,6 @@ fingerprint = FCC.get_fourier_fingerprint(
 Note that actually calculating the FCC as it is shown in the paper, requires removing all the redundant entries in the fingerprint.
 This is done in `FCC.calculate_fcc` by
 - removing all negative frequencies (because their coefficients are complex conjugates of the positive frequencies)
-- removing symmetries inside the correlation matrix (the Fourier fingerprint), e.g. c_0_1 = c_1_0
+- removing symmetries inside the correlation matrix (the Fourier fingerprint), e.g. $c_{0,1} = c_{1,0}$
 
-Similar other methods which require specifying `n_samples` (c.f. calculation of [expressibility](expressibility.md) and [entangling capability](entangling.md)), methods in the `FCC` class take an optional parameter `scale` (defaults to `False`), which scales the number of samples depending on the number of qubits and the number of input features as $\text{n_samples} \text{n_params} 2^{\text{n_qubits}} \text{n_features}$.
+Similar other methods which require specifying `n_samples` (c.f. calculation of [expressibility](expressibility.md) and [entangling capability](entangling.md)), methods in the `FCC` class take an optional parameter `scale` (defaults to `False`), which scales the number of samples depending on the number of qubits and the number of input features as $n_\text{samples} \cdot n_\text{params} \cdot 2^{n_\text{qubits}} \cdot n_\text{features}$.
