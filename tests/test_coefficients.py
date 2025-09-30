@@ -350,9 +350,10 @@ def test_frequencies() -> None:
 
     assert (
         freqs.shape == coeffs.shape
-    ), f"(1D) Frequencies ({freqs.shape}) and coefficients ({coeffs.shape}) must have the same length."
+    ), f"(1D) Frequencies ({freqs.shape}) and \
+        coefficients ({coeffs.shape}) must have the same length."
 
-    ## 2d
+    # 2d
 
     model = Model(
         n_qubits=2,
@@ -364,7 +365,8 @@ def test_frequencies() -> None:
 
     assert (
         freqs.shape == coeffs.shape
-    ), f"(2D) Frequencies ({freqs.shape}) and coefficients ({coeffs.shape}) must have the same length."
+    ), f"(2D) Frequencies ({freqs.shape}) and \
+        coefficients ({coeffs.shape}) must have the same length."
 
 
 @pytest.mark.smoketest
@@ -394,7 +396,8 @@ def test_pearson_correlation() -> None:
             reference = pearsonr(coeffs[:, i], coeffs[:, j]).correlation
             assert np.isclose(
                 pearson[i, j], reference, atol=1.0e-5
-            ), f"Pearson correlation does not match reference. For index {i}, {j}, got {pearson[i, j]}, expected {reference}"
+            ), f"Pearson correlation does not match reference. \
+                For index {i}, {j}, got {pearson[i, j]}, expected {reference}"
 
 
 @pytest.mark.unittest
@@ -413,7 +416,8 @@ def test_spearman_correlation() -> None:
             reference = spearmanr(coeffs[:, i], coeffs[:, j]).correlation
             assert np.isclose(
                 pearson[i, j], reference, atol=1.0e-5
-            ), f"Pearson correlation does not match reference. For index {i}, {j}, got {pearson[i, j]}, expected {reference}"
+            ), f"Pearson correlation does not match reference. \
+                For index {i}, {j}, got {pearson[i, j]}, expected {reference}"
 
 
 @pytest.mark.expensive
@@ -462,7 +466,8 @@ def test_fcc() -> None:
         # print(f"FCC for {test_case['circuit_type']}: \t{fcc}")
         assert np.isclose(
             fcc, test_case["fcc"], atol=1.0e-3
-        ), f"Wrong FCC for {test_case['circuit_type']}. Got {fcc}, expected {test_case['fcc']}."
+        ), f"Wrong FCC for {test_case['circuit_type']}. \
+            Got {fcc}, expected {test_case['fcc']}."
 
 
 @pytest.mark.unittest
@@ -508,7 +513,8 @@ def test_fourier_fingerprint() -> None:
         # print(hs)
         assert (
             hs == test_case["hash"]
-        ), f"Wrong hash for {test_case['circuit_type']}. Got {hs}, expected {test_case['hash']}"
+        ), f"Wrong hash for {test_case['circuit_type']}. \
+            Got {hs}, expected {test_case['hash']}"
 
 
 @pytest.mark.expensive
@@ -548,4 +554,5 @@ def test_fcc_2d() -> None:
         # print(f"FCC for {test_case['circuit_type']}: \t{fcc}")
         assert np.isclose(
             fcc, test_case["fcc"], atol=1.0e-3
-        ), f"Wrong FCC for {test_case['circuit_type']}. Got {fcc}, expected {test_case['fcc']}."
+        ), f"Wrong FCC for {test_case['circuit_type']}. \
+            Got {fcc}, expected {test_case['fcc']}."
