@@ -474,19 +474,19 @@ def test_fourier_fingerprint() -> None:
     test_cases = [
         {
             "circuit_type": "Circuit_15",
-            "hash": "19cf3e00d03bed47852ec3f7f0f63885",
+            "hash": "66effb3b3876b5d14ef1462dc3b78273",
         },
         {
             "circuit_type": "Circuit_19",
-            "hash": "4bec965b0b28d50aaff51435944ec4d7",
+            "hash": "1a50160cd5a88cba4983235ad7bf05c4",
         },
         {
             "circuit_type": "Circuit_17",
-            "hash": "15b027c598cf649475679220c51d1c20",
+            "hash": "7881bbbd48ec003d609bab0f706617d4",
         },
         {
             "circuit_type": "Hardware_Efficient",
-            "hash": "ecf80abbf54b53c32986ce8b5f0955b6",
+            "hash": "119d42d96285b214054afa573c079ceb",
         },
     ]
 
@@ -498,13 +498,13 @@ def test_fourier_fingerprint() -> None:
             output_qubit=-1,
             encoding=["RY"],
         )
-        fp = FCC.get_fourier_fingerprint(
+        fp_and_freqs = FCC.get_fourier_fingerprint(
             model=model,
             n_samples=500,
             seed=1000,
             scale=True,
         )
-        hs = hashlib.md5(repr(fp).encode("utf-8")).hexdigest()
+        hs = hashlib.md5(repr(fp_and_freqs).encode("utf-8")).hexdigest()
         # print(hs)
         assert (
             hs == test_case["hash"]
