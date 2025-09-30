@@ -192,12 +192,22 @@ In this framework, the FCC for a given `model` can be obtained as follows:
 ```python
 from qml_essentials.coefficients import FCC
 
+model = Model(
+    n_qubits=6,
+    n_layers=1,
+    circuit_type="Hardware_Efficient",
+    output_qubit=-1,
+    encoding=["RY"],
+    mp_threshold=3000,
+)
+
 fcc = FCC.get_fcc(
     model=model,
     n_samples=500,
     seed=1000,
 )
 ```
+Returns `0.1442` as already in Fig. 3a of aforementioned paper.
 
 Optionally, you can choose a different correlation `method` (currently "pearson" and "spearman" are supported) and enable scaling up the number of samples (depending on `n_qubit` and number of input features) by setting `scale=True`.
 
@@ -210,6 +220,9 @@ fingerprint = FCC.get_fourier_fingerprint(
     seed=1000,
 )
 ```
+
+![Fourier Fingerprint of Hardware Efficient Ansatz](figures/fourier_fingerprint_light.png#center#only-light)
+![Fourier Fingerprint of Hardware Efficient Ansatz](figures/fourier_fingerprint_dark.png#center#only-dark)
 
 Note that actually calculating the FCC as it is shown in the paper, requires removing all the redundant entries in the fingerprint.
 This is done in `FCC.calculate_fcc` by
