@@ -1037,7 +1037,10 @@ class FCC:
         # disregard all the negativ frequencies
         freqs[freqs < 0] = np.nan
         # compute the outer product of the frequency vectors for arbitrary dimensions
-        nd_freqs = reduce(np.multiply, np.ix_(*freqs))
+        # or just use the existing frequency vector if it is 1D
+        nd_freqs = (
+            reduce(np.multiply, np.ix_(*freqs)) if len(freqs.shape) > 1 else freqs
+        )
         # "simulate" what would happen on correlating the coefficients
         corr_freqs = np.outer(nd_freqs, nd_freqs)
         # mask all frequencies that are nan now (i.e. all correlations with a negative frequency component)
