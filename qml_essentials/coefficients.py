@@ -47,7 +47,8 @@ class Coefficients:
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
-            Tuple[np.ndarray, np.ndarray]: Tuple containing the coefficients and frequencies.
+            Tuple[np.ndarray, np.ndarray]: Tuple containing the coefficients
+            and frequencies.
         """
         kwargs.setdefault("force_mean", True)
         kwargs.setdefault("execution_type", "expval")
@@ -1016,7 +1017,8 @@ class FCC:
             **kwargs: Additional keyword arguments for the model function.
 
         Returns:
-            Tuple[np.ndarray, np.ndarray]: The fourier fingerprint and the frequency indices
+            Tuple[np.ndarray, np.ndarray]: The fourier fingerprint
+            and the frequency indices
         """
         _, coeffs, freqs = FCC._calculate_coefficients(
             model, n_samples, seed, scale, **kwargs
@@ -1074,8 +1076,9 @@ class FCC:
             np.ndarray: The mask
         """
         # TODO: this part can be heavily optimized, by e.g. using a "positive_only"
-        # flag when calculating the coefficients. However this would change the numerical
-        # values (while the order should be still the same).
+        # flag when calculating the coefficients.
+        # However this would change the numerical values
+        # (while the order should be still the same).
 
         # disregard all the negativ frequencies
         freqs[freqs < 0] = np.nan
@@ -1088,7 +1091,8 @@ class FCC:
 
         # "simulate" what would happen on correlating the coefficients
         corr_freqs = np.outer(nd_freqs, nd_freqs)
-        # mask all frequencies that are nan now (i.e. all correlations with a negative frequency component)
+        # mask all frequencies that are nan now
+        # (i.e. all correlations with a negative frequency component)
         corr_mask = np.where(np.isnan(corr_freqs), corr_freqs, 1)
         # from this, disregard all the other redundant correlations (i.e. c_0_1 = c_1_0)
         corr_mask[np.triu_indices(corr_mask.shape[0], 0)] = np.nan
@@ -1104,7 +1108,8 @@ class FCC:
         **kwargs,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Calculates the Fourier coefficients of a given model using `n_samples` and `seed`.
+        Calculates the Fourier coefficients of a given model
+        using `n_samples` and `seed`.
         Optionally, `noise_params` can be passed to perform noisy simulation.
 
         Args:
