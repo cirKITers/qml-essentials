@@ -107,6 +107,8 @@ Epoch: 1000, Cost: 0.0001
 
 As you can see, the model is able to learn the Fourier series with the $4$ frequencies.
 
+## Trainable frequencies
+
 For the model we just trained, we considered the best possible scenario: evenly spaced, integer omegas. But, as shown by [Schuld et al. (2020)](https://arxiv.org/abs/2008.08605), we'll need an increasing and inefficient amount of qubits for larger omegas. What is more, the model will fail altogether if the frequencies are un-evenly spaced. Luckily, [Jaderberg et al. (2024)](https://arxiv.org/abs/2309.03279) showed how we can let the model choose its own frequencies by including a set of encoding parameters that act on the input before the encoding layers of the circuit. We demonstrate this functionality below. 
 
 First, let's slighly modify the omegas from the first example and re-generate the data:
@@ -238,6 +240,12 @@ to allow for trainable frequencies. You may try different input transformations 
 ```python
 model.transform_input = lambda inputs, qubit, idx, enc_params: np.arccos(inputs[:, idx])
 ```
+
+## Pulse Level
+
+> **Note:** Not implemented yet
+
+- How to train pulse parameters
 
 
 Btw, if you're in a hurry, we have a Jupyter notebook with the exact same examples [here](https://github.com/cirKITers/qml-essentials/blob/main/docs/training.ipynb) :upside_down_face:.

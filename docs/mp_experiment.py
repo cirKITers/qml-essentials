@@ -79,7 +79,9 @@ def main(
                         t_parallel = time_measure() - start
 
                         print(
-                            f"{run} | {mp_threshold}/{max_mp_threshold} mp | {n_samples}/{max_n_samples} samples: {t_single / t_parallel:.2f}"
+                            f"{run} | {mp_threshold}/{max_mp_threshold} mp | "
+                            f"{n_samples}/{max_n_samples} samples: "
+                            f"{t_single / t_parallel:.2f}"
                         )
 
                         results[mp_threshold][n_samples][run] = t_single / t_parallel
