@@ -938,15 +938,20 @@ class FCC:
         method: Optional[str] = "pearson",
         scale: Optional[bool] = False,
         weight: Optional[bool] = False,
+        trim_redundant: Optional[bool] = True,
         **kwargs,
     ) -> float:
         """
         Shortcut method to get just the FCC.
         This includes
-        1. Calculating the coefficients (using `n_samples` and `seed`)
-        2. Correlating the result from 1) using `method`
-        3. Weighting the correlation matrix (if `weight` is True)
-        4. Averaging the result
+        1. What is done in `get_fourier_fingerprint`:
+            1. Calculating the coefficients (using `n_samples` and `seed`)
+            2. Correlating the result from 1) using `method`
+            3. Weighting the correlation matrix (if `weight` is True)
+            4. Remove redundancies
+        2. What is done in `calculate_fcc`:
+            1. Absolute of the fingerprint
+            2. Average
 
         Args:
             model (Model): The QFM model
@@ -957,16 +962,25 @@ class FCC:
                 Defaults to False.
             weight (Optional[bool], optional): Whether to weight the correlation matrix.
                 Defaults to False.
+            trim_redundant (Optional[bool], optional): Whether to remove redundant
+                correlations. Defaults to False.
             **kwargs: Additional keyword arguments for the model function.
 
         Returns:
             float: The FCC
         """
-        coeff_correlation, freqs = FCC.get_fourier_fingerprint(
-            model, n_samples, seed, method, scale, weight, **kwargs
+        fourier_fingerprint, freqs = FCC.get_fourier_fingerprint(
+            model,
+            n_samples,
+            seed,
+            method,
+            scale,
+            weight,
+            trim_redundant=trim_redundant,
+            **kwargs,
         )
 
-        return FCC.calculate_fcc(coeff_correlation, freqs=freqs, weight=weight)
+        return FCC.calculate_fcc(fourier_fingerprint)
 
     def get_fourier_fingerprint(
         model: Model,
@@ -975,14 +989,18 @@ class FCC:
         method: Optional[str] = "pearson",
         scale: Optional[bool] = False,
         weight: Optional[bool] = False,
+        trim_redundant: Optional[bool] = True,
         **kwargs,
-    ) -> np.ndarray:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Shortcut method to get just the fourier fingerprint.
         This includes
         1. Calculating the coefficients (using `n_samples` and `seed`)
         2. Correlating the result from 1) using `method`
         3. Weighting the correlation matrix (if `weight` is True)
+        4. Remove redundancies (if `trim_redundant` is True)
+
+        If trimming is enabled, `freqs` will be the trimmed down frequency vector.
 
         Args:
             model (Model): The QFM model
@@ -993,43 +1011,69 @@ class FCC:
                 Defaults to False.
             weight (Optional[bool], optional): Whether to weight the correlation matrix.
                 Defaults to False.
+            trim_redundant (Optional[bool], optional): Whether to remove redundant
+                correlations. Defaults to True.
             **kwargs: Additional keyword arguments for the model function.
 
         Returns:
-            np.ndarray : The Fourier fingerprint
+            Tuple[np.ndarray, np.ndarray]: The fourier fingerprint and the frequency indices
         """
         _, coeffs, freqs = FCC._calculate_coefficients(
             model, n_samples, seed, scale, **kwargs
         )
-        return FCC._correlate(coeffs.transpose(), method=method), freqs
+        fourier_fingerprint = FCC._correlate(coeffs.transpose(), method=method)
 
-    @staticmethod
-    def calculate_fcc(
-        fourier_fingerprint: np.ndarray,
-        freqs: np.ndarray,
-        weight: bool = False,
-    ) -> float:
-        """
-        Method to calculate the FCC based on an existing correlation matrix.
-        This includes
-        1. Weighting the correlation matrix (if `weight` is True)
-        2. Removing redundant elements
-        3. Averaging the result
-
-        Args:
-            coeff_coeff_correlation (np.ndarray): Correlation matrix of coefficients
-            freqs (np.ndarray): Array of frequencies
-            weight (bool, optional): Whether to weight the correlation matrix.
-                Defaults to False.
-
-        Returns:
-            float: The FCC
-        """
         # perform weighting if requested
         fourier_fingerprint = (
             FCC._weighting(fourier_fingerprint) if weight else fourier_fingerprint
         )
 
+        if trim_redundant:
+            freqs = FCC._calculate_mask(freqs)
+
+            # apply the mask on the fingerprint
+            fourier_fingerprint = freqs * fourier_fingerprint
+
+            # mask for rows that contain *at least one* finite value
+            row_mask = np.any(np.isfinite(fourier_fingerprint), axis=1)
+
+            # mask for columns that contain *at least one* finite value
+            col_mask = np.any(np.isfinite(fourier_fingerprint), axis=0)
+
+            fourier_fingerprint = fourier_fingerprint[row_mask][:, col_mask]
+
+        return fourier_fingerprint, freqs
+
+    @staticmethod
+    def calculate_fcc(
+        fourier_fingerprint: np.ndarray,
+    ) -> float:
+        """
+        Method to calculate the FCC based on an existing correlation matrix.
+        Calculate absolute and then the average over this matrix.
+        The Fingerprint can be obtained via `get_fourier_fingerprint`
+
+        Args:
+            coeff_coeff_correlation (np.ndarray): Correlation matrix of coefficients
+        Returns:
+            float: The FCC
+        """
+        # apply the mask on the fingerprint
+        return np.nanmean(np.abs(fourier_fingerprint))
+
+    def _calculate_mask(freqs: np.ndarray) -> np.ndarray:
+        """
+        Method to calculate a mask filtering out redundant elements
+        of the Fourier correlation matrix, based on the provided frequency vector.
+        It does so by 'simulating' the operations that would be performed
+        by `_correlate`.
+
+        Args:
+            freqs (np.ndarray): Array of frequencies
+
+        Returns:
+            np.ndarray: The mask
+        """
         # TODO: this part can be heavily optimized, by e.g. using a "positive_only"
         # flag when calculating the coefficients. However this would change the numerical
         # values (while the order should be still the same).
@@ -1041,14 +1085,16 @@ class FCC:
         nd_freqs = (
             reduce(np.multiply, np.ix_(*freqs)) if len(freqs.shape) > 1 else freqs
         )
+        # TODO: could prevent this if we're not using .squeeze()..
+
         # "simulate" what would happen on correlating the coefficients
         corr_freqs = np.outer(nd_freqs, nd_freqs)
         # mask all frequencies that are nan now (i.e. all correlations with a negative frequency component)
         corr_mask = np.where(np.isnan(corr_freqs), corr_freqs, 1)
         # from this, disregard all the other redundant correlations (i.e. c_0_1 = c_1_0)
         corr_mask[np.tril_indices(corr_mask.shape[0], 0)] = np.nan
-        # apply the mask on the fingerprint
-        return np.nanmean(np.abs(corr_mask * fourier_fingerprint))
+
+        return corr_mask
 
     @staticmethod
     def _calculate_coefficients(
