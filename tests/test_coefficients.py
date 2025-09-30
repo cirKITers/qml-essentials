@@ -521,18 +521,18 @@ def test_fcc_2d() -> None:
     https://doi.org/10.48550/arXiv.2508.20868
 
     Note that we only test one circuit here with and also with a lower
-    number of samples, because it get's computationally too expensive otherwise.
+    number of qubits, because it get's computationally too expensive otherwise.
     """
     test_cases = [
         {
             "circuit_type": "Circuit_19",
-            "fcc": 0.062,
+            "fcc": 0.020,
         },
     ]
 
     for test_case in test_cases:
         model = Model(
-            n_qubits=2,
+            n_qubits=4,
             n_layers=1,
             circuit_type=test_case["circuit_type"],
             output_qubit=-1,
@@ -541,7 +541,7 @@ def test_fcc_2d() -> None:
         )
         fcc = FCC.get_fcc(
             model=model,
-            n_samples=50,
+            n_samples=250,
             seed=1000,
             scale=True,
         )
