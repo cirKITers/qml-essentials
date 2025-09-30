@@ -209,7 +209,8 @@ fcc = FCC.get_fcc(
 ```
 Returns `0.1442` as already in Fig. 3a of aforementioned paper.
 
-Optionally, you can choose a different correlation `method` (currently "pearson" and "spearman" are supported) and enable scaling up the number of samples (depending on `n_qubit` and number of input features) by setting `scale=True`.
+Optionally, you can choose a different correlation `method` (currently "pearson" and "spearman" are supported).
+Similar, other methods which require specifying `n_samples` (c.f. calculation of [expressibility](expressibility.md) and [entangling capability](entangling.md)), methods in the `FCC` class take an optional parameter `scale` (defaults to `False`), which scales the number of samples depending on the number of qubits and the number of input features as $n_\text{samples} \cdot n_\text{params} \cdot 2^{n_\text{qubits}} \cdot n_\text{features}$.
 
 As described in our paper, the FCC is calculated as the mean of the Fourier fingerprint, which in turn can be obtained separately as follows:
 
@@ -225,8 +226,8 @@ fingerprint = FCC.get_fourier_fingerprint(
 ![Fourier Fingerprint of Hardware Efficient Ansatz](figures/fourier_fingerprint_dark.png#center#only-dark)
 
 Note that actually calculating the FCC as it is shown in the paper, requires removing all the redundant entries in the fingerprint.
-This is done in `FCC.calculate_fcc` by
+This is implicitly done in `FCC.get_fourier_fingerprint` (and controlled using the `trim_redundant` argument), by
 - removing all negative frequencies (because their coefficients are complex conjugates of the positive frequencies)
 - removing symmetries inside the correlation matrix (the Fourier fingerprint), e.g. $c_{0,1} = c_{1,0}$
+Note that `get_fcc` also (by default) trims down the fingerprint before calculating the actual FCC. 
 
-Similar other methods which require specifying `n_samples` (c.f. calculation of [expressibility](expressibility.md) and [entangling capability](entangling.md)), methods in the `FCC` class take an optional parameter `scale` (defaults to `False`), which scales the number of samples depending on the number of qubits and the number of input features as $n_\text{samples} \cdot n_\text{params} \cdot 2^{n_\text{qubits}} \cdot n_\text{features}$.
