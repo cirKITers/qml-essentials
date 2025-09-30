@@ -1029,18 +1029,17 @@ class FCC:
         )
 
         if trim_redundant:
-            freqs = FCC._calculate_mask(freqs)
+            mask = FCC._calculate_mask(freqs)
+            freqs = mask * freqs
 
             # apply the mask on the fingerprint
-            fourier_fingerprint = freqs * fourier_fingerprint
+            fourier_fingerprint = mask * fourier_fingerprint
 
-            # mask for rows that contain *at least one* finite value
             row_mask = np.any(np.isfinite(fourier_fingerprint), axis=1)
-
-            # mask for columns that contain *at least one* finite value
             col_mask = np.any(np.isfinite(fourier_fingerprint), axis=0)
 
             fourier_fingerprint = fourier_fingerprint[row_mask][:, col_mask]
+            freqs = freqs[row_mask][:, col_mask]
 
         return fourier_fingerprint, freqs
 
@@ -1092,7 +1091,7 @@ class FCC:
         # mask all frequencies that are nan now (i.e. all correlations with a negative frequency component)
         corr_mask = np.where(np.isnan(corr_freqs), corr_freqs, 1)
         # from this, disregard all the other redundant correlations (i.e. c_0_1 = c_1_0)
-        corr_mask[np.tril_indices(corr_mask.shape[0], 0)] = np.nan
+        corr_mask[np.triu_indices(corr_mask.shape[0], 0)] = np.nan
 
         return corr_mask
 
