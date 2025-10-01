@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 import pennylane as qml
 import pennylane.numpy as np
+import numpy as nnp
 from pennylane.operation import Operator
 import pennylane.ops.op_math as qml_op
 from scipy.stats import rankdata
@@ -1325,7 +1326,7 @@ class FCC:
         return result
 
     @staticmethod
-    def _weighting(correlation: np.ndarray) -> np.ndarray:
+    def _weighting(fourier_fingerprint: np.ndarray) -> np.ndarray:
         """
         Performs weighting on the given correlation matrix.
         Here, low-frequent coefficients are weighted more heavily.
@@ -1333,4 +1334,46 @@ class FCC:
         Args:
             correlation (np.ndarray): Correlation matrix
         """
+        # TODO: in Future iterations, this can be optimized by computing
+        # on the trimmed matrix instead.
+
+        assert (
+            fourier_fingerprint.shape[0] % 2 != 0
+            and fourier_fingerprint.shape[1] % 2 != 0
+        ), "Correlation matrix must have odd dimensions. \
+            Hint: use `trim` argument when calling `get_spectrum`."
+        assert (
+            fourier_fingerprint.shape[0] == fourier_fingerprint.shape[1]
+        ), "Correlation matrix must be square."
+
+        def quadrant_to_matrix(a: np.ndarray) -> np.ndarray:
+            """
+            Transforms [[1,2],[3,4]] to
+            [[1,2,1],[3,4,3],[1,2,1]]
+
+            Args:
+                a (np.ndarray): _description_
+
+            Returns:
+                np.ndarray: _description_
+            """
+            # rotates a from [[1,2],[3,4]] to [[3,4],[1,2]]
+            a_rot = np.rot90(a)
+            # merge the two matrices
+            left = np.concat([a, a_rot])
+            # merges left and right (left flipped)
+            b = np.concat(
+                [left, np.flip(left)],
+                axis=1,
+            )
+            # remove the middle column and row
+            return np.delete(
+                np.delete(b, (b.shape[0] // 2), axis=0), (b.shape[1] // 2), axis=1
+            )
+
+        nc = fourier_fingerprint.shape[0] // 2 + 1
+        weights = nnp.mgrid[0:nc:1, 0:nc:1].sum(axis=0) / ((nc - 1) * 2)
+        weights_matrix = quadrant_to_matrix(weights)
+
+        return fourier_fingerprint * weights_matrix
         raise NotImplementedError("Weighting method is not implemented")

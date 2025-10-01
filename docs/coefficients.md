@@ -231,3 +231,5 @@ This is implicitly done in `FCC.get_fourier_fingerprint` (and controlled using t
 - removing symmetries inside the correlation matrix (the Fourier fingerprint), e.g. $c_{0,1} = c_{1,0}$
 Note that `get_fcc` also (by default) trims down the fingerprint before calculating the actual FCC. 
 
+Both `get_fcc` and `get_fourier_fingerprint` support a `weight` parameter, which can be used to weight the correlation matrix, such that high-frequency components receive a lower weight.
+Intuitively this adresses the issue, that low frequency components have a higher impact on the mean-squared error (c.f. App. D in our paper). 

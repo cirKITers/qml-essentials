@@ -463,7 +463,7 @@ def test_fcc() -> None:
             seed=1000,
             scale=True,
         )
-        # print(f"FCC for {test_case['circuit_type']}: \t{fcc}")
+        # # print(f"FCC for {test_case['circuit_type']}: \t{fcc}")
         assert np.isclose(
             fcc, test_case["fcc"], atol=1.0e-3
         ), f"Wrong FCC for {test_case['circuit_type']}. \
@@ -550,6 +550,48 @@ def test_fcc_2d() -> None:
             n_samples=250,
             seed=1000,
             scale=True,
+        )
+        # # print(f"FCC for {test_case['circuit_type']}: \t{fcc}")
+        assert np.isclose(
+            fcc, test_case["fcc"], atol=1.0e-3
+        ), f"Wrong FCC for {test_case['circuit_type']}. \
+            Got {fcc}, expected {test_case['fcc']}."
+
+
+@pytest.mark.expensive
+@pytest.mark.unittest
+def test_weighting() -> None:
+    """
+    This test replicates the results obtained for the FCC
+    as shown in Fig. 3b from the paper
+    "Fourier Fingerprints of Ansatzes in Quantum Machine Learning"
+    https://doi.org/10.48550/arXiv.2508.20868
+
+    Note that we only test one circuit here with and also with a lower
+    number of qubits, because it get's computationally too expensive otherwise.
+    """
+    test_cases = [
+        {
+            "circuit_type": "Circuit_19",
+            "fcc": 0.013,
+        },
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=3,
+            n_layers=1,
+            circuit_type=test_case["circuit_type"],
+            output_qubit=-1,
+            encoding=["RY"],
+            mp_threshold=3000,
+        )
+        fcc = FCC.get_fcc(
+            model=model,
+            n_samples=500,
+            seed=1000,
+            scale=True,
+            weight=True,
         )
         # print(f"FCC for {test_case['circuit_type']}: \t{fcc}")
         assert np.isclose(
