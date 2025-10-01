@@ -364,9 +364,9 @@ def test_frequencies() -> None:
     coeffs, freqs = Coefficients.get_spectrum(model)
 
     assert (
-        freqs.shape == coeffs.shape
-    ), f"(2D) Frequencies ({freqs.shape}) and \
-        coefficients ({coeffs.shape}) must have the same length."
+        freqs.shape[1] ** freqs.shape[0]
+    ) == coeffs.size, f"(2D) Frequencies ({freqs.shape}) and \
+        coefficients ({coeffs.shape}) must add up to the same length."
 
 
 @pytest.mark.smoketest
@@ -479,19 +479,19 @@ def test_fourier_fingerprint() -> None:
     test_cases = [
         {
             "circuit_type": "Circuit_15",
-            "hash": "66effb3b3876b5d14ef1462dc3b78273",
+            "hash": "8a1fae4f3afda8c243a847c4e8396d87",
         },
         {
             "circuit_type": "Circuit_19",
-            "hash": "1a50160cd5a88cba4983235ad7bf05c4",
+            "hash": "b4d3e6f3881f69fe7e778713cbd1c573",
         },
         {
             "circuit_type": "Circuit_17",
-            "hash": "7881bbbd48ec003d609bab0f706617d4",
+            "hash": "422847ebfa133299cb9c654730f753a7",
         },
         {
             "circuit_type": "Hardware_Efficient",
-            "hash": "119d42d96285b214054afa573c079ceb",
+            "hash": "2fa201197e53f04ee53eb40db755bcc9",
         },
     ]
 

@@ -971,7 +971,7 @@ class FCC:
         Returns:
             float: The FCC
         """
-        fourier_fingerprint, freqs = FCC.get_fourier_fingerprint(
+        fourier_fingerprint, _ = FCC.get_fourier_fingerprint(
             model,
             n_samples,
             seed,
@@ -1002,8 +1002,6 @@ class FCC:
         3. Weighting the correlation matrix (if `weight` is True)
         4. Remove redundancies (if `trim_redundant` is True)
 
-        If trimming is enabled, `freqs` will be the trimmed down frequency vector.
-
         Args:
             model (Model): The QFM model
             n_samples (int): Number of samples to calculate average of coefficients
@@ -1033,7 +1031,6 @@ class FCC:
 
         if trim_redundant:
             mask = FCC._calculate_mask(freqs)
-            freqs = mask * freqs
 
             # apply the mask on the fingerprint
             fourier_fingerprint = mask * fourier_fingerprint
@@ -1042,7 +1039,6 @@ class FCC:
             col_mask = np.any(np.isfinite(fourier_fingerprint), axis=0)
 
             fourier_fingerprint = fourier_fingerprint[row_mask][:, col_mask]
-            freqs = freqs[row_mask][:, col_mask]
 
         return fourier_fingerprint, freqs
 
