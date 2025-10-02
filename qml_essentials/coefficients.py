@@ -1,14 +1,21 @@
 from __future__ import annotations
-import numpy as np
 import math
 from collections import defaultdict
 from dataclasses import dataclass
 import pennylane as qml
+import pennylane.numpy as np
+import numpy as nnp
 from pennylane.operation import Operator
 import pennylane.ops.op_math as qml_op
+from scipy.stats import rankdata
+from functools import reduce
 from typing import List, Tuple, Optional, Any, Dict, Union
 
 from qml_essentials.model import Model
+
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class Coefficients:
@@ -20,7 +27,7 @@ class Coefficients:
         shift=False,
         trim=False,
         **kwargs,
-    ) -> np.ndarray:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Extracts the coefficients of a given model using a FFT (np-fft).
 
@@ -41,7 +48,8 @@ class Coefficients:
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
-            np.ndarray: The sampled Fourier coefficients.
+            Tuple[np.ndarray, np.ndarray]: Tuple containing the coefficients
+            and frequencies.
         """
         kwargs.setdefault("force_mean", True)
         kwargs.setdefault("execution_type", "expval")
@@ -63,11 +71,10 @@ class Coefficients:
                     freqs = np.delete(freqs, len(freqs) // 2, axis=ax)
 
         if shift:
-            return np.fft.fftshift(
-                coeffs, axes=list(range(model.n_input_feat))
-            ), np.fft.fftshift(freqs)
-        else:
-            return coeffs, freqs
+            coeffs = np.fft.fftshift(coeffs, axes=list(range(model.n_input_feat)))
+            freqs = np.fft.fftshift(freqs)
+
+        return coeffs, freqs
 
     @staticmethod
     def _fourier_transform(
@@ -92,12 +99,13 @@ class Coefficients:
 
         coeffs = np.fft.fftn(outputs, axes=list(range(model.n_input_feat)))
 
-        # assert (
-        #     mts * n_freqs,
-        # ) * model.n_input_feat == coeffs.shape, f"Expected shape\
-        # {(mts * n_freqs,) * model.n_input_feat} but got {coeffs.shape}"
-
-        freqs = np.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
+        # TODO: in the future, this should take into account that there can be a
+        # different number of frequencies per dimension
+        freqs = [
+            np.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
+            for _ in range(model.n_input_feat)
+        ]
+        # freqs = np.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
 
         # TODO: this could cause issues with multidim input
         # FIXME: account for different frequencies in multidim input scenarios
@@ -105,8 +113,7 @@ class Coefficients:
         # normalize the output (using product if multidim)
         return (
             coeffs / np.prod(outputs.shape[0 : model.n_input_feat]),
-            freqs,
-            # np.repeat(freqs[:, np.newaxis], model.n_input_feat, axis=1).squeeze(),
+            np.array(freqs).squeeze(),
         )
 
     @staticmethod
@@ -149,7 +156,7 @@ class Coefficients:
         if not isinstance(inputs, (np.ndarray, list)):
             inputs = [inputs]
 
-        frequencies = np.stack(np.meshgrid(*[frequencies] * dims)).T.reshape(-1, dims)
+        frequencies = np.stack(np.meshgrid(*frequencies)).T.reshape(-1, dims)
         freq_inputs = np.einsum("...j,j->...", frequencies, inputs)
         coeffs = coefficients.flatten()
         freq_inputs = freq_inputs.flatten()
@@ -922,3 +929,447 @@ class FourierTree:
         """
         observable = observable.tensor(pauli)
         return observable
+
+
+class FCC:
+    @staticmethod
+    def get_fcc(
+        model: Model,
+        n_samples: int,
+        seed: int,
+        method: Optional[str] = "pearson",
+        scale: Optional[bool] = False,
+        weight: Optional[bool] = False,
+        trim_redundant: Optional[bool] = True,
+        **kwargs,
+    ) -> float:
+        """
+        Shortcut method to get just the FCC.
+        This includes
+        1. What is done in `get_fourier_fingerprint`:
+            1. Calculating the coefficients (using `n_samples` and `seed`)
+            2. Correlating the result from 1) using `method`
+            3. Weighting the correlation matrix (if `weight` is True)
+            4. Remove redundancies
+        2. What is done in `calculate_fcc`:
+            1. Absolute of the fingerprint
+            2. Average
+
+        Args:
+            model (Model): The QFM model
+            n_samples (int): Number of samples to calculate average of coefficients
+            seed (int): Seed to initialize random parameters
+            method (Optional[str], optional): Correlation method. Defaults to "pearson".
+            scale (Optional[bool], optional): Whether to scale the number of samples.
+                Defaults to False.
+            weight (Optional[bool], optional): Whether to weight the correlation matrix.
+                Defaults to False.
+            trim_redundant (Optional[bool], optional): Whether to remove redundant
+                correlations. Defaults to False.
+            **kwargs: Additional keyword arguments for the model function.
+
+        Returns:
+            float: The FCC
+        """
+        fourier_fingerprint, _ = FCC.get_fourier_fingerprint(
+            model,
+            n_samples,
+            seed,
+            method,
+            scale,
+            weight,
+            trim_redundant=trim_redundant,
+            **kwargs,
+        )
+
+        return FCC.calculate_fcc(fourier_fingerprint)
+
+    def get_fourier_fingerprint(
+        model: Model,
+        n_samples: int,
+        seed: int,
+        method: Optional[str] = "pearson",
+        scale: Optional[bool] = False,
+        weight: Optional[bool] = False,
+        trim_redundant: Optional[bool] = True,
+        **kwargs,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Shortcut method to get just the fourier fingerprint.
+        This includes
+        1. Calculating the coefficients (using `n_samples` and `seed`)
+        2. Correlating the result from 1) using `method`
+        3. Weighting the correlation matrix (if `weight` is True)
+        4. Remove redundancies (if `trim_redundant` is True)
+
+        Args:
+            model (Model): The QFM model
+            n_samples (int): Number of samples to calculate average of coefficients
+            seed (int): Seed to initialize random parameters
+            method (Optional[str], optional): Correlation method. Defaults to "pearson".
+            scale (Optional[bool], optional): Whether to scale the number of samples.
+                Defaults to False.
+            weight (Optional[bool], optional): Whether to weight the correlation matrix.
+                Defaults to False.
+            trim_redundant (Optional[bool], optional): Whether to remove redundant
+                correlations. Defaults to True.
+            **kwargs: Additional keyword arguments for the model function.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: The fourier fingerprint
+            and the frequency indices
+        """
+        _, coeffs, freqs = FCC._calculate_coefficients(
+            model, n_samples, seed, scale, **kwargs
+        )
+        fourier_fingerprint = FCC._correlate(coeffs.transpose(), method=method)
+
+        # perform weighting if requested
+        fourier_fingerprint = (
+            FCC._weighting(fourier_fingerprint) if weight else fourier_fingerprint
+        )
+
+        if trim_redundant:
+            mask = FCC._calculate_mask(freqs)
+
+            # apply the mask on the fingerprint
+            fourier_fingerprint = mask * fourier_fingerprint
+
+            row_mask = np.any(np.isfinite(fourier_fingerprint), axis=1)
+            col_mask = np.any(np.isfinite(fourier_fingerprint), axis=0)
+
+            fourier_fingerprint = fourier_fingerprint[row_mask][:, col_mask]
+
+        return fourier_fingerprint, freqs
+
+    @staticmethod
+    def calculate_fcc(
+        fourier_fingerprint: np.ndarray,
+    ) -> float:
+        """
+        Method to calculate the FCC based on an existing correlation matrix.
+        Calculate absolute and then the average over this matrix.
+        The Fingerprint can be obtained via `get_fourier_fingerprint`
+
+        Args:
+            coeff_coeff_correlation (np.ndarray): Correlation matrix of coefficients
+        Returns:
+            float: The FCC
+        """
+        # apply the mask on the fingerprint
+        return np.nanmean(np.abs(fourier_fingerprint))
+
+    def _calculate_mask(freqs: np.ndarray) -> np.ndarray:
+        """
+        Method to calculate a mask filtering out redundant elements
+        of the Fourier correlation matrix, based on the provided frequency vector.
+        It does so by 'simulating' the operations that would be performed
+        by `_correlate`.
+
+        Args:
+            freqs (np.ndarray): Array of frequencies
+
+        Returns:
+            np.ndarray: The mask
+        """
+        # TODO: this part can be heavily optimized, by e.g. using a "positive_only"
+        # flag when calculating the coefficients.
+        # However this would change the numerical values
+        # (while the order should be still the same).
+
+        # disregard all the negativ frequencies
+        freqs[freqs < 0] = np.nan
+        # compute the outer product of the frequency vectors for arbitrary dimensions
+        # or just use the existing frequency vector if it is 1D
+        nd_freqs = (
+            reduce(np.multiply, np.ix_(*freqs)) if len(freqs.shape) > 1 else freqs
+        )
+        # TODO: could prevent this if we're not using .squeeze()..
+
+        # "simulate" what would happen on correlating the coefficients
+        corr_freqs = np.outer(nd_freqs, nd_freqs)
+        # mask all frequencies that are nan now
+        # (i.e. all correlations with a negative frequency component)
+        corr_mask = np.where(np.isnan(corr_freqs), corr_freqs, 1)
+        # from this, disregard all the other redundant correlations (i.e. c_0_1 = c_1_0)
+        corr_mask[np.triu_indices(corr_mask.shape[0], 0)] = np.nan
+
+        return corr_mask
+
+    @staticmethod
+    def _calculate_coefficients(
+        model: Model,
+        n_samples: int,
+        seed: int,
+        scale: bool = False,
+        **kwargs,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Calculates the Fourier coefficients of a given model
+        using `n_samples` and `seed`.
+        Optionally, `noise_params` can be passed to perform noisy simulation.
+
+        Args:
+            model (Model): The QFM model
+            n_samples (int): Number of samples to calculate average of coefficients
+            seed (int): Seed to initialize random parameters
+            scale (bool, optional): Whether to scale the number of samples.
+                Defaults to False.
+            **kwargs: Additional keyword arguments for the model function.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: Parameters and Coefficients of size NxK
+        """
+        if n_samples > 0:
+            if scale:
+                total_samples = int(
+                    np.power(2, model.n_qubits) * n_samples * model.n_input_feat
+                )
+                log.info(f"Using {total_samples} samples.")
+            else:
+                total_samples = n_samples
+            rng = np.random.default_rng(seed)
+            model.initialize_params(rng=rng, repeat=total_samples)
+        else:
+            total_samples = 1
+
+        coeffs, freqs = Coefficients.get_spectrum(
+            model, shift=True, trim=True, **kwargs
+        )
+
+        return model.params, coeffs, freqs
+
+    @staticmethod
+    def _correlate(mat: np.ndarray, method: str = "pearson") -> np.ndarray:
+        """
+        Correlates two arrays using `method`.
+        Currently, `pearson` and `spearman` are supported.
+
+        Args:
+            mat (np.ndarray): Array of shape (N, K)
+            method (str, optional): Correlation method. Defaults to "pearson".
+
+        Raises:
+            ValueError: If the method is not supported.
+
+        Returns:
+            np.ndarray: Correlation matrix of `a` and `b`.
+        """
+        assert len(mat.shape) >= 2, "Input matrix must have at least 2 dimensions"
+
+        # Note that for the general n-D case, we have to flatten along
+        # the first axis (last one is batch).
+        # Note that the order here is important so we can easily filter out
+        # negative coefficients later.
+        # Consider the following example: [[1,2,3],[4,5,6],[7,8,9]]
+        # we want to get [1, 4, 7, 2, 5, 8, 3, 6, 9]
+        # such that after correlation, all positive indexed coefficients
+        # will be in the bottom right quadrant
+        if method == "pearson":
+            result = FCC._pearson(mat.reshape(mat.shape[0], -1))
+            # result = FCC._pearson(mat.reshape(mat.shape[-1], -1, order="F"))
+        elif method == "spearman":
+            result = FCC._spearman(mat.reshape(mat.shape[0], -1))
+            # result = FCC._spearman(mat.reshape(mat.shape[-1], -1, order="F"))
+        else:
+            raise ValueError(
+                f"Unknown correlation method: {method}. \
+                             Must be 'pearson' or 'spearman'."
+            )
+
+        return result
+
+    @staticmethod
+    def _pearson(
+        mat: np.ndarray, cov: Optional[bool] = False, minp: Optional[int] = 1
+    ) -> np.ndarray:
+        """
+        Based on Pandas correlation method as implemented here:
+        https://github.com/pandas-dev/pandas/blob/main/pandas/_libs/algos.pyx
+
+        Compute Pearson correlation between columns of `mat`,
+        permitting missing values (NaN or ±Inf).
+
+        Args:
+            mat : array_like, shape (N, K)
+                Input data.
+            minp : int, optional
+                Minimum number of paired observations required to form a correlation.
+                If the number of valid pairs for (i, j) is < minp, the result is NaN.
+
+        Returns:
+            corr : ndarray, shape (K, K)
+                Pearson correlation matrix.
+        """
+
+        mat = np.asarray(mat, dtype=np.float64)
+        N, K = mat.shape
+
+        # pre‐compute finite‐mask
+        mask = np.isfinite(mat)
+
+        # output
+        result = np.empty((K, K), dtype=np.float64)
+
+        # TODO: optimize in future iterations
+        # loop over column‐pairs
+        for i in range(K):
+            for j in range(i + 1):
+                # find rows where both columns are finite
+                m = mask[:, i] & mask[:, j]
+                n = np.count_nonzero(m)
+                if n < minp:
+                    # too few pairs
+                    value = np.nan
+                else:
+                    x = mat[m, i]
+                    y = mat[m, j]
+
+                    # compute means
+                    mean_x = x.mean()
+                    mean_y = y.mean()
+
+                    # demeaned data
+                    dx = x - mean_x
+                    dy = y - mean_y
+
+                    # sum of squares and cross‐prod
+                    ssx = np.dot(dx, dx)
+                    ssy = np.dot(dy, dy)
+                    cxy = np.dot(dx, dy)
+
+                    if cov:
+                        # sample covariance (denominator n−1)
+                        value = cxy / (n - 1) if n > 1 else np.nan
+                    else:
+                        # Pearson r = cov / (σx σy)
+                        denom = np.sqrt(ssx * ssy)
+                        if denom == 0.0:
+                            value = np.nan
+                        else:
+                            value = cxy / denom
+                            # clip numerical drift
+                            if value > 1.0:
+                                value = 1.0
+                            elif value < -1.0:
+                                value = -1.0
+
+                result[i, j] = result[j, i] = value
+
+        return result
+
+    def _spearman(mat: np.ndarray, minp: Optional[int] = 1) -> np.ndarray:
+        """
+        Based on Pandas correlation method as implemented here:
+        https://github.com/pandas-dev/pandas/blob/main/pandas/_libs/algos.pyx
+
+        Compute Spearman correlation between columns of `mat`,
+        permitting missing values (NaN or ±Inf).
+
+        Args:
+            mat : array_like, shape (N, K)
+                Input data.
+            minp : int, optional
+                Minimum number of paired observations required to form a correlation.
+                If the number of valid pairs for (i, j) is < minp, the result is NaN.
+
+        Returns:
+            corr : ndarray, shape (K, K)
+                Spearman correlation matrix.
+        """
+        N, K = mat.shape
+        # trivial all-NaN answer if too few rows
+        if N < minp:
+            return np.full((K, K), np.nan, dtype=float)
+
+        # mask of finite entries
+        mask = np.isfinite(mat)  # shape (N, K), dtype=bool
+
+        # precompute ranks column-wise ignoring NaNs
+        ranks = np.full((N, K), np.nan, dtype=float)
+        for j in range(K):
+            valid = mask[:, j]
+            if valid.any():
+                # rankdata by default gives average ranks for ties
+                ranks[valid, j] = rankdata(mat[valid, j], method="average")
+
+        # allocate result
+        result = np.empty((K, K), dtype=float)
+
+        # TODO: optimize in future iterations
+        # loop lower triangle (including diagonal)
+        for i in range(K):
+            for j in range(i + 1):
+                # find rows where both columns are finite
+                valid = mask[:, i] & mask[:, j]
+                nobs = valid.sum()
+
+                if nobs < minp:
+                    rho = np.nan
+                else:
+                    xi = ranks[valid, i]
+                    yj = ranks[valid, j]
+                    # subtract means
+                    xi = xi - xi.mean()
+                    yj = yj - yj.mean()
+                    num = np.dot(xi, yj)
+                    den = np.sqrt(np.dot(xi, xi) * np.dot(yj, yj))
+                    rho = num / den if den > 0 else np.nan
+
+                result[i, j] = rho
+                result[j, i] = rho
+
+        return result
+
+    @staticmethod
+    def _weighting(fourier_fingerprint: np.ndarray) -> np.ndarray:
+        """
+        Performs weighting on the given correlation matrix.
+        Here, low-frequent coefficients are weighted more heavily.
+
+        Args:
+            correlation (np.ndarray): Correlation matrix
+        """
+        # TODO: in Future iterations, this can be optimized by computing
+        # on the trimmed matrix instead.
+
+        assert (
+            fourier_fingerprint.shape[0] % 2 != 0
+            and fourier_fingerprint.shape[1] % 2 != 0
+        ), "Correlation matrix must have odd dimensions. \
+            Hint: use `trim` argument when calling `get_spectrum`."
+        assert (
+            fourier_fingerprint.shape[0] == fourier_fingerprint.shape[1]
+        ), "Correlation matrix must be square."
+
+        def quadrant_to_matrix(a: np.ndarray) -> np.ndarray:
+            """
+            Transforms [[1,2],[3,4]] to
+            [[1,2,1],[3,4,3],[1,2,1]]
+
+            Args:
+                a (np.ndarray): _description_
+
+            Returns:
+                np.ndarray: _description_
+            """
+            # rotates a from [[1,2],[3,4]] to [[3,4],[1,2]]
+            a_rot = np.rot90(a)
+            # merge the two matrices
+            left = np.concat([a, a_rot])
+            # merges left and right (left flipped)
+            b = np.concat(
+                [left, np.flip(left)],
+                axis=1,
+            )
+            # remove the middle column and row
+            return np.delete(
+                np.delete(b, (b.shape[0] // 2), axis=0), (b.shape[1] // 2), axis=1
+            )
+
+        nc = fourier_fingerprint.shape[0] // 2 + 1
+        weights = nnp.mgrid[0:nc:1, 0:nc:1].sum(axis=0) / ((nc - 1) * 2)
+        weights_matrix = quadrant_to_matrix(weights)
+
+        return fourier_fingerprint * weights_matrix
+        raise NotImplementedError("Weighting method is not implemented")

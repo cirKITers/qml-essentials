@@ -183,3 +183,53 @@ Using a logarithmic color bar, one obtains the following 2D-spectrum:
 ![2D Model Coefficients](figures/model_2d_psd_dark.png#center#only-dark)
 
 Note that "X1" refers to the "RX" encoding and "X2" to the "RY" encoding.
+
+## Fourier Coefficient Correlation (FCC)
+
+The FCC, as introduced in [Fourier Fingerprints of Ansatzes in Quantum Machine Learning](https://doi.org/10.48550/arXiv.2508.20868), is a metric that aims to predict the expected performance of an arbitrary Ansatz based on the the correlation between its Fourier modes.
+In this framework, the FCC for a given `model` can be obtained as follows:
+
+```python
+from qml_essentials.coefficients import FCC
+
+model = Model(
+    n_qubits=6,
+    n_layers=1,
+    circuit_type="Hardware_Efficient",
+    output_qubit=-1,
+    encoding=["RY"],
+    mp_threshold=3000,
+)
+
+fcc = FCC.get_fcc(
+    model=model,
+    n_samples=500,
+    seed=1000,
+)
+```
+Returns `0.1442` as already in Fig. 3a of aforementioned paper.
+
+Optionally, you can choose a different correlation `method` (currently "pearson" and "spearman" are supported).
+Similar, other methods which require specifying `n_samples` (c.f. calculation of [expressibility](expressibility.md) and [entangling capability](entangling.md)), methods in the `FCC` class take an optional parameter `scale` (defaults to `False`), which scales the number of samples depending on the number of qubits and the number of input features as $n_\text{samples} \cdot n_\text{params} \cdot 2^{n_\text{qubits}} \cdot n_\text{features}$.
+
+As described in our paper, the FCC is calculated as the mean of the Fourier fingerprint, which in turn can be obtained separately as follows:
+
+```python
+fingerprint = FCC.get_fourier_fingerprint(
+    model=model,
+    n_samples=500,
+    seed=1000,
+)
+```
+
+![Fourier Fingerprint of Hardware Efficient Ansatz](figures/fourier_fingerprint_light.png#center#only-light)
+![Fourier Fingerprint of Hardware Efficient Ansatz](figures/fourier_fingerprint_dark.png#center#only-dark)
+
+Note that actually calculating the FCC as it is shown in the paper, requires removing all the redundant entries in the fingerprint.
+This is implicitly done in `FCC.get_fourier_fingerprint` (and controlled using the `trim_redundant` argument), by
+- removing all negative frequencies (because their coefficients are complex conjugates of the positive frequencies)
+- removing symmetries inside the correlation matrix (the Fourier fingerprint), e.g. $c_{0,1} = c_{1,0}$
+Note that `get_fcc` also (by default) trims down the fingerprint before calculating the actual FCC. 
+
+Both `get_fcc` and `get_fourier_fingerprint` support a `weight` parameter, which can be used to weight the correlation matrix, such that high-frequency components receive a lower weight.
+Intuitively this adresses the issue, that low frequency components have a higher impact on the mean-squared error (c.f. App. D in our paper). 
