@@ -1019,6 +1019,15 @@ class QOC:
 
 
 if __name__ == "__main__":
+    # argparse the selected gate
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--gate", type=str, default="all")
+    args = parser.parse_args()
+    gate = args.gate
+
+    log.setLevel(logging.DEBUG)
+    log.addHandler(logging.StreamHandler())
+
     qoc = QOC(
         make_plots=False,
         fig_points=40,
