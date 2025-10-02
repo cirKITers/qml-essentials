@@ -572,13 +572,22 @@ class PulseInformation:
     Stores pulse parameter counts and optimized pulse parameters for quantum gates.
     """
 
+    # TODO: consider merging this information with the arrays further down
     PULSE_PARAM_COUNTS: Dict[str, int] = {"RX": 3, "RY": 3, "RZ": 1, "CZ": 1, "H": 3}
     PULSE_PARAM_COUNTS["Rot"] = 2 * PULSE_PARAM_COUNTS["RZ"] + PULSE_PARAM_COUNTS["RY"]
     PULSE_PARAM_COUNTS["CX"] = 2 * PULSE_PARAM_COUNTS["H"] + PULSE_PARAM_COUNTS["CZ"]
     PULSE_PARAM_COUNTS["CY"] = 2 * PULSE_PARAM_COUNTS["RZ"] + PULSE_PARAM_COUNTS["CX"]
-    PULSE_PARAM_COUNTS["CRZ"] = 2 * PULSE_PARAM_COUNTS["RZ"] + PULSE_PARAM_COUNTS["CZ"]
-    PULSE_PARAM_COUNTS["CRY"] = 2 * PULSE_PARAM_COUNTS["RX"] + PULSE_PARAM_COUNTS["CRZ"]
-    PULSE_PARAM_COUNTS["CRX"] = 2 * PULSE_PARAM_COUNTS["H"] + PULSE_PARAM_COUNTS["CRZ"]
+    PULSE_PARAM_COUNTS["CRZ"] = (
+        2 * PULSE_PARAM_COUNTS["RZ"] + 2 * PULSE_PARAM_COUNTS["CX"]
+    )
+    PULSE_PARAM_COUNTS["CRY"] = (
+        2 * PULSE_PARAM_COUNTS["RY"] + 2 * PULSE_PARAM_COUNTS["CX"]
+    )
+    PULSE_PARAM_COUNTS["CRX"] = (
+        2 * PULSE_PARAM_COUNTS["RZ"]
+        + 2 * PULSE_PARAM_COUNTS["RY"]
+        + 2 * PULSE_PARAM_COUNTS["CX"]
+    )
 
     OPTIMIZED_PULSES: Dict[str, Optional[jnp.ndarray]] = {
         "Rot": jnp.array(
