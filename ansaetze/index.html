@@ -374,6 +374,57 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#pulse_simulation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pulse Simulation
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Pulse Simulation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pulse_parameters_per_gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pulse Parameters per Gate
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#calling_gates_in_pulse_mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      Calling Gates in Pulse Mode
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#building_ansatzes_in_pulse_mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      Building Ansatzes in Pulse Mode
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quantum_optimal_control_qoc" class="md-nav__link">
+    <span class="md-ellipsis">
+      Quantum Optimal Control (QOC)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
       Overview
@@ -713,6 +764,57 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#pulse_simulation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pulse Simulation
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Pulse Simulation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pulse_parameters_per_gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pulse Parameters per Gate
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#calling_gates_in_pulse_mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      Calling Gates in Pulse Mode
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#building_ansatzes_in_pulse_mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      Building Ansatzes in Pulse Mode
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quantum_optimal_control_qoc" class="md-nav__link">
+    <span class="md-ellipsis">
+      Quantum Optimal Control (QOC)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
       Overview
@@ -912,29 +1014,43 @@ To get an overview of all the available Ansaetze, checkout the <a href="https://
 <h2 id="custom_ansatz">Custom Ansatz<a class="headerlink" href="#custom_ansatz" title="Permanent link">#</a></h2>
 <p>If you want to implement your own ansatz, you can do so by inheriting from the <code>Circuit</code> class:
 <div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pennylane</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">qml</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.ansaetze</span><span class="w"> </span><span class="kn">import</span> <span class="n">Circuit</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyHardwareEfficient</span><span class="p">(</span><span class="n">Circuit</span><span class="p">):</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="nd">@staticmethod</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">n_params_per_layer</span><span class="p">(</span><span class="n">n_qubits</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>        <span class="k">return</span> <span class="n">n_qubits</span> <span class="o">*</span> <span class="mi">3</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="nd">@staticmethod</span>
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_control_indices</span><span class="p">(</span><span class="n">n_qubits</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>        <span class="k">return</span> <span class="kc">None</span>
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="nd">@staticmethod</span>
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">build</span><span class="p">(</span><span class="n">w</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">n_qubits</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">noise_params</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>        <span class="n">w_idx</span> <span class="o">=</span> <span class="mi">0</span>
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>        <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_qubits</span><span class="p">):</span>
-</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>            <span class="n">qml</span><span class="o">.</span><span class="n">RY</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="n">w_idx</span><span class="p">],</span> <span class="n">wires</span><span class="o">=</span><span class="n">q</span><span class="p">)</span>
-</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>            <span class="n">w_idx</span> <span class="o">+=</span> <span class="mi">1</span>
-</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>            <span class="n">qml</span><span class="o">.</span><span class="n">RZ</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="n">w_idx</span><span class="p">],</span> <span class="n">wires</span><span class="o">=</span><span class="n">q</span><span class="p">)</span>
-</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>            <span class="n">w_idx</span> <span class="o">+=</span> <span class="mi">1</span>
-</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>
-</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>        <span class="k">if</span> <span class="n">n_qubits</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>            <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_qubits</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
-</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>                <span class="n">qml</span><span class="o">.</span><span class="n">CZ</span><span class="p">(</span><span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="n">q</span><span class="p">,</span> <span class="n">q</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pennylane.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.ansaetze</span><span class="w"> </span><span class="kn">import</span> <span class="n">Circuit</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.ansaetze</span><span class="w"> </span><span class="kn">import</span> <span class="n">PulseInformation</span> <span class="k">as</span> <span class="n">pinfo</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyHardwareEfficient</span><span class="p">(</span><span class="n">Circuit</span><span class="p">):</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="nd">@staticmethod</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">n_params_per_layer</span><span class="p">(</span><span class="n">n_qubits</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>        <span class="k">return</span> <span class="n">n_qubits</span> <span class="o">*</span> <span class="mi">3</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="nd">@staticmethod</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">n_pulse_params_per_layer</span><span class="p">(</span><span class="n">n_qubits</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>        <span class="n">n_params_RY</span> <span class="o">=</span> <span class="n">pinfo</span><span class="o">.</span><span class="n">num_params</span><span class="p">(</span><span class="s2">&quot;RY&quot;</span><span class="p">)</span>
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>        <span class="n">n_params_RZ</span> <span class="o">=</span> <span class="n">pinfo</span><span class="o">.</span><span class="n">num_params</span><span class="p">(</span><span class="s2">&quot;RZ&quot;</span><span class="p">)</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>        <span class="n">n_params_CZ</span> <span class="o">=</span> <span class="n">pinfo</span><span class="o">.</span><span class="n">num_params</span><span class="p">(</span><span class="s2">&quot;CZ&quot;</span><span class="p">)</span>
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>        <span class="n">n_pulse_params</span> <span class="o">=</span> <span class="p">(</span><span class="n">num_params_RY</span> <span class="o">+</span> <span class="n">num_params_RZ</span><span class="p">)</span> <span class="o">*</span> <span class="n">n_qubits</span>
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>        <span class="n">n_pulse_params</span> <span class="o">+=</span> <span class="n">num_params_CZ</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_qubits</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>        <span class="k">return</span> <span class="n">pulse_params</span>
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    <span class="nd">@staticmethod</span>
+</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_control_indices</span><span class="p">(</span><span class="n">n_qubits</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>        <span class="k">return</span> <span class="kc">None</span>
+</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>
+</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>    <span class="nd">@staticmethod</span>
+</span><span id="__span-1-28"><a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">build</span><span class="p">(</span><span class="n">w</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">n_qubits</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>        <span class="n">w_idx</span> <span class="o">=</span> <span class="mi">0</span>
+</span><span id="__span-1-30"><a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>        <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_qubits</span><span class="p">):</span>
+</span><span id="__span-1-31"><a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>            <span class="n">qml</span><span class="o">.</span><span class="n">RY</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="n">w_idx</span><span class="p">],</span> <span class="n">wires</span><span class="o">=</span><span class="n">q</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</span><span id="__span-1-32"><a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>            <span class="n">w_idx</span> <span class="o">+=</span> <span class="mi">1</span>
+</span><span id="__span-1-33"><a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a>            <span class="n">qml</span><span class="o">.</span><span class="n">RZ</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="n">w_idx</span><span class="p">],</span> <span class="n">wires</span><span class="o">=</span><span class="n">q</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</span><span id="__span-1-34"><a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a>            <span class="n">w_idx</span> <span class="o">+=</span> <span class="mi">1</span>
+</span><span id="__span-1-35"><a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a>
+</span><span id="__span-1-36"><a id="__codelineno-1-36" name="__codelineno-1-36" href="#__codelineno-1-36"></a>        <span class="k">if</span> <span class="n">n_qubits</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+</span><span id="__span-1-37"><a id="__codelineno-1-37" name="__codelineno-1-37" href="#__codelineno-1-37"></a>            <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_qubits</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+</span><span id="__span-1-38"><a id="__codelineno-1-38" name="__codelineno-1-38" href="#__codelineno-1-38"></a>                <span class="n">qml</span><span class="o">.</span><span class="n">CZ</span><span class="p">(</span><span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="n">q</span><span class="p">,</span> <span class="n">q</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 </span></code></pre></div></p>
 <p>and then pass it to the model:
 <div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.model</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span>
@@ -944,8 +1060,10 @@ To get an overview of all the available Ansaetze, checkout the <a href="https://
 </span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">n_layers</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
 </span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">circuit_type</span><span class="o">=</span><span class="n">MyHardwareEfficient</span><span class="p">,</span>
 </span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="p">)</span>
-</span></code></pre></div></p>
-<p>Checkout page <a href="../usage/"><em>Usage</em></a> on how to proceed from here.</p>
+</span></code></pre></div>
+The <code>**kwargs</code> allow both <a href="#noise">noise simulation</a> and <a href="#pulse-simulation">pulse simulation</a>.
+A custom <code>Circuit</code> should define <code>n_pulse_params_per_layer</code> if it will use pulse simulation at some point, but may be omitted otherwise.</p>
+<p>Check out page <a href="../usage/"><em>Usage</em></a> on how to proceed from here.</p>
 <h2 id="custom_encoding">Custom Encoding<a class="headerlink" href="#custom_encoding" title="Permanent link">#</a></h2>
 <p>On model instantiation, you can choose how your inputs are encoded.
 The default encoding is "RX" which will result in a single RX rotation per qubit.
@@ -953,13 +1071,13 @@ You can change this behavior, by setting the optional <code>encoding</code> argu
 - a string or a list of strings where each is checked agains the <a href="https://cirkiters.github.io/qml-essentials/references/#gates"><code>Gates</code> class</a>
 - a callable or a list of callables</p>
 <p>A callable must take an input, the wire where it's acting on and an optional noise_params dictionary.
-Let's look at an example, where we wan't to encode a two-dimensional input:
+Let's look at an example, where we want to encode a two-dimensional input:
 <div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.model</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.ansaetze</span><span class="w"> </span><span class="kn">import</span> <span class="n">Gates</span>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">MyCustomEncoding</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">wires</span><span class="p">,</span> <span class="n">noise_params</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">Gates</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">wires</span><span class="p">,</span> <span class="n">noise_params</span><span class="o">=</span><span class="n">noise_params</span><span class="p">)</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">Gates</span><span class="o">.</span><span class="n">RY</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">wires</span><span class="p">,</span> <span class="n">noise_params</span><span class="o">=</span><span class="n">noise_params</span><span class="p">)</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">MyCustomEncoding</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">wires</span><span class="p">,</span> <span class="o">**</span><span class="n">kwars</span><span class="p">):</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">Gates</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">wires</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">Gates</span><span class="o">.</span><span class="n">RY</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">wires</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 </span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
 </span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="n">model</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span>
 </span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="n">n_qubits</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
@@ -971,8 +1089,8 @@ Let's look at an example, where we wan't to encode a two-dimensional input:
 </span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="n">model</span><span class="p">(</span><span class="n">inputs</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
 </span></code></pre></div></p>
 <h2 id="noise">Noise<a class="headerlink" href="#noise" title="Permanent link">#</a></h2>
-<p>You might have noticed, that the <code>build</code> method takes an additional input <code>noise_params</code>, which we did not used so far.
-In general, all of the Ansatzes, that are implemented in this package allow this additional input which is a dictionary containing all the noise parameters of the circuit (here all with probability <span class="arithmatex">\(0.0\)</span>):
+<p>You might have noticed, that the <code>build</code> method takes the additional input **kwargs, which we did not used so far.
+In general, all of the Ansatzes that are implemented in this package allow the additional input below which is a dictionary containing all the noise parameters of the circuit (here all with probability <span class="arithmatex">\(0.0\)</span>):
 <div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">noise_params</span> <span class="o">=</span> <span class="p">{</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="s2">&quot;BitFlip&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="s2">&quot;PhaseFlip&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
@@ -982,47 +1100,180 @@ In general, all of the Ansatzes, that are implemented in this package allow this
 </span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="s2">&quot;MultiQubitDepolarizing&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
 </span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="p">}</span>
 </span></code></pre></div></p>
-<p>Providing this optional input will apply the corresponding noise to the model where the Bit Flip, Phase Flip, Depolarizing and Two-Qubit Depolarizing Channels are applied after each gate and the Amplitude and Phase Damping are applied at the end of the circuit.
-To achieve this, we implement our own set of noisy gates, that build upon the Pennylane gates. To demonstrate this, let's extend our example above:
-<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.ansaetze</span><span class="w"> </span><span class="kn">import</span> <span class="n">Gates</span><span class="p">,</span> <span class="n">Circuit</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyNoisyHardwareEfficient</span><span class="p">(</span><span class="n">Circuit</span><span class="p">):</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="nd">@staticmethod</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">n_params_per_layer</span><span class="p">(</span><span class="n">n_qubits</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>        <span class="k">return</span> <span class="n">n_qubits</span> <span class="o">*</span> <span class="mi">3</span>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="nd">@staticmethod</span>
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_control_indices</span><span class="p">(</span><span class="n">n_qubits</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
-</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>        <span class="k">return</span> <span class="kc">None</span>
-</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>
-</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>    <span class="nd">@staticmethod</span>
-</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">build</span><span class="p">(</span><span class="n">w</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">n_qubits</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">noise_params</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>        <span class="n">w_idx</span> <span class="o">=</span> <span class="mi">0</span>
-</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>        <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_qubits</span><span class="p">):</span>
-</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>            <span class="n">Gates</span><span class="o">.</span><span class="n">RY</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="n">w_idx</span><span class="p">],</span> <span class="n">wires</span><span class="o">=</span><span class="n">q</span><span class="p">,</span> <span class="n">noise_params</span><span class="o">=</span><span class="n">noise_params</span><span class="p">)</span>
-</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>            <span class="n">w_idx</span> <span class="o">+=</span> <span class="mi">1</span>
-</span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>            <span class="n">Gates</span><span class="o">.</span><span class="n">RZ</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="n">w_idx</span><span class="p">],</span> <span class="n">wires</span><span class="o">=</span><span class="n">q</span><span class="p">,</span> <span class="n">noise_params</span><span class="o">=</span><span class="n">noise_params</span><span class="p">)</span>
-</span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>            <span class="n">w_idx</span> <span class="o">+=</span> <span class="mi">1</span>
-</span><span id="__span-5-20"><a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>
-</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>        <span class="k">if</span> <span class="n">n_qubits</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-</span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>            <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_qubits</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
-</span><span id="__span-5-23"><a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>                <span class="n">Gates</span><span class="o">.</span><span class="n">CZ</span><span class="p">(</span><span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="n">q</span><span class="p">,</span> <span class="n">q</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">noise_params</span><span class="o">=</span><span class="n">noise_params</span><span class="p">)</span>
-</span></code></pre></div></p>
-<p>As you can see, we slightly modified the example, by importing the <code>Gates</code> class from <code>ansaetze</code> and by adding the <code>noise_params</code> input to each of the gates.
-When using a noisy circuit, make sure to run the model with the <code>density</code> execution type:
-<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">model</span><span class="p">(</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">,</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">inputs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">execution_type</span><span class="o">=</span><span class="s2">&quot;density&quot;</span><span class="p">,</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">noise_params</span><span class="o">=</span><span class="p">{</span>
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>        <span class="s2">&quot;BitFlip&quot;</span><span class="p">:</span> <span class="mf">0.01</span><span class="p">,</span>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>        <span class="s2">&quot;PhaseFlip&quot;</span><span class="p">:</span> <span class="mf">0.02</span><span class="p">,</span>
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>        <span class="s2">&quot;AmplitudeDamping&quot;</span><span class="p">:</span> <span class="mf">0.03</span><span class="p">,</span>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>        <span class="s2">&quot;PhaseDamping&quot;</span><span class="p">:</span> <span class="mf">0.04</span><span class="p">,</span>
-</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>        <span class="s2">&quot;Depolarizing&quot;</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
-</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>        <span class="s2">&quot;MultiQubitDepolarizing&quot;</span><span class="p">:</span> <span class="mf">0.06</span>
-</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="p">})</span>
-</span></code></pre></div></p>
+<p>Providing this optional input will apply the corresponding noise to the model where the Bit Flip, Phase Flip, Depolarizing and Two-Qubit Depolarizing Channels are applied after each gate and the Amplitude and Phase Damping are applied at the end of the circuit.</p>
+<p>To demonstrate this, let's recall the custom ansatz <code>MyHardwareEfficient</code> defined in <a href="#custom-ansatz">Custom Ansatz</a> and extend the model's usage:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">model</span><span class="p">(</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">,</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">inputs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">execution_type</span><span class="o">=</span><span class="s2">&quot;density&quot;</span><span class="p">,</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">noise_params</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>        <span class="s2">&quot;BitFlip&quot;</span><span class="p">:</span> <span class="mf">0.01</span><span class="p">,</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>        <span class="s2">&quot;PhaseFlip&quot;</span><span class="p">:</span> <span class="mf">0.02</span><span class="p">,</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>        <span class="s2">&quot;AmplitudeDamping&quot;</span><span class="p">:</span> <span class="mf">0.03</span><span class="p">,</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>        <span class="s2">&quot;PhaseDamping&quot;</span><span class="p">:</span> <span class="mf">0.04</span><span class="p">,</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>        <span class="s2">&quot;Depolarizing&quot;</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>        <span class="s2">&quot;MultiQubitDepolarizing&quot;</span><span class="p">:</span> <span class="mf">0.06</span>
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="p">})</span>
+</span></code></pre></div>
+<blockquote>
+<p><strong>Note:</strong> When using a noisy circuit, make sure to run the model with the <code>density</code> execution type.</p>
+</blockquote>
+<h2 id="pulse_simulation">Pulse Simulation<a class="headerlink" href="#pulse_simulation" title="Permanent link">#</a></h2>
+<p>Our framework allows constructing circuits at the <strong>pulse level</strong>, where each gate is implemented as a time-dependent control pulse rather than an abstract unitary.<br />
+This provides a more fine grained access to the simulation of the underlying physical process.
+While we provide a developer-oriented overview in this section, we would like to highlight <a href="https://doi.org/10.5445/IR/1000184129">Tilmann's Bachelor's Thesis</a> if you want to have a more detailled read into pulse-level simulation and quantum Fourier models.</p>
+<h3 id="pulse_parameters_per_gate">Pulse Parameters per Gate<a class="headerlink" href="#pulse_parameters_per_gate" title="Permanent link">#</a></h3>
+<p>Each implemented gate takes the following number of pulse parameters:</p>
+<table>
+<thead>
+<tr>
+<th>Gate</th>
+<th>Pulse Parameters</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="arithmatex">\(\text{Rot}\)</span></td>
+<td>-</td>
+<td>Not implemented</td>
+</tr>
+<tr>
+<td><span class="arithmatex">\(\text{RX }\)</span></td>
+<td>3</td>
+<td>(<span class="arithmatex">\(A\)</span>, <span class="arithmatex">\(\sigma\)</span>, <span class="arithmatex">\(t\)</span>) amplitude, width, and pulse duration</td>
+</tr>
+<tr>
+<td><span class="arithmatex">\(\text{RY }\)</span></td>
+<td>3</td>
+<td>(<span class="arithmatex">\(A\)</span>, <span class="arithmatex">\(\sigma\)</span>, <span class="arithmatex">\(t\)</span>) amplitude, width, and pulse duration</td>
+</tr>
+<tr>
+<td><span class="arithmatex">\(\text{RZ }\)</span></td>
+<td>1</td>
+<td>t: pulse duration</td>
+</tr>
+<tr>
+<td><span class="arithmatex">\(\text{CRX}\)</span></td>
+<td>-</td>
+<td>Not implemented</td>
+</tr>
+<tr>
+<td><span class="arithmatex">\(\text{CRY}\)</span></td>
+<td>-</td>
+<td>Not implemented</td>
+</tr>
+<tr>
+<td><span class="arithmatex">\(\text{CRZ}\)</span></td>
+<td>-</td>
+<td>Not implemented</td>
+</tr>
+<tr>
+<td><span class="arithmatex">\(\text{CX }\)</span></td>
+<td>4</td>
+<td>(<span class="arithmatex">\(A_\text{H}\)</span>, <span class="arithmatex">\(\sigma_\text{H}\)</span>, <span class="arithmatex">\(t_\text{H}\)</span>, <span class="arithmatex">\(t_\text{CZ}\)</span>) parameters for decomposed pulse sequence</td>
+</tr>
+<tr>
+<td><span class="arithmatex">\(\text{CY }\)</span></td>
+<td>-</td>
+<td>Not implemented</td>
+</tr>
+<tr>
+<td><span class="arithmatex">\(\text{CZ }\)</span></td>
+<td>1</td>
+<td><span class="arithmatex">\(t_\text{CZ}\)</span>: pulse duration</td>
+</tr>
+<tr>
+<td><span class="arithmatex">\(\text{H  }\)</span></td>
+<td>3</td>
+<td>(<span class="arithmatex">\(A_\text{H}\)</span>, <span class="arithmatex">\(\sigma_\text{H}\)</span>, <span class="arithmatex">\(t_\text{H}\)</span>) passed to underlying RY decomposition</td>
+</tr>
+</tbody>
+</table>
+<p>You can use the <code>PulseInformation</code> class to access both the number and optimized values of the pulse parameters for each gate:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.ansaetze</span><span class="w"> </span><span class="kn">import</span> <span class="n">PulseInformation</span> <span class="k">as</span> <span class="n">pinfo</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="c1"># Number of pulse parameters</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">n_pulse_params_RX</span> <span class="o">=</span> <span class="n">pinfo</span><span class="o">.</span><span class="n">num_params</span><span class="p">(</span><span class="s2">&quot;RX&quot;</span><span class="p">)</span>  <span class="c1"># 3</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">n_pulse_params_CX</span> <span class="o">=</span> <span class="n">pinfo</span><span class="o">.</span><span class="n">num_params</span><span class="p">(</span><span class="s2">&quot;CX&quot;</span><span class="p">)</span>  <span class="c1"># 4</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># Optimized pulse parameters</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="n">opt_pulse_params_RX</span> <span class="o">=</span> <span class="n">pinfo</span><span class="o">.</span><span class="n">optimized_params</span><span class="p">(</span><span class="s2">&quot;RX&quot;</span><span class="p">)</span>  <span class="c1"># jnp.array([15.709893, 29.52306, 0.74998104])</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="n">opt_pulse_params_CX</span> <span class="o">=</span> <span class="n">pinfo</span><span class="o">.</span><span class="n">optimized_params</span><span class="p">(</span><span class="s2">&quot;CX&quot;</span><span class="p">)</span>  <span class="c1"># jnp.array([7.9447253, 21.6398258, 0.90724313, 0.95509776])</span>
+</span></code></pre></div>
+<h3 id="calling_gates_in_pulse_mode">Calling Gates in Pulse Mode<a class="headerlink" href="#calling_gates_in_pulse_mode" title="Permanent link">#</a></h3>
+<p>To execute a gate in pulse mode, provide <code>gate_mode="pulse"</code> when calling the gate.<br />
+Optional <code>pulse_params</code> can be passed; if omitted, optimized default values are used:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">w</span> <span class="o">=</span> <span class="mf">3.14159</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="c1"># RX gate with default optimized pulse parameters</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">Gates</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">wires</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">gate_mode</span><span class="o">=</span><span class="s2">&quot;pulse&quot;</span><span class="p">)</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="c1"># RX gate with custom pulse parameters</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="n">pulse_params</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]</span>  <span class="c1"># A, σ, t</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="n">Gates</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">wires</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">gate_mode</span><span class="o">=</span><span class="s2">&quot;pulse&quot;</span><span class="p">,</span> <span class="n">pulse_params</span><span class="o">=</span><span class="n">pulse_params</span><span class="p">)</span>
+</span></code></pre></div>
+<h3 id="building_ansatzes_in_pulse_mode">Building Ansatzes in Pulse Mode<a class="headerlink" href="#building_ansatzes_in_pulse_mode" title="Permanent link">#</a></h3>
+<p>When building an ansatz in pulse mode (via a <code>Model</code>), the framework internally passes an array of ones as <strong>element-wise scalers</strong> for the optimized parameters.<br />
+If <code>pulse_params</code> are provided for a model or gate, these are treated similarly as element-wise scalers to modify the default pulses. We again take advantage of the **kwargs and call:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">model</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">inputs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">gate_mode</span><span class="o">=</span><span class="s2">&quot;pulse&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+<blockquote>
+<p><strong>Note:</strong> Pulse-level simulation currently <strong>does not support noise channels</strong>. Mixing with noise will raise an error.  </p>
+</blockquote>
+<h3 id="quantum_optimal_control_qoc">Quantum Optimal Control (QOC)<a class="headerlink" href="#quantum_optimal_control_qoc" title="Permanent link">#</a></h3>
+<p>Our package provides a QOC interface for directly optimizing pulse parameters for specific gates.  </p>
+<h4 id="qoc_class_initialization">QOC Class Initialization<a class="headerlink" href="#qoc_class_initialization" title="Permanent link">#</a></h4>
+<p>The <code>QOC</code> class constructor supports the following arguments:</p>
+<ul>
+<li><code>make_plots=False</code> — whether to generate and save plots after optimization  </li>
+<li><code>file_dir="qoc/results"</code>- directory to save optimization results</li>
+<li><code>fig_dir="qoc/figures"</code> — directory to save figures if <code>make_plots=True</code>  </li>
+<li><code>fig_points=70</code> — number of points to plot for each pulse  </li>
+</ul>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.qoc</span><span class="w"> </span><span class="kn">import</span> <span class="n">QOC</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="c1"># Initialize a QOC object</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">qoc</span> <span class="o">=</span> <span class="n">QOC</span><span class="p">(</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">make_plots</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">file_dir</span><span class="o">=</span><span class="s2">&quot;qoc&quot;</span><span class="p">,</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="n">fig_dir</span><span class="o">=</span><span class="s2">&quot;qoc&quot;</span><span class="p">,</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="n">fig_points</span><span class="o">=</span><span class="mi">100</span>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="p">)</span>
+</span></code></pre></div>
+<h4 id="optimizing_pulse_parameters">Optimizing Pulse Parameters<a class="headerlink" href="#optimizing_pulse_parameters" title="Permanent link">#</a></h4>
+<p>The <code>optimize_*</code> functions (e.g., <code>optimize_RX</code>) optimize pulse parameters to best approximate a target unitary gate.<br />
+For example, <code>optimize_RX</code> uses gradient-based optimization to minimize the difference between the pulse-based RX(w) circuit expectation value and the target gate-based RX(w).</p>
+<p>Arguments:</p>
+<ul>
+<li><code>steps: int = 1000</code> — maximum number of optimization steps  </li>
+<li><code>patience: int = 100</code> — number of steps without improvement before early stopping  </li>
+<li><code>w: float = jnp.pi</code> — target rotation angle  </li>
+<li><code>init_pulse_params: jnp.array = jnp.array([1.0, 15.0, 1.0])</code> — initial guess for the pulse parameters (A, σ, t)  </li>
+<li><code>print_every: int = 50</code> — print progress every N steps  </li>
+</ul>
+<p>Returns:</p>
+<ul>
+<li><code>tuple</code> — <code>(optimized_params, loss, losses)</code> where <code>optimized_params</code> is a <code>jnp.ndarray</code> of optimized pulse parameters (the best found during training), <code>loss</code> is the best loss, and <code>losses</code> is a list of loss values during optimization. Here, loss is defined as <code>1 - fidelity</code>.</li>
+</ul>
+<p>Example usage:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Optimize pulse parameters for an RX rotation</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">optimized_pulse_params</span><span class="p">,</span> <span class="n">best_loss</span><span class="p">,</span> <span class="n">loss_values</span> <span class="o">=</span> <span class="n">qoc</span><span class="o">.</span><span class="n">optimize_RX</span><span class="p">(</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">steps</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">patience</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    <span class="n">w</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">pi</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="n">init_pulse_params</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.8</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">]),</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>    <span class="n">print_every</span><span class="o">=</span><span class="mi">100</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="p">)</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Optimized parameters for RX: </span><span class="si">{</span><span class="n">optimized_pulse_params</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Best achieved fidelity: </span><span class="si">{</span><span class="mi">1</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">best_loss</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="c1"># Optimize pulse parameters for an RY rotation</span>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="n">optimized_pulse_params</span><span class="p">,</span> <span class="n">best_loss</span><span class="p">,</span> <span class="n">loss_values</span> <span class="o">=</span> <span class="n">qoc</span><span class="o">.</span><span class="n">optimize_RY</span><span class="p">()</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Optimized parameters for RY: </span><span class="si">{</span><span class="n">optimized_pulse_params</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Best achieved fidelity: </span><span class="si">{</span><span class="mi">1</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">best_loss</span><span class="si">:</span><span class="s2">.6f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Currently, QOC is implemented for all qubit gates with pulse-level support (RX, RY, RZ, H, CX, CZ).  </p>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">#</a></h2>
 <p>This section shows an overview of all the available Ansaetze in our package.
 Most of the circuits are implemented according to to the original paper by <a href="https://doi.org/10.48550/arXiv.1905.10876">Sim et al.</a>.
