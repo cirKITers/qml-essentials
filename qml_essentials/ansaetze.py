@@ -850,95 +850,10 @@ class PulseGates:
     def CRX(w, wires, pulse_params=None):
         """
         Applies a controlled-RX(w) gate using a decomposition.
+        Decomposition based on https://doi.org/10.48550/arXiv.2408.01036
 
         Decomposition:
-            CRX(w) = H_t · CRZ(w) · H_t
-
-        Parameters
-        ----------
-        w : float
-            Rotation angle.
-        wires : List[int]
-            The control and target wires.
-        pulse_params : np.ndarray
-            Pulse parameters for the composing gates. Defaults
-            to optimized parameters if None.
-        """
-        n_H = PulseInformation.num_params("H")
-        n_CRZ = PulseInformation.num_params("CRZ")
-
-        idx1 = n_H
-        idx2 = idx1 + n_CRZ
-        idx3 = idx2 + n_H
-
-        if pulse_params is None:
-            opt = PulseInformation.optimized_params("CRX")
-            params_H_1 = opt[:idx1]
-            params_CRZ = opt[idx1:idx2]
-            params_H_2 = opt[idx2:idx3]
-        else:
-            params_H_1 = pulse_params[:idx1]
-            params_CRZ = pulse_params[idx1:idx2]
-            params_H_2 = pulse_params[idx2:idx3]
-
-        target = wires[1]
-
-        PulseGates.H(wires=target, pulse_params=params_H_1)
-        PulseGates.CRZ(w, wires, pulse_params=params_CRZ)
-        PulseGates.H(wires=target, pulse_params=params_H_2)
-
-        return
-
-    @staticmethod
-    def CRY(w, wires, pulse_params=None):
-        """
-        Applies a controlled-RY(w) gate using a decomposition.
-
-        Decomposition:
-            CRY(w) = RX(-π/2)_t · CRZ(w) · RX(π/2)_t
-
-        Parameters
-        ----------
-        w : float
-            Rotation angle.
-        wires : List[int]
-            The control and target wires.
-        pulse_params : np.ndarray
-            Pulse parameters for the composing gates. Defaults
-            to optimized parameters if None.
-        """
-        n_RX = PulseInformation.num_params("RX")
-        n_CRZ = PulseInformation.num_params("CRZ")
-
-        idx1 = n_RX
-        idx2 = idx1 + n_CRZ
-        idx3 = idx2 + n_RX
-
-        if pulse_params is None:
-            opt = PulseInformation.optimized_params("CRY")
-            params_RX_1 = opt[:idx1]
-            params_CRZ = opt[idx1:idx2]
-            params_RX_2 = opt[idx2:idx3]
-        else:
-            params_RX_1 = pulse_params[:idx1]
-            params_CRZ = pulse_params[idx1:idx2]
-            params_RX_2 = pulse_params[idx2:idx3]
-
-        target = wires[1]
-
-        PulseGates.RX(-np.pi / 2, wires=target, pulse_params=params_RX_1)
-        PulseGates.CRZ(w, wires=wires, pulse_params=params_CRZ)
-        PulseGates.RX(np.pi / 2, wires=target, pulse_params=params_RX_2)
-
-        return
-
-    @staticmethod
-    def CRZ(w, wires, pulse_params=None):
-        """
-        Applies a controlled-RZ(w) gate using a decomposition.
-
-        Decomposition:
-            CRZ(w) = RZ(w/2)_t · CZ · RZ(-w/2)_t
+            CRX(w) = RZ(-w/2) · RY(w/2) · CX · RY(-w/2) · CX · RZ(w/2)
 
         Parameters
         ----------
@@ -951,27 +866,137 @@ class PulseGates:
             to optimized parameters if None.
         """
         n_RZ = PulseInformation.num_params("RZ")
-        n_CZ = PulseInformation.num_params("CZ")
+        n_RY = PulseInformation.num_params("RY")
+        n_CX = PulseInformation.num_params("CX")
 
         idx1 = n_RZ
-        idx2 = idx1 + n_CZ
-        idx3 = idx2 + n_RZ
+        idx2 = idx1 + n_RY
+        idx3 = idx2 + n_CX
+        idx4 = idx3 + n_RY
+        idx5 = idx4 + n_CX
+        idx6 = idx5 + n_RZ
 
         if pulse_params is None:
-            opt = PulseInformation.optimized_params("CRZ")
+            opt = PulseInformation.optimized_params("CRX")
             params_RZ_1 = opt[:idx1]
-            params_CZ = opt[idx1:idx2]
-            params_RZ_2 = opt[idx2:idx3]
+            params_RY = opt[idx1:idx2]
+            params_CX_1 = opt[idx2:idx3]
+            params_RY_2 = opt[idx3:idx4]
+            params_CX_2 = opt[idx4:idx5]
+            params_RZ_2 = opt[idx5:idx6]
+
         else:
             params_RZ_1 = pulse_params[:idx1]
-            params_CZ = pulse_params[idx1:idx2]
-            params_RZ_2 = pulse_params[idx2:idx3]
+            params_RY = pulse_params[idx1:idx2]
+            params_CX_1 = pulse_params[idx2:idx3]
+            params_RY_2 = pulse_params[idx3:idx4]
+            params_CX_2 = pulse_params[idx4:idx5]
+            params_RZ_2 = pulse_params[idx5:idx6]
 
         target = wires[1]
 
         PulseGates.RZ(w / 2, wires=target, pulse_params=params_RZ_1)
-        PulseGates.CZ(wires=wires, pulse_params=params_CZ)
+        PulseGates.RY(w / 2, wires=target, pulse_params=params_RY)
+        PulseGates.CX(wires=wires, pulse_params=params_CX_1)
+        PulseGates.RY(-w / 2, wires=target, pulse_params=params_RY_2)
+        PulseGates.CX(wires=wires, pulse_params=params_CX_2)
         PulseGates.RZ(-w / 2, wires=target, pulse_params=params_RZ_2)
+
+        return
+
+    @staticmethod
+    def CRY(w, wires, pulse_params=None):
+        """
+        Applies a controlled-RY(w) gate using a decomposition.
+        Decomposition based on https://doi.org/10.48550/arXiv.2408.01036
+
+        Decomposition:
+            CRY(w) = RY(w/2) · CX · RX(-w/2) · CX
+
+        Parameters
+        ----------
+        w : float
+            Rotation angle.
+        wires : List[int]
+            The control and target wires.
+        pulse_params : np.ndarray
+            Pulse parameters for the composing gates. Defaults
+            to optimized parameters if None.
+        """
+        n_RY = PulseInformation.num_params("RY")
+        n_CX = PulseInformation.num_params("CX")
+
+        idx1 = n_RY
+        idx2 = idx1 + n_CX
+        idx3 = idx2 + n_RY
+        idx4 = idx3 + n_CX
+
+        if pulse_params is None:
+            opt = PulseInformation.optimized_params("CRY")
+            params_RX_1 = opt[:idx1]
+            params_CX_1 = opt[idx1:idx2]
+            params_RX_2 = opt[idx2:idx3]
+            params_CX_2 = opt[idx3:]
+        else:
+            params_RX_1 = pulse_params[:idx1]
+            params_CX_1 = pulse_params[idx1:idx2]
+            params_RX_2 = pulse_params[idx2:idx3]
+            params_CX_2 = pulse_params[idx3:idx4]
+
+        target = wires[1]
+
+        PulseGates.RY(w / 2, wires=target, pulse_params=params_RX_1)
+        PulseGates.CX(wires=wires, pulse_params=params_CX_1)
+        PulseGates.RX(-w / 2, wires=target, pulse_params=params_RX_2)
+        PulseGates.CX(wires=wires, pulse_params=params_CX_2)
+
+        return
+
+    @staticmethod
+    def CRZ(w, wires, pulse_params=None):
+        """
+        Applies a controlled-RZ(w) gate using a decomposition.
+        Decomposition based on https://doi.org/10.48550/arXiv.2408.01036
+
+        Decomposition:
+            CRZ(w) = RZ(-w/2)_t · CX · RZ(w/2)_t · CX
+
+        Parameters
+        ----------
+        w : float
+            Rotation angle.
+        wires : List[int]
+            The control and target wires.
+        pulse_params : np.ndarray
+            Pulse parameters for the composing gates. Defaults
+            to optimized parameters if None.
+        """
+        n_RZ = PulseInformation.num_params("RZ")
+        n_CX = PulseInformation.num_params("CX")
+
+        idx1 = n_RZ
+        idx2 = idx1 + n_CX
+        idx3 = idx2 + n_RZ
+        idx4 = idx3 + n_CX
+
+        if pulse_params is None:
+            opt = PulseInformation.optimized_params("CRZ")
+            params_RZ_1 = opt[:idx1]
+            params_CX_1 = opt[idx1:idx2]
+            params_RZ_2 = opt[idx2:idx3]
+            params_CX_2 = opt[idx3:idx4]
+        else:
+            params_RZ_1 = pulse_params[:idx1]
+            params_CX_1 = pulse_params[idx1:idx2]
+            params_RZ_2 = pulse_params[idx2:idx3]
+            params_CX_2 = pulse_params[idx3:idx4]
+
+        target = wires[1]
+
+        PulseGates.RZ(w / 2, wires=target, pulse_params=params_RZ_1)
+        PulseGates.CX(wires=wires, pulse_params=params_CX_1)
+        PulseGates.RZ(-w / 2, wires=target, pulse_params=params_RZ_2)
+        PulseGates.CX(wires=wires, pulse_params=params_CX_2)
 
         return
 
