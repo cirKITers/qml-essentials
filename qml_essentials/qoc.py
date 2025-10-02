@@ -1,12 +1,14 @@
 import os
+import sys
 import csv
 import jax
 from jax import numpy as jnp
 import optax
 import pennylane as qml
-from qml_essentials.ansaetze import Gates
+from qml_essentials.ansaetze import Gates, PulseInformation
 import matplotlib.pyplot as plt
 import warnings
+import argparse
 import logging
 
 jax.config.update("jax_enable_x64", True)
@@ -307,7 +309,7 @@ class QOC:
         Returns:
             tuple: (optimized parameters, best loss, list of loss values)
         """
-        optimizer = optax.adam(0.1)
+        optimizer = optax.adamw(0.1)
         opt_state = optimizer.init(init_pulse_params)
         pulse_params = init_pulse_params
         losses = []
@@ -317,11 +319,11 @@ class QOC:
         no_improve_counter = 0
 
         @jax.jit
-        def opt_step(pulse_params, opt_state, *args):
-            loss, grads = jax.value_and_grad(cost)(pulse_params, *args)
-            updates, opt_state = optimizer.update(grads, opt_state)
-            pulse_params = optax.apply_updates(pulse_params, updates)
-            return pulse_params, opt_state, loss
+        def opt_step(params, opt_state, *args):
+            loss, grads = jax.value_and_grad(cost)(params, *args)
+            updates, opt_state = optimizer.update(grads, opt_state, params)
+            params = optax.apply_updates(params, updates)
+            return params, opt_state, loss
 
         for step in range(steps):
             pulse_params, opt_state, loss = opt_step(pulse_params, opt_state, *args)
@@ -1035,86 +1037,191 @@ if __name__ == "__main__":
         file_dir="qml_essentials",
     )
 
-    # - Run optimization for Rot gate -
-    # log.info("Optimizing Rot gate...")
-    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_Rot()
-    # log.info(f"Optimized parameters for Rot: {optimized_pulse_params}\n")
-    # log.info(f"Best achieved fidelity: {1 - best_loss}")
-    # log.info("-" * 20, "\n")
+    if gate == "Rot" or gate == "all":
+        log.info("Optimizing Rot gate...")
+        optimized_pulse_params, best_loss, loss_values = qoc.optimize_Rot(
+            init_pulse_params=jnp.array(
+                [0.5, 7.857992399021039, 21.57270102638842, 0.9000668764608991, 0.5]
+            )
+        )
+        log.info(f"Optimized parameters for Rot: {optimized_pulse_params}\n")
+        log.info(f"Best achieved fidelity: {1 - best_loss}")
 
-    # # - Run optimization for RX gate -
-    # log.info("Optimizing RX gate...")
-    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_RX(
-    #     w=jnp.pi, init_pulse_params=jnp.array([1.0, 15.0, 1.0])
-    # )
-    # log.info(f"Optimized parameters for RX: {optimized_pulse_params}\n")
-    # log.info(f"Best achieved fidelity: {1 - best_loss}")
-    # log.info("-" * 20, "\n")
+    if gate == "RX" or gate == "all":
+        log.info("Optimizing RX gate...")
+        optimized_pulse_params, best_loss, loss_values = qoc.optimize_RX(
+            w=jnp.pi,
+            init_pulse_params=jnp.array(
+                [15.70989327341467, 29.5230665326707, 0.7499810441330634]
+            ),
+        )
+        log.info(f"Optimized parameters for RX: {optimized_pulse_params}\n")
+        log.info(f"Best achieved fidelity: {1 - best_loss}")
 
-    # # - Run optimization for RY gate -
-    # log.info("Optimizing RY gate...")
-    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_RY(
-    #     w=jnp.pi, init_pulse_params=jnp.array([1.0, 15.0, 1.0])
-    # )
-    # log.info(f"Optimized parameters for RY: {optimized_pulse_params}\n")
-    # log.info(f"Best achieved fidelity: {1 - best_loss:.6f}")
-    # log.info("-" * 20, "\n")
+    if gate == "RY" or gate == "all":
+        log.info("Optimizing RY gate...")
+        optimized_pulse_params, best_loss, loss_values = qoc.optimize_RY(
+            w=jnp.pi,
+            init_pulse_params=jnp.array(
+                [7.8787724942614235, 22.001319411513432, 1.098524473819202]
+            ),
+        )
+        log.info(f"Optimized parameters for RY: {optimized_pulse_params}\n")
+        log.info(f"Best achieved fidelity: {1 - best_loss:.6f}")
 
-    # # - Run optimization for RZ gate -
-    # log.info("Plotting RZ gate rotation...")
-    # qoc.optimize_RZ()
-    # log.info("Plotted RZ gate rotation")
-    # log.info("-" * 20, "\n")
+    if gate == "RZ" or gate == "all":
+        log.info("Plotting RZ gate rotation...")
+        qoc.optimize_RZ()
+        log.info("Plotted RZ gate rotation")
 
-    # # - Run optimization for H gate -
-    # log.info("Optimizing H gate...")
-    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_H(
-    #     init_pulse_params=jnp.array([1.0, 15.0, 1.0])
-    # )
-    # log.info(f"Optimized parameters for H: {optimized_pulse_params}\n")
-    # log.info(f"Best achieved fidelity: {1 - best_loss}")
-    # log.info("-" * 20, "\n")
+    if gate == "H" or gate == "all":
+        log.info("Optimizing H gate...")
+        optimized_pulse_params, best_loss, loss_values = qoc.optimize_H(
+            init_pulse_params=jnp.array(
+                [7.857992398977854, 21.572701026008765, 0.9000668764548863]
+            )
+        )
+        log.info(f"Optimized parameters for H: {optimized_pulse_params}\n")
+        log.info(f"Best achieved fidelity: {1 - best_loss}")
 
-    # # - Run optimization for CZ gate -
-    # log.info("Optimizing CZ gate...")
-    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CZ(
-    #     init_pulse_params=jnp.array([0.975]), log_interval=5
-    # )
-    # log.info(f"Optimized parameters for CZ: {optimized_pulse_params}\n")
-    # log.info(f"Best achieved fidelity: {1 - best_loss}")
-    # log.info("-" * 20, "\n")
+    if gate == "CZ" or gate == "all":
+        log.info("Optimizing CZ gate...")
+        optimized_pulse_params, best_loss, loss_values = qoc.optimize_CZ(
+            init_pulse_params=jnp.array([0.962596375687258]), log_interval=5
+        )
+        log.info(f"Optimized parameters for CZ: {optimized_pulse_params}\n")
+        log.info(f"Best achieved fidelity: {1 - best_loss}")
 
-    # - Run optimization for CY gate -
-    # log.info("Optimizing CY gate...")
-    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CY(log_interval=50)
-    # log.info(f"Optimized parameters for CY: {optimized_pulse_params}\n")
-    # log.info(f"Best achieved fidelity: {1 - best_loss}")
-    # log.info("-" * 20, "\n")
+    if gate == "CY" or gate == "all":
+        log.info("Optimizing CY gate...")
+        optimized_pulse_params, best_loss, loss_values = qoc.optimize_CY(
+            init_pulse_params=jnp.array(
+                [
+                    0.5,
+                    13.679990291069169,
+                    6.86497650976022,
+                    1.05475551194351,
+                    14.96056469588421,
+                    13.040583781891456,
+                    0.33844677502596704,
+                    0.8709563476069772,
+                    0.5,
+                ]
+            ),
+        )
+        log.info(f"Optimized parameters for CY: {optimized_pulse_params}\n")
+        log.info(f"Best achieved fidelity: {1 - best_loss}")
 
-    # - Run optimization for CX gate -
-    # log.info("Optimizing CX gate...")
-    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CX(log_interval=50)
-    # log.info(f"Optimized parameters for CX: {optimized_pulse_params}\n")
-    # log.info(f"Best achieved fidelity: {1 - best_loss}")
-    # log.info("-" * 20, "\n")
+    if gate == "CX" or gate == "all":
+        log.info("Optimizing CX gate...")
+        optimized_pulse_params, best_loss, loss_values = qoc.optimize_CX(
+            init_pulse_params=jnp.array(
+                [
+                    7.951920934692106,
+                    21.655479574101687,
+                    0.8929524493211076,
+                    0.9548359253748596,
+                    7.94488020182026,
+                    21.61729834699293,
+                    0.9067943033364354,
+                ]
+            )
+        )
+        log.info(f"Optimized parameters for CX: {optimized_pulse_params}\n")
+        log.info(f"Best achieved fidelity: {1 - best_loss}")
 
-    # - Run optimization for CRX gate -
-    # log.info("Optimizing CRX gate...")
-    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRX(w=jnp.pi)
-    # log.info(f"Optimized parameters for CRX: {optimized_pulse_params}\n")
-    # log.info(f"Best achieved fidelity: {1 - best_loss}")
-    # log.info("-" * 20, "\n")
+    if gate == "CRX" or gate == "all":
+        log.info("Optimizing CRX gate...")
+        optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRX(
+            w=jnp.pi,
+            init_pulse_params=jnp.array(
+                [
+                    0.0869898677627019,
+                    6.317621899953034,
+                    20.912822341258522,
+                    1.9221452238507606,
+                    8.238376987907568,
+                    20.613174536740054,
+                    0.8737746698069836,
+                    1.3952917467811454,
+                    7.486811620275413,
+                    21.98771445546622,
+                    0.610849203728594,
+                    7.276467778265519,
+                    20.089001022776028,
+                    1.0953393377060914,
+                    7.260820896041849,
+                    19.914716438316788,
+                    0.3965192075282136,
+                    0.9260646756057936,
+                    8.559496874753883,
+                    21.502993748426707,
+                    1.1125869787900438,
+                    0.5326923136891571,
+                ]
+            ),
+        )
+        log.info(f"Optimized parameters for CRX: {optimized_pulse_params}\n")
+        log.info(f"Best achieved fidelity: {1 - best_loss}")
 
-    # - Run optimization for CRY gate -
-    # log.info("Optimizing CRY gate...")
-    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRY(w=jnp.pi)
-    # log.info(f"Optimized parameters for CRY: {optimized_pulse_params}\n")
-    # log.info(f"Best achieved fidelity: {1 - best_loss}")
-    # log.info("-" * 20, "\n")
+    if gate == "CRY" or gate == "all":
+        log.info("Optimizing CRY gate...")
+        optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRY(
+            w=jnp.pi,
+            init_pulse_params=jnp.array(
+                [
+                    6.338251784241546,
+                    22.218883551618084,
+                    0.9884981881682461,
+                    8.660014835148415,
+                    20.952862650089553,
+                    0.6642884429132376,
+                    1.2732148054025483,
+                    6.552248449325667,
+                    20.533588403615788,
+                    1.1057700409147055,
+                    5.480401029932529,
+                    19.84968803100232,
+                    1.2999867767029427,
+                    8.402279591821387,
+                    20.623906763446577,
+                    1.3050181945303863,
+                    0.9549534431854169,
+                    8.904512396279161,
+                    19.793377558836266,
+                    1.1223124670193627,
+                ]
+            ),
+        )
+        log.info(f"Optimized parameters for CRY: {optimized_pulse_params}\n")
+        log.info(f"Best achieved fidelity: {1 - best_loss}")
 
-    # - Run optimization for CRZ gate -
-    # log.info("Optimizing CRZ gate...")
-    # optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRZ()
-    # log.info(f"Optimized parameters for CRZ: {optimized_pulse_params}\n")
-    # log.info(f"Best achieved fidelity: {1 - best_loss}")
-    # log.info("-" * 20, "\n")
+    if gate == "CRZ" or gate == "all":
+        log.info("Optimizing CRZ gate...")
+        optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRZ(
+            init_pulse_params=jnp.array(
+                [
+                    0.5226296692020662,
+                    6.495223824775022,
+                    21.789528537935603,
+                    0.7877065607968377,
+                    1.5600575401823529,
+                    8.461005039055976,
+                    22.000950235408457,
+                    0.6954321175337905,
+                    0.4985574282655742,
+                    6.734342354364616,
+                    20.932677593123522,
+                    1.0966905643848288,
+                    0.9819214824461874,
+                    7.459675656997471,
+                    19.558641924041503,
+                    1.285349794196732,
+                ]
+            )
+        )
+        log.info(f"Optimized parameters for CRZ: {optimized_pulse_params}\n")
+        log.info(f"Best achieved fidelity: {1 - best_loss}")
+
+    log.info("Loading back results")
+    PulseInformation.update_params()
