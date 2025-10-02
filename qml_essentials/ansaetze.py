@@ -656,6 +656,18 @@ class PulseInformation:
             raise ValueError(f"Unknown gate '{gate}'")
         return PulseInformation.OPTIMIZED_PULSES[gate]
 
+    @staticmethod
+    def update_params(path="qml_essentials/qoc_results.csv"):
+        if os.path.isfile(path):
+            log.info(f"Loading optimized pulses from {path}")
+            with open(path, "r") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    log.debug(f"Loading optimized pulses for {row[0]}: {row[1:]}")
+                    PulseInformation.OPTIMIZED_PULSES[row[0]] = jnp.array(
+                        [float(x) for x in row[1:]]
+                    )
+
 
 class PulseGates:
     # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT/CX and H pulse level
