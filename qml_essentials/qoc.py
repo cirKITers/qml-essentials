@@ -230,19 +230,29 @@ class QOC:
             opt_pulse_params (list or array): Optimized parameters to save.
             filename (str): Path to CSV file.
         """
-        header = ["gate"] + [f"param_{i+1}" for i in range(len(opt_pulse_params))]
         if self.file_dir is not None:
             os.makedirs(self.file_dir, exist_ok=True)
             filename = os.path.join(self.file_dir, "qoc_results.csv")
-            file_exists = os.path.isfile(filename)
 
-            with open(filename, mode="a", newline="") as f:
+            if os.path.isfile(filename):
+                with open(filename, mode="r", newline="") as f:
+                    reader = csv.reader(f.readlines())
+
+            with open(filename, mode="w", newline="") as f:
                 writer = csv.writer(f)
-                if not file_exists:
-                    writer.writerow(header)
-                writer.writerow(
-                    [self.current_gate] + list(map(float, opt_pulse_params))
-                )
+                match = False
+                for row in reader:
+                    if row[0] == self.current_gate:
+                        writer.writerow(
+                            [self.current_gate] + list(map(float, opt_pulse_params))
+                        )
+                        match = True
+                    else:
+                        writer.writerow(row)
+                if not match:
+                    writer.writerow(
+                        [self.current_gate] + list(map(float, opt_pulse_params))
+                    )
 
     def loss_fn(self, state, target_state):
         """
