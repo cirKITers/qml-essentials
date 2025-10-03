@@ -717,7 +717,9 @@ class PulseInformation:
             with open(path, "r") as f:
                 reader = csv.reader(f)
                 for row in reader:
-                    log.debug(f"Loading optimized pulses for {row[0]}: {row[1:]}")
+                    log.debug(
+                        f"Loading optimized pulses for {row[0]} (Fidelity: {row[1]:.4f}): {row[2:]}"
+                    )
                     PulseInformation.OPTIMIZED_PULSES[row[0]] = jnp.array(
                         [float(x) for x in row[1:]]
                     )
