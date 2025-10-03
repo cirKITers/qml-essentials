@@ -17,12 +17,13 @@ log = logging.getLogger(__name__)
 
 
 class QOC:
-    patience = 750
+    patience = 1000
     n_steps = 2500
     learning_rate = 0.1
-    log_interval = 50
+    log_interval = 100
+    skip_on_fidelity = True
 
-    # TODO: Potentially refactor all the optimize_*()... The only differences
+    # TODO: Potentially refactor all the create_*()... The only differences
     #   are the circuits
     def __init__(
         self,
@@ -230,7 +231,7 @@ class QOC:
         plt.savefig(f"{self.fig_dir}/qoc_{self.current_gate}(w).png")
         plt.close()
 
-    def save_results(self, opt_pulse_params, fidelity):
+    def save_results(self, gate, fidelity, pulse_params):
         """
         Save optimized pulse parameters to CSV file.
 
@@ -246,25 +247,29 @@ class QOC:
                 with open(filename, mode="r", newline="") as f:
                     reader = csv.reader(f.readlines())
 
+            entry = [gate] + [fidelity] + list(map(float, pulse_params))
+
             with open(filename, mode="w", newline="") as f:
                 writer = csv.writer(f)
                 match = False
                 for row in reader:
-                    if row[0] == self.current_gate:
-                        writer.writerow(
-                            [self.current_gate]
-                            + [fidelity]
-                            + list(map(float, opt_pulse_params))
-                        )
+                    # gate already exists
+                    if row[0] == gate:
+                        if fidelity > float(row[1]):
+                            writer.writerow(entry)
+                        else:
+                            log.warning(
+                                f"Pulse parameters for {gate} already exist with higher fidelity ({row[1]} > {fidelity})"
+                            )
+                            if not self.skip_on_fidelity:
+                                writer.writerow(entry)
                         match = True
+                    # any other gate
                     else:
                         writer.writerow(row)
+                # gate does not exist
                 if not match:
-                    writer.writerow(
-                        [self.current_gate]
-                        + [fidelity]
-                        + list(map(float, opt_pulse_params))
-                    )
+                    writer.writerow(entry)
 
     def cost_fn(self, pulse_params, pulse_qnode, target_qnode):
         """
@@ -337,7 +342,43 @@ class QOC:
 
         return best_pulse_params, loss_history
 
-    # def optimize_Rot(
+    def optimize(simulator, wires):
+        def decorator(create_circuits):
+            def wrapper(self, init_pulse_params):
+                dev = qml.device(simulator, wires=wires)
+                pulse_circuit, target_circuit = create_circuits(self, dev)
+
+                pulse_qnode = qml.QNode(pulse_circuit, dev, interface="jax")
+                target_qnode = qml.QNode(target_circuit, dev, interface="jax")
+
+                # Optimizing
+                pulse_params, loss_history = self.run_optimization(
+                    partial(
+                        self.cost_fn,
+                        pulse_qnode=pulse_qnode,
+                        target_qnode=target_qnode,
+                    ),
+                    params=init_pulse_params,
+                )
+
+                gate_name = create_circuits.__name__.split("_")[1]
+                # Saving the optimized parameters
+                self.save_results(
+                    gate=gate_name,
+                    fidelity=1 - min(loss_history),
+                    pulse_params=pulse_params,
+                )
+
+                if self.make_plots:
+                    self.plot_rotation(pulse_params, pulse_qnode, target_qnode)
+
+                return pulse_params, loss_history
+
+            return wrapper
+
+        return decorator
+
+    # def create_Rot(
     #     self,
     #
     #
@@ -405,39 +446,8 @@ class QOC:
 
     #     return pulse_params, loss, losses
 
-    def optimize(simulator, wires):
-        def decorator(create_circuits):
-            def wrapper(self, init_pulse_params):
-                dev = qml.device(simulator, wires=wires)
-                pulse_circuit, target_circuit = create_circuits(self, dev)
-
-                pulse_qnode = qml.QNode(pulse_circuit, dev, interface="jax")
-                target_qnode = qml.QNode(target_circuit, dev, interface="jax")
-
-                # Optimizing
-                pulse_params, loss_history = self.run_optimization(
-                    partial(
-                        self.cost_fn,
-                        pulse_qnode=pulse_qnode,
-                        target_qnode=target_qnode,
-                    ),
-                    params=init_pulse_params,
-                )
-
-                # Saving the optimized parameters
-                self.save_results(pulse_params, min(loss_history))
-
-                if self.make_plots:
-                    self.plot_rotation(pulse_params, pulse_qnode, target_qnode)
-
-                return pulse_params, loss_history
-
-            return wrapper
-
-        return decorator
-
     @optimize("default.qubit", wires=1)
-    def optimize_RX(self, init_pulse_params):
+    def create_RX(self, init_pulse_params):
         def pulse_circuit(w, pulse_params):
             Gates.RX(w, 0, pulse_params=pulse_params, gate_mode="pulse")
             return qml.state()
@@ -449,7 +459,7 @@ class QOC:
         return pulse_circuit, target_circuit
 
     @optimize("default.qubit", wires=1)
-    def optimize_RY(
+    def create_RY(
         self,
         init_pulse_params: jnp.array,
     ):
@@ -464,11 +474,11 @@ class QOC:
         return pulse_circuit, target_circuit
 
     @optimize("default.qubit", wires=1)
-    def optimize_RZ(self, init_pulse_params):
+    def create_RZ(self, init_pulse_params):
         return None, None
 
     @optimize("default.qubit", wires=1)
-    def optimize_H(self, init_pulse_params: jnp.array):
+    def create_H(self, init_pulse_params: jnp.array):
         def pulse_circuit(w, pulse_params):
             Gates.H(0, pulse_params=pulse_params, gate_mode="pulse")
             return qml.state()
@@ -480,7 +490,7 @@ class QOC:
         return pulse_circuit, target_circuit
 
     @optimize("default.qubit", wires=2)
-    def optimize_CZ(self, init_pulse_params: jnp.array):
+    def create_CZ(self, init_pulse_params: jnp.array):
         def pulse_circuit(w, pulse_params):
             qml.H(wires=0)
             qml.H(wires=1)
@@ -496,7 +506,7 @@ class QOC:
         return pulse_circuit, target_circuit
 
     @optimize("default.qubit", wires=2)
-    def optimize_CY(self, init_pulse_params: jnp.ndarray):
+    def create_CY(self, init_pulse_params: jnp.ndarray):
         def pulse_circuit(w, pulse_params):
             qml.H(wires=0)
             Gates.CY(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
@@ -510,7 +520,7 @@ class QOC:
         return pulse_circuit, target_circuit
 
     @optimize("default.qubit", wires=2)
-    def optimize_CX(self, init_pulse_params: jnp.ndarray):
+    def create_CX(self, init_pulse_params: jnp.ndarray):
         def pulse_circuit(w, pulse_params):
             qml.H(wires=0)
             Gates.CX(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
@@ -524,7 +534,7 @@ class QOC:
         return pulse_circuit, target_circuit
 
     @optimize("default.qubit", wires=2)
-    def optimize_CRX(self, init_pulse_params: jnp.ndarray):
+    def create_CRX(self, init_pulse_params: jnp.ndarray):
         def pulse_circuit(w, pulse_params):
             qml.H(wires=0)
             Gates.CRX(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
@@ -538,7 +548,7 @@ class QOC:
         return pulse_circuit, target_circuit
 
     @optimize("default.qubit", wires=2)
-    def optimize_CRY(self, init_pulse_params: jnp.ndarray):
+    def create_CRY(self, init_pulse_params: jnp.ndarray):
         def pulse_circuit(w, pulse_params):
             qml.H(wires=0)
             Gates.CRY(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
@@ -552,7 +562,7 @@ class QOC:
         return pulse_circuit, target_circuit
 
     @optimize("default.qubit", wires=2)
-    def optimize_CRZ(self, init_pulse_params: jnp.ndarray):
+    def create_CRZ(self, init_pulse_params: jnp.ndarray):
         def pulse_circuit(w, pulse_params):
             qml.H(wires=0)
             qml.H(wires=1)
@@ -587,7 +597,7 @@ if __name__ == "__main__":
 
     # if gate == "Rot" or gate == "all":
     #     log.info("Optimizing Rot gate...")
-    #     optimized_pulse_params, loss_history = qoc.optimize_Rot(
+    #     optimized_pulse_params, loss_history = qoc.create_Rot(
     #         init_pulse_params=jnp.array(
     #             [0.5, 7.857992399021039, 21.57270102638842, 0.9000668764608991, 0.5]
     #         )
@@ -597,7 +607,7 @@ if __name__ == "__main__":
 
     if gate == "RX" or gate == "all":
         log.info("Optimizing RX gate...")
-        optimized_pulse_params, loss_history = qoc.optimize_RX(
+        optimized_pulse_params, loss_history = qoc.create_RX(
             init_pulse_params=jnp.array(
                 [15.70989327341467, 29.5230665326707, 0.7499810441330634]
             ),
@@ -607,7 +617,7 @@ if __name__ == "__main__":
 
     if gate == "RY" or gate == "all":
         log.info("Optimizing RY gate...")
-        optimized_pulse_params, loss_history = qoc.optimize_RY(
+        optimized_pulse_params, loss_history = qoc.create_RY(
             init_pulse_params=jnp.array(
                 [7.8787724942614235, 22.001319411513432, 1.098524473819202]
             ),
@@ -617,12 +627,12 @@ if __name__ == "__main__":
 
     # if gate == "RZ" or gate == "all":
     #     log.info("Plotting RZ gate rotation...")
-    #     qoc.optimize_RZ(None)
+    #     qoc.create_RZ(None)
     #     log.info("Plotted RZ gate rotation")
 
     if gate == "H" or gate == "all":
         log.info("Optimizing H gate...")
-        optimized_pulse_params, loss_history = qoc.optimize_H(
+        optimized_pulse_params, loss_history = qoc.create_H(
             init_pulse_params=jnp.array(
                 [7.857992398977854, 21.572701026008765, 0.9000668764548863]
             )
@@ -633,7 +643,7 @@ if __name__ == "__main__":
     if gate == "CZ" or gate == "all":
         # TODO: no actual optimization is performed here (param ignored in impl.)
         log.info("Optimizing CZ gate...")
-        optimized_pulse_params, loss_history = qoc.optimize_CZ(
+        optimized_pulse_params, loss_history = qoc.create_CZ(
             init_pulse_params=jnp.array([0.962596375687258])
         )
         log.info(f"Optimized parameters for CZ: {optimized_pulse_params}")
@@ -641,7 +651,7 @@ if __name__ == "__main__":
 
     if gate == "CX" or gate == "all":
         log.info("Optimizing CX gate...")
-        optimized_pulse_params, loss_history = qoc.optimize_CX(
+        optimized_pulse_params, loss_history = qoc.create_CX(
             init_pulse_params=jnp.array(
                 [
                     *PulseInformation.optimized_params("H"),
@@ -655,7 +665,7 @@ if __name__ == "__main__":
 
     if gate == "CY" or gate == "all":
         log.info("Optimizing CY gate...")
-        optimized_pulse_params, loss_history = qoc.optimize_CY(
+        optimized_pulse_params, loss_history = qoc.create_CY(
             init_pulse_params=jnp.array(
                 [
                     *PulseInformation.optimized_params("RZ"),
@@ -669,7 +679,7 @@ if __name__ == "__main__":
 
     if gate == "CRX" or gate == "all":
         log.info("Optimizing CRX gate...")
-        optimized_pulse_params, loss_history = qoc.optimize_CRX(
+        optimized_pulse_params, loss_history = qoc.create_CRX(
             init_pulse_params=jnp.array(
                 [
                     *PulseInformation.optimized_params("RZ"),
@@ -686,7 +696,7 @@ if __name__ == "__main__":
 
     if gate == "CRY" or gate == "all":
         log.info("Optimizing CRY gate...")
-        optimized_pulse_params, loss_history = qoc.optimize_CRY(
+        optimized_pulse_params, loss_history = qoc.create_CRY(
             init_pulse_params=jnp.array(
                 [
                     *PulseInformation.optimized_params("RY"),
@@ -701,7 +711,7 @@ if __name__ == "__main__":
 
     if gate == "CRZ" or gate == "all":
         log.info("Optimizing CRZ gate...")
-        optimized_pulse_params, loss_history = qoc.optimize_CRZ(
+        optimized_pulse_params, loss_history = qoc.create_CRZ(
             init_pulse_params=jnp.array(
                 [
                     *PulseInformation.optimized_params("RZ"),
