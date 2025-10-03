@@ -656,7 +656,7 @@ def test_pulse_CX_gate():
 # TODO: Unskip CRZ, CRY, CRX tests when their optimization is fixed
 @pytest.mark.unittest
 @pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
-@pytest.mark.skip(reason="CRZ not properly optimized, low fidelity")
+# @pytest.mark.skip(reason="CRZ not properly optimized, low fidelity")
 def test_pulse_CRZ_gate(w):
     dev = qml.device("default.qubit", wires=2)
 
@@ -700,7 +700,7 @@ def test_pulse_CRZ_gate(w):
 
 @pytest.mark.unittest
 @pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
-@pytest.mark.skip(reason="CRY not properly optimized, low fidelity")
+# @pytest.mark.skip(reason="CRY not properly optimized, low fidelity")
 def test_pulse_CRY_gate(w):
     dev = qml.device("default.qubit", wires=2)
 
@@ -741,7 +741,7 @@ def test_pulse_CRY_gate(w):
 
 @pytest.mark.unittest
 @pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
-@pytest.mark.skip(reason="CRX not properly optimized, low fidelity")
+# @pytest.mark.skip(reason="CRX not properly optimized, low fidelity")
 def test_pulse_CRX_gate(w):
     dev = qml.device("default.qubit", wires=2)
 
