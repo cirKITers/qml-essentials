@@ -268,6 +268,8 @@ class QOC:
                             )
                             if not self.skip_on_fidelity:
                                 writer.writerow(entry)
+                            else:
+                                writer.writerow(row)
                         match = True
                     # any other gate
                     else:
