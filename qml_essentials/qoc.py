@@ -1,5 +1,4 @@
 import os
-import sys
 import csv
 import jax
 from jax import numpy as jnp
@@ -7,9 +6,9 @@ import optax
 import pennylane as qml
 from qml_essentials.ansaetze import Gates, PulseInformation
 import matplotlib.pyplot as plt
-import warnings
 import argparse
 from functools import partial
+from typing import List
 import logging
 
 jax.config.update("jax_enable_x64", True)
@@ -233,11 +232,17 @@ class QOC:
 
     def save_results(self, gate, fidelity, pulse_params):
         """
-        Save optimized pulse parameters to CSV file.
+        Saves the optimized pulse parameters and fidelity for a given gate to a CSV file.
 
         Args:
-            opt_pulse_params (list or array): Optimized parameters to save.
-            filename (str): Path to CSV file.
+            gate (str): Name of the gate.
+            fidelity (float): Fidelity of the optimized pulse parameters.
+            pulse_params (list): Optimized pulse parameters for the gate.
+
+        Notes:
+            If the gate already exists in the file and the newly optimized pulse parameters
+            have a higher fidelity, the existing entry will be overwritten. If the fidelity is
+            lower, the new entry will be skipped unless `skip_on_fidelity=False`.
         """
         if self.file_dir is not None:
             os.makedirs(self.file_dir, exist_ok=True)
@@ -271,18 +276,19 @@ class QOC:
                 if not match:
                     writer.writerow(entry)
 
-    def cost_fn(self, pulse_params, pulse_qnode, target_qnode):
+    def cost_fn(self, pulse_params, pulse_qnode, target_qnode) -> float:
         """
-        Compute cost for optimization by evaluating circuit and loss.
+        Cost function for QOC optimization.
+
+        The cost function is calculated as the average of the fidelity and phase difference between the pulse-based and unitary-based gates.
 
         Args:
-            pulse_params: pulse parameters of pulse level gate.
-            circuit (callable): QNode circuit accepting (w, pulse_params).
-            w (float): Rotation angle.
-            target_state (array): Target quantum state.
+            pulse_params (list or array): Optimized parameters to use for the pulse-based gate.
+            pulse_qnode (callable): Pulse-based gate qnode.
+            target_qnode (callable): Unitary-based gate qnode.
 
         Returns:
-            float: Computed loss.
+            float: Cost function value.
         """
         n_steps = 10
         fidelity = 0
@@ -307,7 +313,18 @@ class QOC:
         cost,
         params,
         *args,
-    ):
+    ) -> tuple[jnp.ndarray, List]:
+        """
+        Run the optimization process.
+
+        Args:
+            cost (callable): Cost function to use for optimization.
+            params (list or array): Initial parameters to use for the pulse-based gate.
+            *args: Arguments to pass to the cost function.
+
+        Returns:
+            tuple[jnp.ndarray, List]: Optimized parameters and list of loss values at each iteration.
+        """
         optimizer = optax.adamw(self.learning_rate)
         opt_state = optimizer.init(params)
         loss_history = []
@@ -345,6 +362,16 @@ class QOC:
     def optimize(simulator, wires):
         def decorator(create_circuits):
             def wrapper(self, init_pulse_params):
+                """
+                This function is a wrapper for the create_circuits method. It takes a simulator and wires as input and optimizes the pulse parameters using the cost function defined in the QOC class.
+
+                Args:
+                    create_circuits (callable): A function to generate the pulse and target circuits for the gate.
+                    init_pulse_params (array): Initial pulse parameters to use for the pulse-based gate.
+
+                Returns:
+                    tuple: Optimized pulse parameters and list of loss values at each iteration.
+                """
                 dev = qml.device(simulator, wires=wires)
                 pulse_circuit, target_circuit = create_circuits(self, dev)
 
