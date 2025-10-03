@@ -9,6 +9,7 @@ from qml_essentials.ansaetze import Gates, PulseInformation
 import matplotlib.pyplot as plt
 import warnings
 import argparse
+from functools import partial
 import logging
 
 jax.config.update("jax_enable_x64", True)
@@ -48,7 +49,7 @@ class QOC:
         Return pulse- and unitary-based circuits for the current gate.
 
         Returns:
-            tuple: (pulse_circuit, unitary_circuit, operation_str)
+            tuple: (pulse_circuit, target_circuit, operation_str)
         """
         dev = qml.device("default.qubit", wires=1)
 
@@ -66,7 +67,7 @@ class QOC:
                 ]
 
             @qml.qnode(dev)
-            def unitary_circuit(w):
+            def target_circuit(w):
                 getattr(qml, self.current_gate)(w, wires=0)
                 return [
                     qml.expval(qml.PauliX(0)),
@@ -89,7 +90,7 @@ class QOC:
                 ]
 
             @qml.qnode(dev)
-            def unitary_circuit(w):
+            def target_circuit(w):
                 qml.RX(jnp.pi / 2, wires=0)
                 getattr(qml, self.current_gate)(w, wires=0)
                 return [
@@ -115,7 +116,7 @@ class QOC:
                 ]
 
             @qml.qnode(dev)
-            def unitary_circuit(w):
+            def target_circuit(w):
                 qml.RX(w, wires=0)
                 getattr(qml, self.current_gate)(wires=0)
                 return [
@@ -143,7 +144,7 @@ class QOC:
                 ]
 
             @qml.qnode(dev)
-            def unitary_circuit(w):
+            def target_circuit(w):
                 qml.RX(w, wires=0)
                 qml.RX(w, wires=1)
                 qml.CZ(wires=[0, 1])
@@ -171,7 +172,7 @@ class QOC:
                 ]
 
             @qml.qnode(dev)
-            def unitary_circuit(w):
+            def target_circuit(w):
                 qml.RX(w, wires=0)
                 qml.CNOT(wires=[0, 1])
                 return [
@@ -182,7 +183,7 @@ class QOC:
 
             operation = r"$RX_0(w)$·$CX_{0,1}$"
 
-        return pulse_circuit, unitary_circuit, operation
+        return pulse_circuit, target_circuit, operation
 
     # TODO: Update method for new gates (Rot, CY, CRZ, CRY, CRX)
     def plot_rotation(self, pulse_params):
@@ -193,10 +194,10 @@ class QOC:
         Args:
             pulse_params: pulse parameters of pulse level gate.
         """
-        pulse_circuit, unitary_circuit, operation = self.get_circuits()
+        pulse_circuit, target_circuit, operation = self.get_circuits()
 
         pulse_expvals = [pulse_circuit(w, pulse_params) for w in self.ws]
-        ideal_expvals = [unitary_circuit(w) for w in self.ws]
+        ideal_expvals = [target_circuit(w) for w in self.ws]
 
         pulse_expvals = jnp.array(pulse_expvals)
         ideal_expvals = jnp.array(ideal_expvals)
@@ -256,21 +257,7 @@ class QOC:
                         [self.current_gate] + list(map(float, opt_pulse_params))
                     )
 
-    def loss_fn(self, state, target_state):
-        """
-        Compute infidelity between two quantum states.
-
-        Args:
-            state (array): Output state from pulse circuit.
-            target_state (array): Target state from unitary circuit.
-
-        Returns:
-            float: Infidelity (1 - fidelity).
-        """
-        fidelity = jnp.abs(jnp.vdot(target_state, state)) ** 2
-        return 1 - fidelity
-
-    def cost_fn(self, pulse_params, circuit, w, target_state):
+    def cost_fn(self, pulse_params, pulse_circuit, target_circuit):
         """
         Compute cost for optimization by evaluating circuit and loss.
 
@@ -283,16 +270,31 @@ class QOC:
         Returns:
             float: Computed loss.
         """
-        state = circuit(w, pulse_params)
-        return self.loss_fn(state, target_state)
+        n_steps = 10
+        fidelity = 0
+        phase_diff = 0
+        for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / n_steps):
+            pulse_state = pulse_circuit(w, pulse_params)
+            target_state = target_circuit(w)
+            fidelity += (
+                jnp.abs(jnp.vdot(target_state, pulse_state)) ** 2
+            )  # one if no diff
+            phase_diff += jnp.angle(
+                jnp.vdot(target_state, pulse_state)
+            )  # zero if no diff
+
+        fidelity_n = 1 - (fidelity / n_steps)
+        phase_diff = phase_diff / n_steps
+
+        return (fidelity_n + phase_diff) / 2  # loss
 
     def run_optimization(
         self,
         cost,
-        init_pulse_params,
-        steps,
-        patience,
-        log_interval,
+        params,
+        steps=1000,
+        patience=200,
+        log_interval=50,
         *args,
     ):
         """
@@ -310,12 +312,11 @@ class QOC:
             tuple: (optimized parameters, best loss, list of loss values)
         """
         optimizer = optax.adamw(0.1)
-        opt_state = optimizer.init(init_pulse_params)
-        pulse_params = init_pulse_params
+        opt_state = optimizer.init(params)
         losses = []
 
-        best_loss = float("inf")
-        best_pulse_params = pulse_params
+        best_loss = cost(params, *args)
+        best_pulse_params = params
         no_improve_counter = 0
 
         @jax.jit
@@ -326,12 +327,12 @@ class QOC:
             return params, opt_state, loss
 
         for step in range(steps):
-            pulse_params, opt_state, loss = opt_step(pulse_params, opt_state, *args)
+            params, opt_state, loss = opt_step(params, opt_state, *args)
             losses.append(loss)
 
             if loss < best_loss:
                 best_loss = loss
-                best_pulse_params = pulse_params
+                best_pulse_params = params
                 no_improve_counter = 0
             else:
                 no_improve_counter += 1
@@ -345,80 +346,77 @@ class QOC:
 
         return best_pulse_params, best_loss, losses
 
-    def optimize_Rot(
-        self,
-        steps: int = 1000,
-        patience: int = 100,
-        phi: float = jnp.pi / 2,
-        theta: float = jnp.pi / 2,
-        omega: float = jnp.pi / 2,
-        init_pulse_params: jnp.array = jnp.array([0.5, 1.0, 15.0, 1.0, 0.5]),
-        log_interval: int = 50,
-    ):
-        """
-        Optimize pulse parameters for the Rot(theta, phi, lam) gate.
+    # def optimize_Rot(
+    #     self,
+    #     steps: int = 1000,
+    #
+    #     phi: float = jnp.pi / 2,
+    #     theta: float = jnp.pi / 2,
+    #     omega: float = jnp.pi / 2,
+    #     init_pulse_params: jnp.array = jnp.array([0.5, 1.0, 15.0, 1.0, 0.5]),
+    #     log_interval: int = 50,
+    # ):
+    #     """
+    #     Optimize pulse parameters for the Rot(theta, phi, lam) gate.
 
-        Uses gradient-based optimization to minimize the difference between the
-        pulse-based Rot(phi, theta, omega) circuit expectation value and the target
-        unitary-based Rot(phi, theta, omega).
+    #     Uses gradient-based optimization to minimize the difference between the
+    #     pulse-based Rot(phi, theta, omega) circuit expectation value and the target
+    #     unitary-based Rot(phi, theta, omega).
 
-        Args:
-            steps (int): Number of optimization steps. Default: 1000.
-            patience (int): Patience for early stopping. Default: 100.
-            theta, phi, lam (float): Rotation angles for the Rot gate.
-                Default: π / 2 for all three.
-            init_pulse_params (jnp.ndarray): Initial pulse parameters.
-                Default: [0.5, 1.0, 15.0, 1.0, 0.5].
-            log_interval (int): Frequency of printing loss.
+    #     Args:
+    #         steps (int): Number of optimization steps. Default: 1000.
+    #         patience (int): Patience for early stopping. Default: 100.
+    #         theta, phi, lam (float): Rotation angles for the Rot gate.
+    #             Default: π / 2 for all three.
+    #         init_pulse_params (jnp.ndarray): Initial pulse parameters.
+    #             Default: [0.5, 1.0, 15.0, 1.0, 0.5].
+    #         log_interval (int): Frequency of printing loss.
 
-        Returns:
-            tuple: Optimized parameters and list of loss values.
-        """
-        self.current_gate = "Rot"
-        w = (phi, theta, omega)
+    #     Returns:
+    #         tuple: Optimized parameters and list of loss values.
+    #     """
+    #     self.current_gate = "Rot"
+    #     w = (phi, theta, omega)
 
-        dev = qml.device("default.qubit", wires=1)
+    #     dev = qml.device("default.qubit", wires=1)
 
-        @qml.qnode(dev, interface="jax")
-        def pulse_circuit(w, pulse_params):
-            phi, theta, omega = w
-            Gates.Rot(
-                phi, theta, omega, 0, pulse_params=pulse_params, gate_mode="pulse"
-            )
-            return qml.state()
+    #     @qml.qnode(dev, interface="jax")
+    #     def pulse_circuit(w, pulse_params):
+    #         phi, theta, omega = w
+    #         Gates.Rot(
+    #             phi, theta, omega, 0, pulse_params=pulse_params, gate_mode="pulse"
+    #         )
+    #         return qml.state()
 
-        @qml.qnode(dev)
-        def unitary_circuit(w):
-            phi, theta, omega = w
-            qml.Rot(phi, theta, omega, wires=0)
-            return qml.state()
+    #     @qml.qnode(dev)
+    #     def target_circuit(w):
+    #         phi, theta, omega = w
+    #         qml.Rot(phi, theta, omega, wires=0)
+    #         return qml.state()
 
-        target = unitary_circuit(w)
+    #     # Optimizing
+    #     pulse_params, loss, losses = self.run_optimization(
+    #         partial(
+    #             self.cost_fn, pulse_circuit=pulse_circuit, target_circuit=target_circuit
+    #         ),
+    #         init_pulse_params=init_pulse_params,
+    #         steps=steps,
+    #
+    #         log_interval=log_interval,
+    #     )
 
-        # Optimizing
-        def cost(pulse_params):
-            return self.cost_fn(
-                pulse_params, circuit=pulse_circuit, w=w, target_state=target
-            )
+    #     # Saving the optimized parameters
+    #     self.save_results(pulse_params)
 
-        pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, log_interval
-        )
+    #     # Plotting the rotation
+    #     if self.make_plots:
+    #         warnings.warn("Plotting not implemented yet", UserWarning)
 
-        # Saving the optimized parameters
-        self.save_results(pulse_params)
-
-        # Plotting the rotation
-        if self.make_plots:
-            warnings.warn("Plotting not implemented yet", UserWarning)
-
-        return pulse_params, loss, losses
+    #     return pulse_params, loss, losses
 
     def optimize_RX(
         self,
         steps: int = 1000,
-        patience: int = 100,
-        w: float = jnp.pi,
         init_pulse_params: jnp.array = jnp.array([1.0, 15.0, 1.0]),
         log_interval: int = 50,
     ):
@@ -433,8 +431,6 @@ class QOC:
             steps (int): Number of optimization steps. Default: 1000.
             patience (int): Amount of epochs without improvement before early stopping.
                 Default: 100.
-            w (float): Rotation angle in radians with which to run the optimization.
-               Default: π.
             init_pulse_params (jnp.ndarray): Initial pulse parameters (A, sigma) and
                 time. Default: [1.0, 15.0, 1.0].
             log_interval (int): Frequency of printing loss during optimization.
@@ -454,20 +450,18 @@ class QOC:
             return qml.state()
 
         @qml.qnode(dev)
-        def unitary_circuit(w):
+        def target_circuit(w):
             qml.RX(w, wires=0)
             return qml.state()
 
-        target = unitary_circuit(w)
-
         # Optimizing
-        def cost(pulse_params):
-            return self.cost_fn(
-                pulse_params, circuit=pulse_circuit, w=w, target_state=target
-            )
-
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, log_interval
+            partial(
+                self.cost_fn, pulse_circuit=pulse_circuit, target_circuit=target_circuit
+            ),
+            params=init_pulse_params,
+            steps=steps,
+            log_interval=log_interval,
         )
 
         # Saving the optimized parameters
@@ -483,8 +477,6 @@ class QOC:
     def optimize_RY(
         self,
         steps: int = 1000,
-        patience: int = 100,
-        w: float = jnp.pi,
         init_pulse_params: jnp.array = jnp.array([1.0, 15.0, 1.0]),
         log_interval: int = 50,
     ):
@@ -499,8 +491,6 @@ class QOC:
             steps (int): Number of optimization steps. Default: 1000.
             patience (int): Amount of epochs without improvement before early stopping.
                 Default: 100.
-            w (float): Rotation angle in radians with which to run the optimization.
-                Default: π.
             init_pulse_params (jnp.ndarray): Initial pulse parameters (A, sigma) and
                 time. Default: [1.0, 15.0, 1.0].
             log_interval (int): Frequency of printing loss during optimization.
@@ -520,20 +510,18 @@ class QOC:
             return qml.state()
 
         @qml.qnode(dev)
-        def unitary_circuit(w):
+        def target_circuit(w):
             qml.RY(w, wires=0)
             return qml.state()
 
-        target = unitary_circuit(w)
-
         # Optimizing
-        def cost(pulse_params):
-            return self.cost_fn(
-                pulse_params, circuit=pulse_circuit, w=w, target_state=target
-            )
-
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, log_interval
+            partial(
+                self.cost_fn, pulse_circuit=pulse_circuit, target_circuit=target_circuit
+            ),
+            params=init_pulse_params,
+            steps=steps,
+            log_interval=log_interval,
         )
 
         # Saving the optimized parameters
@@ -567,7 +555,6 @@ class QOC:
     def optimize_H(
         self,
         steps=1000,
-        patience: int = 100,
         init_pulse_params: jnp.array = jnp.array([1.0, 15.0, 1.0]),
         log_interval: int = 50,
     ):
@@ -601,20 +588,18 @@ class QOC:
             return qml.state()
 
         @qml.qnode(dev)
-        def unitary_circuit():
+        def target_circuit(w):
             qml.H(wires=0)
             return qml.state()
 
-        target = unitary_circuit()
-
         # Optimizing
-        def cost(pulse_params):
-            return self.cost_fn(
-                pulse_params, circuit=pulse_circuit, w=None, target_state=target
-            )
-
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, log_interval
+            partial(
+                self.cost_fn, pulse_circuit=pulse_circuit, target_circuit=target_circuit
+            ),
+            params=init_pulse_params,
+            steps=steps,
+            log_interval=log_interval,
         )
 
         # Saving the optimized parameters
@@ -630,7 +615,6 @@ class QOC:
     def optimize_CZ(
         self,
         steps=1000,
-        patience: int = 100,
         init_pulse_params: jnp.ndarray = jnp.array([1.0]),
         log_interval: int = 50,
     ):
@@ -666,22 +650,20 @@ class QOC:
             return qml.state()
 
         @qml.qnode(dev)
-        def unitary_circuit():
+        def target_circuit(w):
             qml.H(wires=0)
             qml.H(wires=1)
             qml.CZ(wires=[0, 1])
             return qml.state()
 
-        target = unitary_circuit()
-
         # Optimizing
-        def cost(pulse_params):
-            return self.cost_fn(
-                pulse_params, circuit=pulse_circuit, w=None, target_state=target
-            )
-
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, log_interval
+            partial(
+                self.cost_fn, pulse_circuit=pulse_circuit, target_circuit=target_circuit
+            ),
+            params=init_pulse_params,
+            steps=steps,
+            log_interval=log_interval,
         )
 
         # Saving the optimized parameters
@@ -697,7 +679,6 @@ class QOC:
     def optimize_CY(
         self,
         steps=1000,
-        patience: int = 100,
         init_pulse_params: jnp.ndarray = jnp.array(
             [0.5, 15.0, 10.0, 1.0, 15.0, 10.0, 1.0, 1.0, 0.5]
         ),
@@ -735,21 +716,19 @@ class QOC:
             return qml.state()
 
         @qml.qnode(dev)
-        def unitary_circuit():
+        def target_circuit(w):
             qml.H(wires=0)
             qml.CY(wires=[0, 1])
             return qml.state()
 
-        target = unitary_circuit()
-
         # Optimizing
-        def cost(pulse_params):
-            return self.cost_fn(
-                pulse_params, circuit=pulse_circuit, w=None, target_state=target
-            )
-
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, log_interval
+            partial(
+                self.cost_fn, pulse_circuit=pulse_circuit, target_circuit=target_circuit
+            ),
+            params=init_pulse_params,
+            steps=steps,
+            log_interval=log_interval,
         )
 
         # Saving the optimized parameters
@@ -764,7 +743,6 @@ class QOC:
     def optimize_CX(
         self,
         steps=1000,
-        patience: int = 100,
         init_pulse_params: jnp.ndarray = jnp.array(
             [1.0, 15.0, 1.0, 1.0, 1.0, 15.0, 1.0]
         ),
@@ -802,21 +780,19 @@ class QOC:
             return qml.state()
 
         @qml.qnode(dev)
-        def unitary_circuit():
+        def target_circuit(w):
             qml.H(wires=0)
             qml.CNOT(wires=[0, 1])
             return qml.state()
 
-        target = unitary_circuit()
-
         # Optimizing
-        def cost(pulse_params):
-            return self.cost_fn(
-                pulse_params, circuit=pulse_circuit, w=None, target_state=target
-            )
-
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, log_interval
+            partial(
+                self.cost_fn, pulse_circuit=pulse_circuit, target_circuit=target_circuit
+            ),
+            params=init_pulse_params,
+            steps=steps,
+            log_interval=log_interval,
         )
 
         # Saving the optimized parameters
@@ -832,8 +808,6 @@ class QOC:
     def optimize_CRX(
         self,
         steps=1000,
-        patience: int = 100,
-        w: float = jnp.pi,
         init_pulse_params: jnp.ndarray = jnp.array(
             [10.0, 15.0, 1.0, 0.5, 1.0, 0.5, 10.0, 15.0, 1.0]
         ),
@@ -851,7 +825,6 @@ class QOC:
             steps (int): Number of optimization steps. Default: 1000.
             patience (int): Amount of epochs without improvement before early stopping.
                 Default: 100.
-            w (float): Rotation angle.
             init_pulse_params (jnp.ndarray): Initial pulse parameters.
             log_interval (int): Frequency of printing loss.
 
@@ -869,20 +842,18 @@ class QOC:
             return qml.state()
 
         @qml.qnode(dev)
-        def unitary_circuit(w):
+        def target_circuit(w):
             qml.H(wires=0)
             qml.CRX(w, wires=[0, 1])
             return qml.state()
 
-        target = unitary_circuit(w)
-
-        def cost(pulse_params):
-            return self.cost_fn(
-                pulse_params, circuit=pulse_circuit, w=w, target_state=target
-            )
-
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, log_interval
+            partial(
+                self.cost_fn, pulse_circuit=pulse_circuit, target_circuit=target_circuit
+            ),
+            params=init_pulse_params,
+            steps=steps,
+            log_interval=log_interval,
         )
 
         self.save_results(pulse_params)
@@ -895,8 +866,6 @@ class QOC:
     def optimize_CRY(
         self,
         steps=1000,
-        patience: int = 100,
-        w: float = jnp.pi,
         init_pulse_params: jnp.ndarray = jnp.array(
             [10.0, 15.0, 1.0, 0.5, 1.0, 0.5, 10.0, 15.0, 1.0]
         ),
@@ -914,7 +883,6 @@ class QOC:
             steps (int): Number of optimization steps. Default: 1000.
             patience (int): Amount of epochs without improvement before early stopping.
                 Default: 100.
-            w (float): Rotation angle.
             init_pulse_params (jnp.ndarray): Initial pulse parameters.
             log_interval (int): Frequency of printing loss.
 
@@ -932,20 +900,18 @@ class QOC:
             return qml.state()
 
         @qml.qnode(dev)
-        def unitary_circuit(w):
+        def target_circuit(w):
             qml.H(wires=0)
             qml.CRY(w, wires=[0, 1])
             return qml.state()
 
-        target = unitary_circuit(w)
-
-        def cost(pulse_params):
-            return self.cost_fn(
-                pulse_params, circuit=pulse_circuit, w=w, target_state=target
-            )
-
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, log_interval
+            partial(
+                self.cost_fn, pulse_circuit=pulse_circuit, target_circuit=target_circuit
+            ),
+            params=init_pulse_params,
+            steps=steps,
+            log_interval=log_interval,
         )
 
         self.save_results(pulse_params)
@@ -958,8 +924,6 @@ class QOC:
     def optimize_CRZ(
         self,
         steps=1000,
-        patience: int = 100,
-        w: float = jnp.pi,
         init_pulse_params: jnp.ndarray = jnp.array([0.5, 2.0, 0.5]),
         log_interval: int = 50,
     ):
@@ -974,7 +938,6 @@ class QOC:
         Args:
             steps (int): Number of optimization steps. Default: 1000.
             patience (int): Early stopping patience. Default: 100.
-            w (float): Rotation angle.
             init_pulse_params (jnp.ndarray): Initial pulse parameters.
             log_interval (int): Frequency of printing loss.
 
@@ -994,22 +957,20 @@ class QOC:
             return qml.state()
 
         @qml.qnode(dev)
-        def unitary_circuit(w):
+        def target_circuit(w):
             qml.H(wires=0)
             qml.H(wires=1)
             qml.CRZ(w, wires=[0, 1])
             return qml.state()
 
-        target = unitary_circuit(w)
-
         # Cost function
-        def cost(pulse_params):
-            return self.cost_fn(
-                pulse_params, circuit=pulse_circuit, w=w, target_state=target
-            )
-
         pulse_params, loss, losses = self.run_optimization(
-            cost, init_pulse_params, steps, patience, log_interval
+            partial(
+                self.cost_fn, pulse_circuit=pulse_circuit, target_circuit=target_circuit
+            ),
+            params=init_pulse_params,
+            steps=steps,
+            log_interval=log_interval,
         )
 
         self.save_results(pulse_params)
@@ -1037,20 +998,19 @@ if __name__ == "__main__":
         file_dir="qml_essentials",
     )
 
-    if gate == "Rot" or gate == "all":
-        log.info("Optimizing Rot gate...")
-        optimized_pulse_params, best_loss, loss_values = qoc.optimize_Rot(
-            init_pulse_params=jnp.array(
-                [0.5, 7.857992399021039, 21.57270102638842, 0.9000668764608991, 0.5]
-            )
-        )
-        log.info(f"Optimized parameters for Rot: {optimized_pulse_params}\n")
-        log.info(f"Best achieved fidelity: {1 - best_loss}")
+    # if gate == "Rot" or gate == "all":
+    #     log.info("Optimizing Rot gate...")
+    #     optimized_pulse_params, best_loss, loss_values = qoc.optimize_Rot(
+    #         init_pulse_params=jnp.array(
+    #             [0.5, 7.857992399021039, 21.57270102638842, 0.9000668764608991, 0.5]
+    #         )
+    #     )
+    #     log.info(f"Optimized parameters for Rot: {optimized_pulse_params}\n")
+    #     log.info(f"Best achieved fidelity: {1 - best_loss}")
 
     if gate == "RX" or gate == "all":
         log.info("Optimizing RX gate...")
         optimized_pulse_params, best_loss, loss_values = qoc.optimize_RX(
-            w=jnp.pi,
             init_pulse_params=jnp.array(
                 [15.70989327341467, 29.5230665326707, 0.7499810441330634]
             ),
@@ -1061,7 +1021,6 @@ if __name__ == "__main__":
     if gate == "RY" or gate == "all":
         log.info("Optimizing RY gate...")
         optimized_pulse_params, best_loss, loss_values = qoc.optimize_RY(
-            w=jnp.pi,
             init_pulse_params=jnp.array(
                 [7.8787724942614235, 22.001319411513432, 1.098524473819202]
             ),
@@ -1133,7 +1092,6 @@ if __name__ == "__main__":
     if gate == "CRX" or gate == "all":
         log.info("Optimizing CRX gate...")
         optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRX(
-            w=jnp.pi,
             init_pulse_params=jnp.array(
                 [
                     0.0869898677627019,
@@ -1167,7 +1125,6 @@ if __name__ == "__main__":
     if gate == "CRY" or gate == "all":
         log.info("Optimizing CRY gate...")
         optimized_pulse_params, best_loss, loss_values = qoc.optimize_CRY(
-            w=jnp.pi,
             init_pulse_params=jnp.array(
                 [
                     6.338251784241546,
