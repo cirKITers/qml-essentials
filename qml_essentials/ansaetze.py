@@ -915,6 +915,159 @@ class PulseGates:
         return qml.evolve(H_eff)([0], t)
 
     @staticmethod
+    def H(wires, pulse_params=None):
+        """
+        Applies Hadamard gate to the given wires.
+
+        Parameters
+        ----------
+        wires : Union[int, List[int]]
+            The wire(s) to apply the Hadamard gate to.
+        pulse_params : np.ndarray, optional
+            Pulse parameters for the composing gates. Defaults
+            to optimized parameters and time.
+        """
+        if pulse_params is None:
+            pulse_params = PulseInformation.optimized_params("H")
+        else:
+            pulse_params = pulse_params
+
+        # qml.GlobalPhase(-jnp.pi / 2)  # this could act as substitute to Sc
+        # TODO: Explain why p, t not in signal
+        def Sc(p, t):
+            return -1.0
+
+        _H = jnp.pi / 2 * jnp.eye(2, dtype=jnp.complex64)
+        _H = qml.Hermitian(_H, wires=wires)
+        H_corr = Sc * _H
+
+        qml.evolve(H_corr)([0], 1)
+
+        PulseGates.RZ(jnp.pi, wires=wires)
+        PulseGates.RY(jnp.pi / 2, wires=wires, pulse_params=pulse_params)
+
+        return
+
+    @staticmethod
+    def CX(wires, pulse_params=None):
+        """
+        Applies a CNOT gate using a decomposition.
+
+        Decomposition:
+            CNOT = H_t · CZ · H_t
+
+        Parameters
+        ----------
+        wires : List[int]
+            The control and target wires for the CNOT gate.
+        pulse_params : np.ndarray, optional
+            Pulse parameters for the composing gates. Defaults
+            to optimized parameters if None.
+        """
+        n_H = PulseInformation.num_params("H")
+        n_CZ = PulseInformation.num_params("CZ")
+
+        idx1 = n_H
+        idx2 = idx1 + n_CZ
+        idx3 = idx2 + n_H
+
+        if pulse_params is None:
+            opt = PulseInformation.optimized_params("CX")
+            params_H_1 = opt[:idx1]
+            t_CZ = opt[idx1:idx2]
+            params_H_2 = opt[idx2:idx3]
+
+        else:
+            params_H_1 = pulse_params[:idx1]
+            t_CZ = pulse_params[idx1:idx2]
+            params_H_2 = pulse_params[idx2:idx3]
+
+        target = wires[1]
+
+        PulseGates.H(wires=target, pulse_params=params_H_1)
+        PulseGates.CZ(wires=wires, pulse_params=t_CZ)
+        PulseGates.H(wires=target, pulse_params=params_H_2)
+
+        return
+
+    @staticmethod
+    def CY(wires, pulse_params=None):
+        """
+        Applies a controlled-Y gate using a decomposition.
+
+        Decomposition:
+            CY = RZ(-π/2)_t · CX · RZ(π/2)_t
+
+        Parameters
+        ----------
+        wires : List[int]
+            The control and target wires.
+        pulse_params : np.ndarray
+            Pulse parameters for the composing gates. Defaults
+            to optimized parameters if None.
+        """
+        n_RZ = PulseInformation.num_params("RZ")
+        n_CX = PulseInformation.num_params("CX")
+
+        idx1 = n_RZ
+        idx2 = idx1 + n_CX
+        idx3 = idx2 + n_RZ
+
+        if pulse_params is None:
+            opt = PulseInformation.optimized_params("CY")
+            params_RZ_1 = opt[:idx1]
+            params_CX = opt[idx1:idx2]
+            params_RZ_2 = opt[idx2:idx3]
+        else:
+            params_RZ_1 = pulse_params[:idx1]
+            params_CX = pulse_params[idx1:idx2]
+            params_RZ_2 = pulse_params[idx2:idx3]
+
+        target = wires[1]
+
+        PulseGates.RZ(-np.pi / 2, wires=target, pulse_params=params_RZ_1)
+        PulseGates.CX(wires=wires, pulse_params=params_CX)
+        PulseGates.RZ(np.pi / 2, wires=target, pulse_params=params_RZ_2)
+
+        return
+
+    @staticmethod
+    def CZ(wires, pulse_params=None):
+        """
+        Applies a controlled Z gate to the given wires.
+
+        Parameters
+        ----------
+        wires : List[int]
+            The wire(s) to apply the controlled Z gate to.
+        pulse_params : float, optional
+            Time or time interval for the evolution.
+            Defaults to optimized time if None.
+        """
+        idx = PulseInformation.num_params("CZ") - 1
+        if pulse_params is None:
+            t = PulseInformation.optimized_params("CZ")[idx]
+        elif isinstance(pulse_params, (float, int)):
+            t = pulse_params
+        else:
+            t = pulse_params[idx]
+
+        I_I = jnp.kron(PulseGates.Id, PulseGates.Id)
+        Z_I = jnp.kron(PulseGates.Z, PulseGates.Id)
+        I_Z = jnp.kron(PulseGates.Id, PulseGates.Z)
+        Z_Z = jnp.kron(PulseGates.Z, PulseGates.Z)
+
+        # TODO: explain why p, t not in signal
+        def Scz(p, t):
+            return jnp.pi
+
+        _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
+        _H = qml.Hermitian(_H, wires=wires)
+        H_eff = Scz * _H
+
+        return qml.evolve(H_eff)([0], t)
+
+    @staticmethod
     def CRX(w, wires, pulse_params=None):
         """
         Applies a controlled-RX(w) gate using a decomposition.
@@ -1065,159 +1218,6 @@ class PulseGates:
         PulseGates.CX(wires=wires, pulse_params=params_CX_1)
         PulseGates.RZ(-w / 2, wires=target, pulse_params=params_RZ_2)
         PulseGates.CX(wires=wires, pulse_params=params_CX_2)
-
-        return
-
-    @staticmethod
-    def CX(wires, pulse_params=None):
-        """
-        Applies a CNOT gate using a decomposition.
-
-        Decomposition:
-            CNOT = H_t · CZ · H_t
-
-        Parameters
-        ----------
-        wires : List[int]
-            The control and target wires for the CNOT gate.
-        pulse_params : np.ndarray, optional
-            Pulse parameters for the composing gates. Defaults
-            to optimized parameters if None.
-        """
-        n_H = PulseInformation.num_params("H")
-        n_CZ = PulseInformation.num_params("CZ")
-
-        idx1 = n_H
-        idx2 = idx1 + n_CZ
-        idx3 = idx2 + n_H
-
-        if pulse_params is None:
-            opt = PulseInformation.optimized_params("CX")
-            params_H_1 = opt[:idx1]
-            t_CZ = opt[idx1:idx2]
-            params_H_2 = opt[idx2:idx3]
-
-        else:
-            params_H_1 = pulse_params[:idx1]
-            t_CZ = pulse_params[idx1:idx2]
-            params_H_2 = pulse_params[idx2:idx3]
-
-        target = wires[1]
-
-        PulseGates.H(wires=target, pulse_params=params_H_1)
-        PulseGates.CZ(wires=wires, pulse_params=t_CZ)
-        PulseGates.H(wires=target, pulse_params=params_H_2)
-
-        return
-
-    @staticmethod
-    def CY(wires, pulse_params=None):
-        """
-        Applies a controlled-Y gate using a decomposition.
-
-        Decomposition:
-            CY = RZ(-π/2)_t · CX · RZ(π/2)_t
-
-        Parameters
-        ----------
-        wires : List[int]
-            The control and target wires.
-        pulse_params : np.ndarray
-            Pulse parameters for the composing gates. Defaults
-            to optimized parameters if None.
-        """
-        n_RZ = PulseInformation.num_params("RZ")
-        n_CX = PulseInformation.num_params("CX")
-
-        idx1 = n_RZ
-        idx2 = idx1 + n_CX
-        idx3 = idx2 + n_RZ
-
-        if pulse_params is None:
-            opt = PulseInformation.optimized_params("CY")
-            params_RZ_1 = opt[:idx1]
-            params_CX = opt[idx1:idx2]
-            params_RZ_2 = opt[idx2:idx3]
-        else:
-            params_RZ_1 = pulse_params[:idx1]
-            params_CX = pulse_params[idx1:idx2]
-            params_RZ_2 = pulse_params[idx2:idx3]
-
-        target = wires[1]
-
-        PulseGates.RZ(-np.pi / 2, wires=target, pulse_params=params_RZ_1)
-        PulseGates.CX(wires=wires, pulse_params=params_CX)
-        PulseGates.RZ(np.pi / 2, wires=target, pulse_params=params_RZ_2)
-
-        return
-
-    @staticmethod
-    def CZ(wires, pulse_params=None):
-        """
-        Applies a controlled Z gate to the given wires.
-
-        Parameters
-        ----------
-        wires : List[int]
-            The wire(s) to apply the controlled Z gate to.
-        pulse_params : float, optional
-            Time or time interval for the evolution.
-            Defaults to optimized time if None.
-        """
-        idx = PulseInformation.num_params("CZ") - 1
-        if pulse_params is None:
-            t = PulseInformation.optimized_params("CZ")[idx]
-        elif isinstance(pulse_params, (float, int)):
-            t = pulse_params
-        else:
-            t = pulse_params[idx]
-
-        I_I = jnp.kron(PulseGates.Id, PulseGates.Id)
-        Z_I = jnp.kron(PulseGates.Z, PulseGates.Id)
-        I_Z = jnp.kron(PulseGates.Id, PulseGates.Z)
-        Z_Z = jnp.kron(PulseGates.Z, PulseGates.Z)
-
-        # TODO: explain why p, t not in signal
-        def Scz(p, t):
-            return jnp.pi
-
-        _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
-        _H = qml.Hermitian(_H, wires=wires)
-        H_eff = Scz * _H
-
-        return qml.evolve(H_eff)([0], t)
-
-    @staticmethod
-    def H(wires, pulse_params=None):
-        """
-        Applies Hadamard gate to the given wires.
-
-        Parameters
-        ----------
-        wires : Union[int, List[int]]
-            The wire(s) to apply the Hadamard gate to.
-        pulse_params : np.ndarray, optional
-            Pulse parameters for the composing gates. Defaults
-            to optimized parameters and time.
-        """
-        if pulse_params is None:
-            pulse_params = PulseInformation.optimized_params("H")
-        else:
-            pulse_params = pulse_params
-
-        # qml.GlobalPhase(-jnp.pi / 2)  # this could act as substitute to Sc
-        # TODO: Explain why p, t not in signal
-        def Sc(p, t):
-            return -1.0
-
-        _H = jnp.pi / 2 * jnp.eye(2, dtype=jnp.complex64)
-        _H = qml.Hermitian(_H, wires=wires)
-        H_corr = Sc * _H
-
-        qml.evolve(H_corr)([0], 1)
-
-        PulseGates.RZ(jnp.pi, wires=wires)
-        PulseGates.RY(jnp.pi / 2, wires=wires, pulse_params=pulse_params)
 
         return
 
