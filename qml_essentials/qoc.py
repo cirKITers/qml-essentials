@@ -300,8 +300,8 @@ class QOC:
             fidelity += (
                 jnp.abs(jnp.vdot(target_state, pulse_state)) ** 2
             )  # one if no diff
-            phase_diff += jnp.abs(
-                jnp.angle(jnp.vdot(target_state, pulse_state)) / (jnp.pi)
+            phase_diff += jnp.abs(jnp.angle(jnp.vdot(target_state, pulse_state))) / (
+                jnp.pi
             )  # zero if no diff
 
         fidelity_n = 1 - (fidelity / self.n_samples)
