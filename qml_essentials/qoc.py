@@ -16,11 +16,11 @@ log = logging.getLogger(__name__)
 
 
 class QOC:
-    patience = 1000
-    n_steps = 2500
-    learning_rate = 0.1
-    log_interval = 100
-    skip_on_fidelity = True
+    n_steps = 2500  # number of steps in optimization
+    n_samples = 15  # number of parameter samples per step
+    learning_rate = 0.01  # learning rate for adam with weight decay regularization
+    log_interval = 100  # interval for logging
+    skip_on_fidelity = True  # skip writing to qoc_results if fidelity is lower?
 
     # TODO: Potentially refactor all the create_*()... The only differences
     #   are the circuits
@@ -290,10 +290,9 @@ class QOC:
         Returns:
             float: Cost function value.
         """
-        n_steps = 10
         fidelity = 0
         phase_diff = 0
-        for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / n_steps):
+        for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / self.n_samples):
             pulse_state = pulse_qnode(w, pulse_params)
             target_state = target_qnode(w)
             fidelity += (
@@ -303,8 +302,8 @@ class QOC:
                 jnp.angle(jnp.vdot(target_state, pulse_state)) / (jnp.pi)
             )  # zero if no diff
 
-        fidelity_n = 1 - (fidelity / n_steps)
-        phase_diff = phase_diff / n_steps
+        fidelity_n = 1 - (fidelity / self.n_samples)
+        phase_diff = phase_diff / self.n_samples
 
         return (fidelity_n + phase_diff) / 2  # loss
 
@@ -327,11 +326,10 @@ class QOC:
         """
         optimizer = optax.adamw(self.learning_rate)
         opt_state = optimizer.init(params)
-        loss_history = []
 
-        loss = cost(params, *args)
+        loss = cost(params, *args).item()
+        loss_history = [loss]
         best_pulse_params = params
-        no_improve_counter = 0
 
         @jax.jit
         def opt_step(params, opt_state, *args):
@@ -342,20 +340,13 @@ class QOC:
 
         for step in range(self.n_steps):
             if step % self.log_interval == 0:
-                log.info(f"Step {step}/{self.n_steps}, Loss: {loss:.2e}")
+                log.info(f"Step {step}/{self.n_steps}, Loss: {loss_history[-1]:.3e}")
 
             params, opt_state, loss = opt_step(params, opt_state, *args)
             loss_history.append(loss.item())
 
             if loss.item() < min(loss_history):
                 best_pulse_params = params
-                no_improve_counter = 0
-            else:
-                no_improve_counter += 1
-
-            if no_improve_counter >= self.patience:
-                log.info(f"Early stopping at step {step} due to no improvement.")
-                break
 
         return best_pulse_params, loss_history
 
@@ -517,17 +508,15 @@ class QOC:
         return pulse_circuit, target_circuit
 
     @optimize("default.qubit", wires=2)
-    def create_CZ(self, init_pulse_params: jnp.array):
+    def create_CX(self, init_pulse_params: jnp.ndarray):
         def pulse_circuit(w, pulse_params):
             qml.H(wires=0)
-            qml.H(wires=1)
-            Gates.CZ(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
+            Gates.CX(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
             return qml.state()
 
         def target_circuit(w):
             qml.H(wires=0)
-            qml.H(wires=1)
-            qml.CZ(wires=[0, 1])
+            qml.CNOT(wires=[0, 1])
             return qml.state()
 
         return pulse_circuit, target_circuit
@@ -547,15 +536,17 @@ class QOC:
         return pulse_circuit, target_circuit
 
     @optimize("default.qubit", wires=2)
-    def create_CX(self, init_pulse_params: jnp.ndarray):
+    def create_CZ(self, init_pulse_params: jnp.array):
         def pulse_circuit(w, pulse_params):
             qml.H(wires=0)
-            Gates.CX(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
+            qml.H(wires=1)
+            Gates.CZ(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
             return qml.state()
 
         def target_circuit(w):
             qml.H(wires=0)
-            qml.CNOT(wires=[0, 1])
+            qml.H(wires=1)
+            qml.CZ(wires=[0, 1])
             return qml.state()
 
         return pulse_circuit, target_circuit
@@ -667,15 +658,6 @@ if __name__ == "__main__":
         log.info(f"Optimized parameters for H: {optimized_pulse_params}")
         log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
 
-    if gate == "CZ" or gate == "all":
-        # TODO: no actual optimization is performed here (param ignored in impl.)
-        log.info("Optimizing CZ gate...")
-        optimized_pulse_params, loss_history = qoc.create_CZ(
-            init_pulse_params=jnp.array([0.962596375687258])
-        )
-        log.info(f"Optimized parameters for CZ: {optimized_pulse_params}")
-        log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
-
     if gate == "CX" or gate == "all":
         log.info("Optimizing CX gate...")
         optimized_pulse_params, loss_history = qoc.create_CX(
@@ -688,6 +670,15 @@ if __name__ == "__main__":
             )
         )
         log.info(f"Optimized parameters for CX: {optimized_pulse_params}")
+        log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
+
+    if gate == "CZ" or gate == "all":
+        # TODO: no actual optimization is performed here (param ignored in impl.)
+        log.info("Optimizing CZ gate...")
+        optimized_pulse_params, loss_history = qoc.create_CZ(
+            init_pulse_params=jnp.array([0.962596375687258])
+        )
+        log.info(f"Optimized parameters for CZ: {optimized_pulse_params}")
         log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
 
     if gate == "CY" or gate == "all":
