@@ -644,9 +644,7 @@ if __name__ == "__main__":
         if gate == "RX" or gate == "all":
             log.info("Optimizing RX gate...")
             optimized_pulse_params, loss_history = qoc.create_RX(
-                init_pulse_params=jnp.array(
-                    [15.70989327341467, 29.5230665326707, 0.7499810441330634]
-                ),
+                init_pulse_params=jnp.array([*PulseInformation.optimized_params("RX")]),
             )
             log.info(f"Optimized parameters for RX: {optimized_pulse_params}")
             log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
@@ -655,9 +653,7 @@ if __name__ == "__main__":
         if gate == "RY" or gate == "all":
             log.info("Optimizing RY gate...")
             optimized_pulse_params, loss_history = qoc.create_RY(
-                init_pulse_params=jnp.array(
-                    [7.8787724942614235, 22.001319411513432, 1.098524473819202]
-                ),
+                init_pulse_params=jnp.array([*PulseInformation.optimized_params("RY")]),
             )
             log.info(f"Optimized parameters for RY: {optimized_pulse_params}")
             log.info(f"Best achieved fidelity: {1 - min(loss_history):.6f}")
@@ -671,12 +667,11 @@ if __name__ == "__main__":
         if gate == "H" or gate == "all":
             log.info("Optimizing H gate...")
             optimized_pulse_params, loss_history = qoc.create_H(
-                init_pulse_params=jnp.array(
-                    [7.857992398977854, 21.572701026008765, 0.9000668764548863]
-                )
+                init_pulse_params=jnp.array([*PulseInformation.optimized_params("H")]),
             )
             log.info(f"Optimized parameters for H: {optimized_pulse_params}")
             log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
+            log_history["H"] = log_history.get("H", []) + loss_history
 
         if gate == "CX" or gate == "all":
             log.info("Optimizing CX gate...")
@@ -691,14 +686,16 @@ if __name__ == "__main__":
             )
             log.info(f"Optimized parameters for CX: {optimized_pulse_params}")
             log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
+            log_history["CX"] = log_history.get("CX", []) + loss_history
 
         if gate == "CZ" or gate == "all":
             log.info("Optimizing CZ gate...")
             optimized_pulse_params, loss_history = qoc.create_CZ(
-                init_pulse_params=jnp.array([0.962596375687258])
+                init_pulse_params=jnp.array([*PulseInformation.optimized_params("CZ")]),
             )
             log.info(f"Optimized parameters for CZ: {optimized_pulse_params}")
             log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
+            log_history["CX"] = log_history.get("CZ", []) + loss_history
 
         if gate == "CY" or gate == "all":
             log.info("Optimizing CY gate...")
@@ -713,6 +710,7 @@ if __name__ == "__main__":
             )
             log.info(f"Optimized parameters for CY: {optimized_pulse_params}")
             log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
+            log_history["CY"] = log_history.get("CY", []) + loss_history
 
         if gate == "CRX" or gate == "all":
             log.info("Optimizing CRX gate...")
@@ -730,6 +728,7 @@ if __name__ == "__main__":
             )
             log.info(f"Optimized parameters for CRX: {optimized_pulse_params}")
             log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
+            log_history["CRX"] = log_history.get("CRX", []) + loss_history
 
         if gate == "CRY" or gate == "all":
             log.info("Optimizing CRY gate...")
@@ -745,6 +744,7 @@ if __name__ == "__main__":
             )
             log.info(f"Optimized parameters for CRY: {optimized_pulse_params}")
             log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
+            log_history["CRY"] = log_history.get("CRY", []) + loss_history
 
         if gate == "CRZ" or gate == "all":
             log.info("Optimizing CRZ gate...")
@@ -760,6 +760,7 @@ if __name__ == "__main__":
             )
             log.info(f"Optimized parameters for CRZ: {optimized_pulse_params}")
             log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
+            log_history["CRZ"] = log_history.get("CRZ", []) + loss_history
 
         if make_log:
             # write log history to file
