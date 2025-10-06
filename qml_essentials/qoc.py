@@ -611,21 +611,7 @@ class QOC:
         return pulse_circuit, target_circuit
 
 
-if __name__ == "__main__":
-    # argparse the selected gate
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--gate", type=str, default="all")
-    parser.add_argument("--loops", type=str, default=1)
-    parser.add_argument("--log", type=str, default=True)
-
-    args = parser.parse_args()
-    gate = str(args.gate)
-    loops = int(args.loops)
-    make_log = bool(args.log)
-
-    log.setLevel(logging.DEBUG)
-    log.addHandler(logging.StreamHandler())
-
+def optimize(gate, loops, make_log):
     qoc = QOC(
         make_plots=False,
         fig_points=40,
@@ -764,8 +750,26 @@ if __name__ == "__main__":
 
         if make_log:
             # write log history to file
-            with open("qml_essentials/qoc_results_log.csv", "w") as f:
+            with open("qml_essentials/qoc_logs.csv", "w") as f:
                 writer = csv.writer(f)
                 # use keys in log_history as cols and values as rows such that each step is a new row
                 writer.writerow(log_history.keys())
                 writer.writerows(zip(*log_history.values()))
+
+
+if __name__ == "__main__":
+    # argparse the selected gate
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--gate", type=str, default="all")
+    parser.add_argument("--loops", type=str, default=1)
+    parser.add_argument("--log", type=str, default=True)
+
+    args = parser.parse_args()
+    gate = str(args.gate)
+    loops = int(args.loops)
+    make_log = bool(args.log)
+
+    log.setLevel(logging.DEBUG)
+    log.addHandler(logging.StreamHandler())
+
+    optimize(gate=gate, loops=loops, make_log=make_log)
