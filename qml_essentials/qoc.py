@@ -248,6 +248,7 @@ class QOC:
             os.makedirs(self.file_dir, exist_ok=True)
             filename = os.path.join(self.file_dir, "qoc_results.csv")
 
+            reader = None
             if os.path.isfile(filename):
                 with open(filename, mode="r", newline="") as f:
                     reader = csv.reader(f.readlines())
@@ -257,24 +258,25 @@ class QOC:
             with open(filename, mode="w", newline="") as f:
                 writer = csv.writer(f)
                 match = False
-                for row in reader:
-                    # gate already exists
-                    if row[0] == gate:
-                        if fidelity > float(row[1]):
-                            writer.writerow(entry)
-                        else:
-                            log.warning(
-                                f"Pulse parameters for {gate} already exist with \
-                                    higher fidelity ({row[1]} >= {fidelity})"
-                            )
-                            if not self.skip_on_fidelity:
+                if reader is not None:
+                    for row in reader:
+                        # gate already exists
+                        if row[0] == gate:
+                            if fidelity > float(row[1]):
                                 writer.writerow(entry)
                             else:
-                                writer.writerow(row)
-                        match = True
-                    # any other gate
-                    else:
-                        writer.writerow(row)
+                                log.warning(
+                                    f"Pulse parameters for {gate} already exist with \
+                                        higher fidelity ({row[1]} >= {fidelity})"
+                                )
+                                if not self.skip_on_fidelity:
+                                    writer.writerow(entry)
+                                else:
+                                    writer.writerow(row)
+                            match = True
+                        # any other gate
+                        else:
+                            writer.writerow(row)
                 # gate does not exist
                 if not match:
                     writer.writerow(entry)
