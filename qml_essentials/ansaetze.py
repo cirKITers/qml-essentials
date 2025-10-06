@@ -717,6 +717,11 @@ class PulseInformation:
             log.info(f"Loading optimized pulses from {path}")
             with open(path, "r") as f:
                 reader = csv.reader(f)
+                # check length of file
+                if len(list(reader)) == 0:
+                    log.error(f"No parameters found in {path}")
+                    return
+
                 for row in reader:
                     log.debug(
                         f"Loading optimized pulses for {row[0]} (Fidelity: {float(row[1]):.5f}): {row[2:]}"
@@ -724,6 +729,8 @@ class PulseInformation:
                     PulseInformation.OPTIMIZED_PULSES[row[0]] = jnp.array(
                         [float(x) for x in row[2:]]
                     )
+        else:
+            log.error(f"No optimized pulses found at {path}")
 
 
 class PulseGates:
