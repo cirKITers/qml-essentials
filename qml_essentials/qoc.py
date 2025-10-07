@@ -17,10 +17,11 @@ log = logging.getLogger(__name__)
 
 class QOC:
     # TODO: move to init, once the rest of the code is refactored
-    n_steps = 500  # number of steps in optimization
-    n_samples = 10  # number of parameter samples per step
-    learning_rate = 0.01  # learning rate for adam with weight decay regularization
-    log_interval = 100  # interval for logging
+    n_steps = 100  # number of steps in optimization
+    n_loops = 5
+    n_samples = 8  # number of parameter samples per step
+    learning_rate = 0.001  # learning rate for adam with weight decay regularization
+    log_interval = 20  # interval for logging
     skip_on_fidelity = True  # skip writing to qoc_results if fidelity is lower?
 
     # TODO: Potentially refactor all the create_*()... The only differences
@@ -267,10 +268,11 @@ class QOC:
                                 writer.writerow(entry)
                             else:
                                 log.warning(
-                                    f"Pulse parameters for {gate} already exist with \
-                                        higher fidelity ({row[1]} >= {fidelity})"
+                                    f"Pulse parameters for {gate} already exist with "
+                                    f"higher fidelity ({row[1]} >= {fidelity})"
                                 )
                                 if not self.skip_on_fidelity:
+                                    log.info("Overwriting parameters anyway")
                                     writer.writerow(entry)
                                 else:
                                     writer.writerow(row)
@@ -297,22 +299,19 @@ class QOC:
         Returns:
             float: Cost function value.
         """
-        fidelity = 0
+        abs_diff = 0
         phase_diff = 0
         for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / self.n_samples):
             pulse_state = pulse_qnode(w, pulse_params)
             target_state = target_qnode(w)
-            fidelity += (
-                jnp.abs(jnp.vdot(target_state, pulse_state)) ** 2
-            )  # one if no diff
-            phase_diff += jnp.abs(jnp.angle(jnp.vdot(target_state, pulse_state))) / (
-                jnp.pi
-            )  # zero if no diff
+            dot_prod = jnp.vdot(target_state, pulse_state)
+            abs_diff += 1 - jnp.abs(dot_prod) ** 2  # one if no diff
+            # phase_diff += jnp.abs(jnp.angle(dot_prod)) / jnp.pi  # zero if no diff
 
-        fidelity_n = 1 - (fidelity / self.n_samples)
-        phase_diff = phase_diff / self.n_samples
+        abs_diff /= self.n_samples
+        phase_diff /= self.n_samples
 
-        return (fidelity_n + phase_diff) / 2  # loss
+        return (abs_diff + phase_diff) / 2  # loss
 
     def run_optimization(
         self,
@@ -332,7 +331,7 @@ class QOC:
             tuple[jnp.ndarray, List]: Optimized parameters and list of loss values
                 at each iteration.
         """
-        optimizer = optax.adamw(self.learning_rate)
+        optimizer = optax.adam(self.learning_rate)
         opt_state = optimizer.init(params)
 
         loss = cost(params, *args).item()
@@ -351,16 +350,18 @@ class QOC:
                 log.info(f"Step {step}/{self.n_steps}, Loss: {loss_history[-1]:.3e}")
 
             params, opt_state, loss = opt_step(params, opt_state, *args)
-            loss_history.append(loss.item())
 
             if loss.item() < min(loss_history):
+                log.debug(f"Best set of params found at step {step}")
                 best_pulse_params = params
+
+            loss_history.append(loss.item())
 
         return best_pulse_params, loss_history
 
-    def optimize(simulator, wires):
+    def optimize(self, simulator, wires):
         def decorator(create_circuits):
-            def wrapper(self, init_pulse_params: jnp.ndarray = None):
+            def wrapper(init_pulse_params: jnp.ndarray = None):
                 """
                 This function is a wrapper for the create_circuits method.
                 It takes a simulator and wires as input and optimizes the pulse parameters
@@ -376,7 +377,7 @@ class QOC:
                     tuple: Optimized pulse parameters and list of loss values at each iteration.
                 """
                 dev = qml.device(simulator, wires=wires)
-                pulse_circuit, target_circuit = create_circuits(self, dev)
+                pulse_circuit, target_circuit = create_circuits(dev)
 
                 pulse_qnode = qml.QNode(pulse_circuit, dev, interface="jax")
                 target_qnode = qml.QNode(target_circuit, dev, interface="jax")
@@ -388,6 +389,9 @@ class QOC:
                         f"Using initial pulse parameters for {gate_name} from `ansaetze.py`"
                     )
                     init_pulse_params = PulseInformation.optimized_params(gate_name)
+                log.debug(
+                    f"Initial pulse parameters for {gate_name}: {init_pulse_params}"
+                )
 
                 # Optimizing
                 pulse_params, loss_history = self.run_optimization(
@@ -483,7 +487,6 @@ class QOC:
 
     #     return pulse_params, loss, losses
 
-    @optimize("default.qubit", wires=1)
     def create_RX(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
             Gates.RX(w, 0, pulse_params=pulse_params, gate_mode="pulse")
@@ -495,7 +498,6 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    @optimize("default.qubit", wires=1)
     def create_RY(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
             Gates.RY(w, 0, pulse_params=pulse_params, gate_mode="pulse")
@@ -507,11 +509,19 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    @optimize("default.qubit", wires=1)
     def create_RZ(self, init_pulse_params: jnp.ndarray = None):
-        return None, None
+        def pulse_circuit(w, pulse_params):
+            qml.H(wires=0)
+            Gates.RZ(w, 0, pulse_params=pulse_params, gate_mode="pulse")
+            return qml.state()
 
-    @optimize("default.qubit", wires=1)
+        def target_circuit(w):
+            qml.H(wires=0)
+            qml.RZ(w, wires=0)
+            return qml.state()
+
+        return pulse_circuit, target_circuit
+
     def create_H(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
             Gates.H(0, pulse_params=pulse_params, gate_mode="pulse")
@@ -523,7 +533,6 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    @optimize("default.qubit", wires=2)
     def create_CX(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
             qml.H(wires=0)
@@ -539,7 +548,6 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    @optimize("default.qubit", wires=2)
     def create_CY(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
             qml.H(wires=0)
@@ -555,7 +563,6 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    @optimize("default.qubit", wires=2)
     def create_CZ(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
             qml.H(wires=0)
@@ -571,7 +578,6 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    @optimize("default.qubit", wires=2)
     def create_CRX(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
             qml.H(wires=0)
@@ -585,7 +591,6 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    @optimize("default.qubit", wires=2)
     def create_CRY(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
             qml.H(wires=0)
@@ -599,7 +604,6 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    @optimize("default.qubit", wires=2)
     def create_CRZ(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
             qml.H(wires=0)
@@ -615,163 +619,152 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def optimize_all(self, gate, loops, make_log):
+    def optimize_all(self, gate, make_log):
         log_history = {}
-
         optimize_1q = self.optimize("default.qubit", wires=2)
         optimize_2q = self.optimize("default.qubit", wires=2)
 
-        for loop in range(loops):
+        PulseInformation.shuffle_params(seed=1000)
+
+        for loop in range(self.n_loops):
             log.info(f"Reading back optimized pulse parameters")
             PulseInformation.update_params()
 
-            log.info(f"Optimization loop {loop+1} of {loops}")
+            log.info(f"Optimization loop {loop+1} of {self.n_loops}")
 
             if gate == "RX" or gate == "all":
                 log.info("Optimizing RX gate...")
-                optimized_pulse_params, loss_history = optimize_1q(
-                    self.create_RX(
-                        init_pulse_params=jnp.array(
-                            [*PulseInformation.optimized_params("RX")]
-                        ),
-                    )
+                optimized_pulse_params, loss_history = optimize_1q(self.create_RX)(
+                    # init_pulse_params=jnp.array(
+                    #     [*PulseInformation.optimized_params("RX")]
+                    # ),
                 )
                 log.info(f"Optimized parameters for RX: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
+                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
                 log_history["RX"] = log_history.get("RX", []) + loss_history
 
             if gate == "RY" or gate == "all":
                 log.info("Optimizing RY gate...")
-                optimized_pulse_params, loss_history = optimize_1q(
-                    self.create_RY(
-                        init_pulse_params=jnp.array(
-                            [*PulseInformation.optimized_params("RY")]
-                        ),
-                    )
+                optimized_pulse_params, loss_history = optimize_1q(self.create_RY)(
+                    # init_pulse_params=jnp.array(
+                    #     [*PulseInformation.optimized_params("RY")]
+                    # ),
                 )
                 log.info(f"Optimized parameters for RY: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {1 - min(loss_history):.6f}")
+                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
                 log_history["RY"] = log_history.get("RY", []) + loss_history
 
-            # # if gate == "RZ" or gate == "all":
-            # #     log.info("Plotting RZ gate rotation...")
-            # #     self.create_RZ(None)
-            # #     log.info("Plotted RZ gate rotation")
+            if gate == "RZ" or gate == "all":
+                log.info("Optimizing RZ gate...")
+                optimized_pulse_params, loss_history = optimize_1q(self.create_RZ)(
+                    # init_pulse_params=jnp.array(
+                    #     [*PulseInformation.optimized_params("RZ")]
+                    # ),
+                )
+                log.info(f"Optimized parameters for RZ: {optimized_pulse_params}")
+                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+                log_history["RZ"] = log_history.get("RZ", []) + loss_history
 
             if gate == "H" or gate == "all":
                 log.info("Optimizing H gate...")
-                optimized_pulse_params, loss_history = optimize_1q(
-                    self.create_H(
-                        init_pulse_params=jnp.array(
-                            [*PulseInformation.optimized_params("H")]
-                        ),
-                    )
+                optimized_pulse_params, loss_history = optimize_1q(self.create_H)(
+                    # init_pulse_params=jnp.array(
+                    #     [*PulseInformation.optimized_params("H")]
+                    # ),
                 )
                 log.info(f"Optimized parameters for H: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
+                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
                 log_history["H"] = log_history.get("H", []) + loss_history
 
             if gate == "CX" or gate == "all":
                 log.info("Optimizing CX gate...")
-                optimized_pulse_params, loss_history = optimize_2q(
-                    self.create_CX(
-                        init_pulse_params=jnp.array(
-                            [
-                                *PulseInformation.optimized_params("H"),
-                                *PulseInformation.optimized_params("CZ"),
-                                *PulseInformation.optimized_params("H"),
-                            ]
-                        )
-                    )
+                optimized_pulse_params, loss_history = optimize_2q(self.create_CX)(
+                    # init_pulse_params=jnp.array(
+                    #     [
+                    #         *PulseInformation.optimized_params("H"),
+                    #         *PulseInformation.optimized_params("CZ"),
+                    #         *PulseInformation.optimized_params("H"),
+                    #     ]
+                    # )
                 )
                 log.info(f"Optimized parameters for CX: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
+                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
                 log_history["CX"] = log_history.get("CX", []) + loss_history
 
             if gate == "CZ" or gate == "all":
                 log.info("Optimizing CZ gate...")
-                optimized_pulse_params, loss_history = optimize_2q(
-                    self.create_CZ(
-                        init_pulse_params=jnp.array(
-                            [*PulseInformation.optimized_params("CZ")]
-                        ),
-                    )
+                optimized_pulse_params, loss_history = optimize_2q(self.create_CZ)(
+                    # init_pulse_params=jnp.array(
+                    #     [*PulseInformation.optimized_params("CZ")]
+                    # ),
                 )
                 log.info(f"Optimized parameters for CZ: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
-                log_history["CX"] = log_history.get("CZ", []) + loss_history
+                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+                log_history["CZ"] = log_history.get("CZ", []) + loss_history
 
             if gate == "CY" or gate == "all":
                 log.info("Optimizing CY gate...")
-                optimized_pulse_params, loss_history = optimize_2q(
-                    self.create_CY(
-                        init_pulse_params=jnp.array(
-                            [
-                                *PulseInformation.optimized_params("RZ"),
-                                *PulseInformation.optimized_params("CX"),
-                                *PulseInformation.optimized_params("RZ"),
-                            ]
-                        ),
-                    )
+                optimized_pulse_params, loss_history = optimize_2q(self.create_CY)(
+                    # init_pulse_params=jnp.array(
+                    #     [
+                    #         *PulseInformation.optimized_params("RZ"),
+                    #         *PulseInformation.optimized_params("CX"),
+                    #         *PulseInformation.optimized_params("RZ"),
+                    #     ]
+                    # ),
                 )
                 log.info(f"Optimized parameters for CY: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
+                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
                 log_history["CY"] = log_history.get("CY", []) + loss_history
 
             if gate == "CRX" or gate == "all":
                 log.info("Optimizing CRX gate...")
-                optimized_pulse_params, loss_history = optimize_2q(
-                    self.create_CRX(
-                        init_pulse_params=jnp.array(
-                            [
-                                *PulseInformation.optimized_params("RZ"),
-                                *PulseInformation.optimized_params("RY"),
-                                *PulseInformation.optimized_params("CX"),
-                                *PulseInformation.optimized_params("RY"),
-                                *PulseInformation.optimized_params("CX"),
-                                *PulseInformation.optimized_params("RZ"),
-                            ]
-                        ),
-                    )
+                optimized_pulse_params, loss_history = optimize_2q(self.create_CRX)(
+                    # init_pulse_params=jnp.array(
+                    #     [
+                    #         *PulseInformation.optimized_params("RZ"),
+                    #         *PulseInformation.optimized_params("RY"),
+                    #         *PulseInformation.optimized_params("CX"),
+                    #         *PulseInformation.optimized_params("RY"),
+                    #         *PulseInformation.optimized_params("CX"),
+                    #         *PulseInformation.optimized_params("RZ"),
+                    #     ]
+                    # ),
                 )
                 log.info(f"Optimized parameters for CRX: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
+                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
                 log_history["CRX"] = log_history.get("CRX", []) + loss_history
 
             if gate == "CRY" or gate == "all":
                 log.info("Optimizing CRY gate...")
-                optimized_pulse_params, loss_history = optimize_2q(
-                    self.create_CRY(
-                        init_pulse_params=jnp.array(
-                            [
-                                *PulseInformation.optimized_params("RY"),
-                                *PulseInformation.optimized_params("CX"),
-                                *PulseInformation.optimized_params("RX"),
-                                *PulseInformation.optimized_params("CX"),
-                            ]
-                        ),
-                    )
+                optimized_pulse_params, loss_history = optimize_2q(self.create_CRY)(
+                    # init_pulse_params=jnp.array(
+                    #     [
+                    #         *PulseInformation.optimized_params("RY"),
+                    #         *PulseInformation.optimized_params("CX"),
+                    #         *PulseInformation.optimized_params("RX"),
+                    #         *PulseInformation.optimized_params("CX"),
+                    #     ]
+                    # ),
                 )
                 log.info(f"Optimized parameters for CRY: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
+                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
                 log_history["CRY"] = log_history.get("CRY", []) + loss_history
 
             if gate == "CRZ" or gate == "all":
                 log.info("Optimizing CRZ gate...")
-                optimized_pulse_params, loss_history = optimize_2q(
-                    self.create_CRZ(
-                        init_pulse_params=jnp.array(
-                            [
-                                *PulseInformation.optimized_params("RZ"),
-                                *PulseInformation.optimized_params("CX"),
-                                *PulseInformation.optimized_params("RZ"),
-                                *PulseInformation.optimized_params("CX"),
-                            ]
-                        )
-                    )
+                optimized_pulse_params, loss_history = optimize_2q(self.create_CRZ)(
+                    # init_pulse_params=jnp.array(
+                    #     [
+                    #         *PulseInformation.optimized_params("RZ"),
+                    #         *PulseInformation.optimized_params("CX"),
+                    #         *PulseInformation.optimized_params("RZ"),
+                    #         *PulseInformation.optimized_params("CX"),
+                    #     ]
+                    # )
                 )
                 log.info(f"Optimized parameters for CRZ: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.3f}%")
+                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
                 log_history["CRZ"] = log_history.get("CRZ", []) + loss_history
 
             if make_log:
@@ -787,16 +780,14 @@ if __name__ == "__main__":
     # argparse the selected gate
     parser = argparse.ArgumentParser()
     parser.add_argument("--gate", type=str, default="all")
-    parser.add_argument("--loops", type=str, default=1)
     parser.add_argument("--log", type=str, default=True)
     # TODO: add more arguments that take e.g. n_steps etc for initialization
 
     args = parser.parse_args()
     gate = str(args.gate)
-    loops = int(args.loops)
     make_log = bool(args.log)
 
-    log.setLevel(logging.DEBUG)
+    log.setLevel(logging.INFO)
     log.addHandler(logging.StreamHandler())
 
     qoc = QOC(
@@ -805,4 +796,4 @@ if __name__ == "__main__":
         fig_dir="docs/figures",
         file_dir="qml_essentials",
     )
-    qoc.optimize(gate=gate, loops=loops, make_log=make_log)
+    qoc.optimize_all(gate=gate, make_log=make_log)
