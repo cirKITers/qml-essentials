@@ -712,15 +712,11 @@ class PulseInformation:
         return PulseInformation.OPTIMIZED_PULSES[gate]
 
     @staticmethod
-    def update_params(path="qml_essentials/qoc_results.csv"):
+    def update_params(path=f"{os.getcwd()}/qml_essentials/qoc_results.csv"):
         if os.path.isfile(path):
             log.info(f"Loading optimized pulses from {path}")
             with open(path, "r") as f:
                 reader = csv.reader(f)
-                # check length of file
-                if len(list(reader)) == 0:
-                    log.error(f"No parameters found in {path}")
-                    return
 
                 for row in reader:
                     log.debug(
@@ -731,6 +727,14 @@ class PulseInformation:
                     )
         else:
             log.error(f"No optimized pulses found at {path}")
+
+    @staticmethod
+    def shuffle_params(seed=1000):
+        rng = np.random.default_rng(seed)
+        for gate in PulseInformation.OPTIMIZED_PULSES:
+            PulseInformation.OPTIMIZED_PULSES[gate] = jnp.array(
+                rng.random(PulseInformation.num_params(gate))
+            )
 
 
 class PulseGates:
@@ -750,9 +754,10 @@ class PulseGates:
     Z = jnp.array([[1, 0], [0, -1]])
 
     @staticmethod
-    def S(p, t, phi_c):
+    def _S(p, t, phi_c):
         """
         Generates a shaped pulse envelope modulated by a carrier.
+        Note that this is no actual gate, that can be used in a circuit.
 
         The pulse is a Gaussian envelope multiplied by a cosine carrier, commonly
         used in implementing rotation gates (e.g., RX, RY).
@@ -849,13 +854,13 @@ class PulseGates:
             pulse_params, t = pulse_params[:idx], pulse_params[idx]
 
         def Sx(p, t):
-            return PulseGates.S(p, t, phi_c=jnp.pi) * w
+            return PulseGates._S(p, t, phi_c=jnp.pi) * w
 
         _H = PulseGates.H_static.conj().T @ PulseGates.X @ PulseGates.H_static
         _H = qml.Hermitian(_H, wires=wires)
         H_eff = Sx * _H
 
-        return qml.evolve(H_eff)([pulse_params], t)
+        qml.evolve(H_eff)([pulse_params], t)
 
     @staticmethod
     def RY(w, wires, pulse_params=None):
@@ -881,13 +886,13 @@ class PulseGates:
             pulse_params, t = pulse_params[:idx], pulse_params[idx]
 
         def Sy(p, t):
-            return PulseGates.S(p, t, phi_c=-jnp.pi / 2) * w
+            return PulseGates._S(p, t, phi_c=-jnp.pi / 2) * w
 
         _H = PulseGates.H_static.conj().T @ PulseGates.Y @ PulseGates.H_static
         _H = qml.Hermitian(_H, wires=wires)
         H_eff = Sy * _H
 
-        return qml.evolve(H_eff)([pulse_params], t)
+        qml.evolve(H_eff)([pulse_params], t)
 
     @staticmethod
     def RZ(w, wires, pulse_params=None):
@@ -920,7 +925,7 @@ class PulseGates:
 
         H_eff = Sz * _H
 
-        return qml.evolve(H_eff)([0], t)
+        qml.evolve(H_eff)([0], t)
 
     @staticmethod
     def H(wires, pulse_params=None):
@@ -953,8 +958,6 @@ class PulseGates:
 
         PulseGates.RZ(jnp.pi, wires=wires)
         PulseGates.RY(jnp.pi / 2, wires=wires, pulse_params=pulse_params)
-
-        return
 
     @staticmethod
     def CX(wires, pulse_params=None):
@@ -996,8 +999,6 @@ class PulseGates:
         PulseGates.CZ(wires=wires, pulse_params=t_CZ)
         PulseGates.H(wires=target, pulse_params=params_H_2)
 
-        return
-
     @staticmethod
     def CY(wires, pulse_params=None):
         """
@@ -1037,8 +1038,6 @@ class PulseGates:
         PulseGates.CX(wires=wires, pulse_params=params_CX)
         PulseGates.RZ(np.pi / 2, wires=target, pulse_params=params_RZ_2)
 
-        return
-
     @staticmethod
     def CZ(wires, pulse_params=None):
         """
@@ -1073,7 +1072,7 @@ class PulseGates:
         _H = qml.Hermitian(_H, wires=wires)
         H_eff = Scz * _H
 
-        return qml.evolve(H_eff)([0], t)
+        qml.evolve(H_eff)([0], t)
 
     @staticmethod
     def CRX(w, wires, pulse_params=None):
@@ -1131,8 +1130,6 @@ class PulseGates:
         PulseGates.CX(wires=wires, pulse_params=params_CX_2)
         PulseGates.RZ(-w / 2, wires=target, pulse_params=params_RZ_2)
 
-        return
-
     @staticmethod
     def CRY(w, wires, pulse_params=None):
         """
@@ -1179,8 +1176,6 @@ class PulseGates:
         PulseGates.RX(-w / 2, wires=target, pulse_params=params_RX_2)
         PulseGates.CX(wires=wires, pulse_params=params_CX_2)
 
-        return
-
     @staticmethod
     def CRZ(w, wires, pulse_params=None):
         """
@@ -1226,8 +1221,6 @@ class PulseGates:
         PulseGates.CX(wires=wires, pulse_params=params_CX_1)
         PulseGates.RZ(-w / 2, wires=target, pulse_params=params_RZ_2)
         PulseGates.CX(wires=wires, pulse_params=params_CX_2)
-
-        return
 
 
 # Meta class to avoid instantiating the Gates class
