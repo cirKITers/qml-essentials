@@ -17,11 +17,11 @@ log = logging.getLogger(__name__)
 
 class QOC:
     # TODO: move to init, once the rest of the code is refactored
-    n_steps = 100  # number of steps in optimization
+    n_steps = 300  # number of steps in optimization
     n_loops = 5
     n_samples = 8  # number of parameter samples per step
-    learning_rate = 0.001  # learning rate for adam with weight decay regularization
-    log_interval = 20  # interval for logging
+    learning_rate = 0.01  # learning rate for adam with weight decay regularization
+    log_interval = 50  # interval for logging
     skip_on_fidelity = True  # skip writing to qoc_results if fidelity is lower?
 
     # TODO: Potentially refactor all the create_*()... The only differences
@@ -313,6 +313,39 @@ class QOC:
 
         return (abs_diff + phase_diff) / 2  # loss
 
+    def multi_objective_cost_fn(
+        self, pulse_params, pulse_qnodes, target_qnodes
+    ) -> float:
+        """
+        Cost function for QOC optimization.
+
+        The cost function is calculated as the average of the fidelity and
+        phase difference between the pulse-based and unitary-based gates.
+
+        Args:
+            pulse_params (list or array): Optimized parameters to use for the pulse-based gate.
+            pulse_qnode (callable): Pulse-based gate qnode.
+            target_qnode (callable): Unitary-based gate qnode.
+
+        Returns:
+            float: Cost function value.
+        """
+
+        for pulse_qnode, target_qnode in zip(pulse_params, pulse_qnodes, target_qnodes):
+            abs_diff = 0
+            phase_diff = 0
+            for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / self.n_samples):
+                pulse_state = pulse_qnode(w, pulse_params)
+                target_state = target_qnode(w)
+                dot_prod = jnp.vdot(target_state, pulse_state)
+                abs_diff += 1 - jnp.abs(dot_prod) ** 2  # one if no diff
+                # phase_diff += jnp.abs(jnp.angle(dot_prod)) / jnp.pi  # zero if no diff
+
+            abs_diff /= self.n_samples
+            phase_diff /= self.n_samples
+
+        return (abs_diff + phase_diff) / 2  # loss
+
     def run_optimization(
         self,
         cost,
@@ -331,7 +364,7 @@ class QOC:
             tuple[jnp.ndarray, List]: Optimized parameters and list of loss values
                 at each iteration.
         """
-        optimizer = optax.adam(self.learning_rate)
+        optimizer = optax.adamw(self.learning_rate)
         opt_state = optimizer.init(params)
 
         loss = cost(params, *args).item()
@@ -399,6 +432,66 @@ class QOC:
                         self.cost_fn,
                         pulse_qnode=pulse_qnode,
                         target_qnode=target_qnode,
+                    ),
+                    params=init_pulse_params,
+                )
+
+                # Saving the optimized parameters
+                self.save_results(
+                    gate=gate_name,
+                    fidelity=1 - min(loss_history),
+                    pulse_params=pulse_params,
+                )
+
+                if self.make_plots:
+                    self.plot_rotation(pulse_params, pulse_qnode, target_qnode)
+
+                return pulse_params, loss_history
+
+            return wrapper
+
+        return decorator
+
+    def optimize_multi_objective(self, simulator, wires):
+        def decorator(create_circuits_array):
+            def wrapper(init_pulse_params: jnp.ndarray = None):
+                """
+                This function is a wrapper for the create_circuits method.
+                It takes a simulator and wires as input and optimizes the pulse parameters
+                  using the cost function defined in the QOC class.
+
+                Args:
+                    create_circuits (callable): A function to generate the pulse and
+                        target circuits for the gate.
+                    init_pulse_params (array): Initial pulse parameters to use for
+                        the pulse-based gate.
+
+                Returns:
+                    tuple: Optimized pulse parameters and list of loss values at each iteration.
+                """
+                dev = qml.device(simulator, wires=wires)
+
+                pulse_qnodes = []
+                target_qnodes = []
+                pulse_params = []
+                for create_circuits in create_circuits_array:
+                    pulse_circuit, target_circuit = create_circuits(dev)
+
+                    pulse_qnodes.append(qml.QNode(pulse_circuit, dev, interface="jax"))
+                    target_qnodes.append(
+                        qml.QNode(target_circuit, dev, interface="jax")
+                    )
+
+                    gate_name = create_circuits.__name__.split("_")[1]
+
+                    pulse_params.append(PulseInformation.optimized_params(gate_name))
+
+                # Optimizing
+                pulse_params, loss_history = self.run_optimization(
+                    partial(
+                        self.multi_objective_cost_fn,
+                        pulse_qnode=pulse_qnodes,
+                        target_qnode=target_qnodes,
                     ),
                     params=init_pulse_params,
                 )
@@ -680,11 +773,11 @@ class QOC:
                 log.info("Optimizing CX gate...")
                 optimized_pulse_params, loss_history = optimize_2q(self.create_CX)(
                     # init_pulse_params=jnp.array(
-                    #     [
-                    #         *PulseInformation.optimized_params("H"),
-                    #         *PulseInformation.optimized_params("CZ"),
-                    #         *PulseInformation.optimized_params("H"),
-                    #     ]
+                    [
+                        *PulseInformation.optimized_params("H"),
+                        *PulseInformation.optimized_params("CZ"),
+                        *PulseInformation.optimized_params("H"),
+                    ]
                     # )
                 )
                 log.info(f"Optimized parameters for CX: {optimized_pulse_params}")
@@ -717,55 +810,55 @@ class QOC:
                 log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
                 log_history["CY"] = log_history.get("CY", []) + loss_history
 
-            if gate == "CRX" or gate == "all":
-                log.info("Optimizing CRX gate...")
-                optimized_pulse_params, loss_history = optimize_2q(self.create_CRX)(
-                    # init_pulse_params=jnp.array(
-                    #     [
-                    #         *PulseInformation.optimized_params("RZ"),
-                    #         *PulseInformation.optimized_params("RY"),
-                    #         *PulseInformation.optimized_params("CX"),
-                    #         *PulseInformation.optimized_params("RY"),
-                    #         *PulseInformation.optimized_params("CX"),
-                    #         *PulseInformation.optimized_params("RZ"),
-                    #     ]
-                    # ),
-                )
-                log.info(f"Optimized parameters for CRX: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-                log_history["CRX"] = log_history.get("CRX", []) + loss_history
+            # if gate == "CRX" or gate == "all":
+            #     log.info("Optimizing CRX gate...")
+            #     optimized_pulse_params, loss_history = optimize_2q(self.create_CRX)(
+            #         # init_pulse_params=jnp.array(
+            #         #     [
+            #         #         *PulseInformation.optimized_params("RZ"),
+            #         #         *PulseInformation.optimized_params("RY"),
+            #         #         *PulseInformation.optimized_params("CX"),
+            #         #         *PulseInformation.optimized_params("RY"),
+            #         #         *PulseInformation.optimized_params("CX"),
+            #         #         *PulseInformation.optimized_params("RZ"),
+            #         #     ]
+            #         # ),
+            #     )
+            #     log.info(f"Optimized parameters for CRX: {optimized_pulse_params}")
+            #     log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+            #     log_history["CRX"] = log_history.get("CRX", []) + loss_history
 
-            if gate == "CRY" or gate == "all":
-                log.info("Optimizing CRY gate...")
-                optimized_pulse_params, loss_history = optimize_2q(self.create_CRY)(
-                    # init_pulse_params=jnp.array(
-                    #     [
-                    #         *PulseInformation.optimized_params("RY"),
-                    #         *PulseInformation.optimized_params("CX"),
-                    #         *PulseInformation.optimized_params("RX"),
-                    #         *PulseInformation.optimized_params("CX"),
-                    #     ]
-                    # ),
-                )
-                log.info(f"Optimized parameters for CRY: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-                log_history["CRY"] = log_history.get("CRY", []) + loss_history
+            # if gate == "CRY" or gate == "all":
+            #     log.info("Optimizing CRY gate...")
+            #     optimized_pulse_params, loss_history = optimize_2q(self.create_CRY)(
+            #         # init_pulse_params=jnp.array(
+            #         #     [
+            #         #         *PulseInformation.optimized_params("RY"),
+            #         #         *PulseInformation.optimized_params("CX"),
+            #         #         *PulseInformation.optimized_params("RX"),
+            #         #         *PulseInformation.optimized_params("CX"),
+            #         #     ]
+            #         # ),
+            #     )
+            #     log.info(f"Optimized parameters for CRY: {optimized_pulse_params}")
+            #     log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+            #     log_history["CRY"] = log_history.get("CRY", []) + loss_history
 
-            if gate == "CRZ" or gate == "all":
-                log.info("Optimizing CRZ gate...")
-                optimized_pulse_params, loss_history = optimize_2q(self.create_CRZ)(
-                    # init_pulse_params=jnp.array(
-                    #     [
-                    #         *PulseInformation.optimized_params("RZ"),
-                    #         *PulseInformation.optimized_params("CX"),
-                    #         *PulseInformation.optimized_params("RZ"),
-                    #         *PulseInformation.optimized_params("CX"),
-                    #     ]
-                    # )
-                )
-                log.info(f"Optimized parameters for CRZ: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-                log_history["CRZ"] = log_history.get("CRZ", []) + loss_history
+            # if gate == "CRZ" or gate == "all":
+            #     log.info("Optimizing CRZ gate...")
+            #     optimized_pulse_params, loss_history = optimize_2q(self.create_CRZ)(
+            #         # init_pulse_params=jnp.array(
+            #         #     [
+            #         #         *PulseInformation.optimized_params("RZ"),
+            #         #         *PulseInformation.optimized_params("CX"),
+            #         #         *PulseInformation.optimized_params("RZ"),
+            #         #         *PulseInformation.optimized_params("CX"),
+            #         #     ]
+            #         # )
+            #     )
+            #     log.info(f"Optimized parameters for CRZ: {optimized_pulse_params}")
+            #     log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+            #     log_history["CRZ"] = log_history.get("CRZ", []) + loss_history
 
             if make_log:
                 # write log history to file
@@ -777,6 +870,9 @@ class QOC:
 
 
 if __name__ == "__main__":
+    PulseInformation.CX.params
+    pass
+
     # argparse the selected gate
     parser = argparse.ArgumentParser()
     parser.add_argument("--gate", type=str, default="all")

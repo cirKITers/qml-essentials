@@ -9,6 +9,7 @@ import jax
 from jax import numpy as jnp
 import itertools
 from contextlib import contextmanager
+from dataclasses import dataclass
 import logging
 
 jax.config.update("jax_enable_x64", True)
@@ -569,27 +570,82 @@ class UnitaryGates:
         UnitaryGates.Noise(wires, noise_params)
 
 
+class PulseParams:
+    def __init__(self, params: jnp.ndarray = None, pulse_obj: List = None):
+        assert (params is None and pulse_obj is not None) or (
+            params is not None and pulse_obj is None
+        ), "Exactly one of `params` or `pulse_params` must be provided."
+
+        self.pulse_obj = pulse_obj
+        if params is not None:
+            self._params = params
+
+    def __len__(self):
+        return len(self.params)
+
+    @property
+    def size(self):
+        return len(self.params)
+
+    @property
+    def shape(self):
+        if self.pulse_obj is None:
+            return len(self.params)
+        else:
+            shape = []
+            for obj in self.pulse_obj:
+                shape.append(obj.shape())
+
+            return shape
+
+    @property
+    def params(self):
+        if self.pulse_obj is None:
+            return self._params
+        else:
+            params = []
+            for obj in self.pulse_obj:
+                params.append(obj.params)
+
+            return jnp.concatenate(params)
+
+    @params.setter
+    def params(self, value):
+
+        if self.pulse_obj is None:
+            assert isinstance(value, jnp.ndarray), "params must be a jnp.ndarray"
+            self._params = value
+        else:
+            idx = 0
+            for obj in self.pulse_obj:
+                nidx = idx + len(obj)
+                obj.params = value[idx:nidx]
+                idx = nidx
+
+
 class PulseInformation:
     """
     Stores pulse parameter counts and optimized pulse parameters for quantum gates.
     """
 
-    # TODO: consider merging this information with the arrays further down
-    PULSE_PARAM_COUNTS: Dict[str, int] = {"RX": 3, "RY": 3, "RZ": 1, "CZ": 1, "H": 3}
-    PULSE_PARAM_COUNTS["Rot"] = 2 * PULSE_PARAM_COUNTS["RZ"] + PULSE_PARAM_COUNTS["RY"]
-    PULSE_PARAM_COUNTS["CX"] = 2 * PULSE_PARAM_COUNTS["H"] + PULSE_PARAM_COUNTS["CZ"]
-    PULSE_PARAM_COUNTS["CY"] = 2 * PULSE_PARAM_COUNTS["RZ"] + PULSE_PARAM_COUNTS["CX"]
-    PULSE_PARAM_COUNTS["CRZ"] = (
-        2 * PULSE_PARAM_COUNTS["RZ"] + 2 * PULSE_PARAM_COUNTS["CX"]
+    RX = PulseParams(
+        params=jnp.array([15.70989327341467, 29.5230665326707, 0.7499810441330634])
     )
-    PULSE_PARAM_COUNTS["CRY"] = (
-        2 * PULSE_PARAM_COUNTS["RY"] + 2 * PULSE_PARAM_COUNTS["CX"]
+    RY = PulseParams(
+        params=jnp.array([7.8787724942614235, 22.001319411513432, 1.098524473819202])
     )
-    PULSE_PARAM_COUNTS["CRX"] = (
-        2 * PULSE_PARAM_COUNTS["RZ"]
-        + 2 * PULSE_PARAM_COUNTS["RY"]
-        + 2 * PULSE_PARAM_COUNTS["CX"]
+    RZ = PulseParams(params=jnp.array([0.5]))
+    H = PulseParams(
+        params=jnp.array([7.857992398977854, 21.572701026008765, 0.9000668764548863])
     )
+    CZ = PulseParams(params=jnp.array([0.962596375687258]))
+
+    CX = PulseParams(pulse_obj=[H, CZ, H])
+    CY = PulseParams(pulse_obj=[RZ, CX, RZ])
+
+    CRX = PulseParams(pulse_obj=[RZ, RY, CX, RY, CX, RZ])
+    CRY = PulseParams(pulse_obj=[RY, CX, RX, CX])
+    CRZ = PulseParams(pulse_obj=[RZ, CX, RZ, CX])
 
     OPTIMIZED_PULSES: Dict[str, Optional[jnp.ndarray]] = {
         # TODO: Rot currently not part of qoc optimization
@@ -700,16 +756,15 @@ class PulseInformation:
     @staticmethod
     def num_params(gate: str) -> int:
         """Return the number of pulse parameters for a given gate."""
-        if gate not in PulseInformation.PULSE_PARAM_COUNTS:
-            raise ValueError(f"Unknown gate '{gate}'")
-        return PulseInformation.PULSE_PARAM_COUNTS[gate]
+        return len(getattr(PulseInformation, gate))
 
     @staticmethod
     def optimized_params(gate: str) -> Optional[jnp.ndarray]:
         """Return the optimized pulse parameters for a given gate."""
         if gate not in PulseInformation.OPTIMIZED_PULSES:
             raise ValueError(f"Unknown gate '{gate}'")
-        return PulseInformation.OPTIMIZED_PULSES[gate]
+
+        return getattr(PulseInformation, gate).params
 
     @staticmethod
     def update_params(path=f"{os.getcwd()}/qml_essentials/qoc_results.csv"):
@@ -940,10 +995,16 @@ class PulseGates:
             Pulse parameters for the composing gates. Defaults
             to optimized parameters and time.
         """
+        n_RZ = PulseInformation.num_params("RZ")
+        n_RY = PulseInformation.num_params("RY")
+
         if pulse_params is None:
-            pulse_params = PulseInformation.optimized_params("H")
+            opt = PulseInformation.optimized_params("H")
+            pulse_params_RZ = opt[:n_RZ]
+            pulse_params_RY = opt[n_RZ : n_RZ + n_RY]
         else:
-            pulse_params = pulse_params
+            pulse_params_RZ = pulse_params[:n_RZ]
+            pulse_params_RY = pulse_params[n_RZ : n_RZ + n_RY]
 
         # qml.GlobalPhase(-jnp.pi / 2)  # this could act as substitute to Sc
         # TODO: Explain why p, t not in signal
@@ -956,8 +1017,8 @@ class PulseGates:
 
         qml.evolve(H_corr)([0], 1)
 
-        PulseGates.RZ(jnp.pi, wires=wires)
-        PulseGates.RY(jnp.pi / 2, wires=wires, pulse_params=pulse_params)
+        PulseGates.RZ(jnp.pi, wires=wires, pulse_params=pulse_params_RZ)
+        PulseGates.RY(jnp.pi / 2, wires=wires, pulse_params=pulse_params_RY)
 
     @staticmethod
     def CX(wires, pulse_params=None):
