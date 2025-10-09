@@ -17,8 +17,8 @@ log = logging.getLogger(__name__)
 
 class QOC:
     # TODO: move to init, once the rest of the code is refactored
-    n_steps = 300  # number of steps in optimization
-    n_loops = 5
+    n_steps = 1000  # number of steps in optimization
+    n_loops = 1
     n_samples = 8  # number of parameter samples per step
     learning_rate = 0.01  # learning rate for adam with weight decay regularization
     log_interval = 50  # interval for logging
@@ -421,7 +421,7 @@ class QOC:
                     log.warning(
                         f"Using initial pulse parameters for {gate_name} from `ansaetze.py`"
                     )
-                    init_pulse_params = PulseInformation.optimized_params(gate_name)
+                    init_pulse_params = PulseInformation.gate_by_name(gate_name).params
                 log.debug(
                     f"Initial pulse parameters for {gate_name}: {init_pulse_params}"
                 )
@@ -617,10 +617,12 @@ class QOC:
 
     def create_H(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
+            qml.RY(w, wires=0)
             Gates.H(0, pulse_params=pulse_params, gate_mode="pulse")
             return qml.state()
 
         def target_circuit(w):
+            qml.RY(w, wires=0)
             qml.H(wires=0)
             return qml.state()
 
@@ -716,12 +718,10 @@ class QOC:
         log_history = {}
         optimize_1q = self.optimize("default.qubit", wires=2)
         optimize_2q = self.optimize("default.qubit", wires=2)
-
-        PulseInformation.shuffle_params(seed=1000)
-
+        # PulseInformation.shuffle_params(seed=1000)
         for loop in range(self.n_loops):
             log.info(f"Reading back optimized pulse parameters")
-            PulseInformation.update_params()
+            # PulseInformation.update_params()
 
             log.info(f"Optimization loop {loop+1} of {self.n_loops}")
 
@@ -773,11 +773,11 @@ class QOC:
                 log.info("Optimizing CX gate...")
                 optimized_pulse_params, loss_history = optimize_2q(self.create_CX)(
                     # init_pulse_params=jnp.array(
-                    [
-                        *PulseInformation.optimized_params("H"),
-                        *PulseInformation.optimized_params("CZ"),
-                        *PulseInformation.optimized_params("H"),
-                    ]
+                    # [
+                    #     *PulseInformation.optimized_params("H"),
+                    #     *PulseInformation.optimized_params("CZ"),
+                    #     *PulseInformation.optimized_params("H"),
+                    # ]
                     # )
                 )
                 log.info(f"Optimized parameters for CX: {optimized_pulse_params}")
@@ -870,9 +870,6 @@ class QOC:
 
 
 if __name__ == "__main__":
-    PulseInformation.CX.params
-    pass
-
     # argparse the selected gate
     parser = argparse.ArgumentParser()
     parser.add_argument("--gate", type=str, default="all")

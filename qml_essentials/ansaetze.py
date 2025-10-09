@@ -571,56 +571,180 @@ class UnitaryGates:
 
 
 class PulseParams:
-    def __init__(self, params: jnp.ndarray = None, pulse_obj: List = None):
+    def __init__(
+        self, name: str = "", params: jnp.ndarray = None, pulse_obj: List = None
+    ):
         assert (params is None and pulse_obj is not None) or (
             params is not None and pulse_obj is None
         ), "Exactly one of `params` or `pulse_params` must be provided."
 
-        self.pulse_obj = pulse_obj
+        self._pulse_obj = pulse_obj
         if params is not None:
             self._params = params
 
+        self.name = name
+
     def __len__(self):
+        """
+        Returns the number of pulse parameters.
+        Note that if this gate consists of childs, the number of parameters
+        represents the accumulated number of parameters of the childs.
+
+        Returns
+        -------
+        int
+            The number of pulse parameters.
+        """
         return len(self.params)
+
+    def __getitem__(self, idx):
+        """
+        Returns the pulse parameter at index `idx`.
+        If this gate consists of childs, the parameters of the child
+        at index `idx` are returned.
+
+        Parameters
+        ----------
+        idx : int
+            The index of the pulse parameter to return.
+
+        Returns
+        -------
+        float
+            The pulse parameter at index `idx`.
+        """
+        if self._pulse_obj is None:
+            return self.params[idx]
+        else:
+            return self.childs[idx].params
+
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return self.name
 
     @property
     def size(self):
-        return len(self.params)
+        return len(self)
+
+    @property
+    def childs(self):
+        """
+        A list of PulseParams objects, which are the children of this PulseParams object.
+        If this object has no children, an empty list is returned.
+
+        Returns
+        -------
+        list
+            A list of PulseParams objects, which are the children of this PulseParams object.
+        """
+        if self._pulse_obj is None:
+            return []
+        else:
+            return [obj for obj in self._pulse_obj]
 
     @property
     def shape(self):
-        if self.pulse_obj is None:
-            return len(self.params)
+        """
+        The shape of the pulse parameters.
+
+        If the PulseParams object has no children (i.e. self._pulse_obj is None),
+        the shape is a list containing the number of pulse parameters.
+
+        If the PulseParams object has children, the shape is a list containing
+        the shapes of the children.
+
+        Returns
+        -------
+        list
+            The shape of the pulse parameters.
+        """
+        if self._pulse_obj is None:
+            return [len(self.params)]
         else:
             shape = []
-            for obj in self.pulse_obj:
-                shape.append(obj.shape())
+            for obj in self._pulse_obj:
+                shape.append(*obj.shape())
 
             return shape
 
     @property
     def params(self):
-        if self.pulse_obj is None:
+        """
+        The pulse parameters.
+
+        If the PulseParams object has no children (i.e. self._pulse_obj is None),
+        returns the internal pulse parameters.
+
+        If the PulseParams object has children, returns the concatenated pulse
+        parameters of the children.
+
+        Returns
+        -------
+        jnp.ndarray
+            The pulse parameters.
+        """
+        if self._pulse_obj is None:
             return self._params
         else:
-            params = []
-            for obj in self.pulse_obj:
-                params.append(obj.params)
+            params = self.split_params(None)
 
             return jnp.concatenate(params)
 
     @params.setter
     def params(self, value):
+        """
+        Sets the pulse parameters.
 
-        if self.pulse_obj is None:
+        If the PulseParams object has no children (i.e. self._pulse_obj is None),
+        sets the internal pulse parameters.
+
+        If the PulseParams object has children, sets the concatenated pulse
+        parameters of the children.
+
+        Parameters
+        ----------
+        value : jnp.ndarray
+            The pulse parameters to set.
+
+        Raises
+        -------
+        AssertionError
+            If the PulseParams object has no children and `value` is not a jnp.ndarray.
+        """
+        if self._pulse_obj is None:
             assert isinstance(value, jnp.ndarray), "params must be a jnp.ndarray"
             self._params = value
         else:
             idx = 0
-            for obj in self.pulse_obj:
-                nidx = idx + len(obj)
+            for obj in self._pulse_obj:
+                nidx = idx + obj.size
                 obj.params = value[idx:nidx]
                 idx = nidx
+
+    def split_params(self, params=None):
+        if params is None:
+            if self._pulse_obj is None:
+                return self._params
+
+            s_params = []
+            for obj in self._pulse_obj:
+                s_params.append(obj.params)
+
+            return s_params
+        else:
+            if self._pulse_obj is None:
+                return params
+
+            s_params = []
+            idx = 0
+            for obj in self._pulse_obj:
+                nidx = idx + obj.size
+                s_params.append(params[idx:nidx])
+                idx = nidx
+
+            return s_params
 
 
 class PulseInformation:
@@ -629,142 +753,31 @@ class PulseInformation:
     """
 
     RX = PulseParams(
-        params=jnp.array([15.70989327341467, 29.5230665326707, 0.7499810441330634])
+        name="RX",
+        params=jnp.array([15.819737542008044, 29.625473698370005, 0.7537647301963334]),
     )
     RY = PulseParams(
-        params=jnp.array([7.8787724942614235, 22.001319411513432, 1.098524473819202])
+        name="RY",
+        params=jnp.array([7.92890086975313, 22.047511685238867, 1.0940657844573196]),
     )
-    RZ = PulseParams(params=jnp.array([0.5]))
+    RZ = PulseParams(name="RZ", params=jnp.array([0.4999999717277156]))
+    CZ = PulseParams(name="CZ", params=jnp.array([0.3183098451853288]))
     H = PulseParams(
-        params=jnp.array([7.857992398977854, 21.572701026008765, 0.9000668764548863])
+        name="H",
+        pulse_obj=[RZ, RY],
     )
-    CZ = PulseParams(params=jnp.array([0.962596375687258]))
 
-    CX = PulseParams(pulse_obj=[H, CZ, H])
-    CY = PulseParams(pulse_obj=[RZ, CX, RZ])
+    Rot = PulseParams(name="Rot", pulse_obj=[RZ, RY, RZ])
+    CX = PulseParams(name="CX", pulse_obj=[H, CZ, H])
+    CY = PulseParams(name="CY", pulse_obj=[RZ, CX, RZ])
 
-    CRX = PulseParams(pulse_obj=[RZ, RY, CX, RY, CX, RZ])
-    CRY = PulseParams(pulse_obj=[RY, CX, RX, CX])
-    CRZ = PulseParams(pulse_obj=[RZ, CX, RZ, CX])
-
-    OPTIMIZED_PULSES: Dict[str, Optional[jnp.ndarray]] = {
-        # TODO: Rot currently not part of qoc optimization
-        "Rot": jnp.array(
-            [0.5, 7.857992399021039, 21.57270102638842, 0.9000668764608991, 0.5]
-        ),
-        "RX": jnp.array([15.70989327341467, 29.5230665326707, 0.7499810441330634]),
-        "RY": jnp.array([7.8787724942614235, 22.001319411513432, 1.098524473819202]),
-        "RZ": jnp.array([0.5]),
-        "H": jnp.array([7.857992398977854, 21.572701026008765, 0.9000668764548863]),
-        "CX": jnp.array(
-            [
-                7.857992398977854,
-                21.572701026008765,
-                0.9000668764548863,
-                0.962596375687258,
-                7.857992398977854,
-                21.572701026008765,
-                0.9000668764548863,
-            ]
-        ),
-        "CY": jnp.array(
-            [
-                0.5,
-                7.9383644137616685,
-                21.613475842363485,
-                0.8934663667193982,
-                0.9548140698167071,
-                7.928991040342135,
-                21.5740333927747,
-                0.8938161835920216,
-                0.5,
-            ]
-        ),
-        "CZ": jnp.array([0.962596375687258]),
-        "CRX": jnp.array(
-            [
-                0.5,
-                7.8787724942614235,
-                22.001319411513432,
-                1.098524473819202,
-                7.951920934692106,
-                21.655479574101687,
-                0.8929524493211076,
-                0.9548359253748596,
-                7.94488020182026,
-                21.61729834699293,
-                0.9067943033364354,
-                7.8787724942614235,
-                22.001319411513432,
-                1.098524473819202,
-                7.951920934692106,
-                21.655479574101687,
-                0.8929524493211076,
-                0.9548359253748596,
-                7.94488020182026,
-                21.61729834699293,
-                0.9067943033364354,
-                0.5,
-            ]
-        ),
-        "CRY": jnp.array(
-            [
-                7.8787724942614235,
-                22.001319411513432,
-                1.098524473819202,
-                7.951920934692106,
-                21.655479574101687,
-                0.8929524493211076,
-                0.9548359253748596,
-                7.94488020182026,
-                21.61729834699293,
-                0.9067943033364354,
-                15.70989327341467,
-                29.5230665326707,
-                0.7499810441330634,
-                7.951920934692106,
-                21.655479574101687,
-                0.8929524493211076,
-                0.9548359253748596,
-                7.94488020182026,
-                21.61729834699293,
-                0.9067943033364354,
-            ]
-        ),
-        "CRZ": jnp.array(
-            [
-                0.5,
-                7.9383644137616685,
-                21.613475842363485,
-                0.8934663667193982,
-                0.9548140698167071,
-                7.928991040342135,
-                21.5740333927747,
-                0.8938161835920216,
-                0.5,
-                7.9383644137616685,
-                21.613475842363485,
-                0.8934663667193982,
-                0.9548140698167071,
-                7.928991040342135,
-                21.5740333927747,
-                0.8938161835920216,
-            ]
-        ),
-    }
+    CRX = PulseParams(name="CRX", pulse_obj=[RZ, RY, CX, RY, CX, RZ])
+    CRY = PulseParams(name="CRY", pulse_obj=[RY, CX, RX, CX])
+    CRZ = PulseParams(name="CRZ", pulse_obj=[RZ, CX, RZ, CX])
 
     @staticmethod
-    def num_params(gate: str) -> int:
-        """Return the number of pulse parameters for a given gate."""
-        return len(getattr(PulseInformation, gate))
-
-    @staticmethod
-    def optimized_params(gate: str) -> Optional[jnp.ndarray]:
-        """Return the optimized pulse parameters for a given gate."""
-        if gate not in PulseInformation.OPTIMIZED_PULSES:
-            raise ValueError(f"Unknown gate '{gate}'")
-
-        return getattr(PulseInformation, gate).params
+    def gate_by_name(gate_name):
+        return getattr(PulseInformation, gate_name)
 
     @staticmethod
     def update_params(path=f"{os.getcwd()}/qml_essentials/qoc_results.csv"):
@@ -786,10 +799,18 @@ class PulseInformation:
     @staticmethod
     def shuffle_params(seed=1000):
         rng = np.random.default_rng(seed)
-        for gate in PulseInformation.OPTIMIZED_PULSES:
-            PulseInformation.OPTIMIZED_PULSES[gate] = jnp.array(
-                rng.random(PulseInformation.num_params(gate))
-            )
+        unique_gate_set = [
+            PulseInformation.RX,
+            PulseInformation.RY,
+            PulseInformation.RZ,
+            PulseInformation.CZ,
+        ]
+
+        log.info(
+            f"Shuffling optimized pulses with seed {seed} of gates {unique_gate_set}"
+        )
+        for gate in unique_gate_set:
+            gate.params = jnp.array(rng.random(len(gate)))
 
 
 class PulseGates:
@@ -803,7 +824,7 @@ class PulseGates:
         [[jnp.exp(1j * omega_q / 2), 0], [0, jnp.exp(-1j * omega_q / 2)]]
     )
 
-    Id = jnp.eye(2, dtype=jnp.complex64)
+    I = jnp.eye(2, dtype=jnp.complex64)
     X = jnp.array([[0, 1], [1, 0]])
     Y = jnp.array([[0, -1j], [1j, 0]])
     Z = jnp.array([[1, 0], [0, -1]])
@@ -864,22 +885,9 @@ class PulseGates:
             Pulse parameters for the composing gates. Defaults
             to optimized parameters if None.
         """
-        n_RZ = PulseInformation.num_params("RZ")
-        n_RY = PulseInformation.num_params("RY")
-
-        idx1 = n_RZ
-        idx2 = idx1 + n_RY
-        idx3 = idx2 + n_RZ
-
-        if pulse_params is None:
-            opt = PulseInformation.optimized_params("Rot")
-            params_RZ_1 = opt[:idx1]
-            params_RY = opt[idx1:idx2]
-            params_RZ_2 = opt[idx2:idx3]
-        else:
-            params_RZ_1 = pulse_params[:idx1]
-            params_RY = pulse_params[idx1:idx2]
-            params_RZ_2 = pulse_params[idx2:idx3]
+        params_RZ_1, params_RY, params_RZ_2 = PulseInformation.Rot.split_params(
+            pulse_params
+        )
 
         PulseGates.RZ(phi, wires=wires, pulse_params=params_RZ_1)
         PulseGates.RY(theta, wires=wires, pulse_params=params_RY)
@@ -900,13 +908,7 @@ class PulseGates:
             Array containing pulse parameters `A`, `sigma` and time `t` for the
             Gaussian envelope. Defaults to optimized parameters and time.
         """
-        n_RX = PulseInformation.num_params("RX")
-        idx = n_RX - 1
-        if pulse_params is None:
-            opt = PulseInformation.optimized_params("RX")
-            pulse_params, t = opt[:idx], opt[idx]
-        else:
-            pulse_params, t = pulse_params[:idx], pulse_params[idx]
+        pulse_params = PulseInformation.RX.split_params(pulse_params)
 
         def Sx(p, t):
             return PulseGates._S(p, t, phi_c=jnp.pi) * w
@@ -915,7 +917,7 @@ class PulseGates:
         _H = qml.Hermitian(_H, wires=wires)
         H_eff = Sx * _H
 
-        qml.evolve(H_eff)([pulse_params], t)
+        qml.evolve(H_eff)([pulse_params[0:2]], pulse_params[2])
 
     @staticmethod
     def RY(w, wires, pulse_params=None):
@@ -932,13 +934,7 @@ class PulseGates:
             Array containing pulse parameters `A`, `sigma` and time `t` for the
             Gaussian envelope. Defaults to optimized parameters and time.
         """
-        n_RY = PulseInformation.num_params("RY")
-        idx = n_RY - 1
-        if pulse_params is None:
-            opt = PulseInformation.optimized_params("RY")
-            pulse_params, t = opt[:idx], opt[idx]
-        else:
-            pulse_params, t = pulse_params[:idx], pulse_params[idx]
+        pulse_params = PulseInformation.RY.split_params(pulse_params)
 
         def Sy(p, t):
             return PulseGates._S(p, t, phi_c=-jnp.pi / 2) * w
@@ -947,7 +943,7 @@ class PulseGates:
         _H = qml.Hermitian(_H, wires=wires)
         H_eff = Sy * _H
 
-        qml.evolve(H_eff)([pulse_params], t)
+        qml.evolve(H_eff)([pulse_params[0:2]], pulse_params[2])
 
     @staticmethod
     def RZ(w, wires, pulse_params=None):
@@ -964,23 +960,17 @@ class PulseGates:
             Duration of the pulse. Rotation angle = w * 2 * t.
             Defaults to 0.5 if None.
         """
-        idx = PulseInformation.num_params("RZ") - 1
-        if pulse_params is None:
-            t = PulseInformation.optimized_params("RZ")[idx]
-        elif isinstance(pulse_params, (float, int)):
-            t = pulse_params
-        else:
-            t = pulse_params[idx]
+        pulse_params = PulseInformation.RZ.split_params(pulse_params)
 
         _H = qml.Hermitian(PulseGates.Z, wires=wires)
 
         # TODO: Put comment why p, t has no effect here
         def Sz(p, t):
-            return w
+            return pulse_params * w
 
         H_eff = Sz * _H
 
-        qml.evolve(H_eff)([0], t)
+        qml.evolve(H_eff)([pulse_params], 1)
 
     @staticmethod
     def H(wires, pulse_params=None):
@@ -995,16 +985,7 @@ class PulseGates:
             Pulse parameters for the composing gates. Defaults
             to optimized parameters and time.
         """
-        n_RZ = PulseInformation.num_params("RZ")
-        n_RY = PulseInformation.num_params("RY")
-
-        if pulse_params is None:
-            opt = PulseInformation.optimized_params("H")
-            pulse_params_RZ = opt[:n_RZ]
-            pulse_params_RY = opt[n_RZ : n_RZ + n_RY]
-        else:
-            pulse_params_RZ = pulse_params[:n_RZ]
-            pulse_params_RY = pulse_params[n_RZ : n_RZ + n_RY]
+        pulse_params_RZ, pulse_params_RY = PulseInformation.H.split_params(pulse_params)
 
         # qml.GlobalPhase(-jnp.pi / 2)  # this could act as substitute to Sc
         # TODO: Explain why p, t not in signal
@@ -1036,28 +1017,14 @@ class PulseGates:
             Pulse parameters for the composing gates. Defaults
             to optimized parameters if None.
         """
-        n_H = PulseInformation.num_params("H")
-        n_CZ = PulseInformation.num_params("CZ")
-
-        idx1 = n_H
-        idx2 = idx1 + n_CZ
-        idx3 = idx2 + n_H
-
-        if pulse_params is None:
-            opt = PulseInformation.optimized_params("CX")
-            params_H_1 = opt[:idx1]
-            t_CZ = opt[idx1:idx2]
-            params_H_2 = opt[idx2:idx3]
-
-        else:
-            params_H_1 = pulse_params[:idx1]
-            t_CZ = pulse_params[idx1:idx2]
-            params_H_2 = pulse_params[idx2:idx3]
+        params_H_1, params_CZ, params_H_2 = PulseInformation.CX.split_params(
+            pulse_params
+        )
 
         target = wires[1]
 
         PulseGates.H(wires=target, pulse_params=params_H_1)
-        PulseGates.CZ(wires=wires, pulse_params=t_CZ)
+        PulseGates.CZ(wires=wires, pulse_params=params_CZ)
         PulseGates.H(wires=target, pulse_params=params_H_2)
 
     @staticmethod
@@ -1076,22 +1043,9 @@ class PulseGates:
             Pulse parameters for the composing gates. Defaults
             to optimized parameters if None.
         """
-        n_RZ = PulseInformation.num_params("RZ")
-        n_CX = PulseInformation.num_params("CX")
-
-        idx1 = n_RZ
-        idx2 = idx1 + n_CX
-        idx3 = idx2 + n_RZ
-
-        if pulse_params is None:
-            opt = PulseInformation.optimized_params("CY")
-            params_RZ_1 = opt[:idx1]
-            params_CX = opt[idx1:idx2]
-            params_RZ_2 = opt[idx2:idx3]
-        else:
-            params_RZ_1 = pulse_params[:idx1]
-            params_CX = pulse_params[idx1:idx2]
-            params_RZ_2 = pulse_params[idx2:idx3]
+        params_RZ_1, params_CX, params_RZ_2 = PulseInformation.CY.split_params(
+            pulse_params
+        )
 
         target = wires[1]
 
@@ -1112,28 +1066,29 @@ class PulseGates:
             Time or time interval for the evolution.
             Defaults to optimized time if None.
         """
-        idx = PulseInformation.num_params("CZ") - 1
         if pulse_params is None:
-            t = PulseInformation.optimized_params("CZ")[idx]
-        elif isinstance(pulse_params, (float, int)):
-            t = pulse_params
+            pulse_params = PulseInformation.CZ.params
         else:
-            t = pulse_params[idx]
+            pulse_params = pulse_params
 
-        I_I = jnp.kron(PulseGates.Id, PulseGates.Id)
-        Z_I = jnp.kron(PulseGates.Z, PulseGates.Id)
-        I_Z = jnp.kron(PulseGates.Id, PulseGates.Z)
+        I_I = jnp.kron(PulseGates.I, PulseGates.I)
+        Z_I = jnp.kron(PulseGates.Z, PulseGates.I)
+        I_Z = jnp.kron(PulseGates.I, PulseGates.Z)
         Z_Z = jnp.kron(PulseGates.Z, PulseGates.Z)
 
         # TODO: explain why p, t not in signal
         def Scz(p, t):
-            return jnp.pi
+            return p * jnp.pi
 
+        # a = jnp.array(
+        #     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, jnp.pi, 0], [0, 0, 0, jnp.pi]]
+        # )
+        # _H = (jnp.pi / 4) * a
         _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
         _H = qml.Hermitian(_H, wires=wires)
         H_eff = Scz * _H
 
-        qml.evolve(H_eff)([0], t)
+        qml.evolve(H_eff)([pulse_params], 1)
 
     @staticmethod
     def CRX(w, wires, pulse_params=None):
@@ -1154,33 +1109,9 @@ class PulseGates:
             Pulse parameters for the composing gates. Defaults
             to optimized parameters if None.
         """
-        n_RZ = PulseInformation.num_params("RZ")
-        n_RY = PulseInformation.num_params("RY")
-        n_CX = PulseInformation.num_params("CX")
-
-        idx1 = n_RZ
-        idx2 = idx1 + n_RY
-        idx3 = idx2 + n_CX
-        idx4 = idx3 + n_RY
-        idx5 = idx4 + n_CX
-        idx6 = idx5 + n_RZ
-
-        if pulse_params is None:
-            opt = PulseInformation.optimized_params("CRX")
-            params_RZ_1 = opt[:idx1]
-            params_RY = opt[idx1:idx2]
-            params_CX_1 = opt[idx2:idx3]
-            params_RY_2 = opt[idx3:idx4]
-            params_CX_2 = opt[idx4:idx5]
-            params_RZ_2 = opt[idx5:idx6]
-
-        else:
-            params_RZ_1 = pulse_params[:idx1]
-            params_RY = pulse_params[idx1:idx2]
-            params_CX_1 = pulse_params[idx2:idx3]
-            params_RY_2 = pulse_params[idx3:idx4]
-            params_CX_2 = pulse_params[idx4:idx5]
-            params_RZ_2 = pulse_params[idx5:idx6]
+        params_RZ_1, params_RY, params_CX_1, params_RY_2, params_CX_2, params_RZ_2 = (
+            PulseInformation.CRX.split_params(pulse_params)
+        )
 
         target = wires[1]
 
@@ -1210,25 +1141,9 @@ class PulseGates:
             Pulse parameters for the composing gates. Defaults
             to optimized parameters if None.
         """
-        n_RY = PulseInformation.num_params("RY")
-        n_CX = PulseInformation.num_params("CX")
-
-        idx1 = n_RY
-        idx2 = idx1 + n_CX
-        idx3 = idx2 + n_RY
-        idx4 = idx3 + n_CX
-
-        if pulse_params is None:
-            opt = PulseInformation.optimized_params("CRY")
-            params_RX_1 = opt[:idx1]
-            params_CX_1 = opt[idx1:idx2]
-            params_RX_2 = opt[idx2:idx3]
-            params_CX_2 = opt[idx3:]
-        else:
-            params_RX_1 = pulse_params[:idx1]
-            params_CX_1 = pulse_params[idx1:idx2]
-            params_RX_2 = pulse_params[idx2:idx3]
-            params_CX_2 = pulse_params[idx3:idx4]
+        params_RX_1, params_CX_1, params_RX_2, params_CX_2 = (
+            PulseInformation.CRY.split_params(pulse_params)
+        )
 
         target = wires[1]
 
@@ -1256,25 +1171,9 @@ class PulseGates:
             Pulse parameters for the composing gates. Defaults
             to optimized parameters if None.
         """
-        n_RZ = PulseInformation.num_params("RZ")
-        n_CX = PulseInformation.num_params("CX")
-
-        idx1 = n_RZ
-        idx2 = idx1 + n_CX
-        idx3 = idx2 + n_RZ
-        idx4 = idx3 + n_CX
-
-        if pulse_params is None:
-            opt = PulseInformation.optimized_params("CRZ")
-            params_RZ_1 = opt[:idx1]
-            params_CX_1 = opt[idx1:idx2]
-            params_RZ_2 = opt[idx2:idx3]
-            params_CX_2 = opt[idx3:idx4]
-        else:
-            params_RZ_1 = pulse_params[:idx1]
-            params_CX_1 = pulse_params[idx1:idx2]
-            params_RZ_2 = pulse_params[idx2:idx3]
-            params_CX_2 = pulse_params[idx3:idx4]
+        params_RZ_1, params_CX_1, params_RZ_2, params_CX_2 = (
+            PulseInformation.CRZ.split_params(pulse_params)
+        )
 
         target = wires[1]
 
@@ -1372,7 +1271,7 @@ class Gates(metaclass=GatesMeta):
 
         # Len check on pulse parameters
         if pulse_params is not None and not isinstance(pulse_mgr, PulseParamManager):
-            n_params = PulseInformation.num_params(gate_name)
+            n_params = PulseInformation.gate_by_name(gate_name).size
             if len(flat_params) != n_params:
                 raise ValueError(
                     f"Gate '{gate_name}' expects {n_params} pulse parameters, "
@@ -1381,9 +1280,9 @@ class Gates(metaclass=GatesMeta):
 
         # Pulse slicing + scaling
         if gate_mode == "pulse" and isinstance(pulse_mgr, PulseParamManager):
-            n_params = PulseInformation.num_params(gate_name)
+            n_params = PulseInformation.gate_by_name(gate_name).size
             scalers = pulse_mgr.get(n_params)
-            base = PulseInformation.optimized_params(gate_name)
+            base = PulseInformation.gate_by_name(gate_name).params
             kwargs["pulse_params"] = scalers * base  # element-wise scaling
 
         # Call the selected gate backend
