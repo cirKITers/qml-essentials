@@ -306,7 +306,7 @@ class QOC:
             target_state = target_qnode(w)
             dot_prod = jnp.vdot(target_state, pulse_state)
             abs_diff += 1 - jnp.abs(dot_prod) ** 2  # one if no diff
-            # phase_diff += jnp.abs(jnp.angle(dot_prod)) / jnp.pi  # zero if no diff
+            phase_diff += jnp.abs(jnp.angle(dot_prod)) / jnp.pi  # zero if no diff
 
         abs_diff /= self.n_samples
         phase_diff /= self.n_samples
@@ -314,7 +314,7 @@ class QOC:
         return (abs_diff + phase_diff) / 2  # loss
 
     def multi_objective_cost_fn(
-        self, pulse_params, pulse_qnodes, target_qnodes
+        self, pulse_params, pulse_qnodes, target_qnodes, leafs
     ) -> float:
         """
         Cost function for QOC optimization.
@@ -330,12 +330,17 @@ class QOC:
         Returns:
             float: Cost function value.
         """
+        idx = 0
+        for leaf in leafs:
+            nidx = idx + leaf.size
+            leaf.params = pulse_params[idx:nidx]
+            idx = nidx
 
-        for pulse_qnode, target_qnode in zip(pulse_params, pulse_qnodes, target_qnodes):
-            abs_diff = 0
-            phase_diff = 0
+        abs_diff = 0
+        phase_diff = 0
+        for pulse_qnode, target_qnode in zip(pulse_qnodes, target_qnodes):
             for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / self.n_samples):
-                pulse_state = pulse_qnode(w, pulse_params)
+                pulse_state = pulse_qnode(w, None)
                 target_state = target_qnode(w)
                 dot_prod = jnp.vdot(target_state, pulse_state)
                 abs_diff += 1 - jnp.abs(dot_prod) ** 2  # one if no diff
@@ -344,7 +349,8 @@ class QOC:
             abs_diff /= self.n_samples
             phase_diff /= self.n_samples
 
-        return (abs_diff + phase_diff) / 2  # loss
+        n_nodes = len(pulse_qnodes)
+        return ((abs_diff + phase_diff) / 2) / n_nodes  # loss
 
     def run_optimization(
         self,
@@ -421,7 +427,9 @@ class QOC:
                     log.warning(
                         f"Using initial pulse parameters for {gate_name} from `ansaetze.py`"
                     )
-                    init_pulse_params = PulseInformation.gate_by_name(gate_name).params
+                    init_pulse_params = PulseInformation.gate_by_name(
+                        gate_name
+                    ).eff_params
                 log.debug(
                     f"Initial pulse parameters for {gate_name}: {init_pulse_params}"
                 )
@@ -435,16 +443,6 @@ class QOC:
                     ),
                     params=init_pulse_params,
                 )
-
-                # Saving the optimized parameters
-                self.save_results(
-                    gate=gate_name,
-                    fidelity=1 - min(loss_history),
-                    pulse_params=pulse_params,
-                )
-
-                if self.make_plots:
-                    self.plot_rotation(pulse_params, pulse_qnode, target_qnode)
 
                 return pulse_params, loss_history
 
@@ -473,7 +471,7 @@ class QOC:
 
                 pulse_qnodes = []
                 target_qnodes = []
-                pulse_params = []
+                leafs = []
                 for create_circuits in create_circuits_array:
                     pulse_circuit, target_circuit = create_circuits(dev)
 
@@ -484,7 +482,14 @@ class QOC:
 
                     gate_name = create_circuits.__name__.split("_")[1]
 
-                    pulse_params.append(PulseInformation.optimized_params(gate_name))
+                    leafs.append(PulseInformation.gate_by_name(gate_name).leafs)
+                leafs = list(set(leafs))
+
+                params = []
+                for leaf in leafs:
+                    params.extend(leaf.params)
+
+                params = jnp.concatenate(params)
 
                 # Optimizing
                 pulse_params, loss_history = self.run_optimization(
@@ -492,19 +497,21 @@ class QOC:
                         self.multi_objective_cost_fn,
                         pulse_qnode=pulse_qnodes,
                         target_qnode=target_qnodes,
+                        leafs=leafs,
                     ),
-                    params=init_pulse_params,
+                    params=pulse_params,
                 )
 
-                # Saving the optimized parameters
-                self.save_results(
-                    gate=gate_name,
-                    fidelity=1 - min(loss_history),
-                    pulse_params=pulse_params,
-                )
-
-                if self.make_plots:
-                    self.plot_rotation(pulse_params, pulse_qnode, target_qnode)
+                idx = 0
+                for leaf in leafs:
+                    nidx = idx + leaf.size
+                    # Saving the optimized parameters
+                    self.save_results(
+                        gate=leaf.name,
+                        fidelity=1 - min(loss_history),
+                        pulse_params=pulse_params[idx:nidx],
+                    )
+                    idx = nidx
 
                 return pulse_params, loss_history
 
@@ -870,6 +877,8 @@ class QOC:
 
 
 if __name__ == "__main__":
+    eff_params = PulseInformation.gate_by_name("CY").eff_params
+    PulseInformation.CY.eff_params = eff_params + 1
     # argparse the selected gate
     parser = argparse.ArgumentParser()
     parser.add_argument("--gate", type=str, default="all")
