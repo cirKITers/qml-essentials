@@ -704,7 +704,7 @@ class PulseParams:
         if self.is_leaf:
             return self._params
 
-        params = self.split_params(params=None, effective=False)
+        params = self.split_params(params=None, leafs=False)
 
         return jnp.concatenate(params)
 
@@ -740,16 +740,16 @@ class PulseParams:
             idx = nidx
 
     @property
-    def eff_params(self):
+    def leaf_params(self):
         if self.is_leaf:
             return self._params
 
-        params = self.split_params(None, effective=True)
+        params = self.split_params(None, leafs=True)
 
         return jnp.concatenate(params)
 
-    @eff_params.setter
-    def eff_params(self, value):
+    @leaf_params.setter
+    def leaf_params(self, value):
         if self.is_leaf:
             self._params = value
 
@@ -759,12 +759,12 @@ class PulseParams:
             obj.params = value[idx:nidx]
             idx = nidx
 
-    def split_params(self, params=None, effective=False):
+    def split_params(self, params=None, leafs=False):
         if params is None:
             if self.is_leaf:
                 return self._params
 
-            objs = self.leafs if effective else self.childs
+            objs = self.leafs if leafs else self.childs
             s_params = []
             for obj in objs:
                 s_params.append(obj.params)
@@ -774,7 +774,7 @@ class PulseParams:
             if self.is_leaf:
                 return params
 
-            objs = self.leafs if effective else self.childs
+            objs = self.leafs if leafs else self.childs
             s_params = []
             idx = 0
             for obj in objs:

@@ -429,7 +429,7 @@ class QOC:
                     )
                     init_pulse_params = PulseInformation.gate_by_name(
                         gate_name
-                    ).eff_params
+                    ).leaf_params
                 log.debug(
                     f"Initial pulse parameters for {gate_name}: {init_pulse_params}"
                 )
@@ -877,8 +877,8 @@ class QOC:
 
 
 if __name__ == "__main__":
-    eff_params = PulseInformation.gate_by_name("CY").eff_params
-    PulseInformation.CY.eff_params = eff_params + 1
+    leaf_params = PulseInformation.gate_by_name("CY").leaf_params
+    PulseInformation.CY.leaf_params = leaf_params + 1
     # argparse the selected gate
     parser = argparse.ArgumentParser()
     parser.add_argument("--gate", type=str, default="all")
