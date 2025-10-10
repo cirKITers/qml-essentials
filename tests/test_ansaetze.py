@@ -656,7 +656,6 @@ def test_pulse_CX_gate():
 # TODO: Unskip CRZ, CRY, CRX tests when their optimization is fixed
 @pytest.mark.unittest
 @pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
-@pytest.mark.skip(reason="CRZ not properly optimized, low fidelity")
 def test_pulse_CRZ_gate(w):
     dev = qml.device("default.qubit", wires=2)
 
@@ -700,7 +699,6 @@ def test_pulse_CRZ_gate(w):
 
 @pytest.mark.unittest
 @pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
-@pytest.mark.skip(reason="CRY not properly optimized, low fidelity")
 def test_pulse_CRY_gate(w):
     dev = qml.device("default.qubit", wires=2)
 
@@ -741,7 +739,6 @@ def test_pulse_CRY_gate(w):
 
 @pytest.mark.unittest
 @pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
-@pytest.mark.skip(reason="CRX not properly optimized, low fidelity")
 def test_pulse_CRX_gate(w):
     dev = qml.device("default.qubit", wires=2)
 
@@ -778,84 +775,6 @@ def test_pulse_CRX_gate(w):
 
     phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
     assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off: {phase_diff}"
-
-
-# TODO: Remove CRZ, CRY, CRX smoketests when their optimization is fixed
-@pytest.mark.smoketest
-@pytest.mark.parametrize("w", [np.pi])
-def test_pulse_CRZ_gate_smoke(w):
-    dev = qml.device("default.qubit", wires=2)
-
-    @qml.qnode(dev)
-    def pulse_circuit():
-        qml.H(wires=0)
-        qml.H(wires=1)
-        Gates.CRZ(w, wires=[0, 1], gate_mode="pulse")
-        return qml.state()
-
-    @qml.qnode(dev)
-    def custom_pulse_circuit():
-        pulse_params = pinfo.optimized_params("CRZ")
-        qml.H(wires=0)
-        qml.H(wires=1)
-        Gates.CRZ(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
-        return qml.state()
-
-    state_pulse = pulse_circuit()
-    state_custom_pulse = custom_pulse_circuit()
-
-    assert state_pulse is not None
-    assert state_custom_pulse is not None
-
-
-@pytest.mark.smoketest
-@pytest.mark.parametrize("w", [np.pi])
-def test_pulse_CRY_gate_smoke(w):
-    dev = qml.device("default.qubit", wires=2)
-
-    @qml.qnode(dev)
-    def pulse_circuit():
-        qml.H(wires=0)
-        Gates.CRY(w, wires=[0, 1], gate_mode="pulse")
-        return qml.state()
-
-    @qml.qnode(dev)
-    def custom_pulse_circuit():
-        pulse_params = pinfo.optimized_params("CRY")
-        qml.H(wires=0)
-        Gates.CRY(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
-        return qml.state()
-
-    state_pulse = pulse_circuit()
-    state_custom_pulse = custom_pulse_circuit()
-
-    assert state_pulse is not None
-    assert state_custom_pulse is not None
-
-
-@pytest.mark.smoketest
-@pytest.mark.parametrize("w", [np.pi])
-def test_pulse_CRX_gate_smoke(w):
-    dev = qml.device("default.qubit", wires=2)
-
-    @qml.qnode(dev)
-    def pulse_circuit():
-        qml.H(wires=0)
-        Gates.CRX(w, wires=[0, 1], gate_mode="pulse")
-        return qml.state()
-
-    @qml.qnode(dev)
-    def custom_pulse_circuit():
-        pulse_params = pinfo.optimized_params("CRX")
-        qml.H(wires=0)
-        Gates.CRX(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
-        return qml.state()
-
-    state_pulse = pulse_circuit()
-    state_custom_pulse = custom_pulse_circuit()
-
-    assert state_pulse is not None
-    assert state_custom_pulse is not None
 
 
 @pytest.mark.unittest
