@@ -579,6 +579,7 @@ class PulseParams:
         ), "Exactly one of `params` or `pulse_params` must be provided."
 
         self._pulse_obj = pulse_obj
+
         if params is not None:
             self._params = params
 
@@ -613,7 +614,7 @@ class PulseParams:
         float
             The pulse parameter at index `idx`.
         """
-        if self._pulse_obj is None:
+        if self.is_leaf:
             return self.params[idx]
         else:
             return self.childs[idx].params
@@ -625,8 +626,23 @@ class PulseParams:
         return self.name
 
     @property
+    def is_leaf(self):
+        return self._pulse_obj is None
+
+    @property
     def size(self):
         return len(self)
+
+    @property
+    def leafs(self):
+        if self.is_leaf:
+            return [self]
+
+        leafs = []
+        for obj in self._pulse_obj:
+            leafs.extend(obj.leafs)
+
+        return list(set(leafs))
 
     @property
     def childs(self):
@@ -639,17 +655,17 @@ class PulseParams:
         list
             A list of PulseParams objects, which are the children of this PulseParams object.
         """
-        if self._pulse_obj is None:
+        if self.is_leaf:
             return []
-        else:
-            return [obj for obj in self._pulse_obj]
+
+        return self._pulse_obj
 
     @property
     def shape(self):
         """
         The shape of the pulse parameters.
 
-        If the PulseParams object has no children (i.e. self._pulse_obj is None),
+        If the PulseParams object has no children (i.e. self.is_leaf),
         the shape is a list containing the number of pulse parameters.
 
         If the PulseParams object has children, the shape is a list containing
@@ -660,12 +676,12 @@ class PulseParams:
         list
             The shape of the pulse parameters.
         """
-        if self._pulse_obj is None:
+        if self.is_leaf:
             return [len(self.params)]
-        else:
-            shape = []
-            for obj in self._pulse_obj:
-                shape.append(*obj.shape())
+
+        shape = []
+        for obj in self.childs:
+            shape.append(*obj.shape())
 
             return shape
 
@@ -674,7 +690,7 @@ class PulseParams:
         """
         The pulse parameters.
 
-        If the PulseParams object has no children (i.e. self._pulse_obj is None),
+        If the PulseParams object has no children (i.e. self.is_leaf),
         returns the internal pulse parameters.
 
         If the PulseParams object has children, returns the concatenated pulse
@@ -685,19 +701,19 @@ class PulseParams:
         jnp.ndarray
             The pulse parameters.
         """
-        if self._pulse_obj is None:
+        if self.is_leaf:
             return self._params
-        else:
-            params = self.split_params(None)
 
-            return jnp.concatenate(params)
+        params = self.split_params(params=None, effective=False)
+
+        return jnp.concatenate(params)
 
     @params.setter
     def params(self, value):
         """
         Sets the pulse parameters.
 
-        If the PulseParams object has no children (i.e. self._pulse_obj is None),
+        If the PulseParams object has no children (i.e. self.is_leaf),
         sets the internal pulse parameters.
 
         If the PulseParams object has children, sets the concatenated pulse
@@ -713,33 +729,55 @@ class PulseParams:
         AssertionError
             If the PulseParams object has no children and `value` is not a jnp.ndarray.
         """
-        if self._pulse_obj is None:
+        if self.is_leaf:
             assert isinstance(value, jnp.ndarray), "params must be a jnp.ndarray"
             self._params = value
-        else:
-            idx = 0
-            for obj in self._pulse_obj:
-                nidx = idx + obj.size
-                obj.params = value[idx:nidx]
-                idx = nidx
 
-    def split_params(self, params=None):
+        idx = 0
+        for obj in self.childs:
+            nidx = idx + obj.size
+            obj.params = value[idx:nidx]
+            idx = nidx
+
+    @property
+    def eff_params(self):
+        if self.is_leaf:
+            return self._params
+
+        params = self.split_params(None, effective=True)
+
+        return jnp.concatenate(params)
+
+    @eff_params.setter
+    def eff_params(self, value):
+        if self.is_leaf:
+            self._params = value
+
+        idx = 0
+        for obj in self.leafs:
+            nidx = idx + obj.size
+            obj.params = value[idx:nidx]
+            idx = nidx
+
+    def split_params(self, params=None, effective=False):
         if params is None:
-            if self._pulse_obj is None:
+            if self.is_leaf:
                 return self._params
 
+            objs = self.leafs if effective else self.childs
             s_params = []
-            for obj in self._pulse_obj:
+            for obj in objs:
                 s_params.append(obj.params)
 
             return s_params
         else:
-            if self._pulse_obj is None:
+            if self.is_leaf:
                 return params
 
+            objs = self.leafs if effective else self.childs
             s_params = []
             idx = 0
-            for obj in self._pulse_obj:
+            for obj in objs:
                 nidx = idx + obj.size
                 s_params.append(params[idx:nidx])
                 idx = nidx
