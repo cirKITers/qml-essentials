@@ -428,6 +428,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#fourier_coefficient_correlation_fcc" class="md-nav__link">
+    <span class="md-ellipsis">
+      Fourier Coefficient Correlation (FCC)
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -610,6 +619,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#fourier_coefficient_correlation_fcc" class="md-nav__link">
+    <span class="md-ellipsis">
+      Fourier Coefficient Correlation (FCC)
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -759,6 +777,45 @@ Currently, only the FFT-based method supports this.</p>
 <p><a class="glightbox" href="../figures/model_2d_psd_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="2D Model Coefficients" data-desc-position="top"><img alt="2D Model Coefficients" src="../figures/model_2d_psd_light.png#center#only-light" /></a>
 <a class="glightbox" href="../figures/model_2d_psd_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="2D Model Coefficients" data-desc-position="top"><img alt="2D Model Coefficients" src="../figures/model_2d_psd_dark.png#center#only-dark" /></a></p>
 <p>Note that "X1" refers to the "RX" encoding and "X2" to the "RY" encoding.</p>
+<h2 id="fourier_coefficient_correlation_fcc">Fourier Coefficient Correlation (FCC)<a class="headerlink" href="#fourier_coefficient_correlation_fcc" title="Permanent link">#</a></h2>
+<p>The FCC, as introduced in <a href="https://doi.org/10.48550/arXiv.2508.20868">Fourier Fingerprints of Ansatzes in Quantum Machine Learning</a>, is a metric that aims to predict the expected performance of an arbitrary Ansatz based on the the correlation between its Fourier modes.
+In this framework, the FCC for a given <code>model</code> can be obtained as follows:</p>
+<p><div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.coefficients</span><span class="w"> </span><span class="kn">import</span> <span class="n">FCC</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">model</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="n">n_qubits</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">n_layers</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">circuit_type</span><span class="o">=</span><span class="s2">&quot;Hardware_Efficient&quot;</span><span class="p">,</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="n">output_qubit</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="n">encoding</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;RY&quot;</span><span class="p">],</span>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    <span class="n">mp_threshold</span><span class="o">=</span><span class="mi">3000</span><span class="p">,</span>
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="p">)</span>
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>
+</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="n">fcc</span> <span class="o">=</span> <span class="n">FCC</span><span class="o">.</span><span class="n">get_fcc</span><span class="p">(</span>
+</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>    <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>    <span class="n">n_samples</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span>
+</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>    <span class="n">seed</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="p">)</span>
+</span></code></pre></div>
+Returns <code>0.1442</code> as already in Fig. 3a of aforementioned paper.</p>
+<p>Optionally, you can choose a different correlation <code>method</code> (currently "pearson" and "spearman" are supported).
+Similar, other methods which require specifying <code>n_samples</code> (c.f. calculation of <a href="../expressibility/">expressibility</a> and <a href="entangling.md">entangling capability</a>), methods in the <code>FCC</code> class take an optional parameter <code>scale</code> (defaults to <code>False</code>), which scales the number of samples depending on the number of qubits and the number of input features as <span class="arithmatex">\(n_\text{samples} \cdot n_\text{params} \cdot 2^{n_\text{qubits}} \cdot n_\text{features}\)</span>.</p>
+<p>As described in our paper, the FCC is calculated as the mean of the Fourier fingerprint, which in turn can be obtained separately as follows:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">fingerprint</span> <span class="o">=</span> <span class="n">FCC</span><span class="o">.</span><span class="n">get_fourier_fingerprint</span><span class="p">(</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">n_samples</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">seed</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="p">)</span>
+</span></code></pre></div>
+<p><a class="glightbox" href="../figures/fourier_fingerprint_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Fourier Fingerprint of Hardware Efficient Ansatz" data-desc-position="top"><img alt="Fourier Fingerprint of Hardware Efficient Ansatz" src="../figures/fourier_fingerprint_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/fourier_fingerprint_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Fourier Fingerprint of Hardware Efficient Ansatz" data-desc-position="top"><img alt="Fourier Fingerprint of Hardware Efficient Ansatz" src="../figures/fourier_fingerprint_dark.png#center#only-dark" /></a></p>
+<p>Note that actually calculating the FCC as it is shown in the paper, requires removing all the redundant entries in the fingerprint.
+This is implicitly done in <code>FCC.get_fourier_fingerprint</code> (and controlled using the <code>trim_redundant</code> argument), by
+- removing all negative frequencies (because their coefficients are complex conjugates of the positive frequencies)
+- removing symmetries inside the correlation matrix (the Fourier fingerprint), e.g. <span class="arithmatex">\(c_{0,1} = c_{1,0}\)</span>
+Note that <code>get_fcc</code> also (by default) trims down the fingerprint before calculating the actual FCC. </p>
+<p>Both <code>get_fcc</code> and <code>get_fourier_fingerprint</code> support a <code>weight</code> parameter, which can be used to weight the correlation matrix, such that high-frequency components receive a lower weight.
+Intuitively this adresses the issue, that low frequency components have a higher impact on the mean-squared error (c.f. App. D in our paper). </p>
 
 
 
