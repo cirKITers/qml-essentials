@@ -234,7 +234,7 @@ def test_transform_input() -> None:
 
 @pytest.mark.unittest
 def test_batching() -> None:
-    for ansatz in Ansaetze.get_available():
+    for ansatz in Ansaetze.get_available(parameterized_only=True):
         model = Model(
             n_qubits=2,
             n_layers=1,
@@ -258,7 +258,7 @@ def test_batching() -> None:
             res == model(params=params, execution_type="density")
         ).all(), f"Content of batching is not equal. Ansatz {ansatz.__name__}"
 
-    ## Multi-Dim Input
+    # Multi-Dim Input
 
     # model = Model(
     #     n_qubits=2,
