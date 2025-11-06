@@ -13,7 +13,7 @@ keywords = ["quantum", "quantum machine learning", "qml"]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
-pennylane = {git = "https://github.com/PennyLaneAI/pennylane#fix-default-mixed-bug"}
+pennylane = {git = "https://github.com/PennyLaneAI/pennylane", rev = "fix-default-mixed-bug"}
 dill = "^0.4.0"
 jax = "^0.4.28"
 jaxlib = "^0.4.28"

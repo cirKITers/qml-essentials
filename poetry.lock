@@ -2282,8 +2282,8 @@ kernels = ["cvxopt", "cvxpy"]
 [package.source]
 type = "git"
 url = "https://github.com/PennyLaneAI/pennylane"
-reference = "HEAD"
-resolved_reference = "f646173916c9d16c37d6b097b8f2240245f483e6"
+reference = "fix-default-mixed-bug"
+resolved_reference = "9c8c065d06ebe8bdebdcae802874b5b81903dd93"
 
 [[package]]
 name = "pennylane-lightning"
@@ -3543,4 +3543,4 @@ dev = ["black (>=19.3b0) ; python_version >= \"3.6\"", "pytest (>=4.6.2)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.13"
-content-hash = "7407774c78e8f7139f9bb0d7db60c530efce0ae770e0f8d3b63cba6b2a578579"
+content-hash = "0173e1b70483e9a1a09dd094d43a9c431446393d224fe648fedcafc0e2942d12"
