@@ -429,10 +429,7 @@ class Model:
             )
 
         if value == "density" and self.shots is not None:
-            warnings.warn(
-                "Setting execution_type to density with specified shots.",
-                UserWarning,
-            )
+            raise ValueError("Setting execution_type to density with shots not None.")
 
         self._execution_type = value
 
@@ -736,9 +733,6 @@ class Model:
     def _observable(self):
         # run mixed simualtion and get density matrix
         if self.execution_type == "density":
-            assert (
-                self.shots is None
-            ), "Shots can not be used when trying to retrieve density matrix."
             return qml.density_matrix(wires=list(range(self.n_qubits)))
         elif self.execution_type == "state":
             return qml.state()
