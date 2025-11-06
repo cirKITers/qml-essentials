@@ -18,6 +18,7 @@ dill = "^0.4.0"
 jax = "^0.4.28"
 jaxlib = "^0.4.28"
 optax = "^0.2.5"
+numpy = "<2.3.0"
 
 [tool.poetry.group.dev]
 optional = true
