@@ -109,7 +109,7 @@ def test_parameters() -> None:
         )
 
         if test_case["exception"]:
-            with pytest.warns(UserWarning):
+            with pytest.raises(ValueError):
                 _ = model(
                     model.params,
                     inputs=None,
@@ -693,7 +693,6 @@ def test_ansaetze() -> None:
             data_reupload=False,
             initialization="random",
             output_qubit=0,
-            shots=1024,
         )
 
         _ = model(
@@ -753,7 +752,6 @@ def test_ansaetze() -> None:
         data_reupload=True,
         initialization="random",
         output_qubit=0,
-        shots=1024,
     )
     logger.info(f"{str(model)}")
 
