@@ -258,9 +258,11 @@ class Model:
 
         self.circuit_mixed: qml.QNode = qml.QNode(
             self._circuit,
-            qml.device("default.mixed", wires=self.n_qubits),
-            interface="auto",
-            diff_method="parameter-shift",
+            qml.device(
+                "default.mixed", shots=self.shots, wires=list(range(self.n_qubits))
+            ),
+            interface="autograd" if self.shots is not None else "auto",
+            diff_method="parameter-shift" if self.shots is not None else "best",
         )
 
     @property
@@ -734,6 +736,9 @@ class Model:
     def _observable(self):
         # run mixed simualtion and get density matrix
         if self.execution_type == "density":
+            assert (
+                self.shots is None
+            ), "Shots can not be used when trying to retrieve density matrix."
             return qml.density_matrix(wires=list(range(self.n_qubits)))
         elif self.execution_type == "state":
             return qml.state()
