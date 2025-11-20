@@ -902,21 +902,25 @@ def test_dru() -> None:
             "enc": Gates.RX,
             "dru": False,
             "degree": 1,
+            "frequencies": [1],
         },
         {
             "enc": Gates.RX,
             "dru": True,
             "degree": 4,
+            "frequencies": [4],
         },
         {
             "enc": Gates.RX,
             "dru": [[True, False], [False, True]],
             "degree": 2,
+            "frequencies": [2],
         },
         {
             "enc": [Gates.RX, Gates.RY],
             "dru": [[[0, 1], [1, 1]], [[1, 1], [0, 1]]],
             "degree": 4,
+            "frequencies": [2, 4],
         },
     ]
 
@@ -935,6 +939,11 @@ def test_dru() -> None:
         assert (
             model.degree == test_case["degree"]
         ), f"Expected degree {test_case['degree']} but got {model.degree}\
+            for dru {test_case['dru']}"
+
+        assert (
+            model.frequencies == test_case["frequencies"]
+        ), f"Expected frequencies {test_case['frequencies']} but got {model.frequencies}\
             for dru {test_case['dru']}"
 
         _ = model(
