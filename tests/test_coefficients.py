@@ -83,14 +83,16 @@ def test_multi_dim_input() -> None:
         circuit_type="Hardware_Efficient",
         output_qubit=-1,
         encoding=["RX", "RX"],
+        data_reupload=[[[1, 0], [1, 0], [1, 1]]],
     )
 
     coeffs, freqs = Coefficients.get_spectrum(model)
 
     assert (
-        coeffs.shape == (model.degree * 2 + 1,) * model.n_input_feat
+        coeffs.shape == [model.frequencies[i] * 2 + 1]
+        for i in range(model.n_input_feat)
     ), f"Wrong shape of coefficients: {coeffs.shape}, \
-        expected {(model.degree*2+1,)*model.n_input_feat}"
+        expected {[[model.frequencies[i] * 2 + 1] for i in range(model.n_input_feat)]}"
 
     ref_input = [1, 2]
     exp_model = model(params=None, inputs=ref_input, force_mean=True)
