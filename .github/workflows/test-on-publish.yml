@@ -8,7 +8,7 @@ jobs:
     runs-on: self-hosted
     if: ${{ (github.actor != 'github-actions[bot]') }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install poetry
         run: pipx install poetry
       - name: Set up Python 3.12
