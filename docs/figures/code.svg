@@ -97,7 +97,7 @@
             <span class="line-04"><span class="indent"></span>n_layers=<span class="py-int">1</span>,</span><br/>
             <span class="line-05"><span class="indent"></span><span class="py-var">circuit_type</span><span class="py-key">=</span><span class="py-str">"Hardware_Efficient"</span>,</span><br/>
             <span class="line-06"><span class="indent">)</span></span><br/>
-            <span class="line-07">y = model(inputs=<span class="py-str">x</span>)</span><br/>
+            <span class="line-07">y = model(inputs=x)</span><br/>
           </p>
           <p>
             <span class="line-08"><span class="py-dir">from </span><span class="py-mod">qml_essentials.coefficients </span><span class="py-dir">import</span> Coefficients</span><br/>
