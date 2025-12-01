@@ -22,7 +22,10 @@ or
 poetry add qml-essentials
 ```
 
-to install our package from [PyPI](https://pypi.org/project/qml-essentials/).\
+to install our package from [PyPI](https://pypi.org/project/qml-essentials/).
+
+![Code Example](docs/figures/code.svg#center)
+
 You can find details on how to use it and further documentation on the corresponding [Github Page](https://cirkiters.github.io/qml-essentials/).
 
 ## 🚧 Contributing
