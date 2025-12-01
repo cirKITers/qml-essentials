@@ -102,28 +102,13 @@ Other options are:
 - A list of callables such as `[Gates.RX, Gates.RY]`
 
 See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
+Note it is also possible to provide a custom encoding as the `encoding` argument essentially accepts any callable or list of callables see [here](ansaetze.md#custom-encoding) for more details.
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
 Otherwise multiple inputs are treated as batches of inputs.
 If you want to visualize zero-valued encoding gates in the model, set `remove_zero_encoding` to `False` on instantiation.
 
 In case of a multi-dimensional input, you can obtain the highest frequency in each encoding dimension from the `model.frequencies` property.
 Now, `model.degree` in turn will reflect the highest number in this list.
-
-Note it is also possible to provide a custom encoding as the `encoding` argument essentially accepts any callable or list of callables.
-So if you would like encode a single input into two different axis, this can be achieved as follwos
-
-```python
-def enc_fct(x, wires, **kwargs):
-    x1, x2 = x
-    Gates.RX(x1, wires, **kwargs)
-    Gates.RY(x2, wires, **kwargs)
-
-model = Model(
-    ...
-    encoding = enc_fct
-    ...
-)
-```
 
 ## State Preparation
 
