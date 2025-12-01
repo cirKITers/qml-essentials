@@ -24,7 +24,9 @@ poetry add qml-essentials
 
 to install our package from [PyPI](https://pypi.org/project/qml-essentials/).
 
-![Code Example](docs/figures/code.svg#center)
+<p align="center">
+<img src="docs/figures/code.svg" width="480" title="Logo">
+</p>
 
 You can find details on how to use it and further documentation on the corresponding [Github Page](https://cirkiters.github.io/qml-essentials/).
 

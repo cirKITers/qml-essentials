@@ -1,16 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="380">
   <style>
+    <!-- leave some space for shadow -->
+    body { padding: 25px; }
+    
     <!-- container size and style -->
-    .container {font-family:monospace;background:#272a35;color:#d4d4d4;
-                padding:20px;border-radius:10px;width:91%;}
-    .top {margin-bottom:10px;}
+    .container {
+      margin:auto;
+      border-radius:20px;
+      box-shadow: 5px 5px 25px #111;
+      font-family:ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;
+      color:#d4d4d4;
+      background:#272a35;
+    }
+
+    <!-- density in above code -->
+    .top {padding:10px}
 
     <!-- window controls style -->
     .button-l,.button-m,.button-r {display:inline-block;width:12px;height:12px;
-                                   border-radius:50%;margin-right:3px;}
+                                   border-radius:50%;margin-left:5px;}
     .button-l {background:#ff5f56;}
     .button-m {background:#ffbd2e;}
     .button-r {background:#27c93f;}
+
+    <!-- global code indent -->
+    .content {padding-left:22px; padding-bottom:10px}
 
     <!-- Blinking cursor -->
     @keyframes cursor{
