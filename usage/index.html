@@ -738,7 +738,8 @@
 </span></code></pre></div></p>
 <p><a class="glightbox" href="../figures/hae_light.png#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Hardware Efficient Ansatz" data-desc-position="top"><img alt="Hardware Efficient Ansatz" src="../figures/hae_light.png#only-light" /></a>
 <a class="glightbox" href="../figures/hae_dark.png#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Hardware Efficient Ansatz" data-desc-position="top"><img alt="Hardware Efficient Ansatz" src="../figures/hae_dark.png#only-dark" /></a></p>
-<p>Looks good to you? <img alt="👀" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f440.svg" title=":eyes:" /> Head over to the <a href="../training/"><em>Training</em></a> page for <strong>getting started</strong> with an easy example, where we also show how to implement <strong>trainable frequencies</strong> <img alt="🚀" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f680.svg" title=":rocket:" /></p>
+<p>Looks good to you? <img alt="👀" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f440.svg" title=":eyes:" /> Head over to the <a href="../training/"><em>Training</em></a> page for <strong>getting started</strong> with an easy example, where we also show how to implement <strong>trainable frequencies</strong> <img alt="🚀" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f680.svg" title=":rocket:" />
+If you want to learn more about, why we get the above results, checkout the <a href="#data-reuploading"><em>Data-Reuploading</em></a> section.</p>
 <p>Note that calling the model without any (<code>None</code>) values for the <code>params</code> and <code>inputs</code> argument, will implicitly call the model with the recently (or initial) parameters and <code>0</code>s as input.
 I.e. simply running the following
 <div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">model</span><span class="p">()</span>
@@ -752,7 +753,7 @@ You can calculate the <a href="../expressibility/">Expressibility</a> or <a href
 You can also provide a custom circuit, by instantiating from the <code>Circuit</code> class in <code>qml_essentials.ansaetze.Circuit</code>.
 See page <a href="../ansaetze/"><em>Ansaetze</em></a> for more details and a list of available Ansatzes that we provide with this package.</p>
 <h2 id="data-reuploading">Data-Reuploading<a class="headerlink" href="#data-reuploading" title="Permanent link">#</a></h2>
-<p>This idea is one of the core features of our framework and builds upon the work by <a href="https://doi.org/10.48550/arXiv.2008.08605"><em>Schuld et al. (2020)</em></a>.
+<p>The idea of repeating the input encoding is one of the core features of our framework and builds upon the work by <a href="https://doi.org/10.48550/arXiv.2008.08605"><em>Schuld et al. (2020)</em></a>.
 Essentially, it allows us to represent a quantum circuit as a truncated Fourier series, which is a powerful feature that enables the model to mimic arbitrary non-linear functions.
 The number of frequencies that the model can represent is constrained by the number of data encoding steps within the circuit.</p>
 <p>Typically, there is a reuploading step after each layer and on each qubit (<code>data_reupload=True</code>).
@@ -797,6 +798,7 @@ Other options are:</p>
 <li>A list of callables such as <code>[Gates.RX, Gates.RY]</code></li>
 </ul>
 <p>See page <a href="../ansaetze/"><em>Ansaetze</em></a> for more details regarding the <code>Gates</code> class.
+Note it is also possible to provide a custom encoding as the <code>encoding</code> argument essentially accepts any callable or list of callables see <a href="../ansaetze/#custom-encoding">here</a> for more details.
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
 Otherwise multiple inputs are treated as batches of inputs.
 If you want to visualize zero-valued encoding gates in the model, set <code>remove_zero_encoding</code> to <code>False</code> on instantiation.</p>

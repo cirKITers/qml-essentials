@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="380">
+  <style>
+    <!-- leave some space for shadow -->
+    body { padding: 25px; }
+    
+    <!-- container size and style -->
+    .container {
+      margin:auto;
+      border-radius:20px;
+      box-shadow: 5px 5px 25px #111;
+      font-family:ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;
+      color:#d4d4d4;
+      background:#272a35;
+    }
+
+    <!-- density in above code -->
+    .top {padding:10px}
+
+    <!-- window controls style -->
+    .button-l,.button-m,.button-r {display:inline-block;width:12px;height:12px;
+                                   border-radius:50%;margin-left:5px;}
+    .button-l {background:#ff5f56;}
+    .button-m {background:#ffbd2e;}
+    .button-r {background:#27c93f;}
+
+    <!-- global code indent -->
+    .content {padding-left:22px; padding-bottom:10px}
+
+    <!-- Blinking cursor -->
+    @keyframes cursor{
+      0%,49%{border-right-color:transparent;}
+      50%,100%{border-right-color:#d4d4d4;}
+    }
+
+    <!-- Python syntax highlighting -->
+    <!-- uses same scheme as on our website -->
+    .py-mod {color:#c972c1;}
+    .py-dir {color:#447bdd;}
+    .py-str {color:#2fb170;}
+    .py-int {color:#e15a46;}
+    
+    <!-- keyframes and corresponding line settings -->
+    <!-- adjust here, if we make changes to the code below; width needs to match code -->
+    @keyframes type-line-01{from{width:0ch;}to{width:39ch;}}
+    @keyframes type-line-02{from{width:0ch;}to{width:14ch;}}
+    @keyframes type-line-03{from{width:0ch;}to{width:15ch;}}
+    @keyframes type-line-04{from{width:0ch;}to{width:15ch;}}
+    @keyframes type-line-05{from{width:0ch;}to{width:39ch;}}
+    @keyframes type-line-06{from{width:0ch;}to{width:2ch;}}
+    @keyframes type-line-07{from{width:0ch;}to{width:19ch;}}
+    @keyframes type-line-08{from{width:0ch;}to{width:53ch;}}
+    @keyframes type-line-09{from{width:0ch;}to{width:41ch;}}
+    .line-01,.line-02,.line-03,.line-04,.line-05,
+    .line-06,.line-07,.line-08,.line-09{
+      margin:0;width:0%;border-right:0.15em solid transparent;
+      overflow:hidden;display:inline-block;white-space:nowrap;
+    }
+    .line-01{animation:type-line-01 1s 0s steps(39,end) forwards,
+                     cursor 1s linear 0s 1;}
+    .line-02{animation:type-line-02 1s 1s steps(14,end) forwards,
+                     cursor 1s linear 1s 1;}
+    .line-03{animation:type-line-03 1s 2s steps(15,end) forwards,
+                     cursor 1s linear 2s 1;}
+    .line-04{animation:type-line-04 1s 3s steps(15,end) forwards,
+                     cursor 1s linear 3s 1;}
+    .line-05{animation:type-line-05 1s 4s steps(39,end) forwards,
+                     cursor 1s linear 4s 1;}
+    .line-06{animation:type-line-06 1s 5s steps(2,end) forwards,
+                     cursor 1s linear 5s 1;}
+    .line-07{animation:type-line-07 1s 6s steps(19,end) forwards,
+                     cursor 1s linear 6s 1;}
+    .line-08{animation:type-line-08 1s 7s steps(53,end) forwards,
+                     cursor 1s linear 7s 1;}
+    .line-09{animation:type-line-09 1s 8s steps(41,end) forwards,
+                     cursor 1s linear 8s 1;}
+
+    <!-- indent setting for code blocks-->
+    .indent{display:inline-block;width:1.8em;}
+  </style>
+
+  <!-- code itself embedded in foreign object to use some html tricks -->
+  <foreignObject x="0" y="0" width="100%" height="100%">
+    <body xmlns="http://www.w3.org/1999/xhtml">
+      <div class="container">
+        <!-- window controls -->
+        <div class="top">
+          <span class="button-l"></span>
+          <span class="button-m"></span>
+          <span class="button-r"></span>
+        </div>
+        <!-- actual code content -->
+        <div class="content">
+          <p>
+            <span class="line-01"><span class="py-dir">from </span><span class="py-mod">qml_essentials.model </span><span class="py-dir">import</span> model</span><br/>
+            <span class="line-02">model = Model(</span><br/>
+            <span class="line-03"><span class="indent"></span>n_qubits=<span class="py-int">4</span>,</span><br/>
+            <span class="line-04"><span class="indent"></span>n_layers=<span class="py-int">1</span>,</span><br/>
+            <span class="line-05"><span class="indent"></span><span class="py-var">circuit_type</span><span class="py-key">=</span><span class="py-str">"Hardware_Efficient"</span>,</span><br/>
+            <span class="line-06"><span class="indent">)</span></span><br/>
+            <span class="line-07">y = model(inputs=x)</span><br/>
+          </p>
+          <p>
+            <span class="line-08"><span class="py-dir">from </span><span class="py-mod">qml_essentials.coefficients </span><span class="py-dir">import</span> Coefficients</span><br/>
+            <span class="line-09">coeffs = Coefficients.get_spectrum(model)</span>
+          </p>
+        </div>
+      </div>
+    </body>
+  </foreignObject>
+</svg>
