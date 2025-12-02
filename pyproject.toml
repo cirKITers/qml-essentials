@@ -12,12 +12,13 @@ repository = "https://github.com/cirKITers/qml-essentials"
 keywords = ["quantum", "quantum machine learning", "qml"]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.13"
-pennylane = ">=0.40.0,<0.41.0"
+python = ">=3.11,<4.0"
+pennylane = {git = "https://github.com/PennyLaneAI/pennylane", rev = "fix-default-mixed-bug"}
 dill = "^0.4.0"
 jax = "^0.4.28"
 jaxlib = "^0.4.28"
 optax = "^0.2.5"
+numpy = "<2.3.0"
 
 [tool.poetry.group.dev]
 optional = true
