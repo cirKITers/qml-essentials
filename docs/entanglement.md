@@ -84,3 +84,14 @@ Note however, that the decomposition is *not unique*!
 Therefore, this measure presents the entanglement for *some* decomposition into pure states, not necessarily the one that is anticipated when applying the Kraus channels.
 This becomes particularly evident, when computing the entanglement of a noisy GHZ-circuit.
 To prevent unintended decompositions for pure states, the methods of EF and Meyer-Wallach are equivalent for these.
+
+
+## Concentratable Entanglement
+
+This measure, introduced in [Computable and operationally meaningful multipartite entanglement measures](https://arxiv.org/abs/2104.06923), utilizes a parallelized SWAP test to compute the entanglement of a given model with the advantage of having only a constant depth circuit while **not** requiring access to the density matrix.
+
+```python
+ent_cap = Entanglement.concentratable_entanglement(
+    model, n_samples=1000, seed=1000
+)
+```

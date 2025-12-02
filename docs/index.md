@@ -23,6 +23,10 @@ Or, if you prefer poetry:
 
 Once you have set things up, go ahead and checkout [how to use qml-essentials](usage.md).
 
+<p align="center">
+<img src="figures/code.svg" width="640" title="Code Example">
+</p>
+
 If you want to contribute, please refer to our [CONTRIBUTING guide](https://github.com/cirKITers/qml-essentials/blob/main/CONTRIBUTING.md) on Github.
 Also checkout our [coverage report](coverage/index.html).
 
