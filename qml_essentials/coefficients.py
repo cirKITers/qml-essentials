@@ -74,6 +74,9 @@ class Coefficients:
             coeffs = np.fft.fftshift(coeffs, axes=list(range(model.n_input_feat)))
             freqs = np.fft.fftshift(freqs)
 
+        if len(freqs) == 1:
+            freqs = freqs[0]
+
         return coeffs, freqs
 
     @staticmethod
