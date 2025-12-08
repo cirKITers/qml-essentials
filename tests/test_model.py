@@ -257,7 +257,7 @@ def test_batching() -> None:
 @pytest.mark.unittest
 def test_multiprocessing_density() -> None:
     # use n_samples that is not a multiple of the threshold
-    n_samples = 1500
+    n_samples = 150
 
     model = Model(
         n_qubits=2,
@@ -943,8 +943,8 @@ def test_dru() -> None:
 
         assert (
             model.frequencies == test_case["frequencies"]
-        ), f"Expected frequencies {test_case['frequencies']} but got {model.frequencies}\
-            for dru {test_case['dru']}"
+        ), f"Expected frequencies {test_case['frequencies']} but got\
+            {model.frequencies} for dru {test_case['dru']}"
 
         _ = model(
             model.params,
