@@ -366,7 +366,23 @@ def test_frequencies() -> None:
     coeffs, freqs = Coefficients.get_spectrum(model)
 
     assert (
-        freqs.shape[1] ** freqs.shape[0]
+        freqs[0].size * freqs[1].size
+    ) == coeffs.size, f"(2D) Frequencies ({freqs.shape}) and \
+        coefficients ({coeffs.shape}) must add up to the same length."
+
+    # uneven 2d
+
+    model = Model(
+        n_qubits=2,
+        n_layers=2,
+        circuit_type="Circuit_19",
+        encoding=["RX", "RY"],
+        data_reupload=[[[True, True], [False, True]], [[False, True], [True, True]]],
+    )
+    coeffs, freqs = Coefficients.get_spectrum(model)
+
+    assert (
+        freqs[0].size * freqs[1].size
     ) == coeffs.size, f"(2D) Frequencies ({freqs.shape}) and \
         coefficients ({coeffs.shape}) must add up to the same length."
 
