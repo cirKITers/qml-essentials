@@ -14,8 +14,10 @@ model = Model(
             circuit_type="Hardware_Efficient",
         )
 
-coeffs = Coefficients.get_spectrum(model)
+coeffs, freqs = Coefficients.get_spectrum(model)
 ```
+
+Here, the coefficients are stored in the `coeffs` variable, and the corresponding frequency indices are stored in the `freqs` variable.
 
 But wait! There is much more to this. Let's keep on reading if you're curious :eyes:.
 
@@ -183,6 +185,9 @@ Using a logarithmic color bar, one obtains the following 2D-spectrum:
 ![2D Model Coefficients](figures/model_2d_psd_dark.png#center#only-dark)
 
 Note that "X1" refers to the "RX" encoding and "X2" to the "RY" encoding.
+
+In the multidimensional case, the `freqs` variable now contains the frequency indices for each dimension.
+This is an important detail, as due to the `data_reupload` argument, it is possible to have a different number of frequencies for each input dimension.
 
 ## Fourier Coefficient Correlation (FCC)
 
