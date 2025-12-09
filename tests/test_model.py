@@ -257,13 +257,13 @@ def test_batching() -> None:
 @pytest.mark.unittest
 def test_multiprocessing_density() -> None:
     # use n_samples that is not a multiple of the threshold
-    n_samples = 150
+    n_samples = 1000
 
     model = Model(
-        n_qubits=2,
+        n_qubits=3,
         n_layers=1,
         circuit_type="Circuit_19",
-        mp_threshold=500,
+        mp_threshold=200,
     )
 
     model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
@@ -274,7 +274,7 @@ def test_multiprocessing_density() -> None:
     t_parallel = time.time() - start
 
     model = Model(
-        n_qubits=2,
+        n_qubits=3,
         n_layers=1,
         circuit_type="Circuit_19",
     )
@@ -285,7 +285,7 @@ def test_multiprocessing_density() -> None:
     start = time.time()
     res_single = model(params=params, execution_type="density")
     t_single = time.time() - start
-
+    # print(f"Diff: {t_parallel - t_single}")
     assert (
         t_parallel < t_single
     ), "Time required for multiprocessing larger than single process"
