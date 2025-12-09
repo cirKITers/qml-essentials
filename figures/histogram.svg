@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="330">
+  <style>
+    /* container size and style (based on your example) */
+    body { padding: 25px; }
+    .container{
+      margin: auto;
+      border-radius:20px;
+      box-shadow: 5px 5px 25px #111;
+      font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color:#d4d4d4;
+      background:#272a35;
+      overflow: hidden;
+    }
+    <!-- density in above code -->
+    .top {padding:10px}
+
+    <!-- window controls style -->
+    .button-l,.button-m,.button-r {display:inline-block;width:12px;height:12px;
+                                   border-radius:50%;margin-left:5px;}
+    .button-l {background:#ff5f56;}
+    .button-m {background:#ffbd2e;}
+    .button-r {background:#27c93f;}
+    .content {
+      padding: 0px 0px 0px 60px;
+    }
+
+    /* histogram area styling */
+    .chart-wrap {
+      width:100%;
+      height:220px;
+      display:block;
+    }
+
+    /* keyframes */
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes grow {
+      from { transform: scaleY(0); }
+      to   { transform: scaleY(1); }
+    }
+    @keyframes labelFade {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* axes fade in first */
+    .axes {
+      opacity: 0;
+      animation: fadeIn 0.7s ease forwards;
+      /* small delay so window can settle visually */
+      animation-delay: 0.05s;
+    }
+
+    /* bars start scaled to zero (bottom anchor) and then grow */
+    .bar {
+      transform-origin: 50% 100%;
+      transform-box: fill-box;
+      transform: scaleY(0);
+      animation: grow 0.8s cubic-bezier(.2,.9,.2,1) forwards;
+      /* animation delays set per-bar classes below */
+    }
+    .bar-0 { animation-delay: 8.8s; }
+    .bar-1 { animation-delay: 9.05s; }
+    .bar-2 { animation-delay: 9.3s; }
+    .bar-3 { animation-delay: 9.55s; }
+    .bar-4 { animation-delay: 9.8s; }
+
+    /* labels fade in after their bar finished growing */
+    .val {
+      fill: #d4f7e8;
+      font-size: 12px;
+      text-anchor: middle;
+      opacity: 0;
+      animation: labelFade 0.35s ease forwards;
+    }
+    .val-0 { animation-delay: 9.65s; }
+    .val-1 { animation-delay: 9.9s; }
+    .val-2 { animation-delay: 10.15s; }
+    .val-3 { animation-delay: 10.4s; }
+    .val-4 { animation-delay: 10.65s; }
+
+    /* x-axis labels and ticks */
+    .tick, .xlab {
+      fill: #bfc6d0;
+      font-size: 12px;
+    }
+
+    .xtitle {
+      fill: #bfc6d0;
+      font-size: 14px;
+    }
+
+    /* bar fill gradient look */
+    .bar-fill {
+      fill: url(#barGrad);
+      stroke: rgba(0,0,0,0.12);
+      stroke-width: 1;
+      rx: 3;
+      ry: 3;
+    }
+  </style>
+
+  <!-- embed HTML "window" using foreignObject (matching your example structure) -->
+  <foreignObject x="0" y="0" width="100%" height="100%">
+    <body xmlns="http://www.w3.org/1999/xhtml">
+      <div class="container" xmlns="http://www.w3.org/1999/xhtml">
+        <div class="top">
+          <span class="button-l"></span>
+          <span class="button-m"></span>
+          <span class="button-r"></span>
+        </div>
+        <div class="content">
+          <!-- inner SVG for the histogram -->
+          <svg class="chart-wrap" width="100%" height="100%"  xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="barGrad" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="#58e3a6"/>
+                <stop offset="60%" stop-color="#2fb170"/>
+                <stop offset="100%" stop-color="#1f8f5a"/>
+              </linearGradient>
+            </defs>
+
+            <!-- axis group (fade in) -->
+            <g class="axes">
+              <!-- y axis -->
+              <line x1="40" y1="20" x2="40" y2="160" stroke="#9aa3b1" stroke-width="1.2" />
+              <!-- x axis -->
+              <line x1="40" y1="160" x2="420" y2="160" stroke="#9aa3b1" stroke-width="1.2" />
+
+              <!-- y ticks and labels (0 to 1.0 in steps) -->
+              <g font-size="11" fill="#bfc6d0">
+                <text x="10" y="164" class="tick">0.0</text>
+                <text x="10" y="98"  class="tick">0.5</text>
+                <text x="10" y="32"  class="tick">1.0</text>
+              </g>
+
+              <!-- faint horizontal grid lines -->
+              <g stroke="#3a3f47" stroke-opacity="0.45">
+                <line x1="40" x2="480" y1="160" y2="160" />
+                <line x1="40" x2="480" y1="130" y2="130" />
+                <line x1="40" x2="480" y1="100" y2="100" />
+                <line x1="40" x2="480" y1="70"  y2="70" />
+                <line x1="40" x2="480" y1="40"  y2="40" />
+              </g>
+            </g>
+
+            <!-- Bars (values are "random but fixed") -->
+            <!-- Bar 0 -->
+            <rect class="bar bar-0 bar-fill" x="60" y="62" width="50" height="98" rx="6" ry="6"></rect>
+            <!-- Bar 1 -->
+            <rect class="bar bar-1 bar-fill" x="130" y="111" width="50" height="49" rx="6" ry="6"></rect>
+            <!-- Bar 2 -->
+            <rect class="bar bar-2 bar-fill" x="200" y="83" width="50" height="77" rx="6" ry="6"></rect>
+            <!-- Bar 3 -->
+            <rect class="bar bar-3 bar-fill" x="270" y="97" width="50" height="63" rx="6" ry="6"></rect>
+            <!-- Bar 4 -->
+            <rect class="bar bar-4 bar-fill" x="340" y="34" width="50" height="126" rx="6" ry="6"></rect>
+
+            <!-- numeric values above bars (for clarity) -->
+            <text class="val val-0" x="85"  y="54">0.70</text>
+            <text class="val val-1" x="155" y="103">0.35</text>
+            <text class="val val-2" x="225" y="75">0.55</text>
+            <text class="val val-3" x="295" y="89">0.45</text>
+            <text class="val val-4" x="365" y="26">0.90</text>
+
+            <!-- x axis labels (frequency indices 0..4) -->
+            <g class="xlabels">
+              <text class="xlab" x="85"  y="180">0</text>
+              <text class="xlab" x="155" y="180">1</text>
+              <text class="xlab" x="225" y="180">2</text>
+              <text class="xlab" x="295" y="180">3</text>
+              <text class="xlab" x="365" y="180">4</text>
+              <text class="xtitle" x="182" y="200">Frequencies</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </body>
+  </foreignObject>
+</svg>
