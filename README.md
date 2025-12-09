@@ -27,6 +27,9 @@ to install our package from [PyPI](https://pypi.org/project/qml-essentials/).
 <p align="center">
 <img src="docs/figures/code.svg" width="640" title="Code Example">
 </p>
+<p align="center">
+<img src="docs/figures/histogram.svg" width="640" title="Histogram Figure">
+</p>
 
 You can find details on how to use it and further documentation on the corresponding [Github Page](https://cirkiters.github.io/qml-essentials/).
 
