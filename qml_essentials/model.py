@@ -155,14 +155,23 @@ class Model:
             # if str, use the pennylane fct
             self._enc = [getattr(Gates, f"{encoding}")]
         elif isinstance(encoding, list):
-            # if list, check if str or callable
-            if isinstance(encoding[0], str):
-                self._enc = [getattr(Gates, f"{enc}") for enc in encoding]
-            else:
-                self._enc = encoding
-        else:
+            self._enc = []
+            for enc in encoding:
+                # if list, check if str or callable
+                if isinstance(enc, str):
+                    self._enc.append(getattr(Gates, f"{enc}"))
+                # check if callable
+                elif callable(enc):
+                    self._enc.append(enc)
+                else:
+                    raise ValueError(f"Encoding {enc} is not a valid gate or callable.")
+        elif callable(encoding):
             # default to callable
             self._enc = [encoding]
+        else:
+            raise ValueError(
+                f"Encoding {encoding} is not a valid gate or callable or list of both."
+            )
 
         # Number of possible inputs
         self.n_input_feat = len(self._enc)
