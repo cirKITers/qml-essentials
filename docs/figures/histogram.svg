@@ -61,11 +61,11 @@
       animation: grow 0.8s cubic-bezier(.2,.9,.2,1) forwards;
       /* animation delays set per-bar classes below */
     }
-    .bar-0 { animation-delay: 10.8s; }
-    .bar-1 { animation-delay: 11.05s; }
-    .bar-2 { animation-delay: 11.3s; }
-    .bar-3 { animation-delay: 11.55s; }
-    .bar-4 { animation-delay: 11.8s; }
+    .bar-0 { animation-delay: 8.8s; }
+    .bar-1 { animation-delay: 9.05s; }
+    .bar-2 { animation-delay: 9.3s; }
+    .bar-3 { animation-delay: 9.55s; }
+    .bar-4 { animation-delay: 9.8s; }
 
     /* labels fade in after their bar finished growing */
     .val {
@@ -75,11 +75,11 @@
       opacity: 0;
       animation: labelFade 0.35s ease forwards;
     }
-    .val-0 { animation-delay: 11.65s; }
-    .val-1 { animation-delay: 11.9s; }
-    .val-2 { animation-delay: 12.15s; }
-    .val-3 { animation-delay: 12.4s; }
-    .val-4 { animation-delay: 12.65s; }
+    .val-0 { animation-delay: 9.65s; }
+    .val-1 { animation-delay: 9.9s; }
+    .val-2 { animation-delay: 10.15s; }
+    .val-3 { animation-delay: 10.4s; }
+    .val-4 { animation-delay: 10.65s; }
 
     /* x-axis labels and ticks */
     .tick, .xlab {
