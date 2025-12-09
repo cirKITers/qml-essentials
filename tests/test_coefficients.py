@@ -83,14 +83,16 @@ def test_multi_dim_input() -> None:
         circuit_type="Hardware_Efficient",
         output_qubit=-1,
         encoding=["RX", "RX"],
+        data_reupload=[[[1, 0], [1, 0], [1, 1]]],
     )
 
     coeffs, freqs = Coefficients.get_spectrum(model)
 
     assert (
-        coeffs.shape == (model.degree * 2 + 1,) * model.n_input_feat
+        coeffs.shape == [model.frequencies[i] * 2 + 1]
+        for i in range(model.n_input_feat)
     ), f"Wrong shape of coefficients: {coeffs.shape}, \
-        expected {(model.degree*2+1,)*model.n_input_feat}"
+        expected {[[model.frequencies[i] * 2 + 1] for i in range(model.n_input_feat)]}"
 
     ref_input = [1, 2]
     exp_model = model(params=None, inputs=ref_input, force_mean=True)
@@ -364,7 +366,23 @@ def test_frequencies() -> None:
     coeffs, freqs = Coefficients.get_spectrum(model)
 
     assert (
-        freqs.shape[1] ** freqs.shape[0]
+        freqs[0].size * freqs[1].size
+    ) == coeffs.size, f"(2D) Frequencies ({freqs.shape}) and \
+        coefficients ({coeffs.shape}) must add up to the same length."
+
+    # uneven 2d
+
+    model = Model(
+        n_qubits=2,
+        n_layers=2,
+        circuit_type="Circuit_19",
+        encoding=["RX", "RY"],
+        data_reupload=[[[True, True], [False, True]], [[False, True], [True, True]]],
+    )
+    coeffs, freqs = Coefficients.get_spectrum(model)
+
+    assert (
+        freqs[0].size * freqs[1].size
     ) == coeffs.size, f"(2D) Frequencies ({freqs.shape}) and \
         coefficients ({coeffs.shape}) must add up to the same length."
 

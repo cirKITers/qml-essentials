@@ -30,7 +30,7 @@ class Model:
         n_qubits: int,
         n_layers: int,
         circuit_type: Union[str, Circuit] = "No_Ansatz",
-        data_reupload: Union[bool, List[bool], List[List[bool]]] = True,
+        data_reupload: Union[bool, List[List[bool]], List[List[List[bool]]]] = True,
         state_preparation: Union[str, Callable, List[Union[str, Callable]]] = None,
         encoding: Union[str, Callable, List[Union[str, Callable]]] = Gates.RX,
         trainable_frequencies: bool = False,
@@ -158,10 +158,15 @@ class Model:
         if not isinstance(data_reupload, bool):
             if not isinstance(data_reupload, np.ndarray):
                 data_reupload = np.array(data_reupload)
-            if data_reupload.shape == (
-                n_layers,
-                n_qubits,
-            ):
+
+            if len(data_reupload.shape) == 2:
+                assert data_reupload.shape == (
+                    n_layers,
+                    n_qubits,
+                ), f"Data reuploading array has wrong shape. \
+                    Expected {(n_layers, n_qubits)} or\
+                    {(n_layers, n_qubits, self.n_input_feat)},\
+                    got {data_reupload.shape}."
                 data_reupload = data_reupload.reshape(*data_reupload.shape, 1)
                 data_reupload = np.repeat(data_reupload, self.n_input_feat, axis=2)
 
@@ -170,8 +175,7 @@ class Model:
                 n_qubits,
                 self.n_input_feat,
             ), f"Data reuploading array has wrong shape. \
-                Expected {(n_layers, n_qubits)} or\
-                {(n_layers, n_qubits, self.n_input_feat)},\
+                Expected {(n_layers, n_qubits, self.n_input_feat)},\
                 got {data_reupload.shape}."
 
             log.debug(f"Data reuploading array:\n{data_reupload}")
