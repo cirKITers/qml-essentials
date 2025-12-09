@@ -31,13 +31,13 @@ class Model:
         n_layers: int,
         circuit_type: Union[str, Circuit] = "No_Ansatz",
         data_reupload: Union[bool, List[bool], List[List[bool]]] = True,
-        state_preparation: Union[str, Callable, List[str], List[Callable]] = None,
-        encoding: Union[str, Callable, List[str], List[Callable]] = Gates.RX,
+        state_preparation: Union[str, Callable, List[Union[str, Callable]]] = None,
+        encoding: Union[str, Callable, List[Union[str, Callable]]] = Gates.RX,
         trainable_frequencies: bool = False,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
         output_qubit: Union[List[int], int] = -1,
-        shots: Optional[int] = None,
+        shots: int = None,
         random_seed: int = 1000,
         as_pauli_circuit: bool = False,
         remove_zero_encoding: bool = True,
@@ -126,17 +126,28 @@ class Model:
             # if str, use the pennylane fct
             self._sp = [getattr(Gates, f"{state_preparation}")]
         elif isinstance(state_preparation, list):
-            # if list, check if str or callable
-            if isinstance(state_preparation[0], str):
-                self._sp = [getattr(Gates, f"{sp}") for sp in state_preparation]
-            else:
-                self._sp = state_preparation
+            self._sp = []
+            for sp in state_preparation:
+                # if str, use the pennylane fct
+                if isinstance(sp, str):
+                    self._sp.append(getattr(Gates, f"{sp}"))
+                # check if callable
+                elif callable(sp):
+                    self._sp.append(sp)
+                else:
+                    raise ValueError(
+                        f"State Preparation {sp} is not a valid gate or callable.\
+                        Got {type(sp)}"
+                    )
+        elif callable(state_preparation):
+            self._sp = [state_preparation]
         elif state_preparation is None:
             self._sp = [lambda *args, **kwargs: None]
         else:
-            # default to callable
-            self._sp = [state_preparation]
-
+            raise ValueError(
+                f"state_preparation must be a str, list, callable or None.\
+                    Got {type(state_preparation)}"
+            )
         # prepare corresponding pulse parameters (always optimized pulses)
         self.sp_pulse_params = []
         for sp in self._sp:
@@ -164,7 +175,10 @@ class Model:
                 elif callable(enc):
                     self._enc.append(enc)
                 else:
-                    raise ValueError(f"Encoding {enc} is not a valid gate or callable.")
+                    raise ValueError(
+                        f"Encoding {enc} is not a valid gate or callable.\
+                        Got {type(enc)}"
+                    )
         elif callable(encoding):
             # default to callable
             self._enc = [encoding]
