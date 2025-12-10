@@ -31,7 +31,9 @@ class Model:
         n_layers: int,
         circuit_type: Union[str, Circuit] = "No_Ansatz",
         data_reupload: Union[bool, List[List[bool]], List[List[List[bool]]]] = True,
-        state_preparation: Union[str, Callable, List[Union[str, Callable]], None] = None,
+        state_preparation: Union[
+            str, Callable, List[Union[str, Callable]], None
+        ] = None,
         encoding: Union[str, Callable, List[Union[str, Callable]]] = Gates.RX,
         trainable_frequencies: bool = False,
         initialization: str = "random",
