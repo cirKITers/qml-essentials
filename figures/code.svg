@@ -45,11 +45,11 @@
     @keyframes type-line-02{from{width:0ch;}to{width:14ch;}}
     @keyframes type-line-03{from{width:0ch;}to{width:15ch;}}
     @keyframes type-line-04{from{width:0ch;}to{width:15ch;}}
-    @keyframes type-line-05{from{width:0ch;}to{width:39ch;}}
+    @keyframes type-line-05{from{width:0ch;}to{width:37ch;}}
     @keyframes type-line-06{from{width:0ch;}to{width:2ch;}}
     @keyframes type-line-07{from{width:0ch;}to{width:19ch;}}
     @keyframes type-line-08{from{width:0ch;}to{width:53ch;}}
-    @keyframes type-line-09{from{width:0ch;}to{width:41ch;}}
+    @keyframes type-line-09{from{width:0ch;}to{width:49ch;}}
     .line-01,.line-02,.line-03,.line-04,.line-05,
     .line-06,.line-07,.line-08,.line-09{
       margin:0;width:0%;border-right:0.15em solid transparent;
@@ -63,7 +63,7 @@
                      cursor 1s linear 2s 1;}
     .line-04{animation:type-line-04 1s 3s steps(15,end) forwards,
                      cursor 1s linear 3s 1;}
-    .line-05{animation:type-line-05 1s 4s steps(39,end) forwards,
+    .line-05{animation:type-line-05 1s 4s steps(37,end) forwards,
                      cursor 1s linear 4s 1;}
     .line-06{animation:type-line-06 1s 5s steps(2,end) forwards,
                      cursor 1s linear 5s 1;}
@@ -71,7 +71,7 @@
                      cursor 1s linear 6s 1;}
     .line-08{animation:type-line-08 1s 7s steps(53,end) forwards,
                      cursor 1s linear 7s 1;}
-    .line-09{animation:type-line-09 1s 8s steps(41,end) forwards,
+    .line-09{animation:type-line-09 1s 8s steps(48,end) forwards,
                      cursor 1s linear 8s 1;}
 
     <!-- indent setting for code blocks-->
@@ -101,7 +101,7 @@
           </p>
           <p>
             <span class="line-08"><span class="py-dir">from </span><span class="py-mod">qml_essentials.coefficients </span><span class="py-dir">import</span> Coefficients</span><br/>
-            <span class="line-09">coeffs = Coefficients.get_spectrum(model)</span>
+            <span class="line-09">coeffs, freqs = Coefficients.get_spectrum(model)</span>
           </p>
         </div>
       </div>

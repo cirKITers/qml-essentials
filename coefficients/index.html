@@ -657,8 +657,9 @@ Our package can, given a model, calculate the corresponding coefficients.</p>
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>            <span class="n">circuit_type</span><span class="o">=</span><span class="s2">&quot;Hardware_Efficient&quot;</span><span class="p">,</span>
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        <span class="p">)</span>
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">coeffs</span> <span class="o">=</span> <span class="n">Coefficients</span><span class="o">.</span><span class="n">get_spectrum</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">coeffs</span><span class="p">,</span> <span class="n">freqs</span> <span class="o">=</span> <span class="n">Coefficients</span><span class="o">.</span><span class="n">get_spectrum</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
 </span></code></pre></div></p>
+<p>Here, the coefficients are stored in the <code>coeffs</code> variable, and the corresponding frequency indices are stored in the <code>freqs</code> variable.</p>
 <p>But wait! There is much more to this. Let's keep on reading if you're curious <img alt="👀" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f440.svg" title=":eyes:" />.</p>
 <h2 id="detailled_explanation">Detailled Explanation<a class="headerlink" href="#detailled_explanation" title="Permanent link">#</a></h2>
 <p>To visualize what happens, let's create a very simplified Fourier model
@@ -777,6 +778,8 @@ Currently, only the FFT-based method supports this.</p>
 <p><a class="glightbox" href="../figures/model_2d_psd_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="2D Model Coefficients" data-desc-position="top"><img alt="2D Model Coefficients" src="../figures/model_2d_psd_light.png#center#only-light" /></a>
 <a class="glightbox" href="../figures/model_2d_psd_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="2D Model Coefficients" data-desc-position="top"><img alt="2D Model Coefficients" src="../figures/model_2d_psd_dark.png#center#only-dark" /></a></p>
 <p>Note that "X1" refers to the "RX" encoding and "X2" to the "RY" encoding.</p>
+<p>In the multidimensional case, the <code>freqs</code> variable now contains the frequency indices for each dimension.
+This is an important detail, as due to the <code>data_reupload</code> argument, it is possible to have a different number of frequencies for each input dimension.</p>
 <h2 id="fourier_coefficient_correlation_fcc">Fourier Coefficient Correlation (FCC)<a class="headerlink" href="#fourier_coefficient_correlation_fcc" title="Permanent link">#</a></h2>
 <p>The FCC, as introduced in <a href="https://doi.org/10.48550/arXiv.2508.20868">Fourier Fingerprints of Ansatzes in Quantum Machine Learning</a>, is a metric that aims to predict the expected performance of an arbitrary Ansatz based on the the correlation between its Fourier modes.
 In this framework, the FCC for a given <code>model</code> can be obtained as follows:</p>
