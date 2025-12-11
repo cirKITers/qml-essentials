@@ -55,7 +55,7 @@ def test_coefficients() -> None:
         ), "Imaginary part is not zero"
 
         partial_circuit = partial(model, model.params)
-        ref_coeffs = pcoefficients(partial_circuit, 1, model.degree)
+        ref_coeffs = pcoefficients(partial_circuit, 1, int(model.degree))
 
         assert np.allclose(
             coeffs, ref_coeffs, rtol=1.0e-5
