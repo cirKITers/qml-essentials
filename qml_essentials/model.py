@@ -31,8 +31,10 @@ class Model:
         n_layers: int,
         circuit_type: Union[str, Circuit] = "No_Ansatz",
         data_reupload: Union[bool, List[List[bool]], List[List[List[bool]]]] = True,
-        state_preparation: Union[str, Callable, List[str], List[Callable]] = None,
-        encoding: Union[str, Callable, List[str], List[Callable]] = Gates.RX,
+        state_preparation: Union[
+            str, Callable, List[Union[str, Callable]], None
+        ] = None,
+        encoding: Union[str, Callable, List[Union[str, Callable]]] = Gates.RX,
         trainable_frequencies: bool = False,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
@@ -121,21 +123,10 @@ class Model:
         Gates.init_rng(random_seed)
 
         # --- State Preparation ---
-        # first check if we have a str, list or callable
-        if isinstance(state_preparation, str):
-            # if str, use the pennylane fct
-            self._sp = [getattr(Gates, f"{state_preparation}")]
-        elif isinstance(state_preparation, list):
-            # if list, check if str or callable
-            if isinstance(state_preparation[0], str):
-                self._sp = [getattr(Gates, f"{sp}") for sp in state_preparation]
-            else:
-                self._sp = state_preparation
-        elif state_preparation is None:
-            self._sp = [lambda *args, **kwargs: None]
-        else:
-            # default to callable
-            self._sp = [state_preparation]
+        try:
+            self._sp = self._parse_gates(state_preparation, Gates)
+        except ValueError as e:
+            raise ValueError(f"Error parsing encodings: {e}")
 
         # prepare corresponding pulse parameters (always optimized pulses)
         self.sp_pulse_params = []
@@ -150,19 +141,10 @@ class Model:
                 self.sp_pulse_params.append(None)
 
         # --- Encoding ---
-        # first check if we have a str, list or callable
-        if isinstance(encoding, str):
-            # if str, use the pennylane fct
-            self._enc = [getattr(Gates, f"{encoding}")]
-        elif isinstance(encoding, list):
-            # if list, check if str or callable
-            if isinstance(encoding[0], str):
-                self._enc = [getattr(Gates, f"{enc}") for enc in encoding]
-            else:
-                self._enc = encoding
-        else:
-            # default to callable
-            self._enc = [encoding]
+        try:
+            self._enc = self._parse_gates(encoding, Gates)
+        except ValueError as e:
+            raise ValueError(f"Error parsing encodings: {e}")
 
         # Number of possible inputs
         self.n_input_feat = len(self._enc)
@@ -301,6 +283,39 @@ class Model:
                 PauliCircuit.from_parameterised_circuit
             )
             self.circuit = pauli_circuit_transform(self.circuit)
+
+    def _parse_gates(
+        self,
+        gates: Union[str, Callable, List[Union[str, Callable]]],
+        set_of_gates,
+    ):
+        if isinstance(gates, str):
+            # if str, use the pennylane fct
+            parsed_gates = [getattr(set_of_gates, f"{gates}")]
+        elif isinstance(gates, list):
+            parsed_gates = []
+            for enc in gates:
+                # if list, check if str or callable
+                if isinstance(enc, str):
+                    parsed_gates.append(getattr(set_of_gates, f"{enc}"))
+                # check if callable
+                elif callable(enc):
+                    parsed_gates.append(enc)
+                else:
+                    raise ValueError(
+                        f"Operation {enc} is not a valid gate or callable.\
+                        Got {type(enc)}"
+                    )
+        elif callable(gates):
+            # default to callable
+            parsed_gates = [gates]
+        elif gates is None:
+            parsed_gates = [lambda *args, **kwargs: None]
+        else:
+            raise ValueError(
+                f"Operation {gates} is not a valid gate or callable or list of both."
+            )
+        return parsed_gates
 
     @property
     def noise_params(self) -> Optional[Dict[str, Union[float, Dict[str, float]]]]:

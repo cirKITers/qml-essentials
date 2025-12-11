@@ -387,6 +387,12 @@ def test_encoding() -> None:
             "input": [[0, 0]],
             "warning": False,
         },
+        {
+            "encoding_unitary": ["RX", Gates.RY],
+            "frequencies": [2, 2],
+            "input": [[0, 0]],
+            "warning": False,
+        },
         {"encoding_unitary": "RX", "frequencies": [2], "input": [0], "warning": False},
         {
             "encoding_unitary": ["RX", "RY"],
