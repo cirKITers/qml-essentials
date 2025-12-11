@@ -39,7 +39,7 @@ class Model:
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
         output_qubit: Union[List[int], int] = -1,
-        shots: int = None,
+        shots: Optional[int] = None,
         random_seed: int = 1000,
         as_pauli_circuit: bool = False,
         remove_zero_encoding: bool = True,
