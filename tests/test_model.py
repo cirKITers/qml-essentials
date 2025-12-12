@@ -257,13 +257,13 @@ def test_batching() -> None:
 @pytest.mark.unittest
 def test_multiprocessing_density() -> None:
     # use n_samples that is not a multiple of the threshold
-    n_samples = 1500
+    n_samples = 1000
 
     model = Model(
-        n_qubits=2,
+        n_qubits=3,
         n_layers=1,
         circuit_type="Circuit_19",
-        mp_threshold=500,
+        mp_threshold=200,
     )
 
     model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
@@ -274,7 +274,7 @@ def test_multiprocessing_density() -> None:
     t_parallel = time.time() - start
 
     model = Model(
-        n_qubits=2,
+        n_qubits=3,
         n_layers=1,
         circuit_type="Circuit_19",
     )
@@ -285,7 +285,7 @@ def test_multiprocessing_density() -> None:
     start = time.time()
     res_single = model(params=params, execution_type="density")
     t_single = time.time() - start
-
+    # print(f"Diff: {t_parallel - t_single}")
     assert (
         t_parallel < t_single
     ), "Time required for multiprocessing larger than single process"
@@ -383,6 +383,12 @@ def test_encoding() -> None:
         },
         {
             "encoding_unitary": [Gates.RX, Gates.RY],
+            "frequencies": [2, 2],
+            "input": [[0, 0]],
+            "warning": False,
+        },
+        {
+            "encoding_unitary": ["RX", Gates.RY],
             "frequencies": [2, 2],
             "input": [[0, 0]],
             "warning": False,
@@ -902,21 +908,25 @@ def test_dru() -> None:
             "enc": Gates.RX,
             "dru": False,
             "degree": 1,
+            "frequencies": [1],
         },
         {
             "enc": Gates.RX,
             "dru": True,
             "degree": 4,
+            "frequencies": [4],
         },
         {
             "enc": Gates.RX,
             "dru": [[True, False], [False, True]],
             "degree": 2,
+            "frequencies": [2],
         },
         {
             "enc": [Gates.RX, Gates.RY],
             "dru": [[[0, 1], [1, 1]], [[1, 1], [0, 1]]],
             "degree": 4,
+            "frequencies": [2, 4],
         },
     ]
 
@@ -936,6 +946,11 @@ def test_dru() -> None:
             model.degree == test_case["degree"]
         ), f"Expected degree {test_case['degree']} but got {model.degree}\
             for dru {test_case['dru']}"
+
+        assert (
+            model.frequencies == test_case["frequencies"]
+        ), f"Expected frequencies {test_case['frequencies']} but got\
+            {model.frequencies} for dru {test_case['dru']}"
 
         _ = model(
             model.params,
