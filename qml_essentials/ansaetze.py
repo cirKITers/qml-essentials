@@ -816,7 +816,11 @@ class PulseInformation:
 
     @staticmethod
     def gate_by_name(gate_name):
-        return getattr(PulseInformation, gate_name)
+        return getattr(PulseInformation, gate_name, None)
+
+    @staticmethod
+    def num_params(gate_name):
+        return len(getattr(PulseInformation, gate_name, []))
 
     @staticmethod
     def update_params(path=f"{os.getcwd()}/qml_essentials/qoc_results.csv"):
