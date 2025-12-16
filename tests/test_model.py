@@ -89,6 +89,13 @@ def test_parameters() -> None:
             "force_mean": False,
             "exception": True,
         },
+        {
+            "shots": None,
+            "execution_type": "density",
+            "output_qubit": 0,
+            "force_mean": False,
+            "exception": False,
+        },
     ]
 
     # Test the most minimal call
