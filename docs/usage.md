@@ -138,6 +138,9 @@ Our model be simulated in different ways by setting the `execution_type` propert
 - `density`: Calculates the density matrix
 - `probs`: Simulates the model with the number of shots, set by `model.shots`
 
+For all three different execution types, the output shape is determined by the `output_qubit` argument, provided in the instantiation of the model.
+In case of `density` the partial density matrix is returned.
+
 ## Noise
 
 Noise can be added to the model by providing a `noise_params` argument, when calling the model, which is a dictionary with following keys
