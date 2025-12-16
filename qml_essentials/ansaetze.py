@@ -9,7 +9,6 @@ import jax
 from jax import numpy as jnp
 import itertools
 from contextlib import contextmanager
-from dataclasses import dataclass
 import logging
 
 jax.config.update("jax_enable_x64", True)
@@ -647,13 +646,15 @@ class PulseParams:
     @property
     def childs(self):
         """
-        A list of PulseParams objects, which are the children of this PulseParams object.
+        A list of PulseParams objects, which are the children
+        of this PulseParams object.
         If this object has no children, an empty list is returned.
 
         Returns
         -------
         list
-            A list of PulseParams objects, which are the children of this PulseParams object.
+            A list of PulseParams objects, which are the children
+            of this PulseParams object.
         """
         if self.is_leaf:
             return []
@@ -826,7 +827,8 @@ class PulseInformation:
 
                 for row in reader:
                     log.debug(
-                        f"Loading optimized pulses for {row[0]} (Fidelity: {float(row[1]):.5f}): {row[2:]}"
+                        f"Loading optimized pulses for {row[0]}\
+                            (Fidelity: {float(row[1]):.5f}): {row[2:]}"
                     )
                     PulseInformation.OPTIMIZED_PULSES[row[0]] = jnp.array(
                         [float(x) for x in row[2:]]
@@ -862,7 +864,7 @@ class PulseGates:
         [[jnp.exp(1j * omega_q / 2), 0], [0, jnp.exp(-1j * omega_q / 2)]]
     )
 
-    I = jnp.eye(2, dtype=jnp.complex64)
+    Id = jnp.eye(2, dtype=jnp.complex64)
     X = jnp.array([[0, 1], [1, 0]])
     Y = jnp.array([[0, -1j], [1j, 0]])
     Z = jnp.array([[1, 0], [0, -1]])
@@ -1109,9 +1111,9 @@ class PulseGates:
         else:
             pulse_params = pulse_params
 
-        I_I = jnp.kron(PulseGates.I, PulseGates.I)
-        Z_I = jnp.kron(PulseGates.Z, PulseGates.I)
-        I_Z = jnp.kron(PulseGates.I, PulseGates.Z)
+        I_I = jnp.kron(PulseGates.Id, PulseGates.Id)
+        Z_I = jnp.kron(PulseGates.Z, PulseGates.Id)
+        I_Z = jnp.kron(PulseGates.Id, PulseGates.Z)
         Z_Z = jnp.kron(PulseGates.Z, PulseGates.Z)
 
         # TODO: explain why p, t not in signal
