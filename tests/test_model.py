@@ -1107,8 +1107,8 @@ def test_local_and_global_meas() -> None:
             "execution_type": "density",
             "output_qubit": 0,
             "shots": None,
-            "out_shape": (3, 4, 4),
-            "warning": True,
+            "out_shape": (3, 2, 2),
+            "warning": False,
         },
         {
             "inputs": np.array([0.1, 0.2, 0.3]),
