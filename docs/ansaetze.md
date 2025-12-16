@@ -194,8 +194,8 @@ n_pulse_params_RX = pinfo.num_params("RX")  # 3
 n_pulse_params_CX = pinfo.num_params("CX")  # 4
 
 # Optimized pulse parameters
-opt_pulse_params_RX = pinfo.optimized_params("RX")  # jnp.array([15.709893, 29.52306, 0.74998104])
-opt_pulse_params_CX = pinfo.optimized_params("CX")  # jnp.array([7.9447253, 21.6398258, 0.90724313, 0.95509776])
+opt_pulse_params_RX = pinfo.gate_by_name("RX")  # jnp.array([15.709893, 29.52306, 0.74998104])
+opt_pulse_params_CX = pinfo.gate_by_name("CX")  # jnp.array([7.9447253, 21.6398258, 0.90724313, 0.95509776])
 ```
 
 ### Calling Gates in Pulse Mode

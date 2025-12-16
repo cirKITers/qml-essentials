@@ -351,7 +351,7 @@ def test_pulse_Rot_gate(w):
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = pinfo.optimized_params("Rot")
+        pulse_params = pinfo.gate_by_name("Rot")
         Gates.Rot(
             phi, theta, omega, wires=0, pulse_params=pulse_params, gate_mode="pulse"
         )
@@ -392,7 +392,7 @@ def test_pulse_RX_gate(w):
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = pinfo.optimized_params("RX")
+        pulse_params = pinfo.gate_by_name("RX")
         Gates.RX(w, wires=0, pulse_params=pulse_params, gate_mode="pulse")
         return qml.state()
 
@@ -431,7 +431,7 @@ def test_pulse_RY_gate(w):
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = pinfo.optimized_params("RY")
+        pulse_params = pinfo.gate_by_name("RY")
         Gates.RY(w, wires=0, pulse_params=pulse_params, gate_mode="pulse")
         return qml.state()
 
@@ -472,7 +472,7 @@ def test_pulse_RZ_gate(w):
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = pinfo.optimized_params("RZ")
+        pulse_params = pinfo.gate_by_name("RZ")
         qml.Hadamard(wires=0)
         Gates.RZ(w, wires=0, pulse_params=pulse_params, gate_mode="pulse")
         return qml.state()
@@ -511,7 +511,7 @@ def test_pulse_H_gate():
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = pinfo.optimized_params("H")
+        pulse_params = pinfo.gate_by_name("H")
         Gates.H(wires=0, pulse_params=pulse_params, gate_mode="pulse")
         return qml.state()
 
@@ -553,7 +553,7 @@ def test_pulse_CZ_gate():
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = pinfo.optimized_params("CZ")
+        pulse_params = pinfo.gate_by_name("CZ")
         qml.H(wires=0)
         qml.H(wires=1)
         Gates.CZ(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
@@ -593,7 +593,7 @@ def test_pulse_CY_gate():
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = pinfo.optimized_params("CY")
+        pulse_params = pinfo.gate_by_name("CY")
         qml.H(wires=0)
         Gates.CY(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
         return qml.state()
@@ -632,7 +632,7 @@ def test_pulse_CX_gate():
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = pinfo.optimized_params("CX")
+        pulse_params = pinfo.gate_by_name("CX")
         qml.H(wires=0)
         Gates.CX(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
         return qml.state()
@@ -675,7 +675,7 @@ def test_pulse_CRZ_gate(w):
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = pinfo.optimized_params("CRZ")
+        pulse_params = pinfo.gate_by_name("CRZ")
         qml.H(wires=0)
         qml.H(wires=1)
         Gates.CRZ(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
@@ -716,7 +716,7 @@ def test_pulse_CRY_gate(w):
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = pinfo.optimized_params("CRY")
+        pulse_params = pinfo.gate_by_name("CRY")
         qml.H(wires=0)
         Gates.CRY(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
         return qml.state()
@@ -756,7 +756,7 @@ def test_pulse_CRX_gate(w):
 
     @qml.qnode(dev)
     def custom_pulse_circuit():
-        pulse_params = pinfo.optimized_params("CRX")
+        pulse_params = pinfo.gate_by_name("CRX")
         qml.H(wires=0)
         Gates.CRX(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
         return qml.state()
