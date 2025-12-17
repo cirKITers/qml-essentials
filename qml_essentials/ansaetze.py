@@ -1302,6 +1302,8 @@ class Gates(metaclass=GatesMeta):
             elif isinstance(pulse_params, (np.ndarray, jnp.ndarray)):
                 flat_params = pulse_params.flatten().tolist()
             elif isinstance(pulse_params, PulseParams):
+                # extract the params in case a full object is given
+                kwargs["pulse_params"] = pulse_params.params
                 flat_params = pulse_params.params.flatten().tolist()
 
             else:
