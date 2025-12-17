@@ -1289,6 +1289,7 @@ class Gates(metaclass=GatesMeta):
         pulse_params = kwargs.get("pulse_params")
         pulse_mgr = getattr(Gates, "_pulse_mgr", None)
 
+        # TODO: rework this part to convert to valid PulseParams earlier
         # Type check on pulse parameters
         if pulse_params is not None:
             # flatten pulse parameters
@@ -1300,6 +1301,8 @@ class Gates(metaclass=GatesMeta):
 
             elif isinstance(pulse_params, (np.ndarray, jnp.ndarray)):
                 flat_params = pulse_params.flatten().tolist()
+            elif isinstance(pulse_params, PulseParams):
+                flat_params = pulse_params.params.flatten().tolist()
 
             else:
                 raise TypeError(f"Unsupported pulse_params type: {type(pulse_params)}")
