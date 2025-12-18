@@ -58,4 +58,5 @@ This will automatically trigger a rebuild each time you make changes.
 See the [MkDocs Documentation](https://cirkiters.github.io/qml-essentials/usage/) for more details.
 
 Publishing (and building) the documentation is done automagically using Github actions.
+Note that we're building with `--strict` mode enabled, meaning that any warnings that you might see will be treated as errors.
 This action is triggered when a new release is made.

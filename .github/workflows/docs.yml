@@ -33,7 +33,7 @@ jobs:
       #     restore-keys: |
       #       mkdocs-material-
       - name: Build Docs
-        run: uv run mkdocs build
+        run: uv run mkdocs build --strict
   deploy:
     runs-on: self-hosted
     if: ${{ github.ref == 'refs/heads/main' }}
@@ -67,6 +67,6 @@ jobs:
           run-id: ${{ inputs.test-run-id }}
           path: docs/coverage/
       - name: Build Docs
-        run: uv run mkdocs build
+        run: uv run mkdocs build --strict
       - name: Deploy
         run: uv run mkdocs gh-deploy --force
