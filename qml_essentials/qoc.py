@@ -429,9 +429,7 @@ class QOC:
                     log.warning(
                         f"Using initial pulse parameters for {gate_name} from `ansaetze.py`"
                     )
-                    init_pulse_params = PulseInformation.gate_by_name(
-                        gate_name
-                    ).leaf_params
+                    init_pulse_params = PulseInformation.gate_by_name(gate_name).params
                 log.debug(
                     f"Initial pulse parameters for {gate_name}: {init_pulse_params}"
                 )
