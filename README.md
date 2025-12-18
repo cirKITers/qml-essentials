@@ -36,3 +36,5 @@ You can find details on how to use it and further documentation on the correspon
 ## 🚧 Contributing
 
 Contributions are highly welcome! 🤗 Take a look at our [Contribution Guidelines](https://github.com/cirKITers/qml-essentials/blob/main/CONTRIBUTING.md).
+
+See our [coverage report](coverage/index.html) if you would like to contribute with further tests.

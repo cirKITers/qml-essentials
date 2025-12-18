@@ -33,7 +33,6 @@ Once you have set things up, go ahead and checkout [how to use qml-essentials](u
 </p>
 
 If you want to contribute, please refer to our [CONTRIBUTING guide](https://github.com/cirKITers/qml-essentials/blob/main/CONTRIBUTING.md) on Github.
-Also checkout our [coverage report](coverage/index.html).
 
 Do you want to use our software in a research project? :books:
 Please checkout the [github repository](https://github.com/cirKITers/qml-essentials) and follow the instructions ("Cite this repository") there.
