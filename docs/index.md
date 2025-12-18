@@ -15,11 +15,13 @@ Checkout our [Arxiv Paper](https://arxiv.org/abs/2506.06695) to learn more.
 
 Curious? :eyes: Installing this package is as simple as with any other package :rocket:
 
-`pip install qml-essentials`
-
-Or, if you prefer poetry:
-
-`poetry add qml-essentials`
+```
+pip install qml-essentials
+```
+or with the [uv package manager](https://github.com/astral-sh/uv):
+```
+uv add qml-essentials
+```
 
 Once you have set things up, go ahead and checkout [how to use qml-essentials](usage.md).
 
