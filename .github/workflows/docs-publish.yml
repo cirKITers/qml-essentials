@@ -19,17 +19,17 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: "uv"
+          # cache: "uv"
       - name: Install dependencies
         run: uv sync --group docs
       - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
-      - name: Setting up Cache
-        uses: actions/cache@v4
-        with:
-          key: mkdocs-material-${{ env.cache_id }}
-          path: .ci-cache
-          restore-keys: |
-            mkdocs-material-
+      # - name: Setting up Cache
+      #   uses: actions/cache@v4
+      #   with:
+      #     key: mkdocs-material-${{ env.cache_id }}
+      #     path: .ci-cache
+      #     restore-keys: |
+      #       mkdocs-material-
       - name: Build Docs
         run: uv run mkdocs build
   deploy:
@@ -47,17 +47,17 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: "uv"
+          # cache: "uv"
       - name: Install dependencies
         run: uv sync --group docs
       - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
-      - name: Setting up Cache
-        uses: actions/cache@v4
-        with:
-          key: mkdocs-material-${{ env.cache_id }}
-          path: .ci-cache
-          restore-keys: |
-            mkdocs-material-
+      # - name: Setting up Cache
+      #   uses: actions/cache@v4
+      #   with:
+      #     key: mkdocs-material-${{ env.cache_id }}
+      #     path: .ci-cache
+      #     restore-keys: |
+      #       mkdocs-material-
       - name: Download a single artifact
         uses: actions/download-artifact@v6
         with:
