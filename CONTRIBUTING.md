@@ -14,7 +14,7 @@ Start of by..
 Contributing to this project requires some more dependencies besides the "standard" packages.
 Those are specified in the groups `dev` and `docs`.
 ```
-uv install --with dev,docs
+uv sync --all-groups
 ```
 
 Additionally, we have pre-commit hooks in place, which can be installed as follows: 
