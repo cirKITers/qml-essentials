@@ -1,7 +1,7 @@
 name: Documentation
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_call:
     inputs:
       test-run-id:
@@ -15,15 +15,15 @@ jobs:
     if: ${{ github.ref != 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v6
-      - name: Install poetry
-        run: pipx install poetry
+      - name: Install uv
+        run: pipx install uv
       - name: Set up Python 3.12
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: 'poetry'
+          cache: "uv"
       - name: Install dependencies
-        run: poetry install --with docs
+        run: uv sync --group docs
       - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
       - name: Setting up Cache
         uses: actions/cache@v4
@@ -33,7 +33,7 @@ jobs:
           restore-keys: |
             mkdocs-material-
       - name: Build Docs
-        run: poetry run mkdocs build
+        run: uv run mkdocs build
   deploy:
     runs-on: self-hosted
     if: ${{ github.ref == 'refs/heads/main' }}
@@ -43,15 +43,15 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-      - name: Install poetry
-        run: pipx install poetry
+      - name: Install uv
+        run: pipx install uv
       - name: Set up Python 3.12
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: 'poetry'
+          cache: "uv"
       - name: Install dependencies
-        run: poetry install --with docs
+        run: uv sync --group docs
       - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
       - name: Setting up Cache
         uses: actions/cache@v4
@@ -67,6 +67,6 @@ jobs:
           run-id: ${{ inputs.test-run-id }}
           path: docs/coverage/
       - name: Build Docs
-        run: poetry run mkdocs build
+        run: uv run mkdocs build
       - name: Deploy
-        run: poetry run mkdocs gh-deploy --force
+        run: uv run mkdocs gh-deploy --force

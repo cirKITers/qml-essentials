@@ -1,7 +1,7 @@
 name: Quality
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 permissions:
   contents: read
 jobs:
@@ -10,18 +10,18 @@ jobs:
     if: ${{ (github.actor != 'dependabot[bot]') }}
     steps:
       - uses: actions/checkout@v6
-      - name: Install poetry
-        run: pipx install poetry
+      - name: Install uv
+        run: pipx install uv
       - name: Set up Python 3.12
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: 'poetry'
+          cache: "uv"
       - name: Install dependencies
-        run: poetry install --with dev
+        run: uv sync --group dev
       - name: Lint with flake8
         run: |
-          poetry run flake8 qml_essentials
-          poetry run flake8 tests
+          uv run flake8 qml_essentials
+          uv run flake8 tests
       - name: Running license check
-        run: poetry run licensecheck --zero --license mit
+        run: uv run licensecheck --zero --license mit
