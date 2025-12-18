@@ -74,6 +74,9 @@ class Coefficients:
             coeffs = np.fft.fftshift(coeffs, axes=list(range(model.n_input_feat)))
             freqs = np.fft.fftshift(freqs)
 
+        if len(freqs) == 1:
+            freqs = freqs[0]
+
         return coeffs, freqs
 
     @staticmethod
@@ -82,28 +85,34 @@ class Coefficients:
     ) -> np.ndarray:
         # Create a frequency vector with as many frequencies as model degrees,
         # oversampled by nfs
-        n_freqs: int = 2 * mfs * model.degree + 1
+        n_freqs: np.ndarray = np.array(
+            [2 * mfs * model.frequencies[i] + 1 for i in range(model.n_input_feat)]
+        )
 
         start, stop, step = 0, 2 * mts * np.pi, 2 * np.pi / n_freqs
         # Stretch according to the number of frequencies
-        inputs: np.ndarray = np.arange(start, stop, step)
+        inputs: List = [
+            np.arange(start, stop, step[i]) for i in range(model.n_input_feat)
+        ]
 
         # permute with input dimensionality
-        nd_inputs = np.array(np.meshgrid(*[inputs] * model.n_input_feat)).T.reshape(
-            -1, model.n_input_feat
-        )
+        nd_inputs = np.array(
+            np.meshgrid(*[inputs[i] for i in range(model.n_input_feat)])
+        ).T.reshape(-1, model.n_input_feat)
 
         # Output vector is not necessarily the same length as input
         outputs = model(inputs=nd_inputs, **kwargs)
-        outputs = outputs.reshape(*(inputs.shape * model.n_input_feat), -1).squeeze()
+        outputs = outputs.reshape(
+            *[inputs[i].shape[0] for i in range(model.n_input_feat)], -1
+        ).squeeze()
 
         coeffs = np.fft.fftn(outputs, axes=list(range(model.n_input_feat)))
 
         # TODO: in the future, this should take into account that there can be a
         # different number of frequencies per dimension
         freqs = [
-            np.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
-            for _ in range(model.n_input_feat)
+            np.fft.fftfreq(int(mts * n_freqs[i]), 1 / n_freqs[i])
+            for i in range(model.n_input_feat)
         ]
         # freqs = np.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
 
@@ -113,7 +122,7 @@ class Coefficients:
         # normalize the output (using product if multidim)
         return (
             coeffs / np.prod(outputs.shape[0 : model.n_input_feat]),
-            np.array(freqs).squeeze(),
+            freqs,
         )
 
     @staticmethod
