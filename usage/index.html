@@ -826,6 +826,8 @@ This is usually helpful, if you want to perform a n-local measurement over all q
 <li><code>density</code>: Calculates the density matrix</li>
 <li><code>probs</code>: Simulates the model with the number of shots, set by <code>model.shots</code></li>
 </ul>
+<p>For all three different execution types, the output shape is determined by the <code>output_qubit</code> argument, provided in the instantiation of the model.
+In case of <code>density</code> the partial density matrix is returned.</p>
 <h2 id="noise">Noise<a class="headerlink" href="#noise" title="Permanent link">#</a></h2>
 <p>Noise can be added to the model by providing a <code>noise_params</code> argument, when calling the model, which is a dictionary with following keys</p>
 <ul>
