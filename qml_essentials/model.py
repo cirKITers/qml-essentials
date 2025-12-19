@@ -752,7 +752,10 @@ class Model:
     def _observable(self):
         # run mixed simualtion and get density matrix
         if self.execution_type == "density":
-            return qml.density_matrix(wires=list(range(self.n_qubits)))
+            if self.output_qubit == -1:
+                return qml.density_matrix(wires=list(range(self.n_qubits)))
+            else:
+                return qml.density_matrix(wires=self.output_qubit)
         elif self.execution_type == "state":
             return qml.state()
         # run default simulation and get expectation value
