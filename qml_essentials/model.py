@@ -560,14 +560,14 @@ class Model:
 
         log.info(f"Initialized pulse parameters with shape {self.pulse_params.shape}.")
 
-    def transform_input(self, inputs: np.ndarray, enc_params: Optional[np.ndarray]):
+    def transform_input(
+        self, inputs: np.ndarray, enc_params: Optional[np.ndarray]
+    ) -> np.ndarray:
         """
         Transforms the input as in arXiv:2309.03279v2
 
         Args:
             inputs (np.ndarray): single input point of shape (1, n_input_feat)
-            idx (int): feature index
-            qubit (int): qubit on which to the encoding is being performed
             enc_params (np.ndarray): encoding weight vector of
                 shape (n_qubits)
 
