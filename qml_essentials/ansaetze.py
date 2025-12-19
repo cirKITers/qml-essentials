@@ -806,7 +806,7 @@ class PulseInformation:
         pulse_obj=[RZ, RY],
     )
 
-    Rot = PulseParams(name="Rot", pulse_obj=[RZ, RY, RZ])
+    # Rot = PulseParams(name="Rot", pulse_obj=[RZ, RY, RZ])
     CX = PulseParams(name="CX", pulse_obj=[H, CZ, H])
     CY = PulseParams(name="CY", pulse_obj=[RZ, CX, RZ])
 

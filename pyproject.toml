@@ -39,6 +39,7 @@ dev = [
     "matplotlib>=3.10.3,<4",
     "pytest-xdist>=3.6.1,<4",
     "coverage>=7.8.0,<8",
+    "pygraphviz",
 ]
 docs = [
     "mkdocs>=1.6.1,<2",
