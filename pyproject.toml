@@ -6,7 +6,7 @@ authors = [
     { name = "Melvin Strobl", email = "melvin.strobl@kit.edu" },
     { name = "Maja Franz", email = "maja.franz@oth-regensburg.de" },
 ]
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.11,<3.14"
 readme = "README.md"
 license = "MIT"
 maintainers = [{ name = "Melvin Strobl", email = "melvin.strobl@kit.edu" }]
@@ -16,7 +16,7 @@ keywords = [
     "qml",
 ]   
 dependencies = [
-    "pennylane>=0.40.0,<0.41.0",
+    "pennylane>=0.43.2",
     "dill>=0.4.0,<0.5",
     "jax>=0.4.28,<0.5",
     "jaxlib>=0.4.28,<0.5",
