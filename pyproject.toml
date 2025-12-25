@@ -1,55 +1,60 @@
-[tool.poetry]
+[project]
 name = "qml-essentials"
-version = "0.1.36"
+version = "0.1.37"
 description = "A toolbox to make working with QML models easier."
-authors = ["Melvin Strobl <melvin.strobl@kit.edu>", "Maja Franz <maja.franz@oth-regensburg.de>"]
-maintainers = ["Melvin Strobl <melvin.strobl@kit.edu>"]
+authors = [
+    { name = "Melvin Strobl", email = "melvin.strobl@kit.edu" },
+    { name = "Maja Franz", email = "maja.franz@oth-regensburg.de" },
+]
+requires-python = ">=3.11,<3.14"
 readme = "README.md"
 license = "MIT"
-homepage = "https://cirkiters.github.io/qml-essentials/"
-documentation = "https://cirkiters.github.io/qml-essentials/"
-repository = "https://github.com/cirKITers/qml-essentials"
-keywords = ["quantum", "quantum machine learning", "qml"]
+maintainers = [{ name = "Melvin Strobl", email = "melvin.strobl@kit.edu" }]
+keywords = [
+    "quantum",
+    "quantum machine learning",
+    "qml",
+]   
+dependencies = [
+    "pennylane>=0.43.2",
+    "dill>=0.4.0,<0.5",
+    "jax>=0.4.28,<0.5",
+    "jaxlib>=0.4.28,<0.5",
+    "optax>=0.2.5,<0.3",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.11,<4.0"
-pennylane = {git = "https://github.com/PennyLaneAI/pennylane", rev = "fix-default-mixed-bug"}
-dill = "^0.4.0"
-jax = "^0.4.28"
-jaxlib = "^0.4.28"
-optax = "^0.2.5"
+[project.urls]
+Homepage = "https://cirkiters.github.io/qml-essentials/"
+Repository = "https://github.com/cirKITers/qml-essentials"
+Documentation = "https://cirkiters.github.io/qml-essentials/"
 
-[tool.poetry.group.dev]
-optional = true
+[dependency-groups]
+dev = [
+    "black>=25.1.0,<26",
+    "pytest>=8.3.5,<9",
+    "flake8>=7.2.0,<8",
+    "pre-commit>=4.2.0,<5",
+    "pytest-cov>=6.0.0,<7",
+    "licensecheck>=2025.1.0,<2026",
+    "matplotlib>=3.10.3,<4",
+    "pytest-xdist>=3.6.1,<4",
+    "coverage>=7.8.0,<8",
+]
+docs = [
+    "mkdocs>=1.6.1,<2",
+    "mkdocs-material>=9.6.14,<10",
+    "mkdocs-glightbox>=0.4.0,<0.5",
+    "mkdocstrings-python>=1.16.10,<2",
+    "markdown-include>=0.8.1,<0.9",
+    "ipykernel>=6.29.5,<7",
+]
 
-[tool.poetry.group.dev.dependencies]
-black = "^25.1.0"
-pytest = "^8.3.5"
-flake8 = "^7.2.0"
-pre-commit = "^4.2.0"
-pytest-cov = "^6.0.0"
-licensecheck = "^2025.1.0"
-matplotlib = "^3.10.3"
-pytest-xdist = "^3.6.1"
-coverage = "^7.8.0"
-
-[tool.poetry.group.docs]
-optional = true
-
-[tool.poetry.group.docs.dependencies]
-mkdocs = "^1.6.1"
-mkdocs-material = "^9.6.14"
-mkdocs-glightbox = "^0.4.0"
-mkdocstrings-python = "^1.16.10"
-markdown-include = "^0.8.1"
-ipykernel = "^6.29.5"
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.licensecheck]
 fail_packages = ["typing_extensions"]
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 markers = [

@@ -23,6 +23,7 @@ model.draw(figure="mpl")
 ![Hardware Efficient Ansatz](figures/hae_dark.png#only-dark)
 
 Looks good to you? :eyes: Head over to the [*Training*](training.md) page for **getting started** with an easy example, where we also show how to implement **trainable frequencies** :rocket:
+If you want to learn more about, why we get the above results, checkout the [*Data-Reuploading*](#data-reuploading) section.
 
 Note that calling the model without any (`None`) values for the `params` and `inputs` argument, will implicitly call the model with the recently (or initial) parameters and `0`s as input.
 I.e. simply running the following
@@ -43,7 +44,7 @@ See page [*Ansaetze*](ansaetze.md) for more details and a list of available Ansa
 
 ## Data-Reuploading
 
-This idea is one of the core features of our framework and builds upon the work by [*Schuld et al. (2020)*](https://doi.org/10.48550/arXiv.2008.08605).
+The idea of repeating the input encoding is one of the core features of our framework and builds upon the work by [*Schuld et al. (2020)*](https://doi.org/10.48550/arXiv.2008.08605).
 Essentially, it allows us to represent a quantum circuit as a truncated Fourier series, which is a powerful feature that enables the model to mimic arbitrary non-linear functions.
 The number of frequencies that the model can represent is constrained by the number of data encoding steps within the circuit.
 
@@ -101,6 +102,7 @@ Other options are:
 - A list of callables such as `[Gates.RX, Gates.RY]`
 
 See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
+Note it is also possible to provide a custom encoding as the `encoding` argument essentially accepts any callable or list of callables see [here](ansaetze.md#custom-encoding) for more details.
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
 Otherwise multiple inputs are treated as batches of inputs.
 If you want to visualize zero-valued encoding gates in the model, set `remove_zero_encoding` to `False` on instantiation.
@@ -135,6 +137,9 @@ Our model be simulated in different ways by setting the `execution_type` propert
 - `expval`: Returns the expectation value between $0$ and $1$
 - `density`: Calculates the density matrix
 - `probs`: Simulates the model with the number of shots, set by `model.shots`
+
+For all three different execution types, the output shape is determined by the `output_qubit` argument, provided in the instantiation of the model.
+In case of `density` the partial density matrix is returned.
 
 ## Noise
 

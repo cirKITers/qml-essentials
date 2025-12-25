@@ -14,8 +14,10 @@ model = Model(
             circuit_type="Hardware_Efficient",
         )
 
-coeffs = Coefficients.get_spectrum(model)
+coeffs, freqs = Coefficients.get_spectrum(model)
 ```
+
+Here, the coefficients are stored in the `coeffs` variable, and the corresponding frequency indices are stored in the `freqs` variable.
 
 But wait! There is much more to this. Let's keep on reading if you're curious :eyes:.
 
@@ -184,6 +186,9 @@ Using a logarithmic color bar, one obtains the following 2D-spectrum:
 
 Note that "X1" refers to the "RX" encoding and "X2" to the "RY" encoding.
 
+In the multidimensional case, the `freqs` variable now contains the frequency indices for each dimension.
+This is an important detail, as due to the `data_reupload` argument, it is possible to have a different number of frequencies for each input dimension.
+
 ## Fourier Coefficient Correlation (FCC)
 
 The FCC, as introduced in [Fourier Fingerprints of Ansatzes in Quantum Machine Learning](https://doi.org/10.48550/arXiv.2508.20868), is a metric that aims to predict the expected performance of an arbitrary Ansatz based on the the correlation between its Fourier modes.
@@ -210,7 +215,7 @@ fcc = FCC.get_fcc(
 Returns `0.1442` as already in Fig. 3a of aforementioned paper.
 
 Optionally, you can choose a different correlation `method` (currently "pearson" and "spearman" are supported).
-Similar, other methods which require specifying `n_samples` (c.f. calculation of [expressibility](expressibility.md) and [entangling capability](entangling.md)), methods in the `FCC` class take an optional parameter `scale` (defaults to `False`), which scales the number of samples depending on the number of qubits and the number of input features as $n_\text{samples} \cdot n_\text{params} \cdot 2^{n_\text{qubits}} \cdot n_\text{features}$.
+Similar, other methods which require specifying `n_samples` (c.f. calculation of [expressibility](expressibility.md) and [entangling capability](entanglement.md)), methods in the `FCC` class take an optional parameter `scale` (defaults to `False`), which scales the number of samples depending on the number of qubits and the number of input features as $n_\text{samples} \cdot n_\text{params} \cdot 2^{n_\text{qubits}} \cdot n_\text{features}$.
 
 As described in our paper, the FCC is calculated as the mean of the Fourier fingerprint, which in turn can be obtained separately as follows:
 

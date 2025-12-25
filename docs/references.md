@@ -18,6 +18,26 @@ from qml_essentials.ansaetze import Gates
     options:
       heading_level: 3
 
+```python
+from qml_essentials.ansaetze import UnitaryGates
+```
+
+### Unitary Gates
+
+::: qml_essentials.ansaetze.UnitaryGates
+    options:
+      heading_level: 3
+
+### Pulse Gates
+
+```python
+from qml_essentials.ansaetze import PulseGates
+```
+
+::: qml_essentials.ansaetze.PulseGates
+    options:
+      heading_level: 3
+
 ## Model
 
 ```python

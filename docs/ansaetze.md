@@ -136,6 +136,28 @@ model(
 })
 ```
 
+In addition to these decoherent errors, we can also apply a `GateError` which affects each parameterized gate as $w = w + \mathcal{N}(0, \epsilon)$, where $\sqrt{\epsilon}$ is the standard deviation of the noise, specified by the `GateError` key in the `noise_params` argument.
+It's important to note that, depending on the flag set in `Ansaetze.UnitaryGates.batch_gate_error`, the error will be applied to the entire batch of parameters (all parameters are affected in the same way) or to each parameter individually (default).
+This can be particularly usefull in a scenario where one would like to apply noise e.g. only on the encoding gates but wants to change them all uniformly.
+An example of this is provided in the following code:
+
+```python
+from qml_essentials.ansaetze import UnitaryGates
+
+UnitaryGates.batch_gate_error = False
+model(
+    ...
+    noise_params={
+        "GateError": 0.01,
+    }
+)
+
+def pqc_noise_free(*args, **kwargs):
+    kwargs["noise_params"] = None
+    return pqc(*args, **kwargs)
+model.pqc = pqc_noise_free
+```
+
 > **Note:** When using a noisy circuit, make sure to run the model with the `density` execution type.
 
 ## Pulse Simulation

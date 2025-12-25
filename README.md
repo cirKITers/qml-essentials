@@ -17,14 +17,24 @@ Checkout our [Arxiv Paper](https://arxiv.org/abs/2506.06695) to learn more.
 ```
 pip install qml-essentials
 ```
-or
+or with the [uv package manager](https://github.com/astral-sh/uv):
 ```
-poetry add qml-essentials
+uv add qml-essentials
 ```
 
-to install our package from [PyPI](https://pypi.org/project/qml-essentials/).\
+to install our package from [PyPI](https://pypi.org/project/qml-essentials/).
+
+<p align="center">
+<img src="docs/figures/code.svg" width="640" title="Code Example">
+</p>
+<p align="center">
+<img src="docs/figures/histogram.svg" width="640" title="Histogram Figure">
+</p>
+
 You can find details on how to use it and further documentation on the corresponding [Github Page](https://cirkiters.github.io/qml-essentials/).
 
 ## 🚧 Contributing
 
 Contributions are highly welcome! 🤗 Take a look at our [Contribution Guidelines](https://github.com/cirKITers/qml-essentials/blob/main/CONTRIBUTING.md).
+
+See our [coverage report](coverage/index.html) if you would like to contribute with further tests.

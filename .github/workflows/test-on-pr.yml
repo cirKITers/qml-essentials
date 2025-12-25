@@ -1,7 +1,7 @@
 name: Testing on PR
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_call:
 permissions:
   contents: write
@@ -12,15 +12,15 @@ jobs:
   test-not-expensive:
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v5
-      - name: Install poetry
-        run: pipx install poetry
+      - uses: actions/checkout@v6
+      - name: Install uv
+        run: pipx install uv
       - name: Set up Python 3.12
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: 'poetry'
+          # cache: "uv"
       - name: Install dependencies
-        run: poetry install --with dev
+        run: uv sync --group dev
       - name: Test with pytest
-        run: poetry run pytest --cov=qml_essentials --dist load -m "not expensive" -n auto
+        run: uv run pytest --cov=qml_essentials --dist load -m "not expensive" -n auto
