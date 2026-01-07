@@ -645,14 +645,14 @@ class QOC:
 
     def create_CX(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
-            qml.H(wires=0)
+            qml.H(wires=1)
             qml.RY(w, wires=1)
             Gates.CX(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
             return qml.state()
 
         def target_circuit(w):
-            qml.H(wires=0)
-            qml.RX(w, wires=1)
+            qml.H(wires=1)
+            qml.RY(w, wires=1)
             qml.CNOT(wires=[0, 1])
             return qml.state()
 
@@ -667,7 +667,7 @@ class QOC:
 
         def target_circuit(w):
             qml.H(wires=0)
-            qml.RX(w, wires=1)
+            qml.RY(w, wires=1)
             qml.CY(wires=[0, 1])
             return qml.state()
 
@@ -675,14 +675,14 @@ class QOC:
 
     def create_CZ(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
-            qml.H(wires=0)
-            qml.RX(w, wires=1)
+            qml.H(wires=1)
+            qml.RY(w, wires=1)
             Gates.CZ(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
             return qml.state()
 
         def target_circuit(w):
-            qml.H(wires=0)
-            qml.RX(w, wires=1)
+            qml.H(wires=1)
+            qml.RY(w, wires=1)
             qml.CZ(wires=[0, 1])
             return qml.state()
 
