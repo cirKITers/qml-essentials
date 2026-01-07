@@ -613,11 +613,13 @@ class QOC:
         def pulse_circuit(w, pulse_params):
             qml.H(wires=0)
             Gates.RZ(w, 0, pulse_params=pulse_params, gate_mode="pulse")
+            qml.H(wires=0)
             return qml.state()
 
         def target_circuit(w):
             qml.H(wires=0)
             qml.RZ(w, wires=0)
+            qml.H(wires=0)
             return qml.state()
 
         return pulse_circuit, target_circuit
