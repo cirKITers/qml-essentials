@@ -421,7 +421,7 @@ class Entanglement:
         N = 2 ** n
 
         if scale:
-            n_samples = np.power(2, n) * n_samples
+            n_samples = N * n_samples
 
         dev = qml.device(
             "default.mixed",
@@ -433,11 +433,12 @@ class Entanglement:
         def _swap_test(rho: np.ndarray, n: int) -> np.ndarray:
             """
             Constructs a circuit to compute the concentratable entanglement using the
-            swap test by creating two copies of a state given by a density matrix rho and
-            mapping the output wires accordingly.
+            swap test by creating two copies of a state given by a density matrix rho
+            and mapping the output wires accordingly.
 
             Args:
-                rho (np.ndarray): the density matrix of the state on which the swap test is performed.
+                rho (np.ndarray): the density matrix of the state on which the swap
+                    test is performed.
 
             Returns:
                 List[np.ndarray]: Probabilities obtained from the swap test circuit.
@@ -462,20 +463,18 @@ class Entanglement:
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             model.initialize_params(rng=rng, repeat=n_samples)
-            params = model.params
         else:
             if seed is not None:
                 log.warning("Seed is ignored when samples is 0")
 
             if len(model.params.shape) <= 2:
-                params = model.params.reshape(*model.params.shape, 1)
+                model.params = model.params.reshape(*model.params.shape, 1)
             else:
                 log.info(f"Using sample size of model params: {model.params.shape[-1]}")
-                params = model.params
 
         kwargs.setdefault("inputs", None)
         rhos = model(execution_type="density", **kwargs)
-        rhos = rhos.reshape(-1, 2 ** model.n_qubits, 2 ** model.n_qubits)
+        rhos = rhos.reshape(-1, N, N)
 
         entanglement = np.zeros(len(rhos))
 
