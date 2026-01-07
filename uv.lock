@@ -1774,7 +1774,7 @@ wheels = [
 
 [[package]]
 name = "qml-essentials"
-version = "0.1.36"
+version = "0.1.37"
 source = { editable = "." }
 dependencies = [
     { name = "dill" },
@@ -1792,7 +1792,6 @@ dev = [
     { name = "licensecheck" },
     { name = "matplotlib" },
     { name = "pre-commit" },
-    { name = "pygraphviz" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
@@ -1804,6 +1803,7 @@ docs = [
     { name = "mkdocs-glightbox" },
     { name = "mkdocs-material" },
     { name = "mkdocstrings-python" },
+    { name = "pygraphviz" },
 ]
 
 [package.metadata]
@@ -1823,7 +1823,6 @@ dev = [
     { name = "licensecheck", specifier = ">=2025.1.0,<2026" },
     { name = "matplotlib", specifier = ">=3.10.3,<4" },
     { name = "pre-commit", specifier = ">=4.2.0,<5" },
-    { name = "pygraphviz" },
     { name = "pytest", specifier = ">=8.3.5,<9" },
     { name = "pytest-cov", specifier = ">=6.0.0,<7" },
     { name = "pytest-xdist", specifier = ">=3.6.1,<4" },
@@ -1835,6 +1834,7 @@ docs = [
     { name = "mkdocs-glightbox", specifier = ">=0.4.0,<0.5" },
     { name = "mkdocs-material", specifier = ">=9.6.14,<10" },
     { name = "mkdocstrings-python", specifier = ">=1.16.10,<2" },
+    { name = "pygraphviz" },
 ]
 
 [[package]]
