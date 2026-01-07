@@ -1030,8 +1030,10 @@ class PulseGates:
         """
         pulse_params_RZ, pulse_params_RY = PulseInformation.H.split_params(pulse_params)
 
-        # qml.GlobalPhase(-jnp.pi / 2)  # this could act as substitute to Sc
-        # TODO: Explain why p, t not in signal
+        # qml.GlobalPhase(-jnp.pi / 2)  # this could act as substitute to Sc
+        PulseGates.RZ(jnp.pi, wires=wires, pulse_params=pulse_params_RZ)
+        PulseGates.RY(jnp.pi / 2, wires=wires, pulse_params=pulse_params_RY)
+
         def Sc(p, t):
             return -1.0
 
@@ -1040,9 +1042,6 @@ class PulseGates:
         H_corr = Sc * _H
 
         qml.evolve(H_corr)([0], 1)
-
-        PulseGates.RZ(jnp.pi, wires=wires, pulse_params=pulse_params_RZ)
-        PulseGates.RY(jnp.pi / 2, wires=wires, pulse_params=pulse_params_RY)
 
     @staticmethod
     def CX(wires, pulse_params=None):
@@ -1119,14 +1118,9 @@ class PulseGates:
         I_Z = jnp.kron(PulseGates.Id, PulseGates.Z)
         Z_Z = jnp.kron(PulseGates.Z, PulseGates.Z)
 
-        # TODO: explain why p, t not in signal
         def Scz(p, t):
             return p * jnp.pi
 
-        # a = jnp.array(
-        #     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, jnp.pi, 0], [0, 0, 0, jnp.pi]]
-        # )
-        # _H = (jnp.pi / 4) * a
         _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
         _H = qml.Hermitian(_H, wires=wires)
         H_eff = Scz * _H
