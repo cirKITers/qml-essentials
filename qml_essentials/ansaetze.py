@@ -1008,9 +1008,8 @@ class PulseGates:
 
         _H = qml.Hermitian(PulseGates.Z, wires=wires)
 
-        # TODO: Put comment why p, t has no effect here
         def Sz(p, t):
-            return pulse_params * w
+            return p * w
 
         H_eff = Sz * _H
 
