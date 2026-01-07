@@ -444,6 +444,12 @@ class QOC:
                     params=init_pulse_params,
                 )
 
+                self.save_results(
+                    gate=gate_name,
+                    fidelity=1 - min(loss_history),
+                    pulse_params=pulse_params,
+                )
+
                 return pulse_params, loss_history
 
             return wrapper
