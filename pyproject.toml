@@ -16,7 +16,7 @@ keywords = [
     "qml",
 ]   
 dependencies = [
-    "pennylane>=0.43.2",
+    "pennylane",
     "dill>=0.4.0,<0.5",
     "jax>=0.4.28,<0.5",
     "jaxlib>=0.4.28,<0.5",
@@ -62,3 +62,6 @@ markers = [
     "unittest: Tests with an assertion to check the output of a particular unit",
     "smoketest: Tests that just run a method and check if it not fails",
 ]
+
+[tool.uv.sources]
+pennylane = { git = "https://github.com/PennyLaneAI/pennylane", rev = "09e241ec9dfe5c78791aea2e126a69a8002b2be6" }
