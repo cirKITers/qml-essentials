@@ -811,7 +811,7 @@ class PulseInformation:
     CY = PulseParams(name="CY", pulse_obj=[RZ, CX, RZ])
 
     CRX = PulseParams(name="CRX", pulse_obj=[RZ, RY, CX, RY, CX, RZ])
-    CRY = PulseParams(name="CRY", pulse_obj=[RY, CX, RX, CX])
+    CRY = PulseParams(name="CRY", pulse_obj=[RY, CX, RY, CX])
     CRZ = PulseParams(name="CRZ", pulse_obj=[RZ, CX, RZ, CX])
 
     @staticmethod
@@ -1178,15 +1178,15 @@ class PulseGates:
             Pulse parameters for the composing gates. Defaults
             to optimized parameters if None.
         """
-        params_RX_1, params_CX_1, params_RX_2, params_CX_2 = (
+        params_RY_1, params_CX_1, params_RY_2, params_CX_2 = (
             PulseInformation.CRY.split_params(pulse_params)
         )
 
         target = wires[1]
 
-        PulseGates.RY(w / 2, wires=target, pulse_params=params_RX_1)
+        PulseGates.RY(w / 2, wires=target, pulse_params=params_RY_1)
         PulseGates.CX(wires=wires, pulse_params=params_CX_1)
-        PulseGates.RX(-w / 2, wires=target, pulse_params=params_RX_2)
+        PulseGates.RY(-w / 2, wires=target, pulse_params=params_RY_2)
         PulseGates.CX(wires=wires, pulse_params=params_CX_2)
 
     @staticmethod
