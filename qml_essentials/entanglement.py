@@ -2,6 +2,9 @@ from typing import Optional, Any, List
 import pennylane as qml
 import pennylane.numpy as np
 from copy import deepcopy
+
+from pennylane.measurements import ProbabilityMP
+
 from qml_essentials.utils import logm_v
 from qml_essentials.model import Model
 import logging
@@ -414,45 +417,35 @@ class Entanglement:
             float: Entangling capability of the given circuit, guaranteed
                 to be between 0.0 and 1.0.
         """
-        if "noise_params" in kwargs:
-            log.warning(
-                "Concentratable entanglement is not suitable for noisy circuits.\
-                    Consider 'relative_entropy' instead."
-            )
-
         n = model.n_qubits
+        N = 2 ** n
 
         if scale:
-            n_samples = np.power(2, model.n) * n_samples
+            n_samples = N * n_samples
 
-        def _circuit(
-            params: np.ndarray,
-            inputs: np.ndarray,
-            pulse_params: Optional[np.ndarray] = None,
-            enc_params: Optional[np.ndarray] = None,
-            gate_mode: str = "unitary",
-        ) -> List[np.ndarray]:
+        dev = qml.device(
+            "default.mixed",
+            shots=model.shots,
+            wires=n * 3,
+        )
+
+        @qml.qnode(device=dev)
+        def _swap_test(rho: np.ndarray, n: int) -> np.ndarray:
             """
             Constructs a circuit to compute the concentratable entanglement using the
-            swap test by creating two copies of the models circuit and map the output
-            wires accordingly
+            swap test by creating two copies of a state given by a density matrix rho
+            and mapping the output wires accordingly.
 
             Args:
-                params (np.ndarray): The model parameters.
-                inputs (np.ndarray): The input data for the model.
-                pulse_params (np.ndarray): The model pulse parameters.
-                enc_params (Optional[np.ndarray]): Optional encoding parameters.
+                rho (np.ndarray): the density matrix of the state on which the swap
+                    test is performed.
 
             Returns:
                 List[np.ndarray]: Probabilities obtained from the swap test circuit.
             """
 
-            qml.map_wires(model._variational, {i: i + n for i in range(n)})(
-                params, inputs, pulse_params, enc_params, gate_mode
-            )
-            qml.map_wires(model._variational, {i: i + 2 * n for i in range(n)})(
-                params, inputs, pulse_params, enc_params, gate_mode
-            )
+            qml.QubitDensityMatrix(rho, wires=[i for i in range(n, 2 * n)])
+            qml.QubitDensityMatrix(rho, wires=[i for i in range(2 * n, 3 * n)])
 
             # Perform swap test
             for i in range(n):
@@ -466,49 +459,33 @@ class Entanglement:
 
             return qml.probs(wires=[i for i in range(n)])
 
-        model.circuit = qml.QNode(
-            _circuit,
-            qml.device(
-                "default.qubit",
-                shots=model.shots,
-                wires=n * 3,
-            ),
-        )
-
         rng = np.random.default_rng(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             model.initialize_params(rng=rng, repeat=n_samples)
-            params = model.params
         else:
             if seed is not None:
                 log.warning("Seed is ignored when samples is 0")
 
             if len(model.params.shape) <= 2:
-                params = model.params.reshape(*model.params.shape, 1)
+                model.params = model.params.reshape(*model.params.shape, 1)
             else:
                 log.info(f"Using sample size of model params: {model.params.shape[-1]}")
-                params = model.params
 
-        n_samples = params.shape[-1]
-
-        # implicitly set input to none in case it's not needed
         kwargs.setdefault("inputs", None)
+        rhos = model(execution_type="density", **kwargs)
+        rhos = rhos.reshape(-1, N, N)
 
-        samples_probs = model(params=params, execution_type="probs", **kwargs)
-        if n_samples == 1:
-            samples_probs = [samples_probs]
+        entanglement = np.zeros(len(rhos))
 
-        ce_measure = np.zeros(len(samples_probs))
+        for i, rho in enumerate(rhos):
+            probs = _swap_test(rho, n)
+            entanglement[i] = 1 - probs[0]
 
-        for i, probs in enumerate(samples_probs):
-            ce_measure[i] = 1 - probs[0]
+        # Catch floating point errors
+        entangling_capability = min(max(entanglement.mean(), 0.0), 1.0)
+        log.debug(f"Variance of measure: {entanglement.var()}")
 
-        # Average all iterated states
-        entangling_capability = min(max(ce_measure.mean(), 0.0), 1.0)
-        log.debug(f"Variance of measure: {ce_measure.var()}")
-
-        # catch floating point errors
         return float(entangling_capability)
 
 
