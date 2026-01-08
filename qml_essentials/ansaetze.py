@@ -1134,7 +1134,7 @@ class PulseGates:
         Decomposition based on https://doi.org/10.48550/arXiv.2408.01036
 
         Decomposition:
-            CRX(w) = RZ(-w/2) · RY(w/2) · CX · RY(-w/2) · CX · RZ(w/2)
+            CRX(w) = RZ(-pi/2) · RY(w/2) · CX · RY(-w/2) · CX · RZ(pi/2)
 
         Parameters
         ----------
@@ -1152,12 +1152,12 @@ class PulseGates:
 
         target = wires[1]
 
-        PulseGates.RZ(w / 2, wires=target, pulse_params=params_RZ_1)
+        PulseGates.RZ(np.pi / 2, wires=target, pulse_params=params_RZ_1)
         PulseGates.RY(w / 2, wires=target, pulse_params=params_RY)
         PulseGates.CX(wires=wires, pulse_params=params_CX_1)
         PulseGates.RY(-w / 2, wires=target, pulse_params=params_RY_2)
         PulseGates.CX(wires=wires, pulse_params=params_CX_2)
-        PulseGates.RZ(-w / 2, wires=target, pulse_params=params_RZ_2)
+        PulseGates.RZ(-np.pi / 2, wires=target, pulse_params=params_RZ_2)
 
     @staticmethod
     def CRY(w, wires, pulse_params=None):
