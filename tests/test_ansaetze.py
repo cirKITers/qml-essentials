@@ -1,4 +1,5 @@
 from typing import Optional
+from qml_essentials.qoc import QOC
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Circuit, Gates, UnitaryGates
 from qml_essentials.ansaetze import PulseInformation as pinfo
@@ -8,6 +9,8 @@ import jax
 from jax import numpy as jnp
 import pytest
 import inspect
+import itertools
+
 import logging
 
 jax.config.update("jax_enable_x64", True)
@@ -361,276 +364,56 @@ def test_pulse_Rot_gate(w):
     assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
 
 
+single_qubit_pulse_testdata = itertools.product(
+    ["RX", "RY", "RZ", "H"], [np.pi / 4, np.pi / 2, np.pi]
+)
+
+
 @pytest.mark.unittest
-@pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
-def test_pulse_RX_gate(w):
+@pytest.mark.parametrize("gate,w", single_qubit_pulse_testdata)
+def test_single_qubit_pulse_gate(gate, w):
+    qoc = QOC()
     dev = qml.device("default.qubit", wires=1)
+    pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
+    pulse_qnode = qml.QNode(pulse_circuit, dev, interface="jax")
+    target_qnode = qml.QNode(target_circuit, dev, interface="jax")
 
-    @qml.qnode(dev)
-    def unitary_circuit():
-        qml.RX(w, wires=0)
-        return qml.state()
+    state_pulse = pulse_qnode(w, pinfo.gate_by_name(gate).params)
+    state_target = target_qnode(w)
 
-    @qml.qnode(dev)
-    def pulse_circuit():
-        Gates.RX(w, wires=0, gate_mode="pulse")
-        return qml.state()
-
-    state_ideal = unitary_circuit()
-    state_pulse = pulse_circuit()
-
-    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
+    fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
     assert np.isclose(
         fidelity, 1.0, atol=1e-2
     ), f"Fidelity too low for w={w}: {fidelity}"
 
-    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
+    phase_diff = np.angle(np.vdot(state_target, state_pulse))
     assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
 
 
+two_qubit_pulse_testdata = itertools.product(
+    ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"], [np.pi / 4, np.pi / 2, np.pi]
+)
+
+
 @pytest.mark.unittest
-@pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
-def test_pulse_RY_gate(w):
-    dev = qml.device("default.qubit", wires=1)
+@pytest.mark.parametrize("gate,w", two_qubit_pulse_testdata)
+def test_two_qubit_pulse_gate(gate, w):
+    qoc = QOC()
+    dev = qml.device("default.qubit", wires=2)
+    pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
+    pulse_qnode = qml.QNode(pulse_circuit, dev, interface="jax")
+    target_qnode = qml.QNode(target_circuit, dev, interface="jax")
 
-    @qml.qnode(dev)
-    def unitary_circuit():
-        qml.RY(w, wires=0)
-        return qml.state()
+    state_pulse = pulse_qnode(w, pinfo.gate_by_name(gate).params)
+    state_target = target_qnode(w)
 
-    @qml.qnode(dev)
-    def pulse_circuit():
-        Gates.RY(w, wires=0, gate_mode="pulse")
-        return qml.state()
-
-    state_ideal = unitary_circuit()
-    state_pulse = pulse_circuit()
-
-    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
+    fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
     assert np.isclose(
         fidelity, 1.0, atol=1e-2
     ), f"Fidelity too low for w={w}: {fidelity}"
 
-    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
+    phase_diff = np.angle(np.vdot(state_target, state_pulse))
     assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
-
-
-@pytest.mark.unittest
-@pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
-def test_pulse_RZ_gate(w):
-    dev = qml.device("default.qubit", wires=1)
-
-    @qml.qnode(dev)
-    def unitary_circuit():
-        qml.Hadamard(wires=0)  # Prepare |+> so RZ acts non-trivially
-        qml.RZ(w, wires=0)
-        return qml.state()
-
-    @qml.qnode(dev)
-    def pulse_circuit():
-        qml.Hadamard(wires=0)
-        Gates.RZ(w, wires=0, gate_mode="pulse")
-        return qml.state()
-
-    state_ideal = unitary_circuit()
-    state_pulse = pulse_circuit()
-
-    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
-    assert np.isclose(
-        fidelity, 1.0, atol=1e-2
-    ), f"Fidelity too low for w={w}: {fidelity}"
-
-    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
-    assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
-
-
-@pytest.mark.unittest
-def test_pulse_H_gate():
-    dev = qml.device("default.qubit", wires=1)
-
-    @qml.qnode(dev)
-    def unitary_circuit():
-        qml.Hadamard(wires=0)
-        return qml.state()
-
-    @qml.qnode(dev)
-    def pulse_circuit():
-        Gates.H(wires=0, gate_mode="pulse")
-        return qml.state()
-
-    state_ideal = unitary_circuit()
-    state_pulse = pulse_circuit()
-
-    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
-    assert np.isclose(
-        fidelity, 1.0, atol=1e-2
-    ), f"Fidelity too low for H gate: {fidelity}"
-
-    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
-    assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for H gate: {phase_diff}"
-
-
-@pytest.mark.unittest
-def test_pulse_CZ_gate():
-    dev = qml.device("default.qubit", wires=2)
-
-    @qml.qnode(dev)
-    def unitary_circuit():
-        qml.H(wires=0)
-        qml.H(wires=1)
-        qml.CZ(wires=[0, 1])
-        return qml.state()
-
-    @qml.qnode(dev)
-    def pulse_circuit():
-        qml.H(wires=0)
-        qml.H(wires=1)
-        Gates.CZ(wires=[0, 1], gate_mode="pulse")
-        return qml.state()
-
-    state_ideal = unitary_circuit()
-    state_pulse = pulse_circuit()
-
-    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
-    assert np.isclose(fidelity, 1.0, atol=1e-2), f"Fidelity too low: {fidelity}"
-
-    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
-    assert np.isclose(phase_diff, 0.0, atol=1e-1), f"Phase off: {phase_diff}"
-
-
-@pytest.mark.unittest
-def test_pulse_CY_gate():
-    dev = qml.device("default.qubit", wires=2)
-
-    @qml.qnode(dev)
-    def unitary_circuit():
-        qml.H(wires=0)
-        qml.CY(wires=[0, 1])
-        return qml.state()
-
-    @qml.qnode(dev)
-    def pulse_circuit():
-        qml.H(wires=0)
-        Gates.CY(wires=[0, 1], gate_mode="pulse")
-        return qml.state()
-
-    state_ideal = unitary_circuit()
-    state_pulse = pulse_circuit()
-
-    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
-    assert np.isclose(fidelity, 1.0, atol=1e-2), f"Fidelity too low: {fidelity}"
-
-    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
-    assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off: {phase_diff}"
-
-
-@pytest.mark.unittest
-def test_pulse_CX_gate():
-    dev = qml.device("default.qubit", wires=2)
-
-    @qml.qnode(dev)
-    def unitary_circuit():
-        qml.H(wires=0)
-        qml.CNOT(wires=[0, 1])
-        return qml.state()
-
-    @qml.qnode(dev)
-    def pulse_circuit():
-        qml.H(wires=0)
-        Gates.CX(wires=[0, 1], gate_mode="pulse")
-        return qml.state()
-
-    state_ideal = unitary_circuit()
-    state_pulse = pulse_circuit()
-
-    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
-    assert np.isclose(fidelity, 1.0, atol=1e-2), f"Fidelity too low: {fidelity}"
-
-    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
-    assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off: {phase_diff}"
-
-
-@pytest.mark.unittest
-@pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
-def test_pulse_CRZ_gate(w):
-    dev = qml.device("default.qubit", wires=2)
-
-    @qml.qnode(dev)
-    def unitary_circuit():
-        qml.H(wires=0)
-        qml.H(wires=1)
-        qml.CRZ(w, wires=[0, 1])
-        return qml.state()
-
-    @qml.qnode(dev)
-    def pulse_circuit():
-        qml.H(wires=0)
-        qml.H(wires=1)
-        Gates.CRZ(w, wires=[0, 1], gate_mode="pulse")
-        return qml.state()
-
-    state_ideal = unitary_circuit()
-    state_pulse = pulse_circuit()
-
-    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
-    assert np.isclose(fidelity, 1.0, atol=1e-2), f"Fidelity too low: {fidelity}"
-
-    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
-    assert np.isclose(phase_diff, 0.0, atol=1e-1), f"Phase off: {phase_diff}"
-
-
-@pytest.mark.unittest
-@pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
-def test_pulse_CRY_gate(w):
-    dev = qml.device("default.qubit", wires=2)
-
-    @qml.qnode(dev)
-    def unitary_circuit():
-        qml.H(wires=0)
-        qml.CRY(w, wires=[0, 1])
-        return qml.state()
-
-    @qml.qnode(dev)
-    def pulse_circuit():
-        qml.H(wires=0)
-        Gates.CRY(w, wires=[0, 1], gate_mode="pulse")
-        return qml.state()
-
-    state_ideal = unitary_circuit()
-    state_pulse = pulse_circuit()
-
-    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
-    assert np.isclose(fidelity, 1.0, atol=1e-2), f"Fidelity too low: {fidelity}"
-
-    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
-    assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off: {phase_diff}"
-
-
-@pytest.mark.unittest
-@pytest.mark.parametrize("w", [np.pi / 4, np.pi / 2, np.pi])
-def test_pulse_CRX_gate(w):
-    dev = qml.device("default.qubit", wires=2)
-
-    @qml.qnode(dev)
-    def unitary_circuit():
-        qml.H(wires=0)
-        qml.CRX(w, wires=[0, 1])
-        return qml.state()
-
-    @qml.qnode(dev)
-    def pulse_circuit():
-        qml.H(wires=0)
-        Gates.CRX(w, wires=[0, 1], gate_mode="pulse")
-        return qml.state()
-
-    state_ideal = unitary_circuit()
-    state_pulse = pulse_circuit()
-
-    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
-    assert np.isclose(fidelity, 1.0, atol=1e-2), f"Fidelity too low: {fidelity}"
-
-    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
-    assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off: {phase_diff}"
 
 
 @pytest.mark.unittest
