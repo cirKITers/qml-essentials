@@ -36,7 +36,8 @@ class QOC:
             n_steps (int): Number of steps in optimization.
             n_loops (int): Number of loops for optimization.
             n_samples (int): Number of parameter samples per step.
-            learning_rate (float): Learning rate for Adam with weight decay regularization.
+            learning_rate (float): Learning rate for Adam with
+                weight decay regularization.
             log_interval (int): Interval for logging.
             skip_on_fidelity (bool): Skip writing to qoc_results if fidelity is lower?
         """
