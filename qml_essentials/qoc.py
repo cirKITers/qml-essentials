@@ -10,7 +10,7 @@ from qml_essentials.ansaetze import Gates, PulseInformation
 import matplotlib.pyplot as plt
 import argparse
 from functools import partial
-from typing import List
+from typing import List, Callable, Union
 import logging
 
 jax.config.update("jax_enable_x64", True)
@@ -18,221 +18,39 @@ log = logging.getLogger(__name__)
 
 
 class QOC:
-    # TODO: move to init, once the rest of the code is refactored
-    n_steps = 1000  # number of steps in optimization
-    n_loops = 1
-    n_samples = 8  # number of parameter samples per step
-    learning_rate = 0.01  # learning rate for adam with weight decay regularization
-    log_interval = 50  # interval for logging
-    skip_on_fidelity = True  # skip writing to qoc_results if fidelity is lower?
-
-    # TODO: Potentially refactor all the create_*()... The only differences
-    #   are the circuits
     def __init__(
         self,
-        make_plots=False,
-        file_dir="qoc/results",
-        fig_dir="qoc/figures",
-        fig_points=70,
+        observable: Union[Callable, List[Callable]] = qml.state,
+        n_steps: int = 1000,
+        n_loops: int = 1,
+        n_samples: int = 8,
+        learning_rate: float = 0.01,
+        log_interval: int = 50,
+        skip_on_fidelity: bool = True,
     ):
         """
         Initialize Quantum Optimal Control with Pulse-level Gates.
 
         Args:
-            log_dir (str): Directory for TensorBoard logs.
-            make_plots (bool): Whether to generate and save plots.
-            file_dir (str): Directory to save optimization results.
-            fig_dir (str): Directory to save figures.
-            fig_points (int): Number of points for plotting rotations.
+            observable (str): Observable to measure during optimization.
+            n_steps (int): Number of steps in optimization.
+            n_loops (int): Number of loops for optimization.
+            n_samples (int): Number of parameter samples per step.
+            learning_rate (float): Learning rate for Adam with weight decay regularization.
+            log_interval (int): Interval for logging.
+            skip_on_fidelity (bool): Skip writing to qoc_results if fidelity is lower?
         """
-        self.ws = jnp.linspace(0, 2 * jnp.pi, fig_points)
+        self.ws = jnp.linspace(0, 2 * jnp.pi, n_samples)
 
-        self.make_plots = make_plots
-        self.file_dir = file_dir
-        self.fig_dir = fig_dir
+        self.observable = observable
+        self.n_steps = n_steps
+        self.n_loops = n_loops
+        self.n_samples = n_samples
+        self.learning_rate = learning_rate
+        self.log_interval = log_interval
+        self.skip_on_fidelity = skip_on_fidelity
 
         self.current_gate = None
-
-    def get_circuits(self):
-        """
-        Return pulse- and unitary-based circuits for the current gate.
-
-        Returns:
-            tuple: (pulse_circuit, target_circuit, operation_str)
-        """
-        dev = qml.device("default.qubit", wires=1)
-
-        if self.current_gate in ["RX", "RY"]:
-
-            @qml.qnode(dev, interface="jax")
-            def pulse_circuit(w, pulse_params=None):
-                getattr(Gates, self.current_gate)(
-                    w, 0, pulse_params=pulse_params, gate_mode="pulse"
-                )
-                return [
-                    qml.expval(qml.PauliX(0)),
-                    qml.expval(qml.PauliY(0)),
-                    qml.expval(qml.PauliZ(0)),
-                ]
-
-            @qml.qnode(dev)
-            def target_circuit(w):
-                getattr(qml, self.current_gate)(w, wires=0)
-                return [
-                    qml.expval(qml.PauliX(0)),
-                    qml.expval(qml.PauliY(0)),
-                    qml.expval(qml.PauliZ(0)),
-                ]
-
-            operation = f"{self.current_gate}(w)"
-
-        elif self.current_gate == "RZ":
-
-            @qml.qnode(dev, interface="jax")
-            def pulse_circuit(w, *_):
-                qml.RX(jnp.pi / 2, wires=0)
-                getattr(Gates, self.current_gate)(w, 0, gate_mode="pulse")
-                return [
-                    qml.expval(qml.PauliX(0)),
-                    qml.expval(qml.PauliY(0)),
-                    qml.expval(qml.PauliZ(0)),
-                ]
-
-            @qml.qnode(dev)
-            def target_circuit(w):
-                qml.RX(jnp.pi / 2, wires=0)
-                getattr(qml, self.current_gate)(w, wires=0)
-                return [
-                    qml.expval(qml.PauliX(0)),
-                    qml.expval(qml.PauliY(0)),
-                    qml.expval(qml.PauliZ(0)),
-                ]
-
-            operation = f"RX(π / 2)·{self.current_gate}(w)"
-
-        elif self.current_gate == "H":
-
-            @qml.qnode(dev, interface="jax")
-            def pulse_circuit(w, pulse_params=None):
-                qml.RX(w, wires=0)
-                getattr(Gates, self.current_gate)(
-                    0, pulse_params=pulse_params, gate_mode="pulse"
-                )
-                return [
-                    qml.expval(qml.PauliX(0)),
-                    qml.expval(qml.PauliY(0)),
-                    qml.expval(qml.PauliZ(0)),
-                ]
-
-            @qml.qnode(dev)
-            def target_circuit(w):
-                qml.RX(w, wires=0)
-                getattr(qml, self.current_gate)(wires=0)
-                return [
-                    qml.expval(qml.PauliX(0)),
-                    qml.expval(qml.PauliY(0)),
-                    qml.expval(qml.PauliZ(0)),
-                ]
-
-            operation = f"RX(w)·{self.current_gate}"
-
-        elif self.current_gate == "CZ":
-            dev = qml.device("default.qubit", wires=2)
-
-            @qml.qnode(dev, interface="jax")
-            def pulse_circuit(w, pulse_params=None):
-                qml.RX(w, wires=0)
-                qml.RX(w, wires=1)
-                Gates.CZ([0, 1], pulse_params=pulse_params, gate_mode="pulse")
-                qml.RX(-w, wires=1)
-                qml.RX(-w, wires=0)
-                return [
-                    qml.expval(qml.PauliX(1)),
-                    qml.expval(qml.PauliY(1)),
-                    qml.expval(qml.PauliZ(1)),
-                ]
-
-            @qml.qnode(dev)
-            def target_circuit(w):
-                qml.RX(w, wires=0)
-                qml.RX(w, wires=1)
-                qml.CZ(wires=[0, 1])
-                qml.RX(-w, wires=1)
-                qml.RX(-w, wires=0)
-                return [
-                    qml.expval(qml.PauliX(1)),
-                    qml.expval(qml.PauliY(1)),
-                    qml.expval(qml.PauliZ(1)),
-                ]
-
-            operation = r"$RX_0(w)$·$RX_1(w)$·$CZ_{0, 1}$·$RX_1(-w)$·$RX_0(-w)$"
-
-        elif self.current_gate == "CX":
-            dev = qml.device("default.qubit", wires=2)
-
-            @qml.qnode(dev, interface="jax")
-            def pulse_circuit(w, pulse_params=None):
-                qml.RX(w, wires=0)
-                Gates.CX([0, 1], pulse_params=pulse_params, gate_mode="pulse")
-                return [
-                    qml.expval(qml.PauliX(1)),
-                    qml.expval(qml.PauliY(1)),
-                    qml.expval(qml.PauliZ(1)),
-                ]
-
-            @qml.qnode(dev)
-            def target_circuit(w):
-                qml.RX(w, wires=0)
-                qml.CNOT(wires=[0, 1])
-                return [
-                    qml.expval(qml.PauliX(1)),
-                    qml.expval(qml.PauliY(1)),
-                    qml.expval(qml.PauliZ(1)),
-                ]
-
-            operation = r"$RX_0(w)$·$CX_{0,1}$"
-
-        return pulse_circuit, target_circuit, operation
-
-    # TODO: Update method for new gates (Rot, CY, CRZ, CRY, CRX)
-    def plot_rotation(self, pulse_params, pulse_qnode, target_qnode):
-        """
-        Plot expectation values of pulse- and unitary-based circuits for the
-        current gate as a function of rotation angle.
-
-        """
-        # TODO: to make this functional, we have to change the measurement of the qnode
-        # such that it matches those of `get_circuits`
-        operation = ""
-
-        pulse_expvals = [pulse_qnode(w, pulse_params) for w in self.ws]
-        ideal_expvals = [target_qnode(w) for w in self.ws]
-
-        pulse_expvals = jnp.array(pulse_expvals)
-        ideal_expvals = jnp.array(ideal_expvals)
-
-        fig, axs = plt.subplots(3, 1, figsize=(6, 12))
-
-        bases = ["X", "Y", "Z"]
-        for i, basis in enumerate(bases):
-            axs[i].plot(self.ws, pulse_expvals[:, i], label="Pulse-based")
-            axs[i].plot(self.ws, ideal_expvals[:, i], "--", label="Unitary-based")
-            axs[i].set_xlabel("Rotation angle w (rad)")
-            axs[i].set_ylabel(f"⟨{basis}⟩")
-            axs[i].set_title(f"{operation} in {basis}-basis")
-            axs[i].grid(True)
-            axs[i].legend()
-
-        xticks = [0, jnp.pi / 2, jnp.pi, 3 * jnp.pi / 2, 2 * jnp.pi]
-        xtick_labels = ["0", "π/2", "π", "3π/2", "2π"]
-        for ax in axs:
-            ax.set_xticks(xticks)
-            ax.set_xticklabels(xtick_labels)
-
-        plt.tight_layout()
-        os.makedirs(self.fig_dir, exist_ok=True)
-        plt.savefig(f"{self.fig_dir}/qoc_{self.current_gate}(w).png")
-        plt.close()
 
     def save_results(self, gate, fidelity, pulse_params):
         """
@@ -672,6 +490,10 @@ class QOC:
         return pulse_circuit, target_circuit
 
     def optimize_all(self, sel_gates, make_log):
+        assert (
+            self.observable == qml.state
+        ), "Observable must be qml.state when doing optimization"
+
         log_history = {}
         optimize_1q = self.optimize("default.qubit", wires=2)
         optimize_2q = self.optimize("default.qubit", wires=2)
@@ -775,10 +597,7 @@ if __name__ == "__main__":
     log.addHandler(logging.StreamHandler())
 
     qoc = QOC(
-        make_plots=False,
-        fig_points=40,
-        fig_dir="docs/figures",
-        file_dir="qml_essentials",
+        observable=qml.state,
     )
 
     qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)
