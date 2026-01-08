@@ -236,7 +236,7 @@ class QOC:
 
     def save_results(self, gate, fidelity, pulse_params):
         """
-        Saves the optimized pulse parameters and fidelity for a given gate to a CSV file.
+        Saves the optimized pulse parameters and fidelity for a given gate to a CSV file
 
         Args:
             gate (str): Name of the gate.
@@ -244,9 +244,11 @@ class QOC:
             pulse_params (list): Optimized pulse parameters for the gate.
 
         Notes:
-            If the gate already exists in the file and the newly optimized pulse parameters
-            have a higher fidelity, the existing entry will be overwritten. If the fidelity is
-            lower, the new entry will be skipped unless `skip_on_fidelity=False`.
+            If the gate already exists in the file and
+            the newly optimized pulse parameters have a higher fidelity,
+            the existing entry will be overwritten.
+            If the fidelity is lower, the new entry will be skipped unless
+            `skip_on_fidelity=False`.
         """
         if self.file_dir is not None:
             os.makedirs(self.file_dir, exist_ok=True)
@@ -294,7 +296,8 @@ class QOC:
         phase difference between the pulse-based and unitary-based gates.
 
         Args:
-            pulse_params (list or array): Optimized parameters to use for the pulse-based gate.
+            pulse_params (list or array): Optimized parameters to
+                use for the pulse-based gate.
             pulse_qnode (callable): Pulse-based gate qnode.
             target_qnode (callable): Unitary-based gate qnode.
 
@@ -325,7 +328,8 @@ class QOC:
         phase difference between the pulse-based and unitary-based gates.
 
         Args:
-            pulse_params (list or array): Optimized parameters to use for the pulse-based gate.
+            pulse_params (list or array): Optimized parameters to use for
+                the pulse-based gate.
             pulse_qnode (callable): Pulse-based gate qnode.
             target_qnode (callable): Unitary-based gate qnode.
 
@@ -365,7 +369,8 @@ class QOC:
 
         Args:
             cost (callable): Cost function to use for optimization.
-            params (list or array): Initial parameters to use for the pulse-based gate.
+            params (list or array): Initial parameters to use for
+                the pulse-based gate.
             *args: Arguments to pass to the cost function.
 
         Returns:
@@ -405,8 +410,9 @@ class QOC:
             def wrapper(init_pulse_params: jnp.ndarray = None):
                 """
                 This function is a wrapper for the create_circuits method.
-                It takes a simulator and wires as input and optimizes the pulse parameters
-                  using the cost function defined in the QOC class.
+                It takes a simulator and wires as input and optimizes
+                the pulse parameters using the cost function defined
+                in the QOC class.
 
                 Args:
                     create_circuits (callable): A function to generate the pulse and
@@ -415,7 +421,8 @@ class QOC:
                         the pulse-based gate.
 
                 Returns:
-                    tuple: Optimized pulse parameters and list of loss values at each iteration.
+                    tuple: Optimized pulse parameters and list of loss values
+                        at each iteration.
                 """
                 dev = qml.device(simulator, wires=wires)
                 pulse_circuit, target_circuit = create_circuits(dev)
@@ -427,7 +434,8 @@ class QOC:
 
                 if init_pulse_params is None:
                     log.warning(
-                        f"Using initial pulse parameters for {gate_name} from `ansaetze.py`"
+                        f"Using initial pulse parameters for {gate_name} \
+                            from `ansaetze.py`"
                     )
                     init_pulse_params = PulseInformation.gate_by_name(gate_name).params
                 log.debug(
@@ -461,8 +469,9 @@ class QOC:
             def wrapper(init_pulse_params: jnp.ndarray = None):
                 """
                 This function is a wrapper for the create_circuits method.
-                It takes a simulator and wires as input and optimizes the pulse parameters
-                  using the cost function defined in the QOC class.
+                It takes a simulator and wires as input and optimizes
+                the pulse parameters using the cost function defined
+                in the QOC class.
 
                 Args:
                     create_circuits (callable): A function to generate the pulse and
@@ -471,7 +480,8 @@ class QOC:
                         the pulse-based gate.
 
                 Returns:
-                    tuple: Optimized pulse parameters and list of loss values at each iteration.
+                    tuple: Optimized pulse parameters and list of
+                        loss values at each iteration.
                 """
                 dev = qml.device(simulator, wires=wires)
 
@@ -505,7 +515,7 @@ class QOC:
                         target_qnode=target_qnodes,
                         leafs=leafs,
                     ),
-                    params=pulse_params,
+                    params=params,
                 )
 
                 idx = 0
@@ -667,7 +677,7 @@ class QOC:
         optimize_2q = self.optimize("default.qubit", wires=2)
         # PulseInformation.shuffle_params(seed=1000)
         for loop in range(self.n_loops):
-            log.info(f"Reading back optimized pulse parameters")
+            log.info("Reading back optimized pulse parameters")
             # PulseInformation.update_params()
 
             log.info(f"Optimization loop {loop+1} of {self.n_loops}")
@@ -746,7 +756,6 @@ class QOC:
                 # write log history to file
                 with open("qml_essentials/qoc_logs.csv", "w") as f:
                     writer = csv.writer(f)
-                    # use keys in log_history as cols and values as rows such that each step is a new row
                     writer.writerow(log_history.keys())
                     writer.writerows(zip(*log_history.values()))
 
