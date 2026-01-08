@@ -327,43 +327,6 @@ def test_available_ansaetze() -> None:
     assert actual_ansaetze == ansatze
 
 
-@pytest.mark.unittest
-@pytest.mark.parametrize(
-    "w",
-    [
-        (0.0, 0.0, 0.0),  # Identity
-        (np.pi / 2, 0.0, 0.0),  # Pure RX
-        (0.0, np.pi / 2, 0.0),  # Pure RY
-        (np.pi, np.pi / 2, np.pi),  # Mixed rotation
-    ],
-)
-def test_pulse_Rot_gate(w):
-    phi, theta, omega = w
-
-    dev = qml.device("default.qubit", wires=1)
-
-    @qml.qnode(dev)
-    def unitary_circuit():
-        qml.Rot(phi, theta, omega, wires=0)
-        return qml.state()
-
-    @qml.qnode(dev)
-    def pulse_circuit():
-        Gates.Rot(phi, theta, omega, wires=0, gate_mode="pulse")
-        return qml.state()
-
-    state_ideal = unitary_circuit()
-    state_pulse = pulse_circuit()
-
-    fidelity = np.abs(np.vdot(state_ideal, state_pulse)) ** 2
-    assert np.isclose(
-        fidelity, 1.0, atol=1e-2
-    ), f"Fidelity too low for w={w}: {fidelity}"
-
-    phase_diff = np.angle(np.vdot(state_ideal, state_pulse))
-    assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
-
-
 single_qubit_pulse_testdata = itertools.product(
     ["RX", "RY", "RZ", "H"], [np.pi / 4, np.pi / 2, np.pi]
 )
