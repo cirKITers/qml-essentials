@@ -2901,3 +2901,37 @@ class Ansaetze:
                     **kwargs,
                 )
                 w_idx += 3
+
+
+class Encodings:
+    def __init__(self, strategy: str, gates: List[str]):
+        gates = [getattr(Gates, gate) for gate in gates]
+        strategy = getattr(self, strategy, self.hamming)
+
+        log.info(f"Using encoding strategy: '{strategy.__name__}'")
+
+        self.callable = [strategy(g) for g in gates]
+
+    def standard(self, enc):
+        return enc
+
+    def hamming(self, enc):
+        def _enc(inputs, wires, **kwargs):
+            return enc(inputs * wires, wires, **kwargs)
+
+        return _enc
+
+    def binary(self, enc):
+        def _enc(inputs, wires, **kwargs):
+            return enc(inputs * (2**wires), wires, **kwargs)
+
+        return _enc
+
+    def ternary(self, enc):
+        def _enc(inputs, wires, **kwargs):
+            return enc(inputs * (3**wires), wires, **kwargs)
+
+        return _enc
+
+    def golomb(self, enc):
+        raise NotImplementedError
