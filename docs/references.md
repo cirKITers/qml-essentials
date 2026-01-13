@@ -31,7 +31,7 @@ from qml_essentials.ansaetze import UnitaryGates
 
 ::: qml_essentials.ansaetze.UnitaryGates
     options:
-      heading_level: 3
+      heading_level: 4
 
 ### Pulse Gates
 
@@ -41,7 +41,17 @@ from qml_essentials.ansaetze import PulseGates
 
 ::: qml_essentials.ansaetze.PulseGates
     options:
-      heading_level: 3
+      heading_level: 4
+
+### Pulse Structure
+
+```python
+from qml_essentials.ansaetze import PulseParams
+```
+
+::: qml_essentials.ansaetze.PulseParams
+    options:
+      heading_level: 4
 
 ## Model
 
