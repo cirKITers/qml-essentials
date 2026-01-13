@@ -478,6 +478,30 @@ class Model:
             value = None
         self._shots = value
 
+    @property
+    def params(self) -> np.ndarray:
+        return self._params
+
+    @params.setter
+    def params(self, value: np.ndarray) -> None:
+        self._params = value
+
+    @property
+    def enc_params(self) -> np.ndarray:
+        return self._enc_params
+
+    @enc_params.setter
+    def enc_params(self, value: np.ndarray) -> None:
+        self._enc_params = value
+
+    @property
+    def pulse_params(self) -> np.ndarray:
+        return self._pulse_params
+
+    @pulse_params.setter
+    def pulse_params(self, value: np.ndarray) -> None:
+        self._pulse_params = value
+
     def initialize_params(
         self,
         rng: np.random.Generator,
