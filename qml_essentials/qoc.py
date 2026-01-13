@@ -404,6 +404,19 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
+    def create_Rot(self, init_pulse_params: jnp.ndarray = None):
+        def pulse_circuit(w, pulse_params):
+            qml.H(wires=0)
+            Gates.Rot(w, w * 2, w * 3, 0, pulse_params=pulse_params, gate_mode="pulse")
+            return qml.state()
+
+        def target_circuit(w):
+            qml.H(wires=0)
+            qml.Rot(w, w * 2, w * 3, wires=0)
+            return qml.state()
+
+        return pulse_circuit, target_circuit
+
     def create_CX(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
             qml.RY(w, wires=0)
@@ -532,6 +545,13 @@ class QOC:
                 log.info(f"Optimized parameters for H: {optimized_pulse_params}")
                 log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
                 log_history["H"] = log_history.get("H", []) + loss_history
+
+            if "Rot" in sel_gates or "all" in sel_gates:
+                log.info("Optimizing Rot gate...")
+                optimized_pulse_params, loss_history = optimize_1q(self.create_Rot)()
+                log.info(f"Optimized parameters for Rot: {optimized_pulse_params}")
+                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+                log_history["Rot"] = log_history.get("Rot", []) + loss_history
 
             if "CX" in sel_gates or "all" in sel_gates:
                 log.info("Optimizing CX gate...")

@@ -814,6 +814,8 @@ class PulseInformation:
     CRY = PulseParams(name="CRY", pulse_obj=[RY, CX, RY, CX])
     CRZ = PulseParams(name="CRZ", pulse_obj=[RZ, CX, RZ, CX])
 
+    Rot = PulseParams(name="Rot", pulse_obj=[RZ, RY, RZ])
+
     @staticmethod
     def gate_by_name(gate_name):
         return getattr(PulseInformation, gate_name, None)
