@@ -266,7 +266,7 @@ def test_pulse_batching() -> None:
     model = Model(
         n_qubits=2,
         n_layers=1,
-        circuit_type="EasyCircuit",
+        circuit_type="Circuit_19",
     )
 
     n_samples = 3
