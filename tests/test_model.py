@@ -261,6 +261,23 @@ def test_batching() -> None:
     ).all(), "Content of batching is not equal"
 
 
+@pytest.skip(reason="Pulse batching is not implemented yet")
+@pytest.mark.unittest
+def test_pulse_batching() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="EasyCircuit",
+    )
+
+    n_samples = 3
+    model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
+
+    # assert model.pulse_params.shape[-1] == n_samples
+
+    res = model(gate_mode="pulse")
+
+
 @pytest.mark.unittest
 def test_multiprocessing_density() -> None:
     # use n_samples that is not a multiple of the threshold
