@@ -235,8 +235,11 @@ When building an ansatz in pulse mode (via a `Model`), the framework internally 
 If `pulse_params` are provided for a model or gate, these are treated similarly as element-wise scalers to modify the default pulses. We again take advantage of the **kwargs and call:
 
 ```python
-model(model.params, inputs=None, gate_mode="pulse")
+model(gate_mode="pulse", pulse_params=model.pulse_params_scaler * 1.5)
 ```
+
+Here, input and params are inferred from the `Model` instance, and we scale all pulse parameters by a factor of 1.5.
+Currently there is no way to change the raw values of pulse parameter through the model api directly.
 
 > **Note:** Pulse-level simulation currently **does not support noise channels**. Mixing with noise will raise an error.  
 

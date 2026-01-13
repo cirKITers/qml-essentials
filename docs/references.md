@@ -10,6 +10,11 @@ from qml_essentials.ansaetze import Ansaetze
 
 ## Gates
 
+As the structure of the different classes used to realize pulse and unitary gates can be a bit confusing, the following diagram might help:
+
+![Gate Structure](figures/pulses-structure_light.png#only-light)
+![Gate Structure](figures/pulses-structure_light.png#only-dark)
+
 ```python
 from qml_essentials.ansaetze import Gates
 ```
