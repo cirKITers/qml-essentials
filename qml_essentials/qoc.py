@@ -509,7 +509,7 @@ class QOC:
         ), "Observable must be qml.state when doing optimization"
 
         log_history = {}
-        optimize_1q = self.optimize("default.qubit", wires=2)
+        optimize_1q = self.optimize("default.qubit", wires=1)
         optimize_2q = self.optimize("default.qubit", wires=2)
         # PulseInformation.shuffle_params(seed=1000)
         for loop in range(self.n_loops):

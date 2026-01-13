@@ -276,8 +276,8 @@ For further examples we refer to our ["Pulses" notebook](https://github.com/cirK
 
 With the optimized pulse parameters we can generate a fidelities plot as follows:
 
-![Gate Fidelities](figures/gates_fidelities_light.png#light-only)
-![Gate Fidelities](figures/gates_fidelities_dark.png#dark-only)
+![Gate Fidelities](figures/gates_fidelities_light.png#only-light)
+![Gate Fidelities](figures/gates_fidelities_dark.png#only-dark)
 
 ## Overview
 
