@@ -274,6 +274,11 @@ The output of the optimization is logged to `qoc_logs.csv` whereas the resulting
   
 For further examples we refer to our ["Pulses" notebook](https://github.com/cirKITers/qml-essentials/blob/main/docs/pulses.ipynb) .
 
+With the optimized pulse parameters we can generate a fidelities plot as follows:
+
+![Gate Fidelities](figures/gates_fidelities_light.png#light-only)
+![Gate Fidelities](figures/gates_fidelities_dark.png#dark-only)
+
 ## Overview
 
 This section shows an overview of all the available Ansaetze in our package.
