@@ -166,37 +166,51 @@ Our framework allows constructing circuits at the **pulse level**, where each ga
 This provides a more fine grained access to the simulation of the underlying physical process.
 While we provide a developer-oriented overview in this section, we would like to highlight [Tilmann's Bachelor's Thesis](https://doi.org/10.5445/IR/1000184129) if you want to have a more detailled read into pulse-level simulation and quantum Fourier models.
 
+We implement a fundamental set of gates (RX, RY, RZ, CZ) upon which other, more complex gates can be built.
+The dependency graph is shown in the following figure:
+![Dependency Graph](figures/pulse_gates_dependencies_light.png#only-light)
+![Dependency Graph](figures/pulse_gates_dependencies_dark.png#only-dark)
+In this graph, the edge weights represent the number child gates required to implement a particular gate.
+The gates at the bottom represent the fundamental gates.
+
+Generally, the gates are available through the same interface as the regular unitary gates.
+Pulse simulation can easily be enabled by adding the `mode="pulse"` keyword argument, e.g.:
+
+```python
+from qml_essentials.ansaetze import Gates
+
+Gates.CY(wires=[0, 1], mode="pulse")
+```
+
 ### Pulse Parameters per Gate
 
-Each implemented gate takes the following number of pulse parameters:
-
-| Gate         | Pulse Parameters | Description                                                                                             |
-| ------------ | ---------------- | ------------------------------------------------------------------------------------------------------- |
-| $\text{Rot}$ | -                | Not implemented                                                                                         |
-| $\text{RX }$ | 3                | ($A$, $\sigma$, $t$) amplitude, width, and pulse duration                                               |
-| $\text{RY }$ | 3                | ($A$, $\sigma$, $t$) amplitude, width, and pulse duration                                               |
-| $\text{RZ }$ | 1                | t: pulse duration                                                                                       |
-| $\text{CRX}$ | -                | Not implemented                                                                                         |
-| $\text{CRY}$ | -                | Not implemented                                                                                         |
-| $\text{CRZ}$ | -                | Not implemented                                                                                         |
-| $\text{CX }$ | 4                | ($A_\text{H}$, $\sigma_\text{H}$, $t_\text{H}$, $t_\text{CZ}$) parameters for decomposed pulse sequence |
-| $\text{CY }$ | -                | Not implemented                                                                                         |
-| $\text{CZ }$ | 1                | $t_\text{CZ}$: pulse duration                                                                           |
-| $\text{H  }$ | 3                | ($A_\text{H}$, $\sigma_\text{H}$, $t_\text{H}$) passed to underlying RY decomposition                   |
-
-You can use the `PulseInformation` class to access both the number and optimized values of the pulse parameters for each gate:
+You can use the `PulseInformation` class in `qml_essentials.ansaetze` to access both the number and optimized values of the pulse parameters for each gate.
+Consider the following code snippet:
 
 ```python
 from qml_essentials.ansaetze import PulseInformation as pinfo
 
-# Number of pulse parameters
-n_pulse_params_RX = pinfo.num_params("RX")  # 3
-n_pulse_params_CX = pinfo.num_params("CX")  # 4
+gate = "CX"
 
-# Optimized pulse parameters
-opt_pulse_params_RX = pinfo.optimized_params("RX")  # jnp.array([15.709893, 29.52306, 0.74998104])
-opt_pulse_params_CX = pinfo.optimized_params("CX")  # jnp.array([7.9447253, 21.6398258, 0.90724313, 0.95509776])
+print(f"Number of pulse parameters for {gate}: {pinfo.num_params(gate)}")
+# Number of pulse parameters for CX: 9
+
+gate_instance = pinfo.gate_by_name(gate)
+
+print(f"Childs of {gate}: {gate_instance.childs}")
+# Childs of CX: [H, CZ, H]
+
+print(f"All parameters of {gate}: {len(gate_instance.params)}")
+# All parameters of CX: 9
+
+print(f"Leaf parameters of {gate}: {len(gate_instance.leaf_params)}")
+# Leaf parameters of CX: 5
 ```
+
+Looking back at the dependency graph, we can easily see where the discrepancy between the overall number parameters and the number of leaf parameters comes from.
+The CX gate is composed of two Hadamard gates which in turn are decomposed into RY and RZ gates respectively.
+By default, our implementation assumes, that you want to treat each rotational gate equally, thus the number of leaf parameters is just the "unique" number of parameter resulting after merging multiple occurencies of the same gate type.
+However, it is also possible to overwrite these behavior, as we will see in the following example.
 
 ### Calling Gates in Pulse Mode
 
@@ -206,11 +220,12 @@ Optional `pulse_params` can be passed; if omitted, optimized default values are 
 ```python
 w = 3.14159
 
-# RX gate with default optimized pulse parameters
-Gates.RX(w, wires=0, gate_mode="pulse")
+# CX gate with default optimized pulse parameters 
+# (gates of equal type will recieve equal pulse parameters)
+Gates.CX(w, wires=0, gate_mode="pulse")
 
-# RX gate with custom pulse parameters
-pulse_params = [0.5, 0.2, 1.0]  # A, σ, t
+# CX gate with custom pulse parameters (overwriting default pulse parameters)
+pulse_params = [0.5, 7.9218643, 22.0381298, 1.09409231, 0.31830953, 0.5, 7.9218643, 22.0381298, 1.09409231]
 Gates.RX(w, wires=0, gate_mode="pulse", pulse_params=pulse_params)
 ```
 
@@ -220,8 +235,11 @@ When building an ansatz in pulse mode (via a `Model`), the framework internally 
 If `pulse_params` are provided for a model or gate, these are treated similarly as element-wise scalers to modify the default pulses. We again take advantage of the **kwargs and call:
 
 ```python
-model(model.params, inputs=None, gate_mode="pulse")
+model(gate_mode="pulse", pulse_params=model.pulse_params_scaler * 1.5)
 ```
+
+Here, input and params are inferred from the `Model` instance, and we scale all pulse parameters by a factor of 1.5.
+Currently there is no way to change the raw values of pulse parameter through the model api directly.
 
 > **Note:** Pulse-level simulation currently **does not support noise channels**. Mixing with noise will raise an error.  
 
@@ -229,65 +247,39 @@ model(model.params, inputs=None, gate_mode="pulse")
 
 Our package provides a QOC interface for directly optimizing pulse parameters for specific gates.  
 
-#### QOC Class Initialization
+> **QOC is currently WIP, therefore only minimal documentation is provided**
 
-The `QOC` class constructor supports the following arguments:
+Conceptually the provided QOC class contains methods to create test circuits (`create_GATE`) which return two circuits, one using the pulse level implementation of `GATE` and the other using the unitary level implementation of `GATE`.
+For the specific implementation of these methods, we refer to the documentation of the `QOC` class.
+To test a broad range of states, each of these circuits does not only include the `GATE` itself, but other, unitary based gates as well.
+Those usually take a paramter `w`, allowing to sweep through the parameter space and validate if `GATE` acutally mimics its unitary counterpart.
 
-- `make_plots=False` — whether to generate and save plots after optimization  
-- `file_dir="qoc/results"`- directory to save optimization results
-- `fig_dir="qoc/figures"` — directory to save figures if `make_plots=True`  
-- `fig_points=70` — number of points to plot for each pulse  
+Without any parameter specification, we can initialize the QOC class:
 
 ```python
 from qml_essentials.qoc import QOC
 
-# Initialize a QOC object
-qoc = QOC(
-    make_plots=True,
-    file_dir="qoc",
-    fig_dir="qoc",
-    fig_points=100
-)
+qoc = QOC()
 ```
 
-#### Optimizing Pulse Parameters
-
-The `optimize_*` functions (e.g., `optimize_RX`) optimize pulse parameters to best approximate a target unitary gate.  
-For example, `optimize_RX` uses gradient-based optimization to minimize the difference between the pulse-based RX(w) circuit expectation value and the target gate-based RX(w).
-
-Arguments:
-
-- `steps: int = 1000` — maximum number of optimization steps  
-- `patience: int = 100` — number of steps without improvement before early stopping  
-- `w: float = jnp.pi` — target rotation angle  
-- `init_pulse_params: jnp.array = jnp.array([1.0, 15.0, 1.0])` — initial guess for the pulse parameters (A, σ, t)  
-- `print_every: int = 50` — print progress every N steps  
-
-Returns:
-
-- `tuple` — `(optimized_params, loss, losses)` where `optimized_params` is a `jnp.ndarray` of optimized pulse parameters (the best found during training), `loss` is the best loss, and `losses` is a list of loss values during optimization. Here, loss is defined as `1 - fidelity`.
-
-Example usage:
+For a detailled description of available arguments, we refer to the documentation of the `QOC` class.
+Now, we can select a gate of pass `sel_gates="all"` when calling `optimize_all`:
 
 ```python
-# Optimize pulse parameters for an RX rotation
-optimized_pulse_params, best_loss, loss_values = qoc.optimize_RX(
-    steps=2000,
-    patience=200,
-    w=jnp.pi/2,
-    init_pulse_params=jnp.array([0.8, 10.0, 1.2]),
-    print_every=100
-)
-print(f"Optimized parameters for RX: {optimized_pulse_params}\n")
-print(f"Best achieved fidelity: {1 - best_loss}")
-
-# Optimize pulse parameters for an RY rotation
-optimized_pulse_params, best_loss, loss_values = qoc.optimize_RY()
-print(f"Optimized parameters for RY: {optimized_pulse_params}\n")
-print(f"Best achieved fidelity: {1 - best_loss:.6f}")
+qoc.optimize_all(sel_gates="GATE")
 ```
 
-Currently, QOC is implemented for all qubit gates with pulse-level support (RX, RY, RZ, H, CX, CZ).  
+which will run the optimization for the specified gate.
+The output of the optimization is logged to `qoc_logs.csv` whereas the resulting pulse parameters are stored in `qoc_results.csv`.
+  
+For further examples we refer to our ["Pulses" notebook](https://github.com/cirKITers/qml-essentials/blob/main/docs/pulses.ipynb) .
+
+With the optimized pulse parameters we can generate a fidelities plot as follows:
+
+![Gate Fidelities](figures/gates_fidelities_light.png#only-light)
+![Gate Fidelities](figures/gates_fidelities_dark.png#only-dark)
+
+Note that in this plot, the phase error is shown as $1-\text{phase error}$ to align it with the fidelity scale.
 
 ## Overview
 
