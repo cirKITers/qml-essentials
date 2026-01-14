@@ -133,8 +133,8 @@ class Model:
         for sp in self._sp:
             sp_name = sp.__name__ if hasattr(sp, "__name__") else str(sp)
 
-            if sp_name in pinfo.OPTIMIZED_PULSES:
-                params = np.array(pinfo.optimized_params(sp_name), requires_grad=False)
+            if pinfo.gate_by_name(sp_name) is not None:
+                params = np.array(pinfo.gate_by_name(sp_name), requires_grad=False)
                 self.sp_pulse_params.append(params)
             else:
                 # gate has no pulse parametrization
@@ -477,6 +477,30 @@ class Model:
         if type(value) is int and value <= 0:
             value = None
         self._shots = value
+
+    @property
+    def params(self) -> np.ndarray:
+        return self._params
+
+    @params.setter
+    def params(self, value: np.ndarray) -> None:
+        self._params = value
+
+    @property
+    def enc_params(self) -> np.ndarray:
+        return self._enc_params
+
+    @enc_params.setter
+    def enc_params(self, value: np.ndarray) -> None:
+        self._enc_params = value
+
+    @property
+    def pulse_params(self) -> np.ndarray:
+        return self._pulse_params
+
+    @pulse_params.setter
+    def pulse_params(self, value: np.ndarray) -> None:
+        self._pulse_params = value
 
     def initialize_params(
         self,
