@@ -279,6 +279,8 @@ With the optimized pulse parameters we can generate a fidelities plot as follows
 ![Gate Fidelities](figures/gates_fidelities_light.png#only-light)
 ![Gate Fidelities](figures/gates_fidelities_dark.png#only-dark)
 
+Note that in this plot, the phase error is shown as $1-\text{phase error}$ to align it with the fidelity scale.
+
 ## Overview
 
 This section shows an overview of all the available Ansaetze in our package.
