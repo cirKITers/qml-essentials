@@ -1574,12 +1574,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pygraphviz"
-version = "1.14"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/66/ca/823d5c74a73d6b8b08e1f5aea12468ef334f0732c65cbb18df2a7f285c87/pygraphviz-1.14.tar.gz", hash = "sha256:c10df02377f4e39b00ae17c862f4ee7e5767317f1c6b2dfd04cea6acc7fc2bea", size = 106003, upload-time = "2024-09-29T18:31:12.471Z" }
-
-[[package]]
 name = "pymdown-extensions"
 version = "10.16"
 source = { registry = "https://pypi.org/simple" }
@@ -1803,7 +1797,6 @@ docs = [
     { name = "mkdocs-glightbox" },
     { name = "mkdocs-material" },
     { name = "mkdocstrings-python" },
-    { name = "pygraphviz" },
 ]
 
 [package.metadata]
@@ -1834,7 +1827,6 @@ docs = [
     { name = "mkdocs-glightbox", specifier = ">=0.4.0,<0.5" },
     { name = "mkdocs-material", specifier = ">=9.6.14,<10" },
     { name = "mkdocstrings-python", specifier = ">=1.16.10,<2" },
-    { name = "pygraphviz" },
 ]
 
 [[package]]

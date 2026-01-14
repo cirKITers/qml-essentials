@@ -47,7 +47,6 @@ docs = [
     "mkdocstrings-python>=1.16.10,<2",
     "markdown-include>=0.8.1,<0.9",
     "ipykernel>=6.29.5,<7",
-    "pygraphviz",
 ]
 
 [build-system]
