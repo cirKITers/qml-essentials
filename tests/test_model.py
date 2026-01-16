@@ -310,6 +310,7 @@ def test_pulse_batching() -> None:
     # _ = model(gate_mode="pulse")
 
 
+@pytest.mark.skip(reason="Multiprocessing speedup not working for Pennylane >0.40.0")
 @pytest.mark.unittest
 def test_multiprocessing_density() -> None:
     # use n_samples that is not a multiple of the threshold
