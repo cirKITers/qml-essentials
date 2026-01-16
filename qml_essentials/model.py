@@ -8,7 +8,7 @@ from autograd.numpy import numpy_boxes
 from copy import deepcopy
 import math
 
-from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
+from qml_essentials.ansaetze import Gates, Ansaetze, Circuit, Encoding
 from qml_essentials.ansaetze import PulseInformation as pinfo
 from qml_essentials.utils import PauliCircuit, QuanTikz, MultiprocessingPool
 
@@ -34,7 +34,7 @@ class Model:
         state_preparation: Union[
             str, Callable, List[Union[str, Callable]], None
         ] = None,
-        encoding: Union[str, Callable, List[Union[str, Callable]]] = Gates.RX,
+        encoding: Union[Encoding, str, Callable, List[Union[str, Callable]]] = Gates.RX,
         trainable_frequencies: bool = False,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
@@ -141,10 +141,12 @@ class Model:
                 self.sp_pulse_params.append(None)
 
         # --- Encoding ---
-        try:
-            self._enc = self._parse_gates(encoding, Gates)
-        except ValueError as e:
-            raise ValueError(f"Error parsing encodings: {e}")
+        if isinstance(encoding, Encoding):
+            # user wants custom strategy? do it!
+            self._enc = encoding
+        else:
+            # use hammming encoding by default
+            self._enc = Encoding("hamming", encoding)
 
         # Number of possible inputs
         self.n_input_feat = len(self._enc)
@@ -283,39 +285,6 @@ class Model:
                 PauliCircuit.from_parameterised_circuit
             )
             self.circuit = pauli_circuit_transform(self.circuit)
-
-    def _parse_gates(
-        self,
-        gates: Union[str, Callable, List[Union[str, Callable]]],
-        set_of_gates,
-    ):
-        if isinstance(gates, str):
-            # if str, use the pennylane fct
-            parsed_gates = [getattr(set_of_gates, f"{gates}")]
-        elif isinstance(gates, list):
-            parsed_gates = []
-            for enc in gates:
-                # if list, check if str or callable
-                if isinstance(enc, str):
-                    parsed_gates.append(getattr(set_of_gates, f"{enc}"))
-                # check if callable
-                elif callable(enc):
-                    parsed_gates.append(enc)
-                else:
-                    raise ValueError(
-                        f"Operation {enc} is not a valid gate or callable.\
-                        Got {type(enc)}"
-                    )
-        elif callable(gates):
-            # default to callable
-            parsed_gates = [gates]
-        elif gates is None:
-            parsed_gates = [lambda *args, **kwargs: None]
-        else:
-            raise ValueError(
-                f"Operation {gates} is not a valid gate or callable or list of both."
-            )
-        return parsed_gates
 
     @property
     def noise_params(self) -> Optional[Dict[str, Union[float, Dict[str, float]]]]:

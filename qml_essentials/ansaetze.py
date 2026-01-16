@@ -1,6 +1,6 @@
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Optional, List, Union, Dict
+from typing import Any, Optional, List, Union, Dict, Callable
 import numbers
 import csv
 import pennylane.numpy as np
@@ -3001,8 +3001,10 @@ class Ansaetze:
                 w_idx += 3
 
 
-class Encodings:
-    def __init__(self, strategy: str, gates: List[str]):
+class Encoding:
+    def __init__(
+        self, strategy: str, gates: Union[str, Callable, List[Union[str, Callable]]]
+    ):
 
         if strategy not in ["hamming", "binary", "ternary"]:
             raise ValueError(
@@ -3014,8 +3016,45 @@ class Encodings:
 
         log.info(f"Using encoding strategy: '{strategy.__name__}'")
 
-        gates = [getattr(Gates, gate) for gate in gates]
-        self.callable = [strategy(g) for g in gates]
+        try:
+            self._gates = self._parse_gates(gates, Gates)
+        except ValueError as e:
+            raise ValueError(f"Error parsing encodings: {e}")
+
+        self.callable = [strategy(g) for g in self._gates]
+
+    def _parse_gates(
+        self,
+        gates: Union[str, Callable, List[Union[str, Callable]]],
+        set_of_gates,
+    ):
+        if isinstance(gates, str):
+            # if str, use the pennylane fct
+            parsed_gates = [getattr(set_of_gates, f"{gates}")]
+        elif isinstance(gates, list):
+            parsed_gates = []
+            for enc in gates:
+                # if list, check if str or callable
+                if isinstance(enc, str):
+                    parsed_gates.append(getattr(set_of_gates, f"{enc}"))
+                # check if callable
+                elif callable(enc):
+                    parsed_gates.append(enc)
+                else:
+                    raise ValueError(
+                        f"Operation {enc} is not a valid gate or callable.\
+                        Got {type(enc)}"
+                    )
+        elif callable(gates):
+            # default to callable
+            parsed_gates = [gates]
+        elif gates is None:
+            parsed_gates = [lambda *args, **kwargs: None]
+        else:
+            raise ValueError(
+                f"Operation {gates} is not a valid gate or callable or list of both."
+            )
+        return parsed_gates
 
     def get_n_freqs(self, omegas):
         """
