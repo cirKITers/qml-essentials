@@ -89,10 +89,9 @@ def test_multi_dim_input() -> None:
     coeffs, freqs = Coefficients.get_spectrum(model)
 
     assert (
-        coeffs.shape == [model.frequencies[i] * 2 + 1]
-        for i in range(model.n_input_feat)
+        coeffs.shape == [model.frequencies[i]] for i in range(model.n_input_feat)
     ), f"Wrong shape of coefficients: {coeffs.shape}, \
-        expected {[[model.frequencies[i] * 2 + 1] for i in range(model.n_input_feat)]}"
+        expected {[[model.frequencies[i]] for i in range(model.n_input_feat)]}"
 
     ref_input = [1, 2]
     exp_model = model(params=None, inputs=ref_input, force_mean=True)
