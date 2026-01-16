@@ -100,15 +100,44 @@ Other options are:
 - A list of strings such as `["RX", "RY"]` that will result in a sequential RX and RY rotation per qubit
 - Any callable such as `Gates.RX`
 - A list of callables such as `[Gates.RX, Gates.RY]`
+- An instance of the `Encoding` class
 
 See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
-Note it is also possible to provide a custom encoding as the `encoding` argument essentially accepts any callable or list of callables see [here](ansaetze.md#custom-encoding) for more details.
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
 Otherwise multiple inputs are treated as batches of inputs.
 If you want to visualize zero-valued encoding gates in the model, set `remove_zero_encoding` to `False` on instantiation.
 
 In case of a multi-dimensional input, you can obtain the highest frequency in each encoding dimension from the `model.frequencies` property.
+Note that, `model.frequencies` includes the negative and zero frequency (i.e. the full spectrum).
 Now, `model.degree` in turn will reflect the highest number in this list.
+
+By default, all encodings are `Hamming` encodings, meaning, all encodings are applied equally in each data-reuploading step.
+Note it is also possible to provide a custom encoding as the `encoding` argument essentially accepts any callable or list of callables see [here](ansaetze.md#custom-encoding) for more details.
+To make things a little bit easier, we implement following encoding strategies as introduced in [Generalization despite overfitting in quantum machine learning models](https://doi.org/10.22331/q-2023-12-20-1210) with their respective spectral properties:
+
+| Encoding strategy | Spectrum $\Omega$                                                                                                  | $\vert\Omega\vert$ |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------ |
+| Hamming           | $\{-n_{q},-(n_{q}-1),\ldots,n_{q}\}$                                                                               | $2 n_{q}+1$        |
+| Binary            | $\{-2^{n_{q}}+1,\ldots,2^{n_{q}}-1\}$                                                                              | $2^{n_{q}+1}- 1$   |
+| Ternary           | $\left\{-\left\lfloor\frac{3^{n_{q}}}{2}\right\rfloor,\ldots,\left\lfloor\frac{3^{n_{q}}}{2}\right\rfloor\right\}$ | $3^{n_{q}}$        |
+
+You can use these templates by instantiating an `Encoding` class with the encoding strategy you like and passing it to the model upon initialization:
+
+```python
+from qml_essentials.ansaetze import Encoding
+
+model = Model(
+    n_qubits=2,
+    n_layers=1,
+    circuit_type="Circuit_19",
+    encoding=Encoding("ternary", ["RX", "RY"]),
+)
+
+model.frequencies
+```
+
+Returns `[9,9]`, which corresponds to the ternary spectrum $3^{2}$ for two indpendent inputs.
+
 
 ## State Preparation
 
