@@ -3081,7 +3081,7 @@ class Encoding:
         elif self._strategy == "binary":
             return 2 ** (omegas + 1) - 1
         elif self._strategy == "ternary":
-            return 3 ** (omegas + 1) - 1
+            return 3 ** (omegas)
         else:
             raise NotImplementedError
 
