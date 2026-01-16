@@ -3003,21 +3003,43 @@ class Ansaetze:
 
 class Encodings:
     def __init__(self, strategy: str, gates: List[str]):
-        gates = [getattr(Gates, gate) for gate in gates]
-        strategy = getattr(self, strategy, self.hamming)
+
+        if strategy not in ["hamming", "binary", "ternary"]:
+            raise ValueError(
+                f"Encoding strategy {strategy} not implemented. "
+                "Available options: ['hamming', 'binary', 'ternary']"
+            )
+        self._strategy = strategy
+        strategy = getattr(self, strategy)
 
         log.info(f"Using encoding strategy: '{strategy.__name__}'")
 
+        gates = [getattr(Gates, gate) for gate in gates]
         self.callable = [strategy(g) for g in gates]
 
-    def standard(self, enc):
-        return enc
+    def get_n_freqs(self, omegas):
+        """
+        Returns the number of frequencies for a given omega
+        and encoding strategy.
+        See https://doi.org/10.22331/q-2023-12-20-1210
+
+        Args:
+            omegas (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        if self._strategy == "hamming":
+            return 2 * omegas + 1
+        elif self._strategy == "binary":
+            return 2 ** (omegas + 1) - 1
+        elif self._strategy == "ternary":
+            return 3 ** (omegas + 1) - 1
+        else:
+            raise NotImplementedError
 
     def hamming(self, enc):
-        def _enc(inputs, wires, **kwargs):
-            return enc(inputs * wires, wires, **kwargs)
-
-        return _enc
+        return enc
 
     def binary(self, enc):
         def _enc(inputs, wires, **kwargs):
