@@ -1,7 +1,7 @@
 from typing import Optional
 import random
 from qml_essentials.model import Model
-from qml_essentials.ansaetze import Circuit, Ansaetze, Gates
+from qml_essentials.ansaetze import Circuit, Ansaetze, Gates, Encoding
 from qml_essentials.ansaetze import PulseInformation as pinfo
 import pytest
 import inspect
@@ -400,35 +400,53 @@ def test_state_preparation() -> None:
 def test_encoding() -> None:
     test_cases = [
         {
-            "encoding_unitary": Gates.RX,
-            "frequencies": [2],
+            "encoding": Gates.RX,
+            "frequencies": [5],
             "input": [0],
             "warning": False,
         },
         {
-            "encoding_unitary": [Gates.RX, Gates.RY],
-            "frequencies": [2, 2],
+            "encoding": [Gates.RX, Gates.RY],
+            "frequencies": [5, 5],
             "input": [[0, 0]],
             "warning": False,
         },
         {
-            "encoding_unitary": ["RX", Gates.RY],
-            "frequencies": [2, 2],
+            "encoding": ["RX", Gates.RY],
+            "frequencies": [5, 5],
             "input": [[0, 0]],
             "warning": False,
         },
-        {"encoding_unitary": "RX", "frequencies": [2], "input": [0], "warning": False},
+        {"encoding": "RX", "frequencies": [5], "input": [0], "warning": False},
         {
-            "encoding_unitary": ["RX", "RY"],
-            "frequencies": [2, 2],
+            "encoding": ["RX", "RY"],
+            "frequencies": [5, 5],
             "input": [[0, 0]],
             "warning": False,
         },
         {
-            "encoding_unitary": ["RX", "RY"],
-            "frequencies": [2, 2],
+            "encoding": ["RX", "RY"],
+            "frequencies": [5, 5],
             "input": [0],
             "warning": True,
+        },
+        {
+            "encoding": Encoding("binary", ["RX"]),
+            "frequencies": [7],
+            "input": [0],
+            "warning": False,
+        },
+        {
+            "encoding": Encoding("ternary", ["RX"]),
+            "frequencies": [26],
+            "input": [0],
+            "warning": False,
+        },
+        {
+            "encoding": Encoding("ternary", ["RX", "RY"]),
+            "frequencies": [26, 26],
+            "input": [[0, 0]],
+            "warning": False,
         },
     ]
 
@@ -437,7 +455,7 @@ def test_encoding() -> None:
             n_qubits=2,
             n_layers=1,
             circuit_type="Circuit_19",
-            encoding=test_case["encoding_unitary"],
+            encoding=test_case["encoding"],
             remove_zero_encoding=False,
         )
 
@@ -452,10 +470,11 @@ def test_encoding() -> None:
                 model.params,
                 inputs=test_case["input"],
             )
+        pass
         assert (
             model.frequencies == test_case["frequencies"]
         ), f"Frequencies is not correct: got {model.frequencies},\
-            expected {test_case['frequencies']}"
+            expected {test_case['frequencies']} for test case {test_case}"
 
 
 @pytest.mark.unittest
