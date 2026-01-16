@@ -49,13 +49,13 @@ def test_coefficients() -> None:
 
         coeffs, freqs = Coefficients.get_spectrum(model)
 
-        assert len(coeffs) == model.degree * 2 + 1, "Wrong number of coefficients"
+        assert len(coeffs) == model.frequencies[0], "Wrong number of coefficients"
         assert np.isclose(
             np.sum(coeffs).imag, 0.0, rtol=1.0e-5
         ), "Imaginary part is not zero"
 
         partial_circuit = partial(model, model.params)
-        ref_coeffs = pcoefficients(partial_circuit, 1, model.degree)
+        ref_coeffs = pcoefficients(partial_circuit, 1, model.frequencies[0] // 2)
 
         assert np.allclose(
             coeffs, ref_coeffs, rtol=1.0e-5

@@ -52,7 +52,7 @@ Typically, there is a reuploading step after each layer and on each qubit (`data
 However, our package also allows you to specify an array with the number of rows representing the qubits and number of columns representing the layers.
 Then, a `True` means that encoding is applied at the corresponding position within the circuit.
 
-In the following example, the model has two reuploading steps (`model.degree` = 2) although it would be capable of representing four frequencies:
+In the following example, we disable two instances of the data-reuploading step, thus leaving the model with `model.frequencies = [5]` frequencies (2 negative + zero frequency + 2 positive).
 
 ```python
 model = Model(
@@ -109,7 +109,6 @@ If you want to visualize zero-valued encoding gates in the model, set `remove_ze
 
 In case of a multi-dimensional input, you can obtain the highest frequency in each encoding dimension from the `model.frequencies` property.
 Note that, `model.frequencies` includes the negative and zero frequency (i.e. the full spectrum).
-Now, `model.degree` in turn will reflect the highest number in this list.
 
 By default, all encodings are `Hamming` encodings, meaning, all encodings are applied equally in each data-reuploading step.
 Note it is also possible to provide a custom encoding as the `encoding` argument essentially accepts any callable or list of callables see [here](ansaetze.md#custom-encoding) for more details.
