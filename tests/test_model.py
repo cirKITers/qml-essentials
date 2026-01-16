@@ -438,13 +438,13 @@ def test_encoding() -> None:
         },
         {
             "encoding": Encoding("ternary", ["RX"]),
-            "frequencies": [26],
+            "frequencies": [9],
             "input": [0],
             "warning": False,
         },
         {
             "encoding": Encoding("ternary", ["RX", "RY"]),
-            "frequencies": [26, 26],
+            "frequencies": [9, 9],
             "input": [[0, 0]],
             "warning": False,
         },
