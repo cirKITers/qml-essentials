@@ -291,7 +291,7 @@ def test_oversampling_time() -> None:
     )
 
     assert (
-        Coefficients.get_spectrum(model, mts=2)[0].shape[0] == 10
+        Coefficients.get_spectrum(model, mts=3)[0].shape[0] == 15
     ), "Oversampling time failed"
 
 
@@ -304,7 +304,7 @@ def test_oversampling_frequency() -> None:
     )
 
     assert (
-        Coefficients.get_spectrum(model, mfs=2)[0].shape[0] == 9
+        Coefficients.get_spectrum(model, mfs=3)[0].shape[0] == 15
     ), "Oversampling frequency failed"
 
 

@@ -84,7 +84,7 @@ class Coefficients:
         model: Model, mfs: int, mts: int, **kwargs: Any
     ) -> np.ndarray:
         # Create a frequency vector with as many frequencies as model degrees,
-        # oversampled by nfs
+        # oversampled by mfs
         n_freqs: np.ndarray = np.array(
             [mfs * model.frequencies[i] for i in range(model.n_input_feat)]
         )
