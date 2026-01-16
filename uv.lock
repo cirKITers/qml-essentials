@@ -79,11 +79,11 @@ wheels = [
 
 [[package]]
 name = "autoray"
-version = "0.8.2"
+version = "0.8.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/bc/0f/2c627f36bf044c69b1e2945be3fd9f051103e7cb7020ca76142133b5352c/autoray-0.8.2.tar.gz", hash = "sha256:031637850b782cb0b8c0bcfd6a03f99e81e5a5deadbdc835e0471440f1ff0c0f", size = 1180274, upload-time = "2025-11-03T22:34:42.79Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/30/8f/c951dc8acf51db7554b075f184488400401472ad9aa25edffa9ed9982621/autoray-0.8.4.tar.gz", hash = "sha256:b4ce7066334279b216431a260bb5b5b84d87815e3295020a76d8701e43dc3432", size = 1321434, upload-time = "2025-12-05T01:42:25.539Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/aa/d9/d0aeba5f72236ab1397cf1203f0d2ea6a6f852f0f2a81cd5fbc2bc329087/autoray-0.8.2-py3-none-any.whl", hash = "sha256:e869f40c080e43d95d9ae1e22cf4e85bbfd8b71dc1c42df30a5cd9253ba4fa42", size = 935556, upload-time = "2025-11-03T22:34:41.094Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/49/bc1c2e3ca121f6468e0cd8d78a96ab2dcb65d0f003917f5d4edcaea103a2/autoray-0.8.4-py3-none-any.whl", hash = "sha256:287c366f2ba9d9c045ffa2b2421deea07439ed5a7f18b5d25b3a406d53b5c63c", size = 937489, upload-time = "2025-12-05T01:42:23.658Z" },
 ]
 
 [[package]]
@@ -1438,8 +1438,8 @@ wheels = [
 
 [[package]]
 name = "pennylane"
-version = "0.44.0"
-source = { registry = "https://pypi.org/simple" }
+version = "0.45.0.dev8"
+source = { git = "https://github.com/PennyLaneAI/pennylane?rev=fix-qubit-density-matrix-local-8932#2596a79cfd8c02eda5f62c46ea056acd50107c2b" }
 dependencies = [
     { name = "appdirs" },
     { name = "autograd" },
@@ -1455,9 +1455,6 @@ dependencies = [
     { name = "scipy" },
     { name = "tomlkit" },
     { name = "typing-extensions" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b6/24/4877741560c88d4cd3361af4627ecc2b679cece1e4812fd105764e1d2700/pennylane-0.44.0-py3-none-any.whl", hash = "sha256:5318a9c300823d4d0cb2864b33408f2abb51b05c4b30b2c316346eaf8a9973e7", size = 5280092, upload-time = "2026-01-13T18:09:41.08Z" },
 ]
 
 [[package]]
@@ -1901,7 +1898,7 @@ requires-dist = [
     { name = "dill", specifier = ">=0.4.0" },
     { name = "jax", specifier = "<=0.6.2" },
     { name = "optax", specifier = ">=0.2.6" },
-    { name = "pennylane", specifier = ">=0.44.0" },
+    { name = "pennylane", git = "https://github.com/PennyLaneAI/pennylane?rev=fix-qubit-density-matrix-local-8932" },
 ]
 
 [package.metadata.requires-dev]
