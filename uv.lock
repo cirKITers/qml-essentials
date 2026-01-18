@@ -1438,8 +1438,8 @@ wheels = [
 
 [[package]]
 name = "pennylane"
-version = "0.45.0.dev8"
-source = { git = "https://github.com/PennyLaneAI/pennylane?rev=fix-qubit-density-matrix-local-8932#2596a79cfd8c02eda5f62c46ea056acd50107c2b" }
+version = "0.45.0.dev10"
+source = { git = "https://github.com/PennyLaneAI/pennylane?rev=master#4ddf175c057a5f4d881cf9a4267d7d5bdc252ecb" }
 dependencies = [
     { name = "appdirs" },
     { name = "autograd" },
@@ -1898,7 +1898,7 @@ requires-dist = [
     { name = "dill", specifier = ">=0.4.0" },
     { name = "jax", specifier = "<=0.6.2" },
     { name = "optax", specifier = ">=0.2.6" },
-    { name = "pennylane", git = "https://github.com/PennyLaneAI/pennylane?rev=fix-qubit-density-matrix-local-8932" },
+    { name = "pennylane", git = "https://github.com/PennyLaneAI/pennylane?rev=master" },
 ]
 
 [package.metadata.requires-dev]

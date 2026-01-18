@@ -63,4 +63,4 @@ markers = [
 ]
 
 [tool.uv.sources]
-pennylane = { git = "https://github.com/PennyLaneAI/pennylane", rev = "fix-qubit-density-matrix-local-8932" }
+pennylane = { git = "https://github.com/PennyLaneAI/pennylane", rev = "master" }
