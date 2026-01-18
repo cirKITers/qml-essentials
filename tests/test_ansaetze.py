@@ -223,7 +223,6 @@ def test_ansaetze() -> None:
             data_reupload=False,
             initialization="random",
             output_qubit=0,
-            shots=1024,
         )
 
         _ = model(
@@ -286,7 +285,6 @@ def test_ansaetze() -> None:
         data_reupload=True,
         initialization="random",
         output_qubit=0,
-        shots=1024,
     )
     logger.info(f"{str(model)}")
 
