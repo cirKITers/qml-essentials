@@ -3046,7 +3046,8 @@ class Encoding:
         Parameters
         ----------
         strategy : str
-            The encoding strategy to use. Available options: ['hamming', 'binary', 'ternary']
+            The encoding strategy to use. Available options:
+            ['hamming', 'binary', 'ternary']
         gates : Union[str, Callable, List[Union[str, Callable]]]
             The gates to use for encoding. Can be a string, a callable or a list
             of strings or callables.
