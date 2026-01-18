@@ -3040,7 +3040,28 @@ class Encoding:
     def __init__(
         self, strategy: str, gates: Union[str, Callable, List[Union[str, Callable]]]
     ):
+        """
+        Initializes an Encoding object.
 
+        Parameters
+        ----------
+        strategy : str
+            The encoding strategy to use. Available options: ['hamming', 'binary', 'ternary']
+        gates : Union[str, Callable, List[Union[str, Callable]]]
+            The gates to use for encoding. Can be a string, a callable or a list
+            of strings or callables.
+
+        Returns
+        -------
+        None
+
+        Raises
+        -------
+        ValueError
+            If the encoding strategy is not implemented.
+        ValueError
+            If there is an error parsing the gates.
+        """
         if strategy not in ["hamming", "binary", "ternary"]:
             raise ValueError(
                 f"Encoding strategy {strategy} not implemented. "
@@ -3049,7 +3070,7 @@ class Encoding:
         self._strategy = strategy
         strategy = getattr(self, strategy)
 
-        log.info(f"Using encoding strategy: '{strategy.__name__}'")
+        log.debug(f"Using encoding strategy: '{strategy.__name__}'")
 
         try:
             self._gates = Gates.parse_gates(gates, Gates)
@@ -3066,15 +3087,17 @@ class Encoding:
 
     def get_n_freqs(self, omegas):
         """
-        Returns the number of frequencies for a given omega
-        and encoding strategy.
-        See https://doi.org/10.22331/q-2023-12-20-1210
+        Returns the number of frequencies required for the encoding strategy.
 
-        Args:
-            omegas (_type_): _description_
+        Parameters
+        ----------
+        omegas : int
+            The number of frequencies to encode.
 
-        Returns:
-            _type_: _description_
+        Returns
+        -------
+        int
+            The number of frequencies required for the encoding strategy.
         """
         if self._strategy == "hamming":
             return 2 * omegas + 1
@@ -3086,15 +3109,70 @@ class Encoding:
             raise NotImplementedError
 
     def hamming(self, enc):
+        """
+        Hamming encoding strategy.
+
+        Returns an encoding function that uses the Hamming encoding strategy
+        which uses 2 * omegas + 1 frequencies for the encoding.
+        See https://doi.org/10.22331/q-2023-12-20-1210 for more details.
+
+        Parameters
+        ----------
+        enc : Callable
+            The encoding function to be wrapped.
+
+        Returns
+        -------
+        Callable
+            The wrapped encoding function.
+        """
         return enc
 
     def binary(self, enc):
+        """
+        Binary encoding strategy.
+
+        Returns an encoding function that scales the input by a factor of 2^wires.
+
+        Binary encoding uses 2^(omegas + 1) - 1 frequencies for the encoding.
+        See https://doi.org/10.22331/q-2023-12-20-1210 for more details.
+
+        Parameters
+        ----------
+        enc : Callable
+            The encoding function to be wrapped.
+
+        Returns
+        -------
+        Callable
+            The wrapped encoding function.
+        """
+
         def _enc(inputs, wires, **kwargs):
             return enc(inputs * (2**wires), wires, **kwargs)
 
         return _enc
 
     def ternary(self, enc):
+        """
+        Ternary encoding strategy.
+
+        Returns an encoding function that scales the input by a factor of 3^wires.
+
+        Ternary encoding uses 3^(omegas + 1) - 1 frequencies for the encoding.
+        See https://doi.org/10.22331/q-2023-12-20-1210 for more details.
+
+        Parameters
+        ----------
+        enc : Callable
+            The encoding function to be wrapped.
+
+        Returns
+        -------
+        Callable
+            The wrapped encoding function.
+        """
+
         def _enc(inputs, wires, **kwargs):
             return enc(inputs * (3**wires), wires, **kwargs)
 

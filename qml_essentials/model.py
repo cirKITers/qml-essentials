@@ -150,7 +150,7 @@ class Model:
 
         # Number of possible inputs
         self.n_input_feat = len(self._enc)
-        log.info(f"Number of input features: {self.n_input_feat}")
+        log.debug(f"Number of input features: {self.n_input_feat}")
 
         # Trainable frequencies, default initialization as in arXiv:2309.03279v2
         self.enc_params = np.ones(
