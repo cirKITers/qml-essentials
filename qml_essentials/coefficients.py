@@ -1382,3 +1382,144 @@ class FCC:
 
         return fourier_fingerprint * weights_matrix
         raise NotImplementedError("Weighting method is not implemented")
+
+
+class Datasets:
+    @staticmethod
+    def generate_fourier_series(
+        model: Model,
+        domain: List[float],
+        omegas: List[List[float]],
+        coefficients_min: float,
+        coefficients_max: float,
+        zero_centered: bool,
+        seed: int,
+    ) -> np.ndarray:
+        """
+        Generates the Fourier series representation of a function.
+
+        Parameters
+        ----------
+        domain_samples : np.ndarray
+            Grid of domain samples.
+        omega : List[List[float]]
+            List of frequencies for each dimension.
+
+        Returns
+        -------
+        np.ndarray
+            Fourier series representation of the function.
+        """
+        rng = np.random.default_rng(seed)
+
+        if model.encoding._strategy == "hamming":
+            frequencies = np.stack(
+                np.meshgrid(
+                    *[
+                        np.linspace(-omegas, omegas, 2 * omegas + 1)
+                        for _ in range(model.n_input_feat)
+                    ]
+                )
+            ).T.reshape(-1, model.n_input_feat)
+        elif model.encoding._strategy == "binary":
+            frequencies = np.stack(
+                np.meshgrid(
+                    *[
+                        np.linspace(
+                            -(2**omegas) + 1, (2**omegas) - 1, 2 ** (omegas + 1) - 1
+                        )
+                        for _ in range(model.n_input_feat)
+                    ]
+                )
+            ).T.reshape(-1, model.n_input_feat)
+        elif model.encoding._strategy == "ternary":
+            frequencies = np.stack(
+                np.meshgrid(
+                    *[
+                        np.linspace(
+                            -int((3**omegas) / 2),
+                            int((3**omegas) / 2),
+                            3 ** (omegas + 1) - 1,
+                        )
+                        for _ in range(model.n_input_feat)
+                    ]
+                )
+            ).T.reshape(-1, model.n_input_feat)
+        else:
+            raise ValueError(
+                f"Unsupported encoding strategy: {model.encoding._strategy}"
+            )
+
+        n_freqs: int = frequencies.size
+        start, stop, step = domain[0], domain[1], 2 * np.pi / n_freqs
+        # Stretch according to the number of frequencies
+        inputs: np.ndarray = np.arange(start, stop, step)
+
+        # permute with input dimensionality
+        domain_samples = np.array(
+            np.meshgrid(*[inputs] * model.n_input_feat)
+        ).T.reshape(-1, model.n_input_feat)
+
+        coefficients = Datasets._uniform_circle(
+            rng,
+            coefficients_min,
+            coefficients_max,
+            int(np.ceil(frequencies.shape[0] / 2)),
+        )
+
+        coefficients = coefficients.flatten()
+
+        if not zero_centered:
+            coefficients[0] = 0.0
+        else:
+            # ensure the first coefficient is real
+            coefficients[0] = coefficients[0].real
+
+        # ensure symmetry
+        coefficients = np.concat(
+            [np.flip(coefficients[1:]).conjugate(), coefficients],
+        )
+
+        def y(x: np.ndarray) -> float:
+            return (
+                np.real_if_close(np.sum(coefficients * np.exp(1j * frequencies.dot(x))))
+                / coefficients.size
+            )
+
+        values = np.stack([y(x) for x in domain_samples])
+
+        coefficients_hat = np.fft.fftshift(
+            np.fft.fftn(
+                values.reshape([n_freqs] * model.n_input_feat),
+                axes=list(range(model.n_input_feat)),
+            )
+        )
+        assert np.allclose(
+            coefficients, coefficients_hat.flatten(), atol=1e-6
+        ), "Frequencies don't match"
+
+        return {
+            "domain_samples": domain_samples,
+            "fourier_samples": values.flatten(),
+            "coefficients": coefficients,
+        }
+
+    @staticmethod
+    def uniform_circle(rng, low=0.0, high=1.0, size=None):
+        """
+        Random number generator for complex numbers sampled inside the unit circle
+
+        Parameters
+        ----------
+        low (float, optional): Minimum Radius. Defaults to 0.0.
+        high (float, optional): Maximum Radius. Defaults to 1.0.
+        size (int, optional): Number of samples. Defaults to None.
+
+        Returns
+        -------
+        np.ndarray: Array of complex numbers
+        """
+
+        return np.sqrt(rng.uniform(low, high, size)) * np.exp(
+            2j * np.pi * rng.uniform(low=0, high=1, size=size)
+        )
