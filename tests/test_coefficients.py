@@ -49,13 +49,13 @@ def test_coefficients() -> None:
 
         coeffs, freqs = Coefficients.get_spectrum(model)
 
-        assert len(coeffs) == model.degree * 2 + 1, "Wrong number of coefficients"
+        assert len(coeffs) == model.frequencies[0], "Wrong number of coefficients"
         assert np.isclose(
             np.sum(coeffs).imag, 0.0, rtol=1.0e-5
         ), "Imaginary part is not zero"
 
         partial_circuit = partial(model, model.params)
-        ref_coeffs = pcoefficients(partial_circuit, 1, model.degree)
+        ref_coeffs = pcoefficients(partial_circuit, 1, model.frequencies[0] // 2)
 
         assert np.allclose(
             coeffs, ref_coeffs, rtol=1.0e-5
@@ -89,10 +89,9 @@ def test_multi_dim_input() -> None:
     coeffs, freqs = Coefficients.get_spectrum(model)
 
     assert (
-        coeffs.shape == [model.frequencies[i] * 2 + 1]
-        for i in range(model.n_input_feat)
+        coeffs.shape == [model.frequencies[i]] for i in range(model.n_input_feat)
     ), f"Wrong shape of coefficients: {coeffs.shape}, \
-        expected {[[model.frequencies[i] * 2 + 1] for i in range(model.n_input_feat)]}"
+        expected {[[model.frequencies[i]] for i in range(model.n_input_feat)]}"
 
     ref_input = [1, 2]
     exp_model = model(params=None, inputs=ref_input, force_mean=True)
@@ -292,7 +291,7 @@ def test_oversampling_time() -> None:
     )
 
     assert (
-        Coefficients.get_spectrum(model, mts=2)[0].shape[0] == 10
+        Coefficients.get_spectrum(model, mts=3)[0].shape[0] == 15
     ), "Oversampling time failed"
 
 
@@ -305,7 +304,7 @@ def test_oversampling_frequency() -> None:
     )
 
     assert (
-        Coefficients.get_spectrum(model, mfs=2)[0].shape[0] == 9
+        Coefficients.get_spectrum(model, mfs=3)[0].shape[0] == 15
     ), "Oversampling frequency failed"
 
 
