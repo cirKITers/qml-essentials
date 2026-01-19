@@ -472,9 +472,9 @@ def test_encoding() -> None:
             )
         pass
         assert (
-            model.frequencies == test_case["frequencies"]
-        ), f"Frequencies is not correct: got {model.frequencies},\
-            expected {test_case['frequencies']} for test case {test_case}"
+            model.degree == test_case["degree"]
+        ), f"Frequencies is not correct: got {model.degree},\
+            expected {test_case["degree"]} for test case {test_case}"
 
 
 @pytest.mark.unittest
@@ -982,9 +982,9 @@ def test_dru() -> None:
         )
 
         assert (
-            model.frequencies == test_case["frequencies"]
-        ), f"Expected frequencies {test_case['frequencies']} but got\
-            {model.frequencies} for dru {test_case['dru']}"
+            model.degree == test_case["degree"]
+        ), f"Expected frequencies {test_case["degree"]} but got\
+            {model.degree} for dru {test_case['dru']}"
 
         _ = model(
             model.params,

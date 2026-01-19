@@ -198,8 +198,12 @@ class Model:
 
         # convert to boolean values
         self.data_reupload = data_reupload.astype(bool)
-        self.frequencies = [
+        self.degree = [
             self._enc.get_n_freqs(np.count_nonzero(self.data_reupload[..., i]))
+            for i in range(self.n_input_feat)
+        ]
+        self.frequencies = [
+            self._enc.get_spectrum(np.count_nonzero(self.data_reupload[..., i]))
             for i in range(self.n_input_feat)
         ]
 
