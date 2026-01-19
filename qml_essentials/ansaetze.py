@@ -3043,6 +3043,8 @@ class Encoding:
         """
         Initializes an Encoding object.
 
+        Implementations closely follow https://doi.org/10.22331/q-2023-12-20-1210
+
         Parameters
         ----------
         strategy : str
@@ -3106,6 +3108,36 @@ class Encoding:
             return 2 ** (omegas + 1) - 1
         elif self._strategy == "ternary":
             return 3 ** (omegas)
+        else:
+            raise NotImplementedError
+
+    def get_spectrum(self, omegas):
+        """
+        Spectrum for one of the following encoding strategies:
+
+        Hamming: {-n_q -(n_q-1), ..., n_q}
+        Binary: {-2^{n_q}+1, ..., 2^{n_q}-1}
+        Ternary: {-floor(3^{n_q}/2), ..., floor(3^(n_q)/2)}
+
+        See https://doi.org/10.22331/q-2023-12-20-1210 for more details.
+
+        Parameters
+        ----------
+        omegas : int
+            The number of frequencies to encode.
+
+        Returns
+        -------
+        np.ndarray
+            The spectrum of the encoding strategy.
+        """
+        if self._strategy == "hamming":
+            return np.arange(-omegas, omegas + 1)
+        elif self._strategy == "binary":
+            return np.arange(-(2**omegas) + 1, 2**omegas)
+        elif self._strategy == "ternary":
+            limit = int(np.floor(3**omegas / 2))
+            return np.arange(-limit, limit + 1)
         else:
             raise NotImplementedError
 
