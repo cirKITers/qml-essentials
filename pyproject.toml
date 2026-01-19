@@ -16,10 +16,10 @@ keywords = [
     "qml",
 ]   
 dependencies = [
-    "pennylane>=0.40.0,<0.41.0",
+    "pennylane>=0.40.0,<0.43.0",
     "dill>=0.4.0,<0.5",
-    "jax>=0.4.28,<0.5",
-    "jaxlib>=0.4.28,<0.5",
+    "jax>=0.4.28,<0.7",
+    "jaxlib>=0.4.28,<0.7",
     "optax>=0.2.5,<0.3",
 ]
 
@@ -30,11 +30,11 @@ Documentation = "https://cirkiters.github.io/qml-essentials/"
 
 [dependency-groups]
 dev = [
-    "black>=25.1.0,<26",
-    "pytest>=8.3.5,<9",
+    "black>=25.1.0,<27",
+    "pytest>=8.3.5,<10",
     "flake8>=7.2.0,<8",
     "pre-commit>=4.2.0,<5",
-    "pytest-cov>=6.0.0,<7",
+    "pytest-cov>=6.0.0,<8",
     "licensecheck>=2025.1.0,<2026",
     "matplotlib>=3.10.3,<4",
     "pytest-xdist>=3.6.1,<4",
@@ -43,10 +43,10 @@ dev = [
 docs = [
     "mkdocs>=1.6.1,<2",
     "mkdocs-material>=9.6.14,<10",
-    "mkdocs-glightbox>=0.4.0,<0.5",
-    "mkdocstrings-python>=1.16.10,<2",
+    "mkdocs-glightbox>=0.4.0,<0.6",
+    "mkdocstrings-python>=1.16.10,<3",
     "markdown-include>=0.8.1,<0.9",
-    "ipykernel>=6.29.5,<7",
+    "ipykernel>=6.29.5,<8",
 ]
 
 [build-system]
