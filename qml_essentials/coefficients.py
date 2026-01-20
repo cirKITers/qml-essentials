@@ -1386,7 +1386,137 @@ class FCC:
 
 class Datasets:
     @staticmethod
+    def enforce_hermitian_symmetric(a: np.ndarray) -> np.ndarray:
+        """
+        Enforce Hermitian symmetry for an nD complex spectrum `a`
+        so that it corresponds to a real signal in the spatial domain.
+
+        Requires that all dimensions of `a` are odd.
+
+        After this, a[k] = conj(a[-k mod N]) for all multi-indices k.
+        """
+        a = np.asarray(a)
+        shape = a.shape
+        if any(N % 2 == 0 for N in shape):
+            raise ValueError("All dimensions must be odd to use this simple version.")
+        ndim = a.ndim
+
+        # index grids: grids[d] has shape `shape` and holds indices along axis d
+        grids = nnp.ogrid[tuple(slice(0, N) for N in shape)]
+        # negative indices mod N
+        neg_idx = [(-g) % N for g, N in zip(grids, shape)]
+
+        # partner spectrum: a_sym[k] = conj(a[-k])
+        a_sym = np.conj(a[tuple(neg_idx)])
+
+        # make a symmetric assignment: average with partner
+        a = 0.5 * (a + a_sym)
+
+        # DC element (all zeros) must be real for a real-valued signal
+        a[(0,) * ndim] = a[(0,) * ndim].real + 0j
+
+        return a
+
+    @staticmethod
     def generate_fourier_series(
+        seed: int,
+        model: Model,
+        omegas: List[List[float]] = None,
+        domain: List[float] = [0, 2 * np.pi],
+        coefficients_min: float = 0.0,
+        coefficients_max: float = 1.0,
+        zero_centered: bool = True,
+    ) -> np.ndarray:
+        """
+        Generates the Fourier series representation of a function.
+
+        Parameters
+        ----------
+        domain_samples : np.ndarray
+            Grid of domain samples.
+        omega : List[List[float]]
+            List of frequencies for each dimension.
+
+        Returns
+        -------
+        np.ndarray
+            Fourier series representation of the function.
+        """
+        # TODO: the following code can be considered to
+        # capturing a truly random spectrum.
+        # add some constraints on the spectrum, i.e. not fully
+
+        rng = np.random.default_rng(seed)
+
+        # Note: one key observation for understanding the following code is,
+        # that instead of wrapping your head around symmetries in multi-
+        # dimensional coefficient matrices, one can simply look at the flattened
+        # version of such a matrix and reshape later. It just works out.
+
+        # going from [0, 2pi] with the resolution required for highest frequency
+        # permute with input dimensionality to get an n-d grid of domain samples
+        # the output shape comes from the fact that want to create a "coordinate system"
+        domain_samples_per_input_dim = np.stack(
+            np.meshgrid(
+                *[np.arange(domain[0], domain[1], 2 * np.pi / d) for d in model.degree]
+            )
+        ).T.reshape(-1, model.n_input_feat)
+
+        # generate the frequency indices for each dimension.
+        # this will have the same shape as the domain samples
+        frequencies = np.stack(np.meshgrid(*model.frequencies)).T.reshape(
+            -1, model.n_input_feat
+        )
+
+        # using the frequency information, sample coefficients for each dimension
+        # shape: (input_dims, n_freqs_per_input_dim // 2 + 1)
+        coefficients = Datasets.uniform_circle(
+            rng=rng,
+            low=coefficients_min,
+            high=coefficients_max,
+            size=np.prod(model.degree) // 2 + 1,
+        )
+
+        # zero center (first coeff = 0)
+        # we can assume the first coeff is the offset, because we're dealing
+        # with a non-symmetric spectrum here
+        if not zero_centered:
+            coefficients[0] = 0.0
+        else:
+            coefficients[0] = coefficients[0].real
+
+        # ensure symmetry (here, non_negative_ is removed!),
+        # giving us the full coefficients vector
+        coefficients = np.concat(
+            [
+                np.flip(coefficients[..., 1:]).conjugate(),
+                coefficients,
+            ],
+            axis=-1,
+        )
+
+        # Vectorized version of $f(x) = \sum_{n=0}^{N-1} c_n * e^{i * \omega_n * x}$
+        # it takes into account the input dimension, i.e. the output is a matrix
+        # note that the number of domain samples is just the number of frequencies due
+        # to the sampling theorem (n_domain_samples_per_input_dim = n_freqs_per_input_dim)!
+        # normalization uses the n_freqs component of the coefficients
+        values = np.real_if_close(
+            (
+                np.exp(1j * (domain_samples_per_input_dim @ frequencies.T))
+                * coefficients
+            ).sum(axis=1)
+            / coefficients.size
+        )
+
+        # return all the information we have
+        return {
+            "domain_samples": domain_samples_per_input_dim,
+            "fourier_samples": values.reshape(model.degree),
+            "coefficients": coefficients.reshape(model.degree),
+        }
+
+    @staticmethod
+    def _generate_fourier_series(
         seed: int,
         model: Model,
         omegas: List[List[float]] = None,
@@ -1412,79 +1542,126 @@ class Datasets:
         """
         rng = np.random.default_rng(seed)
 
-        n_freqs_per_input_dim: np.ndarray = np.array(
-            [model.degree[i] for i in range(model.n_input_feat)]
+        # going from [0, 2pi] with the resolution required for highest frequency
+        # permute with input dimensionality to get an n-d grid of domain samples
+        # the output shape comes from the fact that want to create a "coordinate system"
+        # shape: (input_dims, (n_domain_samples_per_input_dim,) * input_dims)
+        domain_samples_per_input_dim = np.stack(
+            np.meshgrid(
+                *[np.arange(domain[0], domain[1], 2 * np.pi / d) for d in model.degree]
+            )
         )
-        start, stop, step = domain[0], domain[1], 2 * np.pi / n_freqs_per_input_dim
-        # Stretch according to the number of frequencies
-        inputs: np.ndarray = np.arange(start, stop, step)
 
-        # permute with input dimensionality
-        domain_samples_per_input_dim = np.array(
-            np.meshgrid(*[inputs] * model.n_input_feat)
-        ).T.reshape(-1, model.n_input_feat)
+        # generate the frequency indices for each dimension.
+        # this will have the same shape as the domain samples
+        # shape: (input_dims, (n_domain_samples_per_input_dim,) * input_dims)
+        frequencies_per_input_dim = np.stack(np.meshgrid(*model.frequencies))
 
-        coefficients = Datasets._uniform_circle(
+        # using the frequency information, sample coefficients for each dimension
+        # shape: (input_dims, n_freqs_per_input_dim // 2 + 1)
+        coefficients_per_input_dim = Datasets.uniform_circle(
             rng=rng,
             low=coefficients_min,
             high=coefficients_max,
-            size=int(np.ceil(n_freqs_per_input_dim / 2)),
-        )
+            size=np.prod(model.degree),
+        ).reshape(model.degree)
 
-        coefficients = coefficients.flatten()
+        # symmetry by flipping and conjugating the coefficients
+        # averaging should not change properties provided by coefficients_min and _max
+        coefficients_per_input_dim = (
+            coefficients_per_input_dim + np.flip(coefficients_per_input_dim).conjugate()
+        ) / 2
 
         if not zero_centered:
-            coefficients[0] = 0.0
+            np.put(coefficients_per_input_dim, coefficients_per_input_dim.size, 0.0)
         else:
-            # ensure the first coefficient is real
-            coefficients[0] = coefficients[0].real
+            np.put(
+                coefficients_per_input_dim,
+                coefficients_per_input_dim.size // 2,
+                np.take(
+                    coefficients_per_input_dim, coefficients_per_input_dim.size // 2
+                ).real,
+            )
+        # zero center (first coeff = 0)
+        # we can assume the first coeff is the offset, because we're dealing
+        # with a non-symmetric spectrum here
+        # if not zero_centered:
+        #     non_negative_coefficients_per_input_dim[..., 0] = 0.0
+        # else:
+        #     # if not, ensure the first coefficient is real
+        #     non_negative_coefficients_per_input_dim[..., 0] = (
+        #         non_negative_coefficients_per_input_dim[..., 0].real
+        #     )
 
-        # ensure symmetry
-        coefficients = np.concat(
-            [np.flip(coefficients[1:]).conjugate(), coefficients],
+        # ensure symmetry (here, non_negative_ is removed!),
+        # giving us the full coefficients vector
+        # shape: (input_dims, n_freqs_per_input_dim)
+        # coefficients_per_input_dim = np.concat(
+        #     [
+        #         np.flip(non_negative_coefficients_per_input_dim[..., 1:]).conjugate(),
+        #         non_negative_coefficients_per_input_dim,
+        #     ],
+        #     axis=-1,
+        # )
+
+        # Vectorized version of $f(x) = \sum_{n=0}^{N-1} c_n * e^{i * \omega_n * x}$
+        # it takes into account the input dimension, i.e. the output is a matrix
+        # note that the number of domain samples is just the number of frequencies due
+        # to the sampling theorem (n_domain_samples_per_input_dim = n_freqs_per_input_dim)!
+        # normalization uses the n_freqs component of the coefficients
+        # shape: (n_domain_samples_per_input_dim, n_domain_samples_per_input_dim)
+        values = np.real_if_close(
+            np.sum(
+                coefficients_per_input_dim
+                * np.exp(
+                    1j * frequencies_per_input_dim * domain_samples_per_input_dim.T
+                ),
+                axis=-1,
+            )
+            / np.prod(model.degree)
         )
 
-        def y(x: np.ndarray) -> float:
-            return (
-                np.real_if_close(
-                    np.sum(coefficients * np.exp(1j * model.frequencies.dot(x)))
-                )
-                / coefficients.size
-            )
-
-        values = np.stack([y(x) for x in domain_samples_per_input_dim])
-
+        # sanity check to ensure that the coefficients match
+        # shape: (input_dims, n_freqs_per_input_dim)
+        # TODO: consider removing in future iterations as we can also cover that in tests
         coefficients_hat = np.fft.fftshift(
             np.fft.fftn(
-                values.reshape([n_freqs_per_input_dim] * model.n_input_feat),
+                values,
                 axes=list(range(model.n_input_feat)),
             )
         )
         assert np.allclose(
-            coefficients, coefficients_hat.flatten(), atol=1e-6
+            coefficients_per_input_dim.squeeze(),
+            coefficients_hat,
+            atol=1e-6,
         ), "Frequencies don't match"
 
+        # return all the information we have
         return {
             "domain_samples": domain_samples_per_input_dim,
-            "fourier_samples": values.flatten(),
-            "coefficients": coefficients,
+            "fourier_samples": values,
+            "coefficients": coefficients_per_input_dim,
         }
 
     @staticmethod
-    def uniform_circle(rng, low=0.0, high=1.0, size=None):
+    def uniform_circle(rng, size: Union[np.ndarray, List, int], low=0.0, high=1.0):
         """
         Random number generator for complex numbers sampled inside the unit circle
 
         Parameters
         ----------
+        size : Union[np.ndarray, int]: Number of samples. If a 2D array is passed,
+            the first dimension will be the number of dimensions.
         low (float, optional): Minimum Radius. Defaults to 0.0.
         high (float, optional): Maximum Radius. Defaults to 1.0.
-        size (int, optional): Number of samples. Defaults to None.
 
         Returns
         -------
-        np.ndarray: Array of complex numbers
+        np.ndarray: Array of complex numbers with shape of `size`
         """
+
+        if isinstance(size, int):
+            size = np.array([size])
 
         return np.sqrt(rng.uniform(low, high, size)) * np.exp(
             2j * np.pi * rng.uniform(low=0, high=1, size=size)

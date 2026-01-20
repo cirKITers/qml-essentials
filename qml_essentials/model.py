@@ -198,16 +198,21 @@ class Model:
 
         # convert to boolean values
         self.data_reupload = data_reupload.astype(bool)
-        self.degree = [
-            self._enc.get_n_freqs(np.count_nonzero(self.data_reupload[..., i]))
-            for i in range(self.n_input_feat)
-        ]
-        self.frequencies = [
-            self._enc.get_spectrum(np.count_nonzero(self.data_reupload[..., i]))
-            for i in range(self.n_input_feat)
-        ]
+        self.degree = np.array(
+            [
+                self._enc.get_n_freqs(np.count_nonzero(self.data_reupload[..., i]))
+                for i in range(self.n_input_feat)
+            ]
+        )
+        self.frequencies = np.array(
+            [
+                self._enc.get_spectrum(np.count_nonzero(self.data_reupload[..., i]))
+                for i in range(self.n_input_feat)
+            ]
+        )
 
-        if self.degree > 1:
+        # check for the highest degree among all input dimensions
+        if max(self.degree) > 1:
             impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
         else:
             impl_n_layers = n_layers
@@ -254,10 +259,6 @@ class Model:
             interface="autograd" if self.shots is not None else "auto",
             diff_method="parameter-shift" if self.shots is not None else "best",
         )
-
-    @property
-    def degree(self):
-        return max(self.frequencies)
 
     @property
     def as_pauli_circuit(self) -> bool:

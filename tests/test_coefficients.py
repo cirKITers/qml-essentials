@@ -1,5 +1,6 @@
 from qml_essentials.model import Model
-from qml_essentials.coefficients import Coefficients, FourierTree, FCC
+from qml_essentials.ansaetze import Encoding
+from qml_essentials.coefficients import Coefficients, FourierTree, FCC, Datasets
 from pennylane.fourier import coefficients as pcoefficients
 import hashlib
 
@@ -49,13 +50,13 @@ def test_coefficients() -> None:
 
         coeffs, freqs = Coefficients.get_spectrum(model)
 
-        assert len(coeffs) == model.frequencies[0], "Wrong number of coefficients"
+        assert len(coeffs) == model.degree[0], "Wrong number of coefficients"
         assert np.isclose(
             np.sum(coeffs).imag, 0.0, rtol=1.0e-5
         ), "Imaginary part is not zero"
 
         partial_circuit = partial(model, model.params)
-        ref_coeffs = pcoefficients(partial_circuit, 1, model.frequencies[0] // 2)
+        ref_coeffs = pcoefficients(partial_circuit, 1, model.degree[0] // 2)
 
         assert np.allclose(
             coeffs, ref_coeffs, rtol=1.0e-5
@@ -89,9 +90,9 @@ def test_multi_dim_input() -> None:
     coeffs, freqs = Coefficients.get_spectrum(model)
 
     assert (
-        coeffs.shape == [model.frequencies[i]] for i in range(model.n_input_feat)
+        coeffs.shape == [model.degree[i]] for i in range(model.n_input_feat)
     ), f"Wrong shape of coefficients: {coeffs.shape}, \
-        expected {[[model.frequencies[i]] for i in range(model.n_input_feat)]}"
+        expected {[[model.degee[i]] for i in range(model.n_input_feat)]}"
 
     ref_input = [1, 2]
     exp_model = model(params=None, inputs=ref_input, force_mean=True)
@@ -615,3 +616,58 @@ def test_weighting() -> None:
             fcc, test_case["fcc"], atol=1.0e-3
         ), f"Wrong FCC for {test_case['circuit_type']}. \
             Got {fcc}, expected {test_case['fcc']}."
+
+
+@pytest.mark.unittest
+def test_fourier_series_dataset() -> None:
+    test_cases = [
+        {"omegas": 2},
+        {"n_input_feat": 2},
+        {"domain": [0, np.pi]},
+        {"coefficients_min": 0.1, "coefficients_max": 0.9},
+        {"zero_centered": False},
+        # {"encoding_strategy": "binary"},
+        # {"encoding_strategy": "ternary"},
+    ]
+
+    for test_case in test_cases:
+        n_input_feat = test_case.pop("n_input_feat", 1)
+
+        encoding = Encoding(
+            test_case.pop("encoding_strategy", "binary"),
+            ["RY" for _ in range(n_input_feat)],
+        )
+
+        model = Model(
+            n_qubits=1,
+            n_layers=1,
+            encoding=encoding,
+        )
+
+        try:
+            dataset = Datasets.generate_fourier_series(
+                seed=1000,
+                model=model,
+                **test_case,
+            )
+        except Exception as e:
+            raise Exception(f"Error in test case {test_case}: {e}")
+
+        domain_samples = dataset["domain_samples"]
+        fourier_samples = dataset["fourier_samples"]
+        coefficients = dataset["coefficients"]
+
+        # Sanity check to ensure the FFT is correct
+        coefficients_hat = np.fft.fftshift(
+            np.fft.fftn(
+                fourier_samples,
+                axes=list(range(model.n_input_feat)),
+            )
+        )
+        assert np.allclose(
+            coefficients,
+            coefficients_hat,
+            atol=1e-6,
+        ), "Frequencies don't match"
+
+        # assert domain_samples.shape[-1] == n_input_feat, "Wrong shape of domain samples"
