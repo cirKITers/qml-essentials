@@ -717,5 +717,3 @@ def test_fourier_series_dataset() -> None:
             assert np.isclose(
                 fourier_samples.mean(), 0.0, atol=1e-1
             ), f"Zero centering failed for test case {test_case}"
-
-        # assert domain_samples.shape[-1] == n_input_feat, "Wrong shape of domain samples"
