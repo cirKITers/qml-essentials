@@ -1472,8 +1472,6 @@ class Datasets:
 
         # Vectorized version of $f(x) = \sum_{n=0}^{N-1} c_n * e^{i * \omega_n * x}$
         # it takes into account the input dimension, i.e. the output is a matrix
-        # note that the number of domain samples is just the number of frequencies due
-        # to the sampling theorem (n_domain_samples_per_input_dim = n_freqs_per_input_dim)!
         # normalization uses the n_freqs component of the coefficients
         values = np.real_if_close(
             (
