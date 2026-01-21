@@ -401,7 +401,7 @@ def test_encoding() -> None:
     test_cases = [
         {
             "encoding": Gates.RX,
-            "degree": (5),
+            "degree": (5,),
             "input": [0],
             "warning": False,
         },
@@ -417,7 +417,7 @@ def test_encoding() -> None:
             "input": [[0, 0]],
             "warning": False,
         },
-        {"encoding": "RX", "degree": (5), "input": [0], "warning": False},
+        {"encoding": "RX", "degree": (5,), "input": [0], "warning": False},
         {
             "encoding": ["RX", "RY"],
             "degree": (5, 5),
@@ -432,13 +432,13 @@ def test_encoding() -> None:
         },
         {
             "encoding": Encoding("binary", ["RX"]),
-            "degree": (7),
+            "degree": (7,),
             "input": [0],
             "warning": False,
         },
         {
             "encoding": Encoding("ternary", ["RX"]),
-            "degree": (9),
+            "degree": (9,),
             "input": [0],
             "warning": False,
         },
@@ -470,7 +470,7 @@ def test_encoding() -> None:
                 model.params,
                 inputs=test_case["input"],
             )
-        pass
+
         assert (
             model.degree == test_case["degree"]
         ), f"Frequencies is not correct: got {model.degree},\
@@ -950,17 +950,17 @@ def test_dru() -> None:
         {
             "enc": Gates.RX,
             "dru": False,
-            "degree": (3),
+            "degree": (3,),
         },
         {
             "enc": Gates.RX,
             "dru": True,
-            "degree": (9),
+            "degree": (9,),
         },
         {
             "enc": Gates.RX,
             "dru": [[True, False], [False, True]],
-            "degree": (5),
+            "degree": (5,),
         },
         {
             "enc": [Gates.RX, Gates.RY],
