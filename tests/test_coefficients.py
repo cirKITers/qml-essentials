@@ -4,6 +4,7 @@ from qml_essentials.coefficients import Coefficients, FourierTree, FCC, Datasets
 from pennylane.fourier import coefficients as pcoefficients
 import hashlib
 
+import traceback
 import numpy as np
 import pennylane.numpy as pnp
 import logging
@@ -621,17 +622,24 @@ def test_weighting() -> None:
 @pytest.mark.unittest
 def test_fourier_series_dataset() -> None:
     test_cases = [
-        {"omegas": 2},
         {"n_input_feat": 2},
-        {"domain": [0, np.pi]},
+        {"n_input_feat": 3},
         {"coefficients_min": 0.1, "coefficients_max": 0.9},
-        {"zero_centered": False},
-        # {"encoding_strategy": "binary"},
-        # {"encoding_strategy": "ternary"},
+        {"zero_centered": True},
+        {"encoding_strategy": "binary"},
+        {"encoding_strategy": "ternary"},
     ]
 
+    n_samples = 100
+    seed = 1000
+
     for test_case in test_cases:
+        rng = np.random.default_rng(seed)
+
         n_input_feat = test_case.pop("n_input_feat", 1)
+        coefficients_min = test_case.get("coefficients_min", 0.0)
+        coefficients_max = test_case.get("coefficients_max", 1.0)
+        zero_centered = test_case.get("zero_centered", False)
 
         encoding = Encoding(
             test_case.pop("encoding_strategy", "binary"),
@@ -644,30 +652,70 @@ def test_fourier_series_dataset() -> None:
             encoding=encoding,
         )
 
-        try:
-            dataset = Datasets.generate_fourier_series(
-                seed=1000,
-                model=model,
-                **test_case,
-            )
-        except Exception as e:
-            raise Exception(f"Error in test case {test_case}: {e}")
+        all_domain_samples = []
+        all_fourier_samples = []
+        all_coefficients = []
 
-        domain_samples = dataset["domain_samples"]
-        fourier_samples = dataset["fourier_samples"]
-        coefficients = dataset["coefficients"]
+        for i in range(n_samples):
+            try:
+                domain_samples, fourier_samples, coefficients = (
+                    Datasets.generate_fourier_series(
+                        rng=rng,
+                        model=model,
+                        **test_case,
+                    )
+                )
+            except Exception as e:
+                tb = traceback.format_exc()
+                raise Exception(
+                    f"Error in iteration {i} for test case {test_case}: {e}\n{tb}"
+                )
 
-        # Sanity check to ensure the FFT is correct
-        coefficients_hat = np.fft.fftshift(
-            np.fft.fftn(
-                fourier_samples,
-                axes=list(range(model.n_input_feat)),
+            # Sanity check to ensure the FFT is correct
+            coefficients_hat = np.fft.fftshift(
+                np.fft.fftn(
+                    fourier_samples,
+                    axes=list(range(model.n_input_feat)),
+                )
             )
-        )
-        assert np.allclose(
-            coefficients,
-            coefficients_hat,
-            atol=1e-6,
-        ), "Frequencies don't match"
+            assert np.allclose(
+                coefficients,
+                coefficients_hat,
+                atol=1e-6,
+            ), "Frequencies don't match"
+
+            assert np.all(
+                domain_samples.shape
+                == (
+                    *model.degree,
+                    model.n_input_feat,
+                )
+            ), f"Wrong shape of domain samples for test case {test_case}"
+            assert np.all(
+                fourier_samples.shape == model.degree
+            ), f"Wrong shape of Fourier values for test case {test_case}"
+            assert np.all(
+                coefficients.shape == model.degree
+            ), f"Wrong shape of coefficients for test case {test_case}"
+
+            all_domain_samples.append(domain_samples)
+            all_fourier_samples.append(fourier_samples)
+            all_coefficients.append(coefficients)
+
+        all_domain_samples = np.array(all_domain_samples)
+        all_fourier_samples = np.array(all_fourier_samples)
+        all_coefficients = np.array(all_coefficients)
+
+        if not zero_centered:
+            assert np.sqrt(coefficients_min) <= np.min(
+                np.abs(coefficients)
+            ), f"Coefficients are too small for test case {test_case}"
+            assert np.sqrt(coefficients_max) >= np.max(
+                np.abs(coefficients)
+            ), f"Coefficients are too large for test case {test_case}"
+        else:
+            assert np.isclose(
+                fourier_samples.mean(), 0.0, atol=1e-1
+            ), f"Zero centering failed for test case {test_case}"
 
         # assert domain_samples.shape[-1] == n_input_feat, "Wrong shape of domain samples"
