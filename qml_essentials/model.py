@@ -198,21 +198,18 @@ class Model:
 
         # convert to boolean values
         self.data_reupload = data_reupload.astype(bool)
-        self.degree = np.array(
-            [
-                self._enc.get_n_freqs(np.count_nonzero(self.data_reupload[..., i]))
-                for i in range(self.n_input_feat)
-            ]
+        self.degree: Tuple = tuple(
+            self._enc.get_n_freqs(np.count_nonzero(self.data_reupload[..., i]))
+            for i in range(self.n_input_feat)
         )
-        self.frequencies = np.array(
-            [
-                self._enc.get_spectrum(np.count_nonzero(self.data_reupload[..., i]))
-                for i in range(self.n_input_feat)
-            ]
+
+        self.frequencies: Tuple = tuple(
+            self._enc.get_spectrum(np.count_nonzero(self.data_reupload[..., i]))
+            for i in range(self.n_input_feat)
         )
 
         # check for the highest degree among all input dimensions
-        if max(self.degree) > 1:
+        if self.has_dru():
             impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
         else:
             impl_n_layers = n_layers
@@ -476,6 +473,16 @@ class Model:
     def pulse_params(self, value: np.ndarray) -> None:
         self._pulse_params = value
 
+    def has_dru(self) -> bool:
+        """
+        Checks if the model has DRU looking for a value in
+        model.degree which is >1.
+
+        Returns:
+            bool: _description_
+        """
+        return max(self.degree) > 1
+
     def initialize_params(
         self,
         rng: np.random.Generator,
@@ -730,11 +737,11 @@ class Model:
             )
 
             # visual barrier
-            if self.degree > 1:
+            if self.has_dru():
                 qml.Barrier(wires=list(range(self.n_qubits)), only_visual=True)
 
         # final ansatz layer
-        if self.degree > 1:  # same check as in init
+        if self.has_dru():  # same check as in init
             self.pqc(
                 params[-1],
                 self.n_qubits,

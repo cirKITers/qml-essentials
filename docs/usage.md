@@ -52,7 +52,7 @@ Typically, there is a reuploading step after each layer and on each qubit (`data
 However, our package also allows you to specify an array with the number of rows representing the qubits and number of columns representing the layers.
 Then, a `True` means that encoding is applied at the corresponding position within the circuit.
 
-In the following example, we disable two instances of the data-reuploading step, thus leaving the model with `model.degree = [5]` frequencies (2 negative + zero frequency + 2 positive).
+In the following example, we disable two instances of the data-reuploading step, thus leaving the model with `model.degree = (5)` frequencies (2 negative + zero frequency + 2 positive).
 
 ```python
 model = Model(
@@ -107,7 +107,7 @@ If a list of encodings is provided, the input is assumed to be multi-dimensional
 Otherwise multiple inputs are treated as batches of inputs.
 If you want to visualize zero-valued encoding gates in the model, set `remove_zero_encoding` to `False` on instantiation.
 
-In case of a multi-dimensional input, you can obtain the highest frequency in each encoding dimension from the `model.degee` property.
+In case of a multi-dimensional input, you can obtain the highest frequency in each encoding dimension from the `model.degree` property.
 Note that, `model.degree` includes the negative and zero frequency (i.e. the full spectrum).
 Individual frequencies can be obtained via `model.frequencies`.
 

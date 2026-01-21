@@ -51,13 +51,13 @@ def test_coefficients() -> None:
 
         coeffs, freqs = Coefficients.get_spectrum(model)
 
-        assert len(coeffs) == model.degree[0], "Wrong number of coefficients"
+        assert coeffs.shape == model.degree, "Wrong number of coefficients"
         assert np.isclose(
             np.sum(coeffs).imag, 0.0, rtol=1.0e-5
         ), "Imaginary part is not zero"
 
         partial_circuit = partial(model, model.params)
-        ref_coeffs = pcoefficients(partial_circuit, 1, model.degree[0] // 2)
+        ref_coeffs = pcoefficients(partial_circuit, 1, model.degree // 2)
 
         assert np.allclose(
             coeffs, ref_coeffs, rtol=1.0e-5
@@ -91,9 +91,9 @@ def test_multi_dim_input() -> None:
     coeffs, freqs = Coefficients.get_spectrum(model)
 
     assert (
-        coeffs.shape == [model.degree[i]] for i in range(model.n_input_feat)
+        coeffs.shape == model.degree
     ), f"Wrong shape of coefficients: {coeffs.shape}, \
-        expected {[[model.degee[i]] for i in range(model.n_input_feat)]}"
+        expected {model.degree}"
 
     ref_input = [1, 2]
     exp_model = model(params=None, inputs=ref_input, force_mean=True)

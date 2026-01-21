@@ -3103,11 +3103,11 @@ class Encoding:
             The number of frequencies required for the encoding strategy.
         """
         if self._strategy == "hamming":
-            return 2 * omegas + 1
+            return int(2 * omegas + 1)
         elif self._strategy == "binary":
-            return 2 ** (omegas + 1) - 1
+            return int(2 ** (omegas + 1) - 1)
         elif self._strategy == "ternary":
-            return 3 ** (omegas)
+            return int(3 ** (omegas))
         else:
             raise NotImplementedError
 

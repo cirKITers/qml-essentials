@@ -401,50 +401,50 @@ def test_encoding() -> None:
     test_cases = [
         {
             "encoding": Gates.RX,
-            "frequencies": [5],
+            "degree": [5],
             "input": [0],
             "warning": False,
         },
         {
             "encoding": [Gates.RX, Gates.RY],
-            "frequencies": [5, 5],
+            "degree": [5, 5],
             "input": [[0, 0]],
             "warning": False,
         },
         {
             "encoding": ["RX", Gates.RY],
-            "frequencies": [5, 5],
+            "degree": [5, 5],
             "input": [[0, 0]],
             "warning": False,
         },
-        {"encoding": "RX", "frequencies": [5], "input": [0], "warning": False},
+        {"encoding": "RX", "degree": [5], "input": [0], "warning": False},
         {
             "encoding": ["RX", "RY"],
-            "frequencies": [5, 5],
+            "degree": [5, 5],
             "input": [[0, 0]],
             "warning": False,
         },
         {
             "encoding": ["RX", "RY"],
-            "frequencies": [5, 5],
+            "degree": [5, 5],
             "input": [0],
             "warning": True,
         },
         {
             "encoding": Encoding("binary", ["RX"]),
-            "frequencies": [7],
+            "degree": [7],
             "input": [0],
             "warning": False,
         },
         {
             "encoding": Encoding("ternary", ["RX"]),
-            "frequencies": [9],
+            "degree": [9],
             "input": [0],
             "warning": False,
         },
         {
             "encoding": Encoding("ternary", ["RX", "RY"]),
-            "frequencies": [9, 9],
+            "degree": [9, 9],
             "input": [[0, 0]],
             "warning": False,
         },
@@ -950,22 +950,22 @@ def test_dru() -> None:
         {
             "enc": Gates.RX,
             "dru": False,
-            "frequencies": [3],
+            "degree": [3],
         },
         {
             "enc": Gates.RX,
             "dru": True,
-            "frequencies": [9],
+            "degree": [9],
         },
         {
             "enc": Gates.RX,
             "dru": [[True, False], [False, True]],
-            "frequencies": [5],
+            "degree": [5],
         },
         {
             "enc": [Gates.RX, Gates.RY],
             "dru": [[[0, 1], [1, 1]], [[1, 1], [0, 1]]],
-            "frequencies": [5, 9],
+            "degree": [5, 9],
         },
     ]
 
