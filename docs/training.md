@@ -241,7 +241,7 @@ to allow for trainable frequencies. You may try different input transformations 
 model.transform_input = lambda inputs, qubit, idx, enc_params: np.arccos(inputs[:, idx])
 ```
 
-## Using the built-in Datasets
+## Using the built-in Dataset
 
 Previous examples considered a very simplified version of a training dataset.
 Extending this to multi-dimensional inputs and different encoding schemes of the model can be quite a tedious work to implement.
