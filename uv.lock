@@ -1438,8 +1438,8 @@ wheels = [
 
 [[package]]
 name = "pennylane"
-version = "0.45.0.dev10"
-source = { git = "https://github.com/PennyLaneAI/pennylane?rev=master#4ddf175c057a5f4d881cf9a4267d7d5bdc252ecb" }
+version = "0.45.0.dev12"
+source = { git = "https://github.com/PennyLaneAI/pennylane?rev=master#0d125d19738f4eadf8a20cc6473f244d0c6344c5" }
 dependencies = [
     { name = "appdirs" },
     { name = "autograd" },

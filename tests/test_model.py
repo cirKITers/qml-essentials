@@ -198,7 +198,7 @@ def test_trainable_frequencies() -> None:
         enc_params_before, enc_params_after
     ), "enc_params did not update during training"
 
-    grads = qml.grad(cost_fct, argnum=1)(model.params, model.enc_params)
+    grads = qml.grad(cost_fct, argnums=1)(model.params, model.enc_params)
     assert np.any(np.abs(grads) > 1e-6), "Gradient wrt enc_params is too small"
 
     # Smoketest to check model outside training
@@ -856,7 +856,7 @@ def test_pulse_model() -> None:
         pulse_params_before, pulse_params_after
     ), "pulse_params did not update during training"
 
-    grads = qml.grad(cost_fct, argnum=1)(model.params, model.pulse_params)
+    grads = qml.grad(cost_fct, argnums=1)(model.params, model.pulse_params)
     assert np.any(np.abs(grads) > 1e-6), "Gradient wrt pulse_params is too small"
 
 
