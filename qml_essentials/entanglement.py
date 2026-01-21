@@ -147,6 +147,7 @@ class Entanglement:
                 qml.CNOT(wires=[q, q + model.n_qubits])
                 qml.H(q)
 
+            # look at the auxiliary qubits
             obs_wires = [(q, q + model.n_qubits) for q in range(model.n_qubits)]
             return [qml.probs(wires=w) for w in obs_wires]
 
@@ -182,6 +183,11 @@ class Entanglement:
         kwargs.setdefault("inputs", None)
         exp = model(params=params, **kwargs)
         exp = 1 - 2 * exp[..., -1]
+
+        if not np.isclose(np.sum(exp.imag), 0, atol=1e-6):
+            log.warning("Imaginary part of probabilities detected")
+            exp = np.abs(exp)
+
         measure = 2 * (1 - exp.mean(axis=0))
         entangling_capability = min(max(measure.mean(), 0.0), 1.0)
         log.debug(f"Variance of measure: {measure.var()}")
@@ -418,7 +424,7 @@ class Entanglement:
                 to be between 0.0 and 1.0.
         """
         n = model.n_qubits
-        N = 2 ** n
+        N = 2**n
 
         if scale:
             n_samples = N * n_samples
