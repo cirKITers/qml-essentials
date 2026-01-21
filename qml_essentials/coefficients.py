@@ -1386,69 +1386,44 @@ class FCC:
 
 class Datasets:
     @staticmethod
-    def enforce_hermitian_symmetric(a: np.ndarray) -> np.ndarray:
-        """
-        Enforce Hermitian symmetry for an nD complex spectrum `a`
-        so that it corresponds to a real signal in the spatial domain.
-
-        Requires that all dimensions of `a` are odd.
-
-        After this, a[k] = conj(a[-k mod N]) for all multi-indices k.
-        """
-        a = np.asarray(a)
-        shape = a.shape
-        if any(N % 2 == 0 for N in shape):
-            raise ValueError("All dimensions must be odd to use this simple version.")
-        ndim = a.ndim
-
-        # index grids: grids[d] has shape `shape` and holds indices along axis d
-        grids = nnp.ogrid[tuple(slice(0, N) for N in shape)]
-        # negative indices mod N
-        neg_idx = [(-g) % N for g, N in zip(grids, shape)]
-
-        # partner spectrum: a_sym[k] = conj(a[-k])
-        a_sym = np.conj(a[tuple(neg_idx)])
-
-        # make a symmetric assignment: average with partner
-        a = 0.5 * (a + a_sym)
-
-        # DC element (all zeros) must be real for a real-valued signal
-        a[(0,) * ndim] = a[(0,) * ndim].real + 0j
-
-        return a
-
-    @staticmethod
     def generate_fourier_series(
-        seed: int,
+        rng: np.random.Generator,
         model: Model,
-        omegas: List[List[float]] = None,
-        domain: List[float] = [0, 2 * np.pi],
         coefficients_min: float = 0.0,
         coefficients_max: float = 1.0,
-        zero_centered: bool = True,
+        zero_centered: bool = False,
     ) -> np.ndarray:
         """
         Generates the Fourier series representation of a function.
+        It uses the `model.frequencies` property to retrieve the frequency
+        information. This ensures that the resulting Fourier series is
+        compatible with the model.
 
-        Parameters
-        ----------
-        domain_samples : np.ndarray
-            Grid of domain samples.
-        omega : List[List[float]]
-            List of frequencies for each dimension.
+        This function is capable of generating $D$-dimensional Fourier series
+        (again defined by `model.n_input_feat`).
+        The highest frequency $N$ is retrieved per dimension.
 
-        Returns
-        -------
-        np.ndarray
-            Fourier series representation of the function.
+        Samples of the Fourier coefficients are drawn from a uniform circle.
+
+        Args:
+            rng (np.random.Generator): Random number generator.
+            model (Model): The quantum circuit model.
+            coefficients_min (float, optional): Minimum value for the coefficients.
+                Defaults to 0.0.
+            coefficients_max (float, optional): Maximum value for the coefficients.
+                Defaults to 1.0.
+            zero_centered (bool, optional): Whether to zero-center the coefficients.
+                Defaults to False.
+
+        Returns:
+            np.ndarray: Input domain samples with shape ((N,)*D, D)
+            np.ndarray: Fourier series values with shape ((N,)*D)
+            np.ndarray: Fourier coefficients with shape ((N,)*D)
+
         """
         # TODO: the following code can be considered to
         # capturing a truly random spectrum.
         # add some constraints on the spectrum, i.e. not fully
-
-        rng = np.random.default_rng(seed)
-
-        assert domain[0] < domain[1], f"Values in domain must be domain[0] < domain[1]"
 
         # Note: one key observation for understanding the following code is,
         # that instead of wrapping your head around symmetries in multi-
@@ -1460,10 +1435,7 @@ class Datasets:
         # the output shape comes from the fact that want to create a "coordinate system"
         domain_samples_per_input_dim = np.stack(
             np.meshgrid(
-                *[
-                    np.arange(domain[0], domain[1], (domain[1] - domain[0]) / d)
-                    for d in model.degree
-                ]
+                *[np.arange(0, 2 * np.pi, (2 * np.pi) / d) for d in model.degree]
             )
         ).T.reshape(-1, model.n_input_feat)
 
@@ -1485,7 +1457,7 @@ class Datasets:
         # zero center (first coeff = 0)
         # we can assume the first coeff is the offset, because we're dealing
         # with a non-symmetric spectrum here
-        if not zero_centered:
+        if zero_centered:
             coefficients[0] = 0.0
         else:
             coefficients[0] = coefficients[0].real
@@ -1514,27 +1486,25 @@ class Datasets:
         )
 
         # return all the information we have
-        return {
-            "domain_samples": domain_samples_per_input_dim,
-            "fourier_samples": values.reshape(model.degree),
-            "coefficients": coefficients.reshape(model.degree),
-        }
+        return [
+            domain_samples_per_input_dim.reshape(*model.degree, -1),
+            values.reshape(model.degree),
+            coefficients.reshape(model.degree),
+        ]
 
     @staticmethod
     def uniform_circle(rng, size: Union[np.ndarray, List, int], low=0.0, high=1.0):
         """
         Random number generator for complex numbers sampled inside the unit circle
 
-        Parameters
-        ----------
-        size : Union[np.ndarray, int]: Number of samples. If a 2D array is passed,
-            the first dimension will be the number of dimensions.
-        low (float, optional): Minimum Radius. Defaults to 0.0.
-        high (float, optional): Maximum Radius. Defaults to 1.0.
+        Args:
+            size : Union[np.ndarray, int]: Number of samples. If a 2D array is passed,
+                the first dimension will be the number of dimensions.
+            low (float, optional): Minimum Radius. Defaults to 0.0.
+            high (float, optional): Maximum Radius. Defaults to 1.0.
 
         Returns
-        -------
-        np.ndarray: Array of complex numbers with shape of `size`
+            np.ndarray: Array of complex numbers with shape of `size`
         """
 
         if isinstance(size, int):
