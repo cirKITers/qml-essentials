@@ -1448,6 +1448,8 @@ class Datasets:
 
         rng = np.random.default_rng(seed)
 
+        assert domain[0] < domain[1], f"Values in domain must be domain[0] < domain[1]"
+
         # Note: one key observation for understanding the following code is,
         # that instead of wrapping your head around symmetries in multi-
         # dimensional coefficient matrices, one can simply look at the flattened
@@ -1458,7 +1460,10 @@ class Datasets:
         # the output shape comes from the fact that want to create a "coordinate system"
         domain_samples_per_input_dim = np.stack(
             np.meshgrid(
-                *[np.arange(domain[0], domain[1], 2 * np.pi / d) for d in model.degree]
+                *[
+                    np.arange(domain[0], domain[1], (domain[1] - domain[0]) / d)
+                    for d in model.degree
+                ]
             )
         ).T.reshape(-1, model.n_input_feat)
 
@@ -1513,134 +1518,6 @@ class Datasets:
             "domain_samples": domain_samples_per_input_dim,
             "fourier_samples": values.reshape(model.degree),
             "coefficients": coefficients.reshape(model.degree),
-        }
-
-    @staticmethod
-    def _generate_fourier_series(
-        seed: int,
-        model: Model,
-        omegas: List[List[float]] = None,
-        domain: List[float] = [0, 6.283185307],
-        coefficients_min: float = 0.0,
-        coefficients_max: float = 1.0,
-        zero_centered: bool = True,
-    ) -> np.ndarray:
-        """
-        Generates the Fourier series representation of a function.
-
-        Parameters
-        ----------
-        domain_samples : np.ndarray
-            Grid of domain samples.
-        omega : List[List[float]]
-            List of frequencies for each dimension.
-
-        Returns
-        -------
-        np.ndarray
-            Fourier series representation of the function.
-        """
-        rng = np.random.default_rng(seed)
-
-        # going from [0, 2pi] with the resolution required for highest frequency
-        # permute with input dimensionality to get an n-d grid of domain samples
-        # the output shape comes from the fact that want to create a "coordinate system"
-        # shape: (input_dims, (n_domain_samples_per_input_dim,) * input_dims)
-        domain_samples_per_input_dim = np.stack(
-            np.meshgrid(
-                *[np.arange(domain[0], domain[1], 2 * np.pi / d) for d in model.degree]
-            )
-        )
-
-        # generate the frequency indices for each dimension.
-        # this will have the same shape as the domain samples
-        # shape: (input_dims, (n_domain_samples_per_input_dim,) * input_dims)
-        frequencies_per_input_dim = np.stack(np.meshgrid(*model.frequencies))
-
-        # using the frequency information, sample coefficients for each dimension
-        # shape: (input_dims, n_freqs_per_input_dim // 2 + 1)
-        coefficients_per_input_dim = Datasets.uniform_circle(
-            rng=rng,
-            low=coefficients_min,
-            high=coefficients_max,
-            size=np.prod(model.degree),
-        ).reshape(model.degree)
-
-        # symmetry by flipping and conjugating the coefficients
-        # averaging should not change properties provided by coefficients_min and _max
-        coefficients_per_input_dim = (
-            coefficients_per_input_dim + np.flip(coefficients_per_input_dim).conjugate()
-        ) / 2
-
-        if not zero_centered:
-            np.put(coefficients_per_input_dim, coefficients_per_input_dim.size, 0.0)
-        else:
-            np.put(
-                coefficients_per_input_dim,
-                coefficients_per_input_dim.size // 2,
-                np.take(
-                    coefficients_per_input_dim, coefficients_per_input_dim.size // 2
-                ).real,
-            )
-        # zero center (first coeff = 0)
-        # we can assume the first coeff is the offset, because we're dealing
-        # with a non-symmetric spectrum here
-        # if not zero_centered:
-        #     non_negative_coefficients_per_input_dim[..., 0] = 0.0
-        # else:
-        #     # if not, ensure the first coefficient is real
-        #     non_negative_coefficients_per_input_dim[..., 0] = (
-        #         non_negative_coefficients_per_input_dim[..., 0].real
-        #     )
-
-        # ensure symmetry (here, non_negative_ is removed!),
-        # giving us the full coefficients vector
-        # shape: (input_dims, n_freqs_per_input_dim)
-        # coefficients_per_input_dim = np.concat(
-        #     [
-        #         np.flip(non_negative_coefficients_per_input_dim[..., 1:]).conjugate(),
-        #         non_negative_coefficients_per_input_dim,
-        #     ],
-        #     axis=-1,
-        # )
-
-        # Vectorized version of $f(x) = \sum_{n=0}^{N-1} c_n * e^{i * \omega_n * x}$
-        # it takes into account the input dimension, i.e. the output is a matrix
-        # note that the number of domain samples is just the number of frequencies due
-        # to the sampling theorem (n_domain_samples_per_input_dim = n_freqs_per_input_dim)!
-        # normalization uses the n_freqs component of the coefficients
-        # shape: (n_domain_samples_per_input_dim, n_domain_samples_per_input_dim)
-        values = np.real_if_close(
-            np.sum(
-                coefficients_per_input_dim
-                * np.exp(
-                    1j * frequencies_per_input_dim * domain_samples_per_input_dim.T
-                ),
-                axis=-1,
-            )
-            / np.prod(model.degree)
-        )
-
-        # sanity check to ensure that the coefficients match
-        # shape: (input_dims, n_freqs_per_input_dim)
-        # TODO: consider removing in future iterations as we can also cover that in tests
-        coefficients_hat = np.fft.fftshift(
-            np.fft.fftn(
-                values,
-                axes=list(range(model.n_input_feat)),
-            )
-        )
-        assert np.allclose(
-            coefficients_per_input_dim.squeeze(),
-            coefficients_hat,
-            atol=1e-6,
-        ), "Frequencies don't match"
-
-        # return all the information we have
-        return {
-            "domain_samples": domain_samples_per_input_dim,
-            "fourier_samples": values,
-            "coefficients": coefficients_per_input_dim,
         }
 
     @staticmethod
