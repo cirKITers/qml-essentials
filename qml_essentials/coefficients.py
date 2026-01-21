@@ -1434,9 +1434,7 @@ class Datasets:
         # permute with input dimensionality to get an n-d grid of domain samples
         # the output shape comes from the fact that want to create a "coordinate system"
         domain_samples_per_input_dim = np.stack(
-            np.meshgrid(
-                *[np.arange(0, 2 * np.pi, (2 * np.pi) / d) for d in model.degree]
-            )
+            np.meshgrid(*[np.linspace(0, 2 * np.pi, d) for d in model.degree])
         ).T.reshape(-1, model.n_input_feat)
 
         # generate the frequency indices for each dimension.

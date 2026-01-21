@@ -19,8 +19,8 @@ You can take a look at your model, by simply calling
 model.draw(figure="mpl")
 ```
 
-![Hardware Efficient Ansatz](figures/hae_light.png#only-light)
-![Hardware Efficient Ansatz](figures/hae_dark.png#only-dark)
+![Hardware Efficient Ansatz](figures/hae_light.png#center#only-light)
+![Hardware Efficient Ansatz](figures/hae_dark.png#center#only-dark)
 
 Looks good to you? :eyes: Head over to the [*Training*](training.md) page for **getting started** with an easy example, where we also show how to implement **trainable frequencies** :rocket:
 If you want to learn more about, why we get the above results, checkout the [*Data-Reuploading*](#data-reuploading) section.
@@ -291,8 +291,8 @@ This shape is also available as a property of the model: `model.batch_shape`.
 Naturally, the question arises which is the best choice for the hyperparameter `mp_threshold` as a higher value will result in fewer processes being spawned, while a lower value might over-allocate the CPU and adds parallelization overhead which reduces the speedup compared to single process.
 To visualize this, we provide following Figure where we computed the speedup for several different configurations of `mp_threshold` and `n_samples` with a 4 qubit circuit, averaging over 8 runs.
 
-![Multiprocessing Density](figures/mp_result_density_light.png#only-light)
-![Multiprocessing Density](figures/mp_result_density_dark.png#only-dark)
+![Multiprocessing Density](figures/mp_result_density_light.png#center#only-light)
+![Multiprocessing Density](figures/mp_result_density_dark.png#center#only-dark)
 
 The computation was performed on a 16 core CPU with 32GB of RAM.
 It is clearly visible, that e.g. a `mp_threshold` of 500 saturates the multi-processing capability after 4500 samples similar to a `mp_threshold` of 1k at 9k samples.
@@ -301,8 +301,8 @@ Also note how the speedup (over single process) is 1 until the number of samples
 Results above were obtained running density matrix calculations.
 While computing the expectation value is significantly easier, there can still be a speedup achieved for a higher number of samples, as shown in the following Figure.
 
-![Multiprocessing Expval](figures/mp_result_expval_light.png#only-light)
-![Multiprocessing Expval](figures/mp_result_expval_dark.png#only-dark)
+![Multiprocessing Expval](figures/mp_result_expval_light.png#center#only-light)
+![Multiprocessing Expval](figures/mp_result_expval_dark.png#center#only-dark)
 
 Here, the experiment setup is identical to the one above, but the expectation value is computed instead of the density matrix.
 Not how a `mp_threshold` of 1k achives no significant speedup because of the overhead that comes with multiprocessing, whereas increasing the load of each process (e.g. `mp_threshold` > 8k) results in a speedup of almost 4 at 60k samples. 
@@ -320,8 +320,8 @@ fig = model.draw(figure="tikz", inputs_symbols="x", gate_values=False)
 fig.export("tikz_circuit.tex", full_document=True)
 ```
 
-![Tikz Circuit](figures/circuit_tikz_light.png#only-light)
-![Tikz Circuit](figures/circuit_tikz_dark.png#only-dark)
+![Tikz Circuit](figures/circuit_tikz_light.png#center#only-light)
+![Tikz Circuit](figures/circuit_tikz_dark.png#center#only-dark)
 
 Inputs are represented with "x" by default, which can be changed by adjusting the optional parameter `inputs_symbols`.
 If you want to see the actual gate values instead of variables, simply set `gate_values=True` which is also the default option.

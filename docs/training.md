@@ -241,6 +241,49 @@ to allow for trainable frequencies. You may try different input transformations 
 model.transform_input = lambda inputs, qubit, idx, enc_params: np.arccos(inputs[:, idx])
 ```
 
+## Using the built-in Datasets
+
+Previous examples considered a very simplified version of a training dataset.
+Extending this to multi-dimensional inputs and different encoding schemes of the model can be quite a tedious work to implement.
+For this purpose, we provide a ready-to-use Fourier series dataset in the `qml_essentials.datasets` module.
+This dataset uses the model properties to generate a Fourier series that matches what the model can learnmeaning that the frequencies are inferred from `model.frequencies`.
+Furthermore, it is possible to control the magnitude of the coefficients, sampled from a complex unit circle, by setting `coefficients_min` and `coefficients_max`.
+Calling `generate_fourier_series` will return the domain samples, Fourier series samples and the coefficients of the Fourier series.
+
+The code snippet below provides a minimal example on how to use this dataset:
+
+```python
+from qml_essentials.coefficients import Datasets
+
+# generate a Fourier series dataset
+domain_samples, fourier_samples, coefficients = (
+                    Datasets.generate_fourier_series(
+                        rng=np.random.default_rng(1000),
+                        model=model,
+                    )
+                )
+
+# cost function uses the domain samples as input and compares with the
+# Fourier series samples obtained from the dataset
+def cost_fct(params):
+    y_hat = model(params=params, inputs=domain_samples, force_mean=True)
+
+    return np.mean((y_hat - fourier_samples) ** 2)
+
+for epoch in range(1, 1000):
+    model.params, cost_val = opt.step_and_cost(cost_fct, model.params)
+
+    if epoch % 100 == 0:
+        print(f"Epoch: {epoch}, Cost: {cost_val:.4f}")
+
+```
+
+![Fourier Series](figures/trained_series_dataset_light.png#center#only-light)
+![Fourier Series](figures/trained_series_dataset_dark.png#center#only-dark)
+
+Note that it's more difficult for the model to fit this specific dataset as it, opposed to the previous datasets, also contains complex parts in the coefficients, effectively causing a phase shift.
+
+
 ## Pulse Level
 
 > **Note:** Not implemented yet
