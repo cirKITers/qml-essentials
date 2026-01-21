@@ -682,7 +682,7 @@ def test_fourier_series_dataset() -> None:
                 coefficients,
                 coefficients_hat,
                 atol=1e-6,
-            ), "Frequencies don't match"
+            ), f"Frequencies don't match for test case {test_case}"
 
             assert np.all(
                 domain_samples.shape
