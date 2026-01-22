@@ -121,7 +121,7 @@ class Coefficients:
         # Run the fft and rearrange +
         # normalize the output (using product if multidim)
         return (
-            coeffs / coeffs.size,
+            coeffs / np.prod(outputs.shape[0 : model.n_input_feat]),
             freqs,
         )
 
