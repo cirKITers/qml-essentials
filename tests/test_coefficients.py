@@ -642,12 +642,12 @@ def test_fourier_series_dataset() -> None:
         zero_centered = test_case.get("zero_centered", False)
 
         encoding = Encoding(
-            test_case.pop("encoding_strategy", "binary"),
+            test_case.pop("encoding_strategy", "hamming"),
             ["RY" for _ in range(n_input_feat)],
         )
 
         model = Model(
-            n_qubits=1,
+            n_qubits=2,
             n_layers=1,
             encoding=encoding,
         )
