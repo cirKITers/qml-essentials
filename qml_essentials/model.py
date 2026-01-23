@@ -159,6 +159,8 @@ class Model:
             (self.n_qubits, self.n_input_feat), requires_grad=trainable_frequencies
         )
 
+        self._zero_inputs = False
+
         # --- Data-Reuploading ---
         # Process data reuploading strategy and set degree
         if not isinstance(data_reupload, bool):
@@ -612,14 +614,17 @@ class Model:
             None
         """
         # check for zero, because due to input validation, input cannot be none
-        if self.remove_zero_encoding and not inputs.any():
+        if self.remove_zero_encoding and self._zero_inputs:
             return
 
         for q in range(self.n_qubits):
-            for idx in range(inputs.shape[1]):
+            # use the last dimension of the inputs (feature dimension)
+            for idx in range(inputs.shape[-1]):
                 if data_reupload[q, idx]:
+                    # use elipsis to indiex only the last dimension
+                    # as inputs are generally *not* qubit dependent
                     enc[idx](
-                        self.transform_input(inputs[:, idx], enc_params[q, idx]),
+                        self.transform_input(inputs[..., idx], enc_params[q, idx]),
                         wires=q,
                         noise_params=noise_params,
                     )
@@ -1012,9 +1017,11 @@ class Model:
         Returns:
             np.ndarray: The validated input.
         """
-        if inputs is None:
+        self._zero_inputs = False
+        if inputs is None or not inputs.any():
             # initialize to zero
             inputs = np.array([[0] * self.n_input_feat])
+            self._zero_inputs = True
         elif isinstance(inputs, List):
             inputs = np.stack(inputs)
         elif isinstance(inputs, float) or isinstance(inputs, int):
@@ -1126,11 +1133,11 @@ class Model:
             orig_f = f
 
             # jax fct only taking single param
-            def f_prime(params_single):
+            def f_prime(params_single, inputs_single):
                 return orig_f(
                     params=params_single,
                     pulse_params=pulse_params,
-                    inputs=inputs,
+                    inputs=inputs_single,
                     enc_params=enc_params,
                     gate_mode=gate_mode,
                 )
@@ -1138,9 +1145,12 @@ class Model:
             # wrapper to allow kwargs (not supported by jax)
             def f(**kwargs):
                 params_single = kwargs.pop("params")
+                inputs_single = kwargs.pop("inputs")
                 # we know that when batching is enabled, the
                 # batch dimension is the last axis of the params array
-                return jax.vmap(f_prime, in_axes=2)(params_single)
+                return jax.vmap(f_prime, in_axes=(2, 0))(params_single, inputs_single)
+
+            pass
 
         # check if single process
         if n_processes == 1:

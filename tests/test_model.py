@@ -889,7 +889,16 @@ def test_pulse_model_batching():
     res_a = model(gate_mode="unitary")
     res_b = model(gate_mode="pulse")
 
-    assert np.allclose(res_a, res_b, atol=1e-3), "Expected outputs to be close"
+    assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
+    assert np.allclose(res_a, res_b, atol=1e-3), "Params batching failed!"
+
+    inputs = rng.uniform(0, 2 * np.pi, size=(3))
+
+    res_a = model(inputs=inputs, gate_mode="unitary")
+    res_b = model(inputs=inputs, gate_mode="pulse")
+
+    assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
+    assert np.allclose(res_a, res_b, atol=1e-3), "Inputs batching failed!"
 
 
 @pytest.mark.unittest
