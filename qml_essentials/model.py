@@ -7,6 +7,8 @@ import warnings
 from autograd.numpy import numpy_boxes
 from copy import deepcopy
 import math
+import jax
+
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit, Encoding
 from qml_essentials.ansaetze import PulseInformation as pinfo
@@ -481,7 +483,7 @@ class Model:
         Returns:
             bool: _description_
         """
-        return max(self.degree) > 1
+        return np.max(self.frequencies) > 1
 
     def initialize_params(
         self,
@@ -561,7 +563,9 @@ class Model:
             if repeat is None
             else (*self._pulse_params_shape, repeat)
         )
-        self.pulse_params: np.ndarray = np.ones(shape, requires_grad=False)
+        self.pulse_params: np.ndarray = np.ones(
+            self._pulse_params_shape, requires_grad=False
+        )
 
         log.info(f"Initialized pulse parameters with shape {self.pulse_params.shape}.")
 
@@ -928,6 +932,7 @@ class Model:
                 self.params = params
 
         # Get rid of extra dimension
+        # TODO: replaces with params.squeeze()?
         if len(params.shape) == 3 and params.shape[2] == 1:
             params = params[:, :, 0]
 
@@ -1115,6 +1120,24 @@ class Model:
             and combined_batch_size > self.mp_threshold
         ):
             n_processes = math.ceil(combined_batch_size / self.mp_threshold)
+
+        if gate_mode == "pulse" and combined_batch_size > 1:
+            orig_f = f
+
+            def f_prime(params_single):
+                return orig_f(
+                    params=params_single,
+                    pulse_params=pulse_params,
+                    inputs=inputs,
+                    enc_params=enc_params,
+                    gate_mode=gate_mode,
+                )
+
+            def f(**kwargs):
+                params_single = kwargs.pop("params")
+                return jax.vmap(f_prime, in_axes=2)(params_single)
+
+            pass
         # check if single process
         if n_processes == 1:
             if self.mp_threshold > 0:
@@ -1178,9 +1201,9 @@ class Model:
                 params[:, :, np.newaxis, :], batch_shape[0], axis=2
             ).reshape([*params.shape[:-1], np.prod(batch_shape)])
 
-            pulse_params = np.repeat(
-                pulse_params[:, :, np.newaxis, :], batch_shape[0], axis=2
-            ).reshape([*pulse_params.shape[:-1], np.prod(batch_shape)])
+            # pulse_params = np.repeat(
+            #     pulse_params[:, :, np.newaxis, :], batch_shape[0], axis=2
+            # ).reshape([*pulse_params.shape[:-1], np.prod(batch_shape)])
 
         return inputs, params, pulse_params, batch_shape
 
