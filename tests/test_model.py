@@ -880,6 +880,19 @@ def test_pulse_model_inference():
 
 
 @pytest.mark.unittest
+def test_pulse_model_batching():
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+
+    rng = np.random.default_rng(1000)
+    model.initialize_params(rng=rng, repeat=2)
+
+    res_a = model(gate_mode="unitary")
+    res_b = model(gate_mode="pulse")
+
+    assert np.allclose(res_a, res_b, atol=1e-3), "Expected outputs to be close"
+
+
+@pytest.mark.unittest
 def test_available_ansaetze() -> None:
     ansatze = set(Ansaetze.get_available())
 
