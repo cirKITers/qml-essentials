@@ -1122,8 +1122,10 @@ class Model:
             n_processes = math.ceil(combined_batch_size / self.mp_threshold)
 
         if gate_mode == "pulse" and combined_batch_size > 1:
+            # save original f
             orig_f = f
 
+            # jax fct only taking single param
             def f_prime(params_single):
                 return orig_f(
                     params=params_single,
@@ -1133,11 +1135,13 @@ class Model:
                     gate_mode=gate_mode,
                 )
 
+            # wrapper to allow kwargs (not supported by jax)
             def f(**kwargs):
                 params_single = kwargs.pop("params")
+                # we know that when batching is enabled, the
+                # batch dimension is the last axis of the params array
                 return jax.vmap(f_prime, in_axes=2)(params_single)
 
-            pass
         # check if single process
         if n_processes == 1:
             if self.mp_threshold > 0:
