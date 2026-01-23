@@ -1361,28 +1361,27 @@ class Model:
             params,
             pulse_params,
         )
-        # the qasm representation contains the bound parameters,
-        # thus it is ok to hash that
-        hs = hashlib.md5(
-            repr(
-                {
-                    "n_qubits": self.n_qubits,
-                    "n_layers": self.n_layers,
-                    "pqc": self.pqc.__class__.__name__,
-                    "dru": self.data_reupload,
-                    "params": self.params,  # use safe-params
-                    "pulse_params": self.pulse_params,
-                    "enc_params": self.enc_params,
-                    "noise_params": self.noise_params,
-                    "execution_type": self.execution_type,
-                    "inputs": inputs,
-                    "output_qubit": self.output_qubit,
-                }
-            ).encode("utf-8")
-        ).hexdigest()
 
         result: Optional[np.ndarray] = None
         if cache:
+            hs = hashlib.md5(
+                repr(
+                    {
+                        "n_qubits": self.n_qubits,
+                        "n_layers": self.n_layers,
+                        "pqc": self.pqc.__class__.__name__,
+                        "dru": self.data_reupload,
+                        "params": self.params,  # use safe-params
+                        "pulse_params": self.pulse_params,
+                        "enc_params": self.enc_params,
+                        "noise_params": self.noise_params,
+                        "execution_type": self.execution_type,
+                        "inputs": inputs,
+                        "output_qubit": self.output_qubit,
+                    }
+                ).encode("utf-8")
+            ).hexdigest()
+
             name: str = f"pqc_{hs}.npy"
 
             cache_folder: str = ".cache"
