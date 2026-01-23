@@ -1327,7 +1327,7 @@ class Gates(metaclass=GatesMeta):
             n_params = PulseInformation.gate_by_name(gate_name).size
             scalers = pulse_mgr.get(n_params)
             base = PulseInformation.gate_by_name(gate_name).params
-            kwargs["pulse_params"] = scalers * base  # element-wise scaling
+            kwargs["pulse_params"] = (base * scalers.T).T  # TODO: improve/ simplify
 
         # Call the selected gate backend
         gate = getattr(gate_backend, gate_name, None)
