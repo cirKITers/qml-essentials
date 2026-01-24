@@ -240,7 +240,7 @@ class Model:
             pulse_params_per_layer,
         )
 
-        self.batch_shape = (1, 1)
+        self.batch_shape = (1, 1, 1)
         # this will also be re-used in the init method,
         # however, only if nothing is provided
         self._inialization_strategy = initialization
@@ -490,7 +490,7 @@ class Model:
     def initialize_params(
         self,
         rng: np.random.Generator,
-        repeat: int = None,
+        repeat: int = 1,
         initialization: str = None,
         initialization_domain: List[float] = None,
     ) -> None:
@@ -510,9 +510,8 @@ class Model:
             None
         """
         # Initializing params
-        params_shape = (
-            self._params_shape if repeat is None else [*self._params_shape, repeat]
-        )
+        params_shape = (*self._params_shape, repeat)
+
         # use existing strategy if not specified
         initialization = initialization or self._inialization_strategy
         initialization_domain = initialization_domain or self._initialization_domain
@@ -560,13 +559,8 @@ class Model:
         )
 
         # Initializing pulse params
-        shape = (
-            self._pulse_params_shape
-            if repeat is None
-            else (*self._pulse_params_shape, repeat)
-        )
         self.pulse_params: np.ndarray = np.ones(
-            self._pulse_params_shape, requires_grad=False
+            (*self._pulse_params_shape, 1), requires_grad=False
         )
 
         log.info(f"Initialized pulse parameters with shape {self.pulse_params.shape}.")
@@ -614,8 +608,8 @@ class Model:
             None
         """
         # check for zero, because due to input validation, input cannot be none
-        if self.remove_zero_encoding and self._zero_inputs:
-            return
+        # if self.remove_zero_encoding and self._zero_inputs:
+        #     return
 
         for q in range(self.n_qubits):
             # use the last dimension of the inputs (feature dimension)
@@ -752,7 +746,7 @@ class Model:
         # final ansatz layer
         if self.has_dru():  # same check as in init
             self.pqc(
-                params[-1],
+                params[self.n_layers],
                 self.n_qubits,
                 pulse_params=pulse_params[-1],
                 noise_params=self.noise_params,
@@ -938,8 +932,8 @@ class Model:
 
         # Get rid of extra dimension
         # TODO: replaces with params.squeeze()?
-        if len(params.shape) == 3 and params.shape[2] == 1:
-            params = params[:, :, 0]
+        # if len(params.shape) == 3 and params.shape[2] == 1:
+        #     params = params[:, :, 0]
 
         return params
 
@@ -1133,10 +1127,10 @@ class Model:
             orig_f = f
 
             # jax fct only taking single param
-            def f_prime(params_single, inputs_single):
+            def f_prime(params_single, inputs_single, pulse_params_single):
                 return orig_f(
                     params=params_single,
-                    pulse_params=pulse_params,
+                    pulse_params=pulse_params_single,
                     inputs=inputs_single,
                     enc_params=enc_params,
                     gate_mode=gate_mode,
@@ -1146,9 +1140,17 @@ class Model:
             def f(**kwargs):
                 params_single = kwargs.pop("params")
                 inputs_single = kwargs.pop("inputs")
+                pulse_params_single = kwargs.pop("pulse_params")
                 # we know that when batching is enabled, the
                 # batch dimension is the last axis of the params array
-                return jax.vmap(f_prime, in_axes=(2, 0))(params_single, inputs_single)
+                return jax.vmap(
+                    f_prime,
+                    in_axes=(
+                        2 if self.batch_shape[1] > 1 else None,
+                        0 if self.batch_shape[0] > 1 else None,
+                        2 if self.batch_shape[2] > 1 else None,
+                    ),
+                )(params_single, inputs_single, pulse_params_single)
 
             pass
 
@@ -1194,7 +1196,8 @@ class Model:
     def _assimilate_batch(self, inputs, params, pulse_params):
         batch_shape = (
             inputs.shape[0],
-            params.shape[2] if len(params.shape) == 3 else 1,
+            params.shape[-1] if len(params.shape) == 3 else 1,
+            pulse_params.shape[-1] if len(pulse_params.shape) == 3 else 1,
         )
 
         if (
@@ -1472,7 +1475,7 @@ class Model:
             else:
                 result = result[1:, ...].sum(axis=0)
 
-        if self.batch_shape[0] > 1 and self.batch_shape[1] > 1:
+        if np.all(np.array(self.batch_shape) > 1):
             result = result.reshape(-1, *self.batch_shape)
 
         result = result.squeeze()
