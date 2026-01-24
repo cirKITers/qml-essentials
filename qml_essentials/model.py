@@ -691,6 +691,9 @@ class Model:
         Returns:
             None
         """
+        if params.shape[2] == 1:
+            params = params[:, :, 0]
+
         if enc_params is None:
             # TODO: Raise warning if trainable frequencies is True, or similar. I.e., no
             #   warning if user does not care for frequencies or enc_params
@@ -1016,14 +1019,15 @@ class Model:
             np.ndarray: The validated input.
         """
         self._zero_inputs = False
-        if inputs is None or not inputs.any():
-            # initialize to zero
-            inputs = np.array([[0] * self.n_input_feat])
-            self._zero_inputs = True
-        elif isinstance(inputs, List):
+        if isinstance(inputs, List):
             inputs = np.stack(inputs)
         elif isinstance(inputs, float) or isinstance(inputs, int):
             inputs = np.array([inputs])
+        elif inputs is None:
+            inputs = np.array([[0] * self.n_input_feat])
+
+        if not inputs.any():
+            self._zero_inputs = True
 
         if len(inputs.shape) <= 1:
             if self.n_input_feat == 1:

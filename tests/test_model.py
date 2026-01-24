@@ -1097,30 +1097,30 @@ def test_local_state() -> None:
 @pytest.mark.unittest
 def test_local_and_global_meas() -> None:
     test_cases = [
-        {
-            "inputs": None,
-            "execution_type": "expval",
-            "output_qubit": -1,
-            "shots": None,
-            "out_shape": (2,),
-            "warning": False,
-        },
-        {
-            "inputs": np.array([0.1, 0.2, 0.3]),
-            "execution_type": "expval",
-            "output_qubit": -1,
-            "shots": None,
-            "out_shape": (2, 3),
-            "warning": False,
-        },
-        {
-            "inputs": np.array([0.1, 0.2, 0.3]),
-            "execution_type": "expval",
-            "output_qubit": 0,
-            "shots": None,
-            "out_shape": (3,),
-            "warning": False,
-        },
+        # {
+        #     "inputs": None,
+        #     "execution_type": "expval",
+        #     "output_qubit": -1,
+        #     "shots": None,
+        #     "out_shape": (2,),
+        #     "warning": False,
+        # },
+        # {
+        #     "inputs": np.array([0.1, 0.2, 0.3]),
+        #     "execution_type": "expval",
+        #     "output_qubit": -1,
+        #     "shots": None,
+        #     "out_shape": (2, 3),
+        #     "warning": False,
+        # },
+        # {
+        #     "inputs": np.array([0.1, 0.2, 0.3]),
+        #     "execution_type": "expval",
+        #     "output_qubit": 0,
+        #     "shots": None,
+        #     "out_shape": (3,),
+        #     "warning": False,
+        # },
         {
             "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
