@@ -1133,7 +1133,7 @@ class Model:
                     pulse_params=pulse_params_single,
                     inputs=inputs_single,
                     enc_params=enc_params,
-                    gate_mode="unitary",
+                    gate_mode=gate_mode,
                 )
 
             # wrapper to allow kwargs (not supported by jax)
