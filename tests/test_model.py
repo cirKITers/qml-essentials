@@ -881,24 +881,35 @@ def test_pulse_model_inference():
 
 @pytest.mark.unittest
 def test_pulse_model_batching():
+    rng = np.random.default_rng(1000)
+
     model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
 
-    rng = np.random.default_rng(1000)
-    model.initialize_params(rng=rng, repeat=2)
+    # test pulse params batching
+    res_b = model(
+        pulse_params=np.repeat(model.pulse_params, 2, axis=-1), gate_mode="pulse"
+    )
 
-    res_a = model(gate_mode="unitary")
-    res_b = model(gate_mode="pulse")
-
-    assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
-    assert np.allclose(res_a, res_b, atol=1e-3), "Params batching failed!"
+    # two qubits -> two expvals with batch size 2
+    assert res_b.shape == (2, 2), "Batch size mismatch"
 
     inputs = rng.uniform(0, 2 * np.pi, size=(3))
 
+    # test pulse params & inputs batching
     res_a = model(inputs=inputs, gate_mode="unitary")
     res_b = model(inputs=inputs, gate_mode="pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
     assert np.allclose(res_a, res_b, atol=1e-3), "Inputs batching failed!"
+
+    model.initialize_params(rng=rng, repeat=2)
+
+    # test pulse params & params & inputs batching
+    res_a = model(inputs=inputs, gate_mode="unitary")
+    res_b = model(inputs=inputs, gate_mode="pulse")
+
+    assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
+    assert np.allclose(res_a, res_b, atol=1e-3), "Params batching failed!"
 
 
 @pytest.mark.unittest
