@@ -95,7 +95,7 @@ def test_multi_dim_input() -> None:
     ), f"Wrong shape of coefficients: {coeffs.shape}, \
         expected {model.degree}"
 
-    ref_input = [1, 2]
+    ref_input = np.array([1, 2])
     exp_model = model(params=None, inputs=ref_input, force_mean=True)
     exp_fourier = Coefficients.evaluate_Fourier_series(
         coefficients=coeffs,

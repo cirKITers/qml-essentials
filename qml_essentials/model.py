@@ -466,6 +466,9 @@ class Model:
 
     @params.setter
     def params(self, value: np.ndarray) -> None:
+        if len(value.shape) == 2:
+            value = value.reshape(*value.shape, 1)
+
         self._params = value
 
     @property
@@ -492,7 +495,7 @@ class Model:
         Returns:
             bool: _description_
         """
-        return np.max(self.frequencies) > 1
+        return np.max([np.max(f) for f in self.frequencies]) > 1
 
     def initialize_params(
         self,
@@ -618,7 +621,9 @@ class Model:
                     # use elipsis to indiex only the last dimension
                     # as inputs are generally *not* qubit dependent
                     enc[idx](
-                        self.transform_input(inputs[..., idx], enc_params[q, idx]),
+                        self.transform_input(
+                            inputs[..., idx], enc_params[q, idx]
+                        ).squeeze(),
                         wires=q,
                         noise_params=noise_params,
                     )
@@ -922,9 +927,8 @@ class Model:
         Returns:
             np.ndarray: Validated parameters.
         """
-        if params is None:
-            params = self.params
-        else:
+        # TODO: replace with getter/setter
+        if params is not None:
             if numpy_boxes.ArrayBox == type(params):
                 self.params = params._value
             else:
@@ -935,7 +939,7 @@ class Model:
         # if len(params.shape) == 3 and params.shape[2] == 1:
         #     params = params[:, :, 0]
 
-        return params
+        return self.params
 
     def _pulse_params_validation(self, pulse_params) -> np.ndarray:
         """
@@ -1198,7 +1202,6 @@ class Model:
             pulse_params.shape[-1],
         )
 
-        pass
         if batch_shape[0] > 1:
             inputs = np.repeat(inputs, np.prod(batch_shape) // batch_shape[0], axis=0)
         if batch_shape[1] > 1:
