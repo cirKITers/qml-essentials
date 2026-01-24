@@ -249,6 +249,13 @@ class Model:
         # ..here! where we only require a rng
         self.initialize_params(np.random.default_rng(random_seed))
 
+        # Initializing pulse params
+        self.pulse_params: np.ndarray = np.ones(
+            (*self._pulse_params_shape, 1), requires_grad=False
+        )
+
+        log.info(f"Initialized pulse parameters with shape {self.pulse_params.shape}.")
+
         # Initialize two circuits, one with the default device and
         # one with the mixed device
         # which allows us to later route depending on the state_vector flag
@@ -557,13 +564,6 @@ class Model:
             f"Initialized parameters with shape {self.params.shape}\
             using strategy {initialization}."
         )
-
-        # Initializing pulse params
-        self.pulse_params: np.ndarray = np.ones(
-            (*self._pulse_params_shape, 1), requires_grad=False
-        )
-
-        log.info(f"Initialized pulse parameters with shape {self.pulse_params.shape}.")
 
     def transform_input(
         self, inputs: np.ndarray, enc_params: Optional[np.ndarray]
@@ -1133,7 +1133,7 @@ class Model:
                     pulse_params=pulse_params_single,
                     inputs=inputs_single,
                     enc_params=enc_params,
-                    gate_mode=gate_mode,
+                    gate_mode="unitary",
                 )
 
             # wrapper to allow kwargs (not supported by jax)
@@ -1151,8 +1151,6 @@ class Model:
                         2 if self.batch_shape[2] > 1 else None,
                     ),
                 )(params_single, inputs_single, pulse_params_single)
-
-            pass
 
         # check if single process
         if n_processes == 1:
@@ -1196,31 +1194,19 @@ class Model:
     def _assimilate_batch(self, inputs, params, pulse_params):
         batch_shape = (
             inputs.shape[0],
-            params.shape[-1] if len(params.shape) == 3 else 1,
-            pulse_params.shape[-1] if len(pulse_params.shape) == 3 else 1,
+            params.shape[-1],
+            pulse_params.shape[-1],
         )
 
-        if (
-            batch_shape[1] != 1
-            and batch_shape[0] != batch_shape[1]
-            and batch_shape[0] > 1
-        ):
-            # the following code does some dirty reshaping
-            # TODO: optimize but be aware of the rabbit hole
-            # key is to get the right "order" in which we repeat
-
-            # [BI,D] -> [BPxBI,D]
-            inputs = np.repeat(inputs, batch_shape[1], axis=0)
-
-            # this is a tricky one, essentially we want to get
-            # [L,Q,BP] -> [L,Q,BI,BP] -> [L,Q,BPxBI]
-            params = np.repeat(
-                params[:, :, np.newaxis, :], batch_shape[0], axis=2
-            ).reshape([*params.shape[:-1], np.prod(batch_shape)])
-
-            # pulse_params = np.repeat(
-            #     pulse_params[:, :, np.newaxis, :], batch_shape[0], axis=2
-            # ).reshape([*pulse_params.shape[:-1], np.prod(batch_shape)])
+        pass
+        if batch_shape[0] > 1:
+            inputs = np.repeat(inputs, np.prod(batch_shape) // batch_shape[0], axis=0)
+        if batch_shape[1] > 1:
+            params = np.repeat(params, np.prod(batch_shape) // batch_shape[1], axis=2)
+        if batch_shape[2] > 1:
+            pulse_params = np.repeat(
+                pulse_params, np.prod(batch_shape) // batch_shape[2], axis=2
+            )
 
         return inputs, params, pulse_params, batch_shape
 
