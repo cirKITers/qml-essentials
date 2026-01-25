@@ -117,8 +117,8 @@ def test_batch() -> None:
         n_layers=1,
         circuit_type="Circuit_15",
         output_qubit=-1,
-        mp_threshold=100,
-        initialization="random",
+        # mp_threshold=100,
+        # initialization="random",
     )
 
     model.initialize_params(rng=pnp.random.default_rng(1000), repeat=n_samples)
@@ -128,7 +128,9 @@ def test_batch() -> None:
     # TODO: once the code is ready, test frequency vector as well
     for i in range(n_samples):
         model.params = params[:, :, i]
-        coeffs_single, _ = Coefficients.get_spectrum(model, shift=True, trim=True)
+        coeffs_single, _ = Coefficients.get_spectrum(
+            model, params=params[:, :, i], shift=True, trim=True
+        )
         assert np.allclose(
             coeffs_parallel[:, i], coeffs_single, rtol=1.0e-5
         ), "MP and SP coefficients don't match for 1D input"
@@ -138,9 +140,9 @@ def test_batch() -> None:
         n_layers=1,
         circuit_type="Circuit_19",
         output_qubit=-1,
-        mp_threshold=100,
+        # mp_threshold=100,
         encoding=["RX", "RY"],
-        initialization="random",
+        # initialization="random",
     )
 
     model.initialize_params(rng=pnp.random.default_rng(1000), repeat=n_samples)
@@ -148,8 +150,9 @@ def test_batch() -> None:
     coeffs_parallel, _ = Coefficients.get_spectrum(model, shift=True, trim=True)
 
     for i in range(n_samples):
-        model.params = params[:, :, i]
-        coeffs_single, _ = Coefficients.get_spectrum(model, shift=True, trim=True)
+        coeffs_single, _ = Coefficients.get_spectrum(
+            model, params=params[:, :, i], shift=True, trim=True
+        )
         assert np.allclose(
             coeffs_parallel[:, :, i], coeffs_single, rtol=1.0e-5
         ), "MP and SP coefficients don't match for 2D input"

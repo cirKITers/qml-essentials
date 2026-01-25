@@ -105,21 +105,15 @@ class Model:
             None
         """
         # Initialize default parameters needed for circuit evaluation
+        self.n_qubits: int = n_qubits
+        self.output_qubit: Union[List[int], int] = output_qubit
+        self.n_layers: int = n_layers
         self.noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None
-        self.execution_type: Optional[str] = "expval"
         self.shots = shots
         self.remove_zero_encoding = remove_zero_encoding
         self.mp_threshold = mp_threshold
-        self.n_qubits: int = n_qubits
-        self.n_layers: int = n_layers
         self.trainable_frequencies: bool = trainable_frequencies
-
-        if isinstance(output_qubit, list):
-            assert (
-                len(output_qubit) <= n_qubits
-            ), f"Size of output_qubit {len(output_qubit)} cannot be\
-            larger than number of qubits {n_qubits}."
-        self.output_qubit: Union[List[int], int] = output_qubit
+        self.execution_type: Optional[str] = "expval"
 
         # Initialize rng in Gates
         Gates.init_rng(random_seed)
@@ -159,7 +153,7 @@ class Model:
             (self.n_qubits, self.n_input_feat), requires_grad=trainable_frequencies
         )
 
-        self._zero_inputs = False
+        # self._zero_inputs = False
 
         # --- Data-Reuploading ---
         # Process data reuploading strategy and set degree
@@ -399,6 +393,28 @@ class Model:
         self._noise_params = kvs
 
     @property
+    def output_qubit(self) -> int:
+        return self._output_qubit
+
+    @output_qubit.setter
+    def output_qubit(self, value: int) -> None:
+        if isinstance(value, list):
+            assert (
+                len(value) <= self.n_qubits
+            ), f"Size of output_qubit {len(value)} cannot be\
+            larger than number of qubits {self.n_qubits}."
+        elif isinstance(value, int):
+            if value == -1:
+                value = list(range(self.n_qubits))
+            else:
+                assert (
+                    value < self.n_qubits
+                ), f"Output qubit {value} cannot be larger than number of qubits {self.n_qubits}."
+                value = [value]
+
+        self._output_qubit = value
+
+    @property
     def execution_type(self) -> str:
         """
         Gets the execution type of the model.
@@ -410,7 +426,23 @@ class Model:
 
     @execution_type.setter
     def execution_type(self, value: str) -> None:
-        if value not in ["density", "state", "expval", "probs"]:
+        if value == "density":
+            self._result_shape = (
+                2 ** len(self.output_qubit),
+                2 ** len(self.output_qubit),
+            )
+        elif value == "expval":
+            # check if all qubits are used
+            if len(self.output_qubit) == self.n_qubits:
+                self._result_shape = (len(self.output_qubit),)
+            # if not -> parity measurement with only 1D output
+            else:
+                self._result_shape = (1,)
+        elif value == "probs":
+            self._result_shape = (len(self.output_qubit), 2)
+        elif value == "state":
+            self._result_shape = (2 ** len(self.output_qubit),)
+        else:
             raise ValueError(f"Invalid execution type: {value}.")
 
         if (value == "density" or value == "state") and self.output_qubit != -1:
@@ -621,9 +653,7 @@ class Model:
                     # use elipsis to indiex only the last dimension
                     # as inputs are generally *not* qubit dependent
                     enc[idx](
-                        self.transform_input(
-                            inputs[..., idx], enc_params[q, idx]
-                        ).squeeze(),
+                        self.transform_input(inputs[..., idx], enc_params[q, idx]),
                         wires=q,
                         noise_params=noise_params,
                     )
@@ -691,8 +721,12 @@ class Model:
         Returns:
             None
         """
+        # TODO: rework
         if params.shape[2] == 1:
             params = params[:, :, 0]
+
+        if inputs.shape[0] == 1:
+            inputs = inputs[0]
 
         if enc_params is None:
             # TODO: Raise warning if trainable frequencies is True, or similar. I.e., no
@@ -768,17 +802,14 @@ class Model:
     def _observable(self):
         # run mixed simualtion and get density matrix
         if self.execution_type == "density":
-            if self.output_qubit == -1:
-                return qml.density_matrix(wires=list(range(self.n_qubits)))
-            else:
-                return qml.density_matrix(wires=self.output_qubit)
+            return qml.density_matrix(wires=self.output_qubit)
         elif self.execution_type == "state":
             return qml.state()
         # run default simulation and get expectation value
         elif self.execution_type == "expval":
             # n-local measurement
-            if self.output_qubit == -1:
-                return [qml.expval(qml.PauliZ(q)) for q in range(self.n_qubits)]
+            if self.output_qubit == list(range(self.n_qubits)):
+                return [qml.expval(qml.PauliZ(q)) for q in self.output_qubit]
             # local measurement(s)
             elif isinstance(self.output_qubit, int):
                 return qml.expval(qml.PauliZ(self.output_qubit))
@@ -795,10 +826,7 @@ class Model:
                 )
         # run default simulation and get probs
         elif self.execution_type == "probs":
-            if self.output_qubit == -1:
-                return qml.probs(wires=list(range(self.n_qubits)))
-            else:
-                return qml.probs(wires=self.output_qubit)
+            return qml.probs(wires=self.output_qubit)
         else:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
@@ -1018,7 +1046,7 @@ class Model:
         Returns:
             np.ndarray: The validated input.
         """
-        self._zero_inputs = False
+        # self._zero_inputs = False
         if isinstance(inputs, List):
             inputs = np.stack(inputs)
         elif isinstance(inputs, float) or isinstance(inputs, int):
@@ -1026,8 +1054,8 @@ class Model:
         elif inputs is None:
             inputs = np.array([[0] * self.n_input_feat])
 
-        if not inputs.any():
-            self._zero_inputs = True
+        # if not inputs.any():
+        #     self._zero_inputs = True
 
         if len(inputs.shape) <= 1:
             if self.n_input_feat == 1:
@@ -1197,23 +1225,51 @@ class Model:
                 result[k] = v
 
             result = np.concat(result, axis=1 if self.execution_type == "expval" else 0)
+
         return result
 
     def _assimilate_batch(self, inputs, params, pulse_params):
-        batch_shape = (
-            inputs.shape[0],
-            params.shape[-1],
-            pulse_params.shape[-1],
-        )
+        """
+        inputs:        [B_I, ...]
+        params:        [..., ..., B_P]
+        pulse_params:  [..., ..., B_R]
 
-        if batch_shape[0] > 1:
-            inputs = np.repeat(inputs, np.prod(batch_shape) // batch_shape[0], axis=0)
-        if batch_shape[1] > 1:
-            params = np.repeat(params, np.prod(batch_shape) // batch_shape[1], axis=2)
-        if batch_shape[2] > 1:
-            pulse_params = np.repeat(
-                pulse_params, np.prod(batch_shape) // batch_shape[2], axis=2
-            )
+        Returns:
+        inputs_      [B_I * B_P * B_R, ...]
+        params_      [..., ..., B_I * B_P * B_R]
+        pulse_params_[..., ..., B_I * B_P * B_R]
+        batch_shape  (B_I, B_P, B_R)
+        """
+        B_I = inputs.shape[0]
+        B_P = params.shape[-1]
+        B_R = pulse_params.shape[-1]
+
+        batch_shape = (B_I, B_P, B_R)
+        B = B_I * B_P * B_R
+
+        # --- inputs: [B_I, ...] -> [B_I, B_P, B_R, ...] -> [B, ...]
+        if B_I > 1:
+            inputs = np.repeat(inputs[:, None, None, ...], B_P, axis=1)
+            inputs = np.repeat(inputs, B_R, axis=2)
+            inputs = inputs.reshape(B, *inputs.shape[3:])
+
+        # --- params: [..., ..., B_P] -> [..., ..., B_I, B_P, B_R] -> [..., ..., B]
+        if B_P > 1:
+            # add B_I axis before last, and B_R axis after last
+            params = params[..., None, :, None]  # [..., B_I(=1), B_P, B_R(=1)]
+            params = np.repeat(params, B_I, axis=-3)  # [..., B_I, B_P, 1]
+            params = np.repeat(params, B_R, axis=-1)  # [..., B_I, B_P, B_R]
+            params = params.reshape(*params.shape[:-3], B)
+
+        # --- pulse_params: [..., ..., B_R] -> [..., ..., B_I, B_P, B_R] -> [..., ..., B]
+        if B_R > 1:
+            # add B_I axis before last, and B_P axis before last (after adding B_I)
+            pulse_params = pulse_params[
+                ..., None, None, :
+            ]  # [..., B_I(=1), B_P(=1), B_R]
+            pulse_params = np.repeat(pulse_params, B_I, axis=-3)  # [..., B_I, 1, B_R]
+            pulse_params = np.repeat(pulse_params, B_P, axis=-2)  # [..., B_I, B_P, B_R]
+            pulse_params = pulse_params.reshape(*pulse_params.shape[:-3], B)
 
         return inputs, params, pulse_params, batch_shape
 
@@ -1452,26 +1508,21 @@ class Model:
                         gate_mode=gate_mode,
                     )
 
-        if isinstance(result, list):
-            result = np.stack(result)
+        result = result.reshape((*self.batch_shape, *self._result_shape)).squeeze()
 
-        if self.execution_type == "expval" and force_mean and self.output_qubit == -1:
+        if (
+            self.execution_type == "expval"
+            and force_mean
+            and self.output_qubit == list(range(self.n_qubits))
+        ):
+            result = result.mean(axis=-1)
+        elif (
+            self.execution_type == "probs"
+            and force_mean
+            and self.output_qubit == list(range(self.n_qubits))
+        ):
             # exception for torch layer because it swaps batch and output dimension
-            if not isinstance(self.circuit, qml.QNode):
-                result = result.mean(axis=-1)
-            else:
-                result = result.mean(axis=0)
-        elif self.execution_type == "probs" and force_mean and self.output_qubit == -1:
-            # exception for torch layer because it swaps batch and output dimension
-            if not isinstance(self.circuit, qml.QNode):
-                result = result[..., -1].sum(axis=-1)
-            else:
-                result = result[1:, ...].sum(axis=0)
-
-        if np.all(np.array(self.batch_shape) > 1):
-            result = result.reshape(-1, *self.batch_shape)
-
-        result = result.squeeze()
+            result = result[..., -1].sum(axis=-1)
 
         if cache:
             np.save(file_path, result)
