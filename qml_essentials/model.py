@@ -1158,9 +1158,17 @@ class Model:
         ):
             n_processes = math.ceil(combined_batch_size / self.mp_threshold)
 
+        # the following is a little hack to get the batch shape
+        # in the correct order
+        def _f(*args, **kwargs):
+            result = f(*args, **kwargs)
+            if isinstance(result, list):
+                result = np.stack(result).T
+            return result
+
         if gate_mode == "pulse" and combined_batch_size > 1:
             # save original f
-            orig_f = f
+            orig_f = _f
 
             # jax fct only taking single param
             def f_prime(params_single, inputs_single, pulse_params_single):
@@ -1195,7 +1203,7 @@ class Model:
                     f"Multiprocessing threshold {self.mp_threshold}>0, but using \
                     single process, because {combined_batch_size} samples per batch.",
                 )
-            result = f(
+            result = _f(
                 params=params,
                 pulse_params=pulse_params,
                 inputs=inputs,
@@ -1209,7 +1217,7 @@ class Model:
                 n_processes=n_processes,
                 cpu_scaler=self.cpu_scaler,
                 batch_size=self.mp_threshold,
-                f=f,
+                f=_f,
                 params=params,
                 pulse_params=pulse_params,
                 enc_params=enc_params,
@@ -1224,7 +1232,7 @@ class Model:
             for k, v in return_dict.items():
                 result[k] = v
 
-            result = np.concat(result, axis=1 if self.execution_type == "expval" else 0)
+            result = np.concat(result, axis=0)
 
         return result
 
@@ -1510,19 +1518,11 @@ class Model:
 
         result = result.reshape((*self.batch_shape, *self._result_shape)).squeeze()
 
-        if (
-            self.execution_type == "expval"
-            and force_mean
-            and self.output_qubit == list(range(self.n_qubits))
-        ):
+        if self.execution_type == "expval" and force_mean:
             result = result.mean(axis=-1)
-        elif (
-            self.execution_type == "probs"
-            and force_mean
-            and self.output_qubit == list(range(self.n_qubits))
-        ):
+        elif self.execution_type == "probs" and force_mean:
             # exception for torch layer because it swaps batch and output dimension
-            result = result[..., -1].sum(axis=-1)
+            result = result.sum(axis=-1)
 
         if cache:
             np.save(file_path, result)
