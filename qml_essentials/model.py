@@ -1,8 +1,6 @@
 from typing import Dict, Optional, Tuple, Callable, Union, List
 import pennylane as qml
 import pennylane.numpy as np
-import hashlib
-import os
 import warnings
 from autograd.numpy import numpy_boxes
 from copy import deepcopy
@@ -1230,7 +1228,6 @@ class Model:
         pulse_params: Optional[np.ndarray] = None,
         enc_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
-        cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
         gate_mode: str = "unitary",
@@ -1253,8 +1250,6 @@ class Model:
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
                 set noise parameters being used.
-            cache (Optional[bool], optional): Whether to cache the results.
-                Defaults to False.
             execution_type (str, optional): The type of execution.
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
@@ -1283,7 +1278,6 @@ class Model:
             pulse_params=pulse_params,
             enc_params=enc_params,
             noise_params=noise_params,
-            cache=cache,
             execution_type=execution_type,
             force_mean=force_mean,
             gate_mode=gate_mode,
@@ -1296,7 +1290,6 @@ class Model:
         pulse_params: Optional[np.ndarray] = None,
         enc_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
-        cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
         gate_mode: str = "unitary",
@@ -1318,8 +1311,6 @@ class Model:
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
                 set noise parameters being used.
-            cache (Optional[bool], optional): Whether to cache the results.
-                Defaults to False.
             execution_type (str, optional): The type of execution.
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
@@ -1380,38 +1371,8 @@ class Model:
             params,
             pulse_params,
         )
-        # the qasm representation contains the bound parameters,
-        # thus it is ok to hash that
-        hs = hashlib.md5(
-            repr(
-                {
-                    "n_qubits": self.n_qubits,
-                    "n_layers": self.n_layers,
-                    "pqc": self.pqc.__class__.__name__,
-                    "dru": self.data_reupload,
-                    "params": self.params,  # use safe-params
-                    "pulse_params": self.pulse_params,
-                    "enc_params": self.enc_params,
-                    "noise_params": self.noise_params,
-                    "execution_type": self.execution_type,
-                    "inputs": inputs,
-                    "output_qubit": self.output_qubit,
-                }
-            ).encode("utf-8")
-        ).hexdigest()
 
         result: Optional[np.ndarray] = None
-        if cache:
-            name: str = f"pqc_{hs}.npy"
-
-            cache_folder: str = ".cache"
-            if not os.path.exists(cache_folder):
-                os.mkdir(cache_folder)
-
-            file_path: str = os.path.join(cache_folder, name)
-
-            if os.path.isfile(file_path):
-                result = np.load(file_path)
 
         if result is None:
             # if density matrix requested or noise params used
@@ -1459,8 +1420,5 @@ class Model:
             result = result.reshape(-1, *self.batch_shape)
 
         result = result.squeeze()
-
-        if cache:
-            np.save(file_path, result)
 
         return result

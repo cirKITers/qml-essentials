@@ -241,7 +241,6 @@ def test_ansaetze() -> None:
                 "StatePreparation": 0.1,
                 "Measurement": 0.1,
             },
-            cache=False,
             execution_type="density",
         )
 
@@ -300,7 +299,6 @@ def test_ansaetze() -> None:
             "Depolarizing": 0.5,
             "MultiQubitDepolarizing": 0.6,
         },
-        cache=False,
         execution_type="density",
     )
 
@@ -311,7 +309,6 @@ def test_ansaetze() -> None:
             noise_params={
                 "UnsupportedNoise": 0.1,
             },
-            cache=False,
             execution_type="density",
         )
 
