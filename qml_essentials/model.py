@@ -439,7 +439,14 @@ class Model:
             else:
                 self._result_shape = (len(self.output_qubit),)
         elif value == "probs":
-            self._result_shape = (len(self.output_qubit), 2)
+            # in case this is a list of parities,
+            # each pair has 2^len(qubits) probabilities
+            n_parity = (
+                2 ** len(self.output_qubit[0])
+                if isinstance(self.output_qubit[0], Tuple)
+                else 2
+            )
+            self._result_shape = (len(self.output_qubit), n_parity)
         elif value == "state":
             self._result_shape = (2 ** len(self.output_qubit),)
         else:
@@ -830,7 +837,24 @@ class Model:
                 )
         # run default simulation and get probs
         elif self.execution_type == "probs":
-            return qml.probs(wires=self.output_qubit)
+            # n-local measurement
+            if self.output_qubit == list(range(self.n_qubits)):
+                return qml.probs(wires=self.output_qubit)
+            # parity or local measurement(s)
+            elif isinstance(self.output_qubit, list):
+                ret = []
+                # list of parity pairs
+                for pair in self.output_qubit:
+                    if isinstance(pair, int):
+                        ret.append(qml.probs(qml.PauliZ(pair)))
+                    else:
+                        ret.append(qml.probs(pair))
+                return ret
+            else:
+                raise ValueError(
+                    f"Invalid parameter `output_qubit`: {self.output_qubit}.\
+                        Must be int, list or -1."
+                )
         else:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
@@ -1170,10 +1194,17 @@ class Model:
         def _f(*args, **kwargs):
             result = f(*args, **kwargs)
             if isinstance(result, list):
+                # we use moveaxis here because in case of parity measure,
+                # there is another dimension appended to the end and
+                # simply transposing would result in a wrong shape
                 if isinstance(result[0], jnp.ndarray):
-                    result = jnp.stack(result).T
+                    result = jnp.stack(result)
+                    if len(result.shape) > 1:
+                        result = jnp.moveaxis(result, 0, 1)
                 else:
-                    result = np.stack(result).T
+                    result = np.stack(result)
+                    if len(result.shape) > 1:
+                        result = np.moveaxis(result, 0, 1)
             return result
 
         if gate_mode == "pulse" and combined_batch_size > 1:
@@ -1242,6 +1273,7 @@ class Model:
             for k, v in return_dict.items():
                 result[k] = v
 
+            # use first (batch) axis to concat
             result = np.concat(result, axis=0)
 
         return result
