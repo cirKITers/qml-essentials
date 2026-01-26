@@ -168,8 +168,8 @@ While we provide a developer-oriented overview in this section, we would like to
 
 We implement a fundamental set of gates (RX, RY, RZ, CZ) upon which other, more complex gates can be built.
 The dependency graph is shown in the following figure:
-![Dependency Graph](figures/pulse_gates_dependencies_light.png#only-light)
-![Dependency Graph](figures/pulse_gates_dependencies_dark.png#only-dark)
+![Dependency Graph](figures/pulse_gates_dependencies_light.png#center#only-light)
+![Dependency Graph](figures/pulse_gates_dependencies_dark.png#center#only-dark)
 In this graph, the edge weights represent the number child gates required to implement a particular gate.
 The gates at the bottom represent the fundamental gates.
 
@@ -276,8 +276,8 @@ For further examples we refer to our ["Pulses" notebook](https://github.com/cirK
 
 With the optimized pulse parameters we can generate a fidelities plot as follows:
 
-![Gate Fidelities](figures/gates_fidelities_light.png#only-light)
-![Gate Fidelities](figures/gates_fidelities_dark.png#only-dark)
+![Gate Fidelities](figures/gates_fidelities_light.png#center#only-light)
+![Gate Fidelities](figures/gates_fidelities_dark.png#center#only-dark)
 
 Note that in this plot, the phase error is shown as $1-\text{phase error}$ to align it with the fidelity scale.
 

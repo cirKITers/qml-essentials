@@ -6,7 +6,7 @@ from autograd.numpy import numpy_boxes
 from copy import deepcopy
 import math
 
-from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
+from qml_essentials.ansaetze import Gates, Ansaetze, Circuit, Encoding
 from qml_essentials.ansaetze import PulseInformation as pinfo
 from qml_essentials.utils import PauliCircuit, QuanTikz, MultiprocessingPool
 
@@ -32,7 +32,7 @@ class Model:
         state_preparation: Union[
             str, Callable, List[Union[str, Callable]], None
         ] = None,
-        encoding: Union[str, Callable, List[Union[str, Callable]]] = Gates.RX,
+        encoding: Union[Encoding, str, Callable, List[Union[str, Callable]]] = Gates.RX,
         trainable_frequencies: bool = False,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
@@ -122,7 +122,7 @@ class Model:
 
         # --- State Preparation ---
         try:
-            self._sp = self._parse_gates(state_preparation, Gates)
+            self._sp = Gates.parse_gates(state_preparation, Gates)
         except ValueError as e:
             raise ValueError(f"Error parsing encodings: {e}")
 
@@ -139,14 +139,16 @@ class Model:
                 self.sp_pulse_params.append(None)
 
         # --- Encoding ---
-        try:
-            self._enc = self._parse_gates(encoding, Gates)
-        except ValueError as e:
-            raise ValueError(f"Error parsing encodings: {e}")
+        if isinstance(encoding, Encoding):
+            # user wants custom strategy? do it!
+            self._enc = encoding
+        else:
+            # use hammming encoding by default
+            self._enc = Encoding("hamming", encoding)
 
         # Number of possible inputs
         self.n_input_feat = len(self._enc)
-        log.info(f"Number of input features: {self.n_input_feat}")
+        log.debug(f"Number of input features: {self.n_input_feat}")
 
         # Trainable frequencies, default initialization as in arXiv:2309.03279v2
         self.enc_params = np.ones(
@@ -194,12 +196,18 @@ class Model:
 
         # convert to boolean values
         self.data_reupload = data_reupload.astype(bool)
-        self.frequencies = [
-            np.count_nonzero(self.data_reupload[..., i])
+        self.degree: Tuple = tuple(
+            self._enc.get_n_freqs(np.count_nonzero(self.data_reupload[..., i]))
             for i in range(self.n_input_feat)
-        ]
+        )
 
-        if self.degree > 1:
+        self.frequencies: Tuple = tuple(
+            self._enc.get_spectrum(np.count_nonzero(self.data_reupload[..., i]))
+            for i in range(self.n_input_feat)
+        )
+
+        # check for the highest degree among all input dimensions
+        if self.has_dru():
             impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
         else:
             impl_n_layers = n_layers
@@ -248,10 +256,6 @@ class Model:
         )
 
     @property
-    def degree(self):
-        return max(self.frequencies)
-
-    @property
     def as_pauli_circuit(self) -> bool:
         return self._as_pauli_circuit
 
@@ -281,39 +285,6 @@ class Model:
                 PauliCircuit.from_parameterised_circuit
             )
             self.circuit = pauli_circuit_transform(self.circuit)
-
-    def _parse_gates(
-        self,
-        gates: Union[str, Callable, List[Union[str, Callable]]],
-        set_of_gates,
-    ):
-        if isinstance(gates, str):
-            # if str, use the pennylane fct
-            parsed_gates = [getattr(set_of_gates, f"{gates}")]
-        elif isinstance(gates, list):
-            parsed_gates = []
-            for enc in gates:
-                # if list, check if str or callable
-                if isinstance(enc, str):
-                    parsed_gates.append(getattr(set_of_gates, f"{enc}"))
-                # check if callable
-                elif callable(enc):
-                    parsed_gates.append(enc)
-                else:
-                    raise ValueError(
-                        f"Operation {enc} is not a valid gate or callable.\
-                        Got {type(enc)}"
-                    )
-        elif callable(gates):
-            # default to callable
-            parsed_gates = [gates]
-        elif gates is None:
-            parsed_gates = [lambda *args, **kwargs: None]
-        else:
-            raise ValueError(
-                f"Operation {gates} is not a valid gate or callable or list of both."
-            )
-        return parsed_gates
 
     @property
     def noise_params(self) -> Optional[Dict[str, Union[float, Dict[str, float]]]]:
@@ -499,6 +470,16 @@ class Model:
     @pulse_params.setter
     def pulse_params(self, value: np.ndarray) -> None:
         self._pulse_params = value
+
+    def has_dru(self) -> bool:
+        """
+        Checks if the model has DRU looking for a value in
+        model.degree which is >1.
+
+        Returns:
+            bool: _description_
+        """
+        return np.max([np.max(f) for f in self.frequencies]) > 1
 
     def initialize_params(
         self,
@@ -754,11 +735,11 @@ class Model:
             )
 
             # visual barrier
-            if self.degree > 1:
+            if self.has_dru():
                 qml.Barrier(wires=list(range(self.n_qubits)), only_visual=True)
 
         # final ansatz layer
-        if self.degree > 1:  # same check as in init
+        if self.has_dru():  # same check as in init
             self.pqc(
                 params[-1],
                 self.n_qubits,

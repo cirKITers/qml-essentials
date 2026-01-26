@@ -1,6 +1,6 @@
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Optional, List, Union, Dict
+from typing import Any, Optional, List, Union, Dict, Callable
 import numbers
 import csv
 import pennylane.numpy as np
@@ -1348,6 +1348,41 @@ class Gates(metaclass=GatesMeta):
             yield
         finally:
             Gates._pulse_mgr = None
+
+    @staticmethod
+    def parse_gates(
+        gates: Union[str, Callable, List[Union[str, Callable]]],
+        set_of_gates=None,
+    ):
+        set_of_gates = set_of_gates or Gates
+
+        if isinstance(gates, str):
+            # if str, use the pennylane fct
+            parsed_gates = [getattr(set_of_gates, f"{gates}")]
+        elif isinstance(gates, list):
+            parsed_gates = []
+            for enc in gates:
+                # if list, check if str or callable
+                if isinstance(enc, str):
+                    parsed_gates.append(getattr(set_of_gates, f"{enc}"))
+                # check if callable
+                elif callable(enc):
+                    parsed_gates.append(enc)
+                else:
+                    raise ValueError(
+                        f"Operation {enc} is not a valid gate or callable.\
+                        Got {type(enc)}"
+                    )
+        elif callable(gates):
+            # default to callable
+            parsed_gates = [gates]
+        elif gates is None:
+            parsed_gates = [lambda *args, **kwargs: None]
+        else:
+            raise ValueError(
+                f"Operation {gates} is not a valid gate or callable or list of both."
+            )
+        return parsed_gates
 
 
 class PulseParamManager:
@@ -2999,3 +3034,182 @@ class Ansaetze:
                     **kwargs,
                 )
                 w_idx += 3
+
+
+class Encoding:
+    def __init__(
+        self, strategy: str, gates: Union[str, Callable, List[Union[str, Callable]]]
+    ):
+        """
+        Initializes an Encoding object.
+
+        Implementations closely follow https://doi.org/10.22331/q-2023-12-20-1210
+
+        Parameters
+        ----------
+        strategy : str
+            The encoding strategy to use. Available options:
+            ['hamming', 'binary', 'ternary']
+        gates : Union[str, Callable, List[Union[str, Callable]]]
+            The gates to use for encoding. Can be a string, a callable or a list
+            of strings or callables.
+
+        Returns
+        -------
+        None
+
+        Raises
+        -------
+        ValueError
+            If the encoding strategy is not implemented.
+        ValueError
+            If there is an error parsing the gates.
+        """
+        if strategy not in ["hamming", "binary", "ternary"]:
+            raise ValueError(
+                f"Encoding strategy {strategy} not implemented. "
+                "Available options: ['hamming', 'binary', 'ternary']"
+            )
+        self._strategy = strategy
+        strategy = getattr(self, strategy)
+
+        log.debug(f"Using encoding strategy: '{strategy.__name__}'")
+
+        try:
+            self._gates = Gates.parse_gates(gates, Gates)
+        except ValueError as e:
+            raise ValueError(f"Error parsing encodings: {e}")
+
+        self.callable = [strategy(g) for g in self._gates]
+
+    def __len__(self):
+        return len(self.callable)
+
+    def __getitem__(self, idx):
+        return self.callable[idx]
+
+    def get_n_freqs(self, omegas):
+        """
+        Returns the number of frequencies required for the encoding strategy.
+
+        Parameters
+        ----------
+        omegas : int
+            The number of frequencies to encode.
+
+        Returns
+        -------
+        int
+            The number of frequencies required for the encoding strategy.
+        """
+        if self._strategy == "hamming":
+            return int(2 * omegas + 1)
+        elif self._strategy == "binary":
+            return int(2 ** (omegas + 1) - 1)
+        elif self._strategy == "ternary":
+            return int(3 ** (omegas))
+        else:
+            raise NotImplementedError
+
+    def get_spectrum(self, omegas):
+        """
+        Spectrum for one of the following encoding strategies:
+
+        Hamming: {-n_q -(n_q-1), ..., n_q}
+        Binary: {-2^{n_q}+1, ..., 2^{n_q}-1}
+        Ternary: {-floor(3^{n_q}/2), ..., floor(3^(n_q)/2)}
+
+        See https://doi.org/10.22331/q-2023-12-20-1210 for more details.
+
+        Parameters
+        ----------
+        omegas : int
+            The number of frequencies to encode.
+
+        Returns
+        -------
+        np.ndarray
+            The spectrum of the encoding strategy.
+        """
+        if self._strategy == "hamming":
+            return np.arange(-omegas, omegas + 1)
+        elif self._strategy == "binary":
+            return np.arange(-(2**omegas) + 1, 2**omegas)
+        elif self._strategy == "ternary":
+            limit = int(np.floor(3**omegas / 2))
+            return np.arange(-limit, limit + 1)
+        else:
+            raise NotImplementedError
+
+    def hamming(self, enc):
+        """
+        Hamming encoding strategy.
+
+        Returns an encoding function that uses the Hamming encoding strategy
+        which uses 2 * omegas + 1 frequencies for the encoding.
+        See https://doi.org/10.22331/q-2023-12-20-1210 for more details.
+
+        Parameters
+        ----------
+        enc : Callable
+            The encoding function to be wrapped.
+
+        Returns
+        -------
+        Callable
+            The wrapped encoding function.
+        """
+        return enc
+
+    def binary(self, enc):
+        """
+        Binary encoding strategy.
+
+        Returns an encoding function that scales the input by a factor of 2^wires.
+
+        Binary encoding uses 2^(omegas + 1) - 1 frequencies for the encoding.
+        See https://doi.org/10.22331/q-2023-12-20-1210 for more details.
+
+        Parameters
+        ----------
+        enc : Callable
+            The encoding function to be wrapped.
+
+        Returns
+        -------
+        Callable
+            The wrapped encoding function.
+        """
+
+        def _enc(inputs, wires, **kwargs):
+            return enc(inputs * (2**wires), wires, **kwargs)
+
+        return _enc
+
+    def ternary(self, enc):
+        """
+        Ternary encoding strategy.
+
+        Returns an encoding function that scales the input by a factor of 3^wires.
+
+        Ternary encoding uses 3^(omegas + 1) - 1 frequencies for the encoding.
+        See https://doi.org/10.22331/q-2023-12-20-1210 for more details.
+
+        Parameters
+        ----------
+        enc : Callable
+            The encoding function to be wrapped.
+
+        Returns
+        -------
+        Callable
+            The wrapped encoding function.
+        """
+
+        def _enc(inputs, wires, **kwargs):
+            return enc(inputs * (3**wires), wires, **kwargs)
+
+        return _enc
+
+    def golomb(self, enc):
+        raise NotImplementedError

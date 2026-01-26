@@ -1,8 +1,10 @@
 from qml_essentials.model import Model
-from qml_essentials.coefficients import Coefficients, FourierTree, FCC
+from qml_essentials.ansaetze import Encoding
+from qml_essentials.coefficients import Coefficients, FourierTree, FCC, Datasets
 from pennylane.fourier import coefficients as pcoefficients
 import hashlib
 
+import traceback
 import numpy as np
 import pennylane.numpy as pnp
 import logging
@@ -49,13 +51,13 @@ def test_coefficients() -> None:
 
         coeffs, freqs = Coefficients.get_spectrum(model)
 
-        assert len(coeffs) == model.degree * 2 + 1, "Wrong number of coefficients"
+        assert coeffs.shape == model.degree, "Wrong number of coefficients"
         assert np.isclose(
             np.sum(coeffs).imag, 0.0, rtol=1.0e-5
         ), "Imaginary part is not zero"
 
         partial_circuit = partial(model, model.params)
-        ref_coeffs = pcoefficients(partial_circuit, 1, model.degree)
+        ref_coeffs = pcoefficients(partial_circuit, 1, np.array(model.degree) // 2)
 
         assert np.allclose(
             coeffs, ref_coeffs, rtol=1.0e-5
@@ -89,10 +91,9 @@ def test_multi_dim_input() -> None:
     coeffs, freqs = Coefficients.get_spectrum(model)
 
     assert (
-        coeffs.shape == [model.frequencies[i] * 2 + 1]
-        for i in range(model.n_input_feat)
+        coeffs.shape == model.degree
     ), f"Wrong shape of coefficients: {coeffs.shape}, \
-        expected {[[model.frequencies[i] * 2 + 1] for i in range(model.n_input_feat)]}"
+        expected {model.degree}"
 
     ref_input = [1, 2]
     exp_model = model(params=None, inputs=ref_input, force_mean=True)
@@ -292,7 +293,7 @@ def test_oversampling_time() -> None:
     )
 
     assert (
-        Coefficients.get_spectrum(model, mts=2)[0].shape[0] == 10
+        Coefficients.get_spectrum(model, mts=3)[0].shape[0] == 15
     ), "Oversampling time failed"
 
 
@@ -305,7 +306,7 @@ def test_oversampling_frequency() -> None:
     )
 
     assert (
-        Coefficients.get_spectrum(model, mfs=2)[0].shape[0] == 9
+        Coefficients.get_spectrum(model, mfs=3)[0].shape[0] == 15
     ), "Oversampling frequency failed"
 
 
@@ -616,3 +617,103 @@ def test_weighting() -> None:
             fcc, test_case["fcc"], atol=1.0e-3
         ), f"Wrong FCC for {test_case['circuit_type']}. \
             Got {fcc}, expected {test_case['fcc']}."
+
+
+@pytest.mark.unittest
+def test_fourier_series_dataset() -> None:
+    test_cases = [
+        {"n_input_feat": 2},
+        {"n_input_feat": 3},
+        {"coefficients_min": 0.1, "coefficients_max": 0.9},
+        {"zero_centered": True},
+        {"encoding_strategy": "binary"},
+        {"encoding_strategy": "ternary"},
+    ]
+
+    n_samples = 100
+    seed = 1000
+
+    for test_case in test_cases:
+        rng = np.random.default_rng(seed)
+
+        n_input_feat = test_case.pop("n_input_feat", 1)
+        coefficients_min = test_case.get("coefficients_min", 0.0)
+        coefficients_max = test_case.get("coefficients_max", 1.0)
+        zero_centered = test_case.get("zero_centered", False)
+
+        encoding = Encoding(
+            test_case.pop("encoding_strategy", "hamming"),
+            ["RY" for _ in range(n_input_feat)],
+        )
+
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            encoding=encoding,
+        )
+
+        all_domain_samples = []
+        all_fourier_samples = []
+        all_coefficients = []
+
+        for i in range(n_samples):
+            try:
+                domain_samples, fourier_samples, coefficients = (
+                    Datasets.generate_fourier_series(
+                        rng=rng,
+                        model=model,
+                        **test_case,
+                    )
+                )
+            except Exception as e:
+                tb = traceback.format_exc()
+                raise Exception(
+                    f"Error in iteration {i} for test case {test_case}: {e}\n{tb}"
+                )
+
+            # Sanity check to ensure the FFT is correct
+            coefficients_hat = np.fft.fftshift(
+                np.fft.fftn(
+                    fourier_samples,
+                    axes=list(range(model.n_input_feat)),
+                )
+            )
+            assert np.allclose(
+                coefficients,
+                coefficients_hat,
+                atol=1e-6,
+            ), f"Frequencies don't match for test case {test_case}"
+
+            assert np.all(
+                domain_samples.shape
+                == (
+                    *model.degree,
+                    model.n_input_feat,
+                )
+            ), f"Wrong shape of domain samples for test case {test_case}"
+            assert np.all(
+                fourier_samples.shape == model.degree
+            ), f"Wrong shape of Fourier values for test case {test_case}"
+            assert np.all(
+                coefficients.shape == model.degree
+            ), f"Wrong shape of coefficients for test case {test_case}"
+
+            all_domain_samples.append(domain_samples)
+            all_fourier_samples.append(fourier_samples)
+            all_coefficients.append(coefficients)
+
+        all_domain_samples = np.array(all_domain_samples)
+        all_fourier_samples = np.array(all_fourier_samples)
+        all_coefficients = np.array(all_coefficients)
+
+        if not zero_centered:
+            assert np.sqrt(coefficients_min) <= np.min(
+                np.abs(coefficients)
+            ), f"Coefficients are too small for test case {test_case}"
+            assert np.sqrt(coefficients_max) >= np.max(
+                np.abs(coefficients)
+            ), f"Coefficients are too large for test case {test_case}"
+        else:
+            assert np.isclose(
+                fourier_samples.mean(), 0.0, atol=1e-1
+            ), f"Zero centering failed for test case {test_case}"

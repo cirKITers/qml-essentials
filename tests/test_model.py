@@ -1,7 +1,7 @@
 from typing import Optional
 import random
 from qml_essentials.model import Model
-from qml_essentials.ansaetze import Circuit, Ansaetze, Gates
+from qml_essentials.ansaetze import Circuit, Ansaetze, Gates, Encoding
 from qml_essentials.ansaetze import PulseInformation as pinfo
 import pytest
 import inspect
@@ -400,35 +400,53 @@ def test_state_preparation() -> None:
 def test_encoding() -> None:
     test_cases = [
         {
-            "encoding_unitary": Gates.RX,
-            "frequencies": [2],
+            "encoding": Gates.RX,
+            "degree": (5,),
             "input": [0],
             "warning": False,
         },
         {
-            "encoding_unitary": [Gates.RX, Gates.RY],
-            "frequencies": [2, 2],
+            "encoding": [Gates.RX, Gates.RY],
+            "degree": (5, 5),
             "input": [[0, 0]],
             "warning": False,
         },
         {
-            "encoding_unitary": ["RX", Gates.RY],
-            "frequencies": [2, 2],
+            "encoding": ["RX", Gates.RY],
+            "degree": (5, 5),
             "input": [[0, 0]],
             "warning": False,
         },
-        {"encoding_unitary": "RX", "frequencies": [2], "input": [0], "warning": False},
+        {"encoding": "RX", "degree": (5,), "input": [0], "warning": False},
         {
-            "encoding_unitary": ["RX", "RY"],
-            "frequencies": [2, 2],
+            "encoding": ["RX", "RY"],
+            "degree": (5, 5),
             "input": [[0, 0]],
             "warning": False,
         },
         {
-            "encoding_unitary": ["RX", "RY"],
-            "frequencies": [2, 2],
+            "encoding": ["RX", "RY"],
+            "degree": (5, 5),
             "input": [0],
             "warning": True,
+        },
+        {
+            "encoding": Encoding("binary", ["RX"]),
+            "degree": (7,),
+            "input": [0],
+            "warning": False,
+        },
+        {
+            "encoding": Encoding("ternary", ["RX"]),
+            "degree": (9,),
+            "input": [0],
+            "warning": False,
+        },
+        {
+            "encoding": Encoding("ternary", ["RX", "RY"]),
+            "degree": (9, 9),
+            "input": [[0, 0]],
+            "warning": False,
         },
     ]
 
@@ -437,7 +455,7 @@ def test_encoding() -> None:
             n_qubits=2,
             n_layers=1,
             circuit_type="Circuit_19",
-            encoding=test_case["encoding_unitary"],
+            encoding=test_case["encoding"],
             remove_zero_encoding=False,
         )
 
@@ -452,10 +470,11 @@ def test_encoding() -> None:
                 model.params,
                 inputs=test_case["input"],
             )
+
         assert (
-            model.frequencies == test_case["frequencies"]
-        ), f"Frequencies is not correct: got {model.frequencies},\
-            expected {test_case['frequencies']}"
+            model.degree == test_case["degree"]
+        ), f"Frequencies is not correct: got {model.degree},\
+            expected {test_case['degree']} for test case {test_case}"
 
 
 @pytest.mark.expensive
@@ -871,26 +890,22 @@ def test_dru() -> None:
         {
             "enc": Gates.RX,
             "dru": False,
-            "degree": 1,
-            "frequencies": [1],
+            "degree": (3,),
         },
         {
             "enc": Gates.RX,
             "dru": True,
-            "degree": 4,
-            "frequencies": [4],
+            "degree": (9,),
         },
         {
             "enc": Gates.RX,
             "dru": [[True, False], [False, True]],
-            "degree": 2,
-            "frequencies": [2],
+            "degree": (5,),
         },
         {
             "enc": [Gates.RX, Gates.RY],
             "dru": [[[0, 1], [1, 1]], [[1, 1], [0, 1]]],
-            "degree": 4,
-            "frequencies": [2, 4],
+            "degree": (5, 9),
         },
     ]
 
@@ -908,13 +923,8 @@ def test_dru() -> None:
 
         assert (
             model.degree == test_case["degree"]
-        ), f"Expected degree {test_case['degree']} but got {model.degree}\
-            for dru {test_case['dru']}"
-
-        assert (
-            model.frequencies == test_case["frequencies"]
-        ), f"Expected frequencies {test_case['frequencies']} but got\
-            {model.frequencies} for dru {test_case['dru']}"
+        ), f"Expected frequencies {test_case['degree']} but got\
+            {model.degree} for dru {test_case['dru']}"
 
         _ = model(
             model.params,

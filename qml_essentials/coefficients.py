@@ -84,9 +84,9 @@ class Coefficients:
         model: Model, mfs: int, mts: int, **kwargs: Any
     ) -> np.ndarray:
         # Create a frequency vector with as many frequencies as model degrees,
-        # oversampled by nfs
+        # oversampled by mfs
         n_freqs: np.ndarray = np.array(
-            [2 * mfs * model.frequencies[i] + 1 for i in range(model.n_input_feat)]
+            [mfs * model.degree[i] for i in range(model.n_input_feat)]
         )
 
         start, stop, step = 0, 2 * mts * np.pi, 2 * np.pi / n_freqs
@@ -1382,3 +1382,130 @@ class FCC:
 
         return fourier_fingerprint * weights_matrix
         raise NotImplementedError("Weighting method is not implemented")
+
+
+class Datasets:
+    @staticmethod
+    def generate_fourier_series(
+        rng: np.random.Generator,
+        model: Model,
+        coefficients_min: float = 0.0,
+        coefficients_max: float = 1.0,
+        zero_centered: bool = False,
+    ) -> np.ndarray:
+        """
+        Generates the Fourier series representation of a function.
+        It uses the `model.frequencies` property to retrieve the frequency
+        information. This ensures that the resulting Fourier series is
+        compatible with the model.
+
+        This function is capable of generating $D$-dimensional Fourier series
+        (again defined by `model.n_input_feat`).
+        The highest frequency $N$ is retrieved per dimension.
+
+        Samples of the Fourier coefficients are drawn from a uniform circle.
+
+        Args:
+            rng (np.random.Generator): Random number generator.
+            model (Model): The quantum circuit model.
+            coefficients_min (float, optional): Minimum value for the coefficients.
+                Defaults to 0.0.
+            coefficients_max (float, optional): Maximum value for the coefficients.
+                Defaults to 1.0.
+            zero_centered (bool, optional): Whether to zero-center the coefficients.
+                Defaults to False.
+
+        Returns:
+            np.ndarray: Input domain samples with shape ((N,)*D, D)
+            np.ndarray: Fourier series values with shape ((N,)*D)
+            np.ndarray: Fourier coefficients with shape ((N,)*D)
+
+        """
+        # TODO: the following code can be considered to
+        # capturing a truly random spectrum.
+        # add some constraints on the spectrum, i.e. not fully
+
+        # Note: one key observation for understanding the following code is,
+        # that instead of wrapping your head around symmetries in multi-
+        # dimensional coefficient matrices, one can simply look at the flattened
+        # version of such a matrix and reshape later. It just works out.
+
+        # going from [0, 2pi] with the resolution required for highest frequency
+        # permute with input dimensionality to get an n-d grid of domain samples
+        # the output shape comes from the fact that want to create a "coordinate system"
+        domain_samples_per_input_dim = np.stack(
+            np.meshgrid(*[np.arange(0, 2 * np.pi, 2 * np.pi / d) for d in model.degree])
+        ).T.reshape(-1, model.n_input_feat)
+
+        # generate the frequency indices for each dimension.
+        # this will have the same shape as the domain samples
+        frequencies = np.stack(np.meshgrid(*model.frequencies)).T.reshape(
+            -1, model.n_input_feat
+        )
+
+        # using the frequency information, sample coefficients for each dimension
+        # shape: (input_dims, n_freqs_per_input_dim // 2 + 1)
+        coefficients = Datasets.uniform_circle(
+            rng=rng,
+            low=coefficients_min,
+            high=coefficients_max,
+            size=np.prod(model.degree) // 2 + 1,
+        )
+
+        # zero center (first coeff = 0)
+        # we can assume the first coeff is the offset, because we're dealing
+        # with a non-symmetric spectrum here
+        if zero_centered:
+            coefficients[0] = 0.0
+        else:
+            coefficients[0] = coefficients[0].real
+
+        # ensure symmetry (here, non_negative_ is removed!),
+        # giving us the full coefficients vector
+        coefficients = np.concat(
+            [
+                np.flip(coefficients[..., 1:]).conjugate(),
+                coefficients,
+            ],
+            axis=-1,
+        )
+
+        # Vectorized version of $f(x) = \sum_{n=0}^{N-1} c_n * e^{i * \omega_n * x}$
+        # it takes into account the input dimension, i.e. the output is a matrix
+        # normalization uses the n_freqs component of the coefficients
+        values = np.real_if_close(
+            (
+                np.exp(1j * (domain_samples_per_input_dim @ frequencies.T))
+                * coefficients
+            ).sum(axis=1)
+            / coefficients.size
+        )
+
+        # return all the information we have
+        return [
+            domain_samples_per_input_dim.reshape(*model.degree, -1),
+            values.reshape(model.degree),
+            coefficients.reshape(model.degree),
+        ]
+
+    @staticmethod
+    def uniform_circle(rng, size: Union[np.ndarray, List, int], low=0.0, high=1.0):
+        """
+        Random number generator for complex numbers sampled inside the unit circle
+
+        Args:
+            size : Union[np.ndarray, int]: Number of samples. If a 2D array is passed,
+                the first dimension will be the number of dimensions.
+            low (float, optional): Minimum Radius. Defaults to 0.0.
+            high (float, optional): Maximum Radius. Defaults to 1.0.
+
+        Returns
+            np.ndarray: Array of complex numbers with shape of `size`
+        """
+
+        if isinstance(size, int):
+            size = np.array([size])
+
+        return np.sqrt(rng.uniform(low, high, size)) * np.exp(
+            2j * np.pi * rng.uniform(low=0, high=1, size=size)
+        )
