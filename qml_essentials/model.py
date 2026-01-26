@@ -481,7 +481,7 @@ class Model:
         Returns:
             bool: _description_
         """
-        return max(self.degree) > 1
+        return np.max([np.max(f) for f in self.frequencies]) > 1
 
     def initialize_params(
         self,
