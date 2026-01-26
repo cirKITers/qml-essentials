@@ -444,6 +444,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#using_the_built-in_dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using the built-in Dataset
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#pulse_level" class="md-nav__link">
     <span class="md-ellipsis">
       Pulse Level
@@ -512,6 +521,15 @@
   <a href="#trainable_frequencies" class="md-nav__link">
     <span class="md-ellipsis">
       Trainable frequencies
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#using_the_built-in_dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using the built-in Dataset
     </span>
   </a>
   
@@ -744,6 +762,40 @@ Now that we have our "dataset", let's move on and build a model:
 to allow for trainable frequencies. You may try different input transformations before the encoding by modifying the <code>model.transform_input</code> method. For example, if an <code>RX</code> gate performs the encoding, you may apply the identity operator by 
 <div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">model</span><span class="o">.</span><span class="n">transform_input</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">qubit</span><span class="p">,</span> <span class="n">idx</span><span class="p">,</span> <span class="n">enc_params</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">arccos</span><span class="p">(</span><span class="n">inputs</span><span class="p">[:,</span> <span class="n">idx</span><span class="p">])</span>
 </span></code></pre></div></p>
+<h2 id="using_the_built-in_dataset">Using the built-in Dataset<a class="headerlink" href="#using_the_built-in_dataset" title="Permanent link">#</a></h2>
+<p>Previous examples considered a very simplified version of a training dataset.
+Extending this to multi-dimensional inputs and different encoding schemes of the model can be quite a tedious work to implement.
+For this purpose, we provide a ready-to-use Fourier series dataset in the <code>qml_essentials.datasets</code> module.
+This dataset uses the model properties to generate a Fourier series that matches what the model can learn, meaning that the frequencies are inferred from <code>model.frequencies</code>.
+Furthermore, it is possible to control the magnitude of the coefficients, sampled from a complex unit circle, by setting <code>coefficients_min</code> and <code>coefficients_max</code>.
+Calling <code>generate_fourier_series</code> will return the domain samples, Fourier series samples and the coefficients of the Fourier series.</p>
+<p>The code snippet below provides a minimal example on how to use this dataset:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.coefficients</span><span class="w"> </span><span class="kn">import</span> <span class="n">Datasets</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="c1"># generate a Fourier series dataset</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">domain_samples</span><span class="p">,</span> <span class="n">fourier_samples</span><span class="p">,</span> <span class="n">coefficients</span> <span class="o">=</span> <span class="p">(</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>                    <span class="n">Datasets</span><span class="o">.</span><span class="n">generate_fourier_series</span><span class="p">(</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>                        <span class="n">rng</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">1000</span><span class="p">),</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>                        <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>                    <span class="p">)</span>
+</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>                <span class="p">)</span>
+</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>
+</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="c1"># cost function uses the domain samples as input and compares with the</span>
+</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="c1"># Fourier series samples obtained from the dataset</span>
+</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="k">def</span><span class="w"> </span><span class="nf">cost_fct</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>    <span class="n">y_hat</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">,</span> <span class="n">inputs</span><span class="o">=</span><span class="n">domain_samples</span><span class="p">,</span> <span class="n">force_mean</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>
+</span><span id="__span-12-16"><a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">((</span><span class="n">y_hat</span> <span class="o">-</span> <span class="n">fourier_samples</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+</span><span id="__span-12-17"><a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>
+</span><span id="__span-12-18"><a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a><span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1000</span><span class="p">):</span>
+</span><span id="__span-12-19"><a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>    <span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">cost_val</span> <span class="o">=</span> <span class="n">opt</span><span class="o">.</span><span class="n">step_and_cost</span><span class="p">(</span><span class="n">cost_fct</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</span><span id="__span-12-20"><a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>
+</span><span id="__span-12-21"><a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a>    <span class="k">if</span> <span class="n">epoch</span> <span class="o">%</span> <span class="mi">100</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+</span><span id="__span-12-22"><a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Epoch: </span><span class="si">{</span><span class="n">epoch</span><span class="si">}</span><span class="s2">, Cost: </span><span class="si">{</span><span class="n">cost_val</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+<p><a class="glightbox" href="../figures/trained_series_dataset_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Fourier Series" data-desc-position="top"><img alt="Fourier Series" src="../figures/trained_series_dataset_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/trained_series_dataset_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Fourier Series" data-desc-position="top"><img alt="Fourier Series" src="../figures/trained_series_dataset_dark.png#center#only-dark" /></a></p>
+<p>Note that it's more difficult for the model to fit this specific dataset as it, opposed to the previous datasets, also contains complex parts in the coefficients, effectively causing a phase shift.</p>
 <h2 id="pulse_level">Pulse Level<a class="headerlink" href="#pulse_level" title="Permanent link">#</a></h2>
 <blockquote>
 <p><strong>Note:</strong> Not implemented yet</p>

@@ -406,15 +406,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#caching" class="md-nav__link">
-    <span class="md-ellipsis">
-      Caching
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#multiprocessing" class="md-nav__link">
     <span class="md-ellipsis">
       Multiprocessing
@@ -680,15 +671,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#caching" class="md-nav__link">
-    <span class="md-ellipsis">
-      Caching
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#multiprocessing" class="md-nav__link">
     <span class="md-ellipsis">
       Multiprocessing
@@ -736,8 +718,8 @@
 <p>You can take a look at your model, by simply calling
 <div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">model</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">figure</span><span class="o">=</span><span class="s2">&quot;mpl&quot;</span><span class="p">)</span>
 </span></code></pre></div></p>
-<p><a class="glightbox" href="../figures/hae_light.png#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Hardware Efficient Ansatz" data-desc-position="top"><img alt="Hardware Efficient Ansatz" src="../figures/hae_light.png#only-light" /></a>
-<a class="glightbox" href="../figures/hae_dark.png#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Hardware Efficient Ansatz" data-desc-position="top"><img alt="Hardware Efficient Ansatz" src="../figures/hae_dark.png#only-dark" /></a></p>
+<p><a class="glightbox" href="../figures/hae_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Hardware Efficient Ansatz" data-desc-position="top"><img alt="Hardware Efficient Ansatz" src="../figures/hae_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/hae_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Hardware Efficient Ansatz" data-desc-position="top"><img alt="Hardware Efficient Ansatz" src="../figures/hae_dark.png#center#only-dark" /></a></p>
 <p>Looks good to you? <img alt="👀" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f440.svg" title=":eyes:" /> Head over to the <a href="../training/"><em>Training</em></a> page for <strong>getting started</strong> with an easy example, where we also show how to implement <strong>trainable frequencies</strong> <img alt="🚀" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f680.svg" title=":rocket:" />
 If you want to learn more about, why we get the above results, checkout the <a href="#data-reuploading"><em>Data-Reuploading</em></a> section.</p>
 <p>Note that calling the model without any (<code>None</code>) values for the <code>params</code> and <code>inputs</code> argument, will implicitly call the model with the recently (or initial) parameters and <code>0</code>s as input.
@@ -759,7 +741,7 @@ The number of frequencies that the model can represent is constrained by the num
 <p>Typically, there is a reuploading step after each layer and on each qubit (<code>data_reupload=True</code>).
 However, our package also allows you to specify an array with the number of rows representing the qubits and number of columns representing the layers.
 Then, a <code>True</code> means that encoding is applied at the corresponding position within the circuit.</p>
-<p>In the following example, the model has two reuploading steps (<code>model.degree</code> = 2) although it would be capable of representing four frequencies:</p>
+<p>In the following example, we disable two instances of the data-reuploading step, thus leaving the model with <code>model.degree = (5)</code> frequencies (2 negative + zero frequency + 2 positive).</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">model</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">n_qubits</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">n_layers</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
@@ -796,14 +778,57 @@ Other options are:</p>
 <li>A list of strings such as <code>["RX", "RY"]</code> that will result in a sequential RX and RY rotation per qubit</li>
 <li>Any callable such as <code>Gates.RX</code></li>
 <li>A list of callables such as <code>[Gates.RX, Gates.RY]</code></li>
+<li>An instance of the <code>Encoding</code> class</li>
 </ul>
 <p>See page <a href="../ansaetze/"><em>Ansaetze</em></a> for more details regarding the <code>Gates</code> class.
-Note it is also possible to provide a custom encoding as the <code>encoding</code> argument essentially accepts any callable or list of callables see <a href="../ansaetze/#custom-encoding">here</a> for more details.
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
 Otherwise multiple inputs are treated as batches of inputs.
 If you want to visualize zero-valued encoding gates in the model, set <code>remove_zero_encoding</code> to <code>False</code> on instantiation.</p>
-<p>In case of a multi-dimensional input, you can obtain the highest frequency in each encoding dimension from the <code>model.frequencies</code> property.
-Now, <code>model.degree</code> in turn will reflect the highest number in this list.</p>
+<p>In case of a multi-dimensional input, you can obtain the highest frequency in each encoding dimension from the <code>model.degree</code> property.
+Note that, <code>model.degree</code> includes the negative and zero frequency (i.e. the full spectrum).
+Individual frequencies can be obtained via <code>model.frequencies</code>.</p>
+<p>By default, all encodings are <code>Hamming</code> encodings, meaning, all encodings are applied equally in each data-reuploading step.
+Note it is also possible to provide a custom encoding as the <code>encoding</code> argument essentially accepts any callable or list of callables see <a href="../ansaetze/#custom-encoding">here</a> for more details.
+To make things a little bit easier, we implement following encoding strategies as introduced in <a href="https://doi.org/10.22331/q-2023-12-20-1210">Generalization despite overfitting in quantum machine learning models</a> with their respective spectral properties:</p>
+<table>
+<thead>
+<tr>
+<th>Encoding strategy</th>
+<th>Spectrum <span class="arithmatex">\(\Omega\)</span></th>
+<th><span class="arithmatex">\(\vert\Omega\vert\)</span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hamming</td>
+<td><span class="arithmatex">\(\{-n_{q},-(n_{q}-1),\ldots,n_{q}\}\)</span></td>
+<td><span class="arithmatex">\(2 n_{q}+1\)</span></td>
+</tr>
+<tr>
+<td>Binary</td>
+<td><span class="arithmatex">\(\{-2^{n_{q}}+1,\ldots,2^{n_{q}}-1\}\)</span></td>
+<td><span class="arithmatex">\(2^{n_{q}+1}- 1\)</span></td>
+</tr>
+<tr>
+<td>Ternary</td>
+<td><span class="arithmatex">\(\left\{-\left\lfloor\frac{3^{n_{q}}}{2}\right\rfloor,\ldots,\left\lfloor\frac{3^{n_{q}}}{2}\right\rfloor\right\}\)</span></td>
+<td><span class="arithmatex">\(3^{n_{q}}\)</span></td>
+</tr>
+</tbody>
+</table>
+<p>You can use these templates by instantiating an <code>Encoding</code> class with the encoding strategy you like and passing it to the model upon initialization:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.ansaetze</span><span class="w"> </span><span class="kn">import</span> <span class="n">Encoding</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">model</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">n_qubits</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">n_layers</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">circuit_type</span><span class="o">=</span><span class="s2">&quot;Circuit_19&quot;</span><span class="p">,</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">encoding</span><span class="o">=</span><span class="n">Encoding</span><span class="p">(</span><span class="s2">&quot;ternary&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;RX&quot;</span><span class="p">,</span> <span class="s2">&quot;RY&quot;</span><span class="p">]),</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="p">)</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="n">model</span><span class="o">.</span><span class="n">frequencies</span>
+</span></code></pre></div>
+<p>Returns <code>[9,9]</code>, which corresponds to the ternary spectrum <span class="arithmatex">\(3^{2}\)</span> for two indpendent inputs.</p>
 <h2 id="state_preparation">State Preparation<a class="headerlink" href="#state_preparation" title="Permanent link">#</a></h2>
 <p>While the encoding is applied in each data-reuploading step, the state preparation is only applied at the beginning of the circuit, but after the <code>StatePreparation</code> noise (see <a href="#noise">below</a> for details).
 The default is no state preparation. Similar to the encoding, you can provide the <code>state_preparation</code> argument as</p>
@@ -864,21 +889,21 @@ This allows you to move from the abstract unitary layer, where gates are treated
 </ul>
 <p>By default, the framework provides optimized pulse parameters based on typical superconducting qubit frequencies (<span class="arithmatex">\(\omega_q = 10\pi\)</span>, <span class="arithmatex">\(\omega_c = 10\pi\)</span>).  </p>
 <p>Switching between unitary-level and pulse-level execution is seamless and controlled via the <code>gate_mode</code> argument:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Default unitary-level simulation</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">model</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">inputs</span><span class="p">)</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># Pulse-level simulation</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">model</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">gate_mode</span><span class="o">=</span><span class="s2">&quot;pulse&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Default unitary-level simulation</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">model</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">inputs</span><span class="p">)</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Pulse-level simulation</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">model</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">gate_mode</span><span class="o">=</span><span class="s2">&quot;pulse&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 <p>Pulse-level gates can also be instantiated directly:</p>
-<p><div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.ansaetze</span><span class="w"> </span><span class="kn">import</span> <span class="n">Gates</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="c1"># RX gate represented by its microwave pulse</span>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">Gates</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">wires</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">gate_mode</span><span class="o">=</span><span class="s2">&quot;pulse&quot;</span><span class="p">)</span>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="c1"># With custom pulse parameters [A, sigma, t]</span>
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="n">pulse_params</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]</span>
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="n">Gates</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">wires</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">pulse_params</span><span class="o">=</span><span class="n">pulse_params</span><span class="p">,</span> <span class="n">gate_mode</span><span class="o">=</span><span class="s2">&quot;pulse&quot;</span><span class="p">)</span>
+<p><div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.ansaetze</span><span class="w"> </span><span class="kn">import</span> <span class="n">Gates</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="c1"># RX gate represented by its microwave pulse</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">Gates</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">wires</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">gate_mode</span><span class="o">=</span><span class="s2">&quot;pulse&quot;</span><span class="p">)</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="c1"># With custom pulse parameters [A, sigma, t]</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">pulse_params</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">Gates</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">wires</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">pulse_params</span><span class="o">=</span><span class="n">pulse_params</span><span class="p">,</span> <span class="n">gate_mode</span><span class="o">=</span><span class="s2">&quot;pulse&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 and then used in <a href="../ansaetze/#custom_ansatz">custom Ansaetze</a> or directly as <a href="../ansaetze/#custom_encoding">encoding gates</a>.
 See our documentation on <a href="../ansaetze/#quantum_optimal_control_qoc">Quantum Optimal Control (QOC)</a> for more details on how to choose pulse parameters.</p>
@@ -887,34 +912,19 @@ See our documentation on <a href="../ansaetze/#quantum_optimal_control_qoc">Quan
 <li>See <a href="../ansaetze/#pulse_simulation"><em>Ansaetze</em></a> for a deeper explanation of our pulse-level gates and ansaetze, as well as details on Quantum Optimal Control (QOC), which enables optimizing pulses directly for target unitaries.  </li>
 <li>See <a href="../training/#pulse_level"><em>Training</em></a> for how to train pulse parameters jointly with rotation angles.  </li>
 </ul>
-<h2 id="caching">Caching<a class="headerlink" href="#caching" title="Permanent link">#</a></h2>
-<p>To speed up calculation, you can add <code>cache=True</code> when calling the model.
-The result of the model call will then be stored in a numpy format in a folder <code>.cache</code>.
-Each result is being identified by a md5 hash that is a representation of the following model properties:</p>
-<ul>
-<li>number of qubits</li>
-<li>number of layers</li>
-<li>ansatz</li>
-<li>data-reuploading flag</li>
-<li>parameters</li>
-<li>noise parameters</li>
-<li>execution type</li>
-<li>inputs</li>
-<li>output qubit(s)</li>
-</ul>
 <h2 id="multiprocessing">Multiprocessing<a class="headerlink" href="#multiprocessing" title="Permanent link">#</a></h2>
 <p>Our framework can parallelise the execution of the model by providing a <code>mp_threshold</code> parameter (defaults to -1).
 This parameter effectively determines the batch size above which the model is executed in parallel.
 Given a parameter shape of, i.e. <code>[x,y,1000]</code> and a <code>mp_threshold</code> of 400, three separate processes will be launched.
 If there are only two processes available on the machine, then the model will execute only two processes concurrently, wait for them to finish and then execute the remaining process.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>n_samples = 4500
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>model = Model(
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    n_qubits=2,
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    n_layers=1,
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    circuit_type=&quot;Circuit_19&quot;,
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    mp_threshold=1000,
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>)
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>n_samples = 4500
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>model = Model(
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    n_qubits=2,
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    n_layers=1,
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    circuit_type=&quot;Circuit_19&quot;,
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    mp_threshold=1000,
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>)
 </span></code></pre></div>
 <p>Depending on the chosen parameters and your machine, this can result in a significant speedup.
 Note however, that this is currently only available for <code>n_qubits&lt;model.lightning_threshold</code> which is 12 by default.
@@ -927,15 +937,15 @@ Here, <code>O</code> is the general output shape depending on the execution type
 This shape is also available as a property of the model: <code>model.batch_shape</code>.</p>
 <p>Naturally, the question arises which is the best choice for the hyperparameter <code>mp_threshold</code> as a higher value will result in fewer processes being spawned, while a lower value might over-allocate the CPU and adds parallelization overhead which reduces the speedup compared to single process.
 To visualize this, we provide following Figure where we computed the speedup for several different configurations of <code>mp_threshold</code> and <code>n_samples</code> with a 4 qubit circuit, averaging over 8 runs.</p>
-<p><a class="glightbox" href="../figures/mp_result_density_light.png#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Multiprocessing Density" data-desc-position="top"><img alt="Multiprocessing Density" src="../figures/mp_result_density_light.png#only-light" /></a>
-<a class="glightbox" href="../figures/mp_result_density_dark.png#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Multiprocessing Density" data-desc-position="top"><img alt="Multiprocessing Density" src="../figures/mp_result_density_dark.png#only-dark" /></a></p>
+<p><a class="glightbox" href="../figures/mp_result_density_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Multiprocessing Density" data-desc-position="top"><img alt="Multiprocessing Density" src="../figures/mp_result_density_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/mp_result_density_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Multiprocessing Density" data-desc-position="top"><img alt="Multiprocessing Density" src="../figures/mp_result_density_dark.png#center#only-dark" /></a></p>
 <p>The computation was performed on a 16 core CPU with 32GB of RAM.
 It is clearly visible, that e.g. a <code>mp_threshold</code> of 500 saturates the multi-processing capability after 4500 samples similar to a <code>mp_threshold</code> of 1k at 9k samples.
 Also note how the speedup (over single process) is 1 until the number of samples equal <code>mp_threshold</code>.</p>
 <p>Results above were obtained running density matrix calculations.
 While computing the expectation value is significantly easier, there can still be a speedup achieved for a higher number of samples, as shown in the following Figure.</p>
-<p><a class="glightbox" href="../figures/mp_result_expval_light.png#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Multiprocessing Expval" data-desc-position="top"><img alt="Multiprocessing Expval" src="../figures/mp_result_expval_light.png#only-light" /></a>
-<a class="glightbox" href="../figures/mp_result_expval_dark.png#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Multiprocessing Expval" data-desc-position="top"><img alt="Multiprocessing Expval" src="../figures/mp_result_expval_dark.png#only-dark" /></a></p>
+<p><a class="glightbox" href="../figures/mp_result_expval_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Multiprocessing Expval" data-desc-position="top"><img alt="Multiprocessing Expval" src="../figures/mp_result_expval_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/mp_result_expval_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Multiprocessing Expval" data-desc-position="top"><img alt="Multiprocessing Expval" src="../figures/mp_result_expval_dark.png#center#only-dark" /></a></p>
 <p>Here, the experiment setup is identical to the one above, but the expectation value is computed instead of the density matrix.
 Not how a <code>mp_threshold</code> of 1k achives no significant speedup because of the overhead that comes with multiprocessing, whereas increasing the load of each process (e.g. <code>mp_threshold</code> &gt; 8k) results in a speedup of almost 4 at 60k samples. </p>
 <p>In all experiments, a CPU load factor of 0.9 was used, meaning that the actual number of spawned processes is <code>int(0.9*n_cores)</code> of the CPU.
@@ -943,11 +953,11 @@ This value can be adjusted by overwriting <code>mode.cpu_scaler</code>.</p>
 <h2 id="quantikz_export">Quantikz Export<a class="headerlink" href="#quantikz_export" title="Permanent link">#</a></h2>
 <p>In addition to the printing the model to console and into a figure using matplotlib (thanks to Pennylane); our framework extends this functionality by allowing you to create nice <a href="https://doi.org/10.48550/arXiv.1809.03842">Quantikz</a> figures that you can embedd in a Latex document <img alt="😍" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f60d.svg" title=":heart_eyes:" />.
 This can be achieved by </p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">fig</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">figure</span><span class="o">=</span><span class="s2">&quot;tikz&quot;</span><span class="p">,</span> <span class="n">inputs_symbols</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">gate_values</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">fig</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="s2">&quot;tikz_circuit.tex&quot;</span><span class="p">,</span> <span class="n">full_document</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">fig</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">figure</span><span class="o">=</span><span class="s2">&quot;tikz&quot;</span><span class="p">,</span> <span class="n">inputs_symbols</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">gate_values</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">fig</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="s2">&quot;tikz_circuit.tex&quot;</span><span class="p">,</span> <span class="n">full_document</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </span></code></pre></div>
-<p><a class="glightbox" href="../figures/circuit_tikz_light.png#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Tikz Circuit" data-desc-position="top"><img alt="Tikz Circuit" src="../figures/circuit_tikz_light.png#only-light" /></a>
-<a class="glightbox" href="../figures/circuit_tikz_dark.png#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Tikz Circuit" data-desc-position="top"><img alt="Tikz Circuit" src="../figures/circuit_tikz_dark.png#only-dark" /></a></p>
+<p><a class="glightbox" href="../figures/circuit_tikz_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Tikz Circuit" data-desc-position="top"><img alt="Tikz Circuit" src="../figures/circuit_tikz_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/circuit_tikz_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Tikz Circuit" data-desc-position="top"><img alt="Tikz Circuit" src="../figures/circuit_tikz_dark.png#center#only-dark" /></a></p>
 <p>Inputs are represented with "x" by default, which can be changed by adjusting the optional parameter <code>inputs_symbols</code>.
 If you want to see the actual gate values instead of variables, simply set <code>gate_values=True</code> which is also the default option.
 The returned <code>fig</code> variable is a <code>TikzFigure</code> object that stores the Latex string and allows exporting to a specified file.
