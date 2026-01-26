@@ -8,6 +8,7 @@ from autograd.numpy import numpy_boxes
 from copy import deepcopy
 import math
 import jax
+import jax.numpy as jnp
 
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit, Encoding
@@ -722,10 +723,10 @@ class Model:
             None
         """
         # TODO: rework
-        if params.shape[2] == 1:
+        if len(params.shape) > 2 and params.shape[2] == 1:
             params = params[:, :, 0]
 
-        if inputs.shape[0] == 1:
+        if len(inputs.shape) > 1 and inputs.shape[0] == 1:
             inputs = inputs[0]
 
         if enc_params is None:
@@ -810,15 +811,19 @@ class Model:
             # n-local measurement
             if self.output_qubit == list(range(self.n_qubits)):
                 return [qml.expval(qml.PauliZ(q)) for q in self.output_qubit]
-            # local measurement(s)
-            elif isinstance(self.output_qubit, int):
-                return qml.expval(qml.PauliZ(self.output_qubit))
-            # parity measurenment
+            # parity or local measurement(s)
             elif isinstance(self.output_qubit, list):
-                obs = qml.PauliZ(self.output_qubit[0])
-                for out_qubit in self.output_qubit[1:]:
-                    obs = obs @ qml.PauliZ(out_qubit)
-                return qml.expval(obs)
+                ret = []
+                # list of parity pairs
+                for pair in self.output_qubit:
+                    if isinstance(pair, int):
+                        ret.append(qml.expval(qml.PauliZ(pair)))
+                    else:
+                        obs = qml.PauliZ(pair[0])
+                        for q in pair[1:]:
+                            obs = obs @ qml.PauliZ(q)
+                        ret.append(qml.expval(obs))
+                return ret
             else:
                 raise ValueError(
                     f"Invalid parameter `output_qubit`: {self.output_qubit}.\
@@ -1111,9 +1116,12 @@ class Model:
         """
         min_idx = max(procnum * batch_size, 0)
 
+        # inputs parallelization
         if batch_shape[0] > 1:
             max_idx = min((procnum + 1) * batch_size, inputs.shape[0])
             inputs = inputs[min_idx:max_idx]
+
+        # params parallelization
         if batch_shape[1] > 1:
             max_idx = min((procnum + 1) * batch_size, params.shape[2])
             params = params[:, :, min_idx:max_idx]
@@ -1163,7 +1171,10 @@ class Model:
         def _f(*args, **kwargs):
             result = f(*args, **kwargs)
             if isinstance(result, list):
-                result = np.stack(result).T
+                if isinstance(result[0], jnp.ndarray):
+                    result = jnp.stack(result).T
+                else:
+                    result = np.stack(result).T
             return result
 
         if gate_mode == "pulse" and combined_batch_size > 1:
@@ -1181,7 +1192,7 @@ class Model:
                 )
 
             # wrapper to allow kwargs (not supported by jax)
-            def f(**kwargs):
+            def _f(**kwargs):
                 params_single = kwargs.pop("params")
                 inputs_single = kwargs.pop("inputs")
                 pulse_params_single = kwargs.pop("pulse_params")
@@ -1518,11 +1529,12 @@ class Model:
 
         result = result.reshape((*self.batch_shape, *self._result_shape)).squeeze()
 
-        if self.execution_type == "expval" and force_mean:
+        if (
+            (self.execution_type == "expval" or self.execution_type == "probs")
+            and force_mean
+            and len(result.shape) > 0
+        ):
             result = result.mean(axis=-1)
-        elif self.execution_type == "probs" and force_mean:
-            # exception for torch layer because it swaps batch and output dimension
-            result = result.sum(axis=-1)
 
         if cache:
             np.save(file_path, result)

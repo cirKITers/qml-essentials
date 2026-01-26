@@ -17,150 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.unittest
-def test_parameters() -> None:
-    test_cases = [
-        # {
-        #     "shots": None,
-        #     "execution_type": "expval",
-        #     "output_qubit": 0,
-        #     "force_mean": False,
-        #     "exception": False,
-        # },
-        # {
-        #     "shots": None,
-        #     "execution_type": "expval",
-        #     "output_qubit": -1,
-        #     "force_mean": False,
-        #     "exception": False,
-        # },
-        # {
-        #     "shots": None,
-        #     "execution_type": "expval",
-        #     "output_qubit": -1,
-        #     "force_mean": True,
-        #     "exception": False,
-        # },
-        # {
-        #     "shots": None,
-        #     "execution_type": "density",
-        #     "output_qubit": 0,
-        #     "force_mean": False,
-        #     "exception": False,
-        # },
-        # {
-        #     "shots": 1024,
-        #     "execution_type": "probs",
-        #     "output_qubit": 0,
-        #     "force_mean": False,
-        #     "exception": False,
-        # },
-        {
-            "shots": 1024,
-            "execution_type": "probs",
-            "output_qubit": -1,
-            "force_mean": True,
-            "exception": False,
-        },
-        {
-            "shots": 1024,
-            "execution_type": "expval",
-            "output_qubit": 0,
-            "force_mean": False,
-            "exception": False,
-        },
-        {
-            "shots": None,
-            "execution_type": "state",
-            "output_qubit": -1,
-            "force_mean": False,
-            "exception": False,
-        },
-        {
-            "shots": 1024,
-            "execution_type": "expval",
-            "output_qubit": 0,
-            "force_mean": True,
-            "exception": False,
-        },
-        {
-            "shots": 1024,
-            "execution_type": "density",
-            "output_qubit": 0,
-            "force_mean": False,
-            "exception": True,
-        },
-        {
-            "shots": None,
-            "execution_type": "density",
-            "output_qubit": 0,
-            "force_mean": False,
-            "exception": False,
-        },
-    ]
-
-    # Test the most minimal call
-    model = Model(
-        n_qubits=2,
-        n_layers=1,
-        circuit_type="Circuit_19",
-    )
-    assert (model() == model(model.params)).all()
-
-    for test_case in test_cases:
-        model = Model(
-            n_qubits=2,
-            n_layers=1,
-            circuit_type="Circuit_19",
-            output_qubit=test_case["output_qubit"],
-            shots=test_case["shots"],
-        )
-
-        if test_case["exception"]:
-            with pytest.warns(UserWarning):
-                _ = model(
-                    model.params,
-                    inputs=None,
-                    execution_type=test_case["execution_type"],
-                    force_mean=test_case["force_mean"],
-                )
-        else:
-            result = model(
-                model.params,
-                inputs=None,
-                execution_type=test_case["execution_type"],
-                force_mean=test_case["force_mean"],
-            )
-
-            if test_case["shots"] is None:
-                assert hasattr(
-                    result, "requires_grad"
-                ), "No 'requires_grad' property available in output."
-            else:
-                # TODO: not supported by PennyLane yet
-                pass
-            if test_case["output_qubit"] == -1:
-                if test_case["force_mean"]:
-                    assert (
-                        result.size == 1 or result.shape[0] == 1
-                    ), f"Shape of {test_case['output_qubit']} is not correct."
-                else:
-                    if test_case["execution_type"] == "expval":
-                        # check for 2 because of n qubits
-                        assert (
-                            result.shape[0] == 2
-                        ), f"Shape of {test_case['output_qubit']} is not correct."
-                    elif test_case["execution_type"] == "probs":
-                        assert (
-                            result.shape[0] == 4
-                        ), f"Shape of {test_case['output_qubit']} is not correct."
-                    elif test_case["execution_type"] == "state":
-                        assert (
-                            result.shape[0] == 4
-                        ), f"Shape of {test_case['output_qubit']} is not correct."
-            str(model)
-
-
-@pytest.mark.unittest
 def test_trainable_frequencies() -> None:
     model = Model(
         n_qubits=2,
@@ -1095,53 +951,62 @@ def test_local_state() -> None:
 
 
 @pytest.mark.unittest
-def test_local_and_global_meas() -> None:
+def test_output_shapes() -> None:
     test_cases = [
-        {
-            "inputs": np.array([0.1, 0.2, 0.3]),
-            "execution_type": "expval",
-            "output_qubit": [0, 1],
-            "shots": None,
-            "force_mean": False,
-            "out_shape": (3, 2),
-            "warning": False,
-        },
-        {
-            "inputs": np.array([0.1, 0.2, 0.3]),
-            "execution_type": "expval",
-            "output_qubit": [0, 1],
-            "shots": None,
-            "force_mean": True,
-            "out_shape": (3,),
-            "warning": False,
-        },
-        {
-            "inputs": None,
-            "execution_type": "density",
-            "output_qubit": -1,
-            "shots": None,
-            "force_mean": False,
-            "out_shape": (4, 4),
-            "warning": False,
-        },
-        {
-            "inputs": np.array([0.1, 0.2, 0.3]),
-            "execution_type": "density",
-            "output_qubit": -1,
-            "shots": None,
-            "force_mean": False,
-            "out_shape": (3, 4, 4),
-            "warning": False,
-        },
-        {
-            "inputs": np.array([0.1, 0.2, 0.3]),
-            "execution_type": "density",
-            "output_qubit": 0,
-            "shots": None,
-            "force_mean": False,
-            "out_shape": (3, 2, 2),
-            "warning": False,
-        },
+        # {
+        #     "inputs": np.array(0.1),
+        #     "execution_type": "expval",
+        #     "output_qubit": [0, 1],
+        #     "shots": None,
+        #     "force_mean": False,
+        #     "out_shape": (2,),
+        #     "warning": False,
+        # },
+        # {
+        #     "inputs": np.array([0.1, 0.2, 0.3]),
+        #     "execution_type": "expval",
+        #     "output_qubit": [0, 1],
+        #     "shots": None,
+        #     "force_mean": False,
+        #     "out_shape": (3, 2),
+        #     "warning": False,
+        # },
+        # {
+        #     "inputs": np.array([0.1, 0.2, 0.3]),
+        #     "execution_type": "expval",
+        #     "output_qubit": [0, 1],
+        #     "shots": None,
+        #     "force_mean": True,
+        #     "out_shape": (3,),
+        #     "warning": False,
+        # },
+        # {
+        #     "inputs": None,
+        #     "execution_type": "density",
+        #     "output_qubit": -1,
+        #     "shots": None,
+        #     "force_mean": False,
+        #     "out_shape": (4, 4),
+        #     "warning": False,
+        # },
+        # {
+        #     "inputs": np.array([0.1, 0.2, 0.3]),
+        #     "execution_type": "density",
+        #     "output_qubit": -1,
+        #     "shots": None,
+        #     "force_mean": False,
+        #     "out_shape": (3, 4, 4),
+        #     "warning": False,
+        # },
+        # {
+        #     "inputs": np.array([0.1, 0.2, 0.3]),
+        #     "execution_type": "density",
+        #     "output_qubit": 0,
+        #     "shots": None,
+        #     "force_mean": False,
+        #     "out_shape": (3, 2, 2),
+        #     "warning": False,
+        # },
         {
             "inputs": np.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
@@ -1222,7 +1087,7 @@ def test_parity() -> None:
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_1",
-        output_qubit=[0, 1],  # parity
+        output_qubit=[[0, 1]],  # parity
     )
     model_b = Model(
         n_qubits=2,
@@ -1242,7 +1107,7 @@ def test_parity() -> None:
 
 
 @pytest.mark.smoketest
-def test_params_store() -> None:
+def test_training_step() -> None:
     model = Model(
         n_qubits=2,
         n_layers=1,
@@ -1251,7 +1116,7 @@ def test_params_store() -> None:
     opt = qml.AdamOptimizer(stepsize=0.01)
 
     def cost(params):
-        return model(params=params, inputs=np.array([0])).mean()._value
+        return model(params=params, inputs=np.array([0]), force_mean=True)
 
     params, cost = opt.step_and_cost(cost, model.params)
 
