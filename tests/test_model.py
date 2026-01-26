@@ -148,10 +148,10 @@ def test_multiprocessing_density() -> None:
     start = time.time()
     res_single = model(params=params, execution_type="density")
     t_single = time.time() - start
-    # print(f"Diff: {t_parallel - t_single}")
     # assert (
     #     t_parallel < t_single
     # ), "Time required for multiprocessing larger than single process"
+    print(f"Diff: {t_parallel - t_single}")
 
     assert (
         res_parallel.shape == res_single.shape
@@ -194,7 +194,7 @@ def test_multiprocessing_expval() -> None:
     #     t_parallel < t_single
     # ), "Time required for multiprocessing larger than single process"
 
-    print(t_parallel, t_single)
+    print(f"Diff: {t_parallel - t_single}")
     assert (
         res_parallel.shape == res_single.shape
     ), "Shape of multiprocessing is not correct"
