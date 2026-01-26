@@ -112,7 +112,6 @@ class Model:
         self.remove_zero_encoding = remove_zero_encoding
         self.mp_threshold = mp_threshold
         self.trainable_frequencies: bool = trainable_frequencies
-        self.execution_type: Optional[str] = "expval"
 
         # Initialize rng in Gates
         Gates.init_rng(random_seed)
@@ -846,9 +845,9 @@ class Model:
                 # list of parity pairs
                 for pair in self.output_qubit:
                     if isinstance(pair, int):
-                        ret.append(qml.probs(qml.PauliZ(pair)))
+                        ret.append(qml.probs(wires=[pair]))
                     else:
-                        ret.append(qml.probs(pair))
+                        ret.append(qml.probs(wires=pair))
                 return ret
             else:
                 raise ValueError(
@@ -1352,7 +1351,7 @@ class Model:
         pulse_params: Optional[np.ndarray] = None,
         enc_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
-        execution_type: Optional[str] = None,
+        execution_type: Optional[str] = "expval",
         force_mean: bool = False,
         gate_mode: str = "unitary",
     ) -> np.ndarray:
