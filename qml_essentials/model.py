@@ -112,6 +112,7 @@ class Model:
         self.remove_zero_encoding = remove_zero_encoding
         self.mp_threshold = mp_threshold
         self.trainable_frequencies: bool = trainable_frequencies
+        self.execution_type: str = "expval"
 
         # Initialize rng in Gates
         Gates.init_rng(random_seed)
