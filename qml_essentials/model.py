@@ -407,7 +407,7 @@ class Model:
             else:
                 assert (
                     value < self.n_qubits
-                ), f"Output qubit {value} cannot be larger than number of qubits {self.n_qubits}."
+                ), f"Output qubit {value} cannot be larger than {self.n_qubits}."
                 value = [value]
 
         self._output_qubit = value
@@ -1298,13 +1298,13 @@ class Model:
         batch_shape = (B_I, B_P, B_R)
         B = B_I * B_P * B_R
 
-        # --- inputs: [B_I, ...] -> [B_I, B_P, B_R, ...] -> [B, ...]
+        # [B_I, ...] -> [B_I, B_P, B_R, ...] -> [B, ...]
         if B_I > 1:
             inputs = np.repeat(inputs[:, None, None, ...], B_P, axis=1)
             inputs = np.repeat(inputs, B_R, axis=2)
             inputs = inputs.reshape(B, *inputs.shape[3:])
 
-        # --- params: [..., ..., B_P] -> [..., ..., B_I, B_P, B_R] -> [..., ..., B]
+        # [..., ..., B_P] -> [..., ..., B_I, B_P, B_R] -> [..., ..., B]
         if B_P > 1:
             # add B_I axis before last, and B_R axis after last
             params = params[..., None, :, None]  # [..., B_I(=1), B_P, B_R(=1)]
@@ -1312,7 +1312,7 @@ class Model:
             params = np.repeat(params, B_R, axis=-1)  # [..., B_I, B_P, B_R]
             params = params.reshape(*params.shape[:-3], B)
 
-        # --- pulse_params: [..., ..., B_R] -> [..., ..., B_I, B_P, B_R] -> [..., ..., B]
+        # [..., ..., B_R] -> [..., ..., B_I, B_P, B_R] -> [..., ..., B]
         if B_R > 1:
             # add B_I axis before last, and B_P axis before last (after adding B_I)
             pulse_params = pulse_params[
