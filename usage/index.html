@@ -406,15 +406,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#caching" class="md-nav__link">
-    <span class="md-ellipsis">
-      Caching
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#multiprocessing" class="md-nav__link">
     <span class="md-ellipsis">
       Multiprocessing
@@ -680,15 +671,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#caching" class="md-nav__link">
-    <span class="md-ellipsis">
-      Caching
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#multiprocessing" class="md-nav__link">
     <span class="md-ellipsis">
       Multiprocessing
@@ -886,21 +868,6 @@ See our documentation on <a href="../ansaetze/#quantum_optimal_control_qoc">Quan
 <ul>
 <li>See <a href="../ansaetze/#pulse_simulation"><em>Ansaetze</em></a> for a deeper explanation of our pulse-level gates and ansaetze, as well as details on Quantum Optimal Control (QOC), which enables optimizing pulses directly for target unitaries.  </li>
 <li>See <a href="../training/#pulse_level"><em>Training</em></a> for how to train pulse parameters jointly with rotation angles.  </li>
-</ul>
-<h2 id="caching">Caching<a class="headerlink" href="#caching" title="Permanent link">#</a></h2>
-<p>To speed up calculation, you can add <code>cache=True</code> when calling the model.
-The result of the model call will then be stored in a numpy format in a folder <code>.cache</code>.
-Each result is being identified by a md5 hash that is a representation of the following model properties:</p>
-<ul>
-<li>number of qubits</li>
-<li>number of layers</li>
-<li>ansatz</li>
-<li>data-reuploading flag</li>
-<li>parameters</li>
-<li>noise parameters</li>
-<li>execution type</li>
-<li>inputs</li>
-<li>output qubit(s)</li>
 </ul>
 <h2 id="multiprocessing">Multiprocessing<a class="headerlink" href="#multiprocessing" title="Permanent link">#</a></h2>
 <p>Our framework can parallelise the execution of the model by providing a <code>mp_threshold</code> parameter (defaults to -1).
