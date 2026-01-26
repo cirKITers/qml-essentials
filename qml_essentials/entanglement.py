@@ -150,6 +150,7 @@ class Entanglement:
             # look at the auxiliary qubits
             return model._observable()
 
+        prev_output_qubit = model.output_qubit
         model.output_qubit = [(q, q + model.n_qubits) for q in range(model.n_qubits)]
         model.circuit = qml.QNode(
             _circuit,
@@ -192,6 +193,8 @@ class Entanglement:
         entangling_capability = min(max(measure.mean(), 0.0), 1.0)
         log.debug(f"Variance of measure: {measure.var()}")
 
+        # restore state
+        model.output_qubit = prev_output_qubit
         return float(entangling_capability)
 
     @staticmethod
