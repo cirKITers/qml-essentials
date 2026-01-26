@@ -243,22 +243,6 @@ For more details:
 - See [*Training*](training.md#pulse_level) for how to train pulse parameters jointly with rotation angles.  
 
 
-## Caching
-
-To speed up calculation, you can add `cache=True` when calling the model.
-The result of the model call will then be stored in a numpy format in a folder `.cache`.
-Each result is being identified by a md5 hash that is a representation of the following model properties:
-
-- number of qubits
-- number of layers
-- ansatz
-- data-reuploading flag
-- parameters
-- noise parameters
-- execution type
-- inputs
-- output qubit(s)
-
 ## Multiprocessing
 
 Our framework can parallelise the execution of the model by providing a `mp_threshold` parameter (defaults to -1).

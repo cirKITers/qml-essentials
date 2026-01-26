@@ -316,61 +316,6 @@ def test_encoding() -> None:
             expected {test_case['degree']} for test case {test_case}"
 
 
-@pytest.mark.unittest
-def test_cache() -> None:
-    # Stupid try removing caches
-    try:
-        shutil.rmtree(".cache")
-    except Exception as e:
-        logger.warning(e)
-
-    model = Model(
-        n_qubits=2,
-        n_layers=1,
-        circuit_type="Circuit_19",
-    )
-
-    result = model(
-        model.params,
-        inputs=None,
-        cache=True,
-    )
-
-    hs = hashlib.md5(
-        repr(
-            {
-                "n_qubits": model.n_qubits,
-                "n_layers": model.n_layers,
-                "pqc": model.pqc.__class__.__name__,
-                "dru": model.data_reupload,
-                "params": model.params,
-                "pulse_params": model.pulse_params,
-                "enc_params": model.enc_params,
-                "noise_params": model.noise_params,
-                "execution_type": model.execution_type,
-                "inputs": np.array([[0]]),
-                "output_qubit": model.output_qubit,
-            }
-        ).encode("utf-8")
-    ).hexdigest()
-
-    cache_folder: str = ".cache"
-    if not os.path.exists(cache_folder):
-        raise Exception("Cache folder does not exist.")
-
-    name: str = f"pqc_{hs}.npy"
-    file_path: str = os.path.join(cache_folder, name)
-
-    if os.path.isfile(file_path):
-        cached_result = np.load(file_path)
-    else:
-        raise Exception("Cache file does not exist.")
-
-    assert np.array_equal(
-        result, cached_result
-    ), "Cached result and calcualted result is not equal."
-
-
 @pytest.mark.expensive
 @pytest.mark.smoketest
 def test_lightning() -> None:
@@ -511,7 +456,6 @@ def test_initialization() -> None:
             model.params,
             inputs=None,
             noise_params=None,
-            cache=False,
             execution_type="expval",
         )
 
@@ -568,7 +512,6 @@ def test_ansaetze() -> None:
                 "StatePreparation": 0.1,
                 "Measurement": 0.1,
             },
-            cache=False,
             execution_type="density",
         )
 
@@ -624,7 +567,6 @@ def test_ansaetze() -> None:
             "Depolarizing": 0.5,
             "MultiQubitDepolarizing": 0.6,
         },
-        cache=False,
         execution_type="density",
     )
 
@@ -635,7 +577,6 @@ def test_ansaetze() -> None:
             noise_params={
                 "UnsupportedNoise": 0.1,
             },
-            cache=False,
             execution_type="density",
         )
 
@@ -798,7 +739,6 @@ def test_multi_input() -> None:
             model.params,
             inputs=inputs,
             noise_params=None,
-            cache=False,
             execution_type="expval",
         )
 
@@ -862,7 +802,6 @@ def test_dru() -> None:
             model.params,
             inputs=None,
             noise_params=None,
-            cache=False,
             execution_type="expval",
         )
 
@@ -921,7 +860,6 @@ def test_local_state() -> None:
             model.params,
             inputs=None,
             noise_params=None,
-            cache=False,
         )
 
         # check if setting "externally" is working
@@ -940,7 +878,6 @@ def test_local_state() -> None:
         _ = model(
             model.params,
             inputs=None,
-            cache=False,
             noise_params=test_case["noise_params"],
             execution_type=test_case["execution_type"],
         )
@@ -1062,7 +999,6 @@ def test_output_shapes() -> None:
                     inputs=test_case["inputs"],
                     force_mean=test_case["force_mean"],
                     noise_params=None,
-                    cache=False,
                     execution_type=test_case["execution_type"],
                 )
         else:
@@ -1071,7 +1007,6 @@ def test_output_shapes() -> None:
                 inputs=test_case["inputs"],
                 force_mean=test_case["force_mean"],
                 noise_params=None,
-                cache=False,
                 execution_type=test_case["execution_type"],
             )
 
