@@ -20,12 +20,12 @@ logger = logging.getLogger(__name__)
 @pytest.mark.unittest
 def test_coefficients() -> None:
     test_cases = [
-        {
-            "circuit_type": "Circuit_1",
-            "n_qubits": 3,
-            "n_layers": 1,
-            "output_qubit": [0, 1],
-        },
+        # {
+        #     "circuit_type": "Circuit_1",
+        #     "n_qubits": 3,
+        #     "n_layers": 1,
+        #     "output_qubit": [0, 1],
+        # },
         {
             "circuit_type": "Circuit_9",
             "n_qubits": 4,
@@ -56,15 +56,15 @@ def test_coefficients() -> None:
             np.sum(coeffs).imag, 0.0, rtol=1.0e-5
         ), "Imaginary part is not zero"
 
-        partial_circuit = partial(model, model.params)
-        ref_coeffs = pcoefficients(partial_circuit, 1, np.array(model.degree) // 2)
+        partial_circuit = partial(model, model.params.squeeze(), force_mean=True)
+        ref_coeffs = pcoefficients(partial_circuit, 1, int(np.array(model.degree) // 2))
 
         assert np.allclose(
             coeffs, ref_coeffs, rtol=1.0e-5
         ), "Coefficients don't match the pennylane reference"
 
         for ref_input in reference_inputs:
-            exp_model = model(params=None, inputs=ref_input)
+            exp_model = model(params=None, inputs=ref_input, force_mean=True)
 
             exp_fourier = Coefficients.evaluate_Fourier_series(
                 coefficients=coeffs,

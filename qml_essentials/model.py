@@ -434,9 +434,10 @@ class Model:
             # check if all qubits are used
             if len(self.output_qubit) == self.n_qubits:
                 self._result_shape = (len(self.output_qubit),)
-            # if not -> parity measurement with only 1D output
+            # if not -> parity measurement with only 1D output per pair
+            # or n_local measurement
             else:
-                self._result_shape = (1,)
+                self._result_shape = (len(self.output_qubit),)
         elif value == "probs":
             self._result_shape = (len(self.output_qubit), 2)
         elif value == "state":
@@ -521,7 +522,7 @@ class Model:
     def has_dru(self) -> bool:
         """
         Checks if the model has DRU looking for a value in
-        model.degree which is >1.
+        model.frequences which is >1.
 
         Returns:
             bool: _description_
@@ -1258,7 +1259,9 @@ class Model:
         batch_shape  (B_I, B_P, B_R)
         """
         B_I = inputs.shape[0]
-        B_P = params.shape[-1]
+        # we check for the product because there is a chance that
+        # there are no params. In this case we want B_P to be 1
+        B_P = params.shape[-1] if np.prod(params.shape) > 0 else 1
         B_R = pulse_params.shape[-1]
 
         batch_shape = (B_I, B_P, B_R)
@@ -1495,6 +1498,7 @@ class Model:
             (self.execution_type == "expval" or self.execution_type == "probs")
             and force_mean
             and len(result.shape) > 0
+            and self._result_shape[0] > 1
         ):
             result = result.mean(axis=-1)
 
