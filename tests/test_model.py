@@ -642,6 +642,12 @@ def test_pulse_model_inference():
     # forward pass with initial pulse_params
     y_hat_original = model(inputs=x, gate_mode="pulse", force_mean=True)
 
+    y_hat_unitary = model(inputs=x, gate_mode="unitary", force_mean=True)
+
+    assert np.allclose(
+        y_hat_unitary, y_hat_original, atol=1e-3
+    ), "Unitary output did not match pulse output"
+
     # perturb pulse_params
     original_params = model.pulse_params.copy()
     model.pulse_params += 0.1
