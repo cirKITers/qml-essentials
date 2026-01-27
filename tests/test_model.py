@@ -637,12 +637,12 @@ def test_pulse_model_inference():
         circuit_type="Hardware_Efficient",
     )
 
-    x = np.linspace(-np.pi, np.pi, 10)
+    inputs = np.linspace(-np.pi, np.pi, 10)
 
     # forward pass with initial pulse_params
-    y_hat_original = model(inputs=x, gate_mode="pulse", force_mean=True)
+    y_hat_original = model(inputs=inputs, gate_mode="pulse", force_mean=True)
 
-    y_hat_unitary = model(inputs=x, gate_mode="unitary", force_mean=True)
+    y_hat_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
 
     assert np.allclose(
         y_hat_unitary, y_hat_original, atol=1e-3
@@ -653,9 +653,9 @@ def test_pulse_model_inference():
     model.pulse_params += 0.1
 
     # forward pass with perturbed pulse_params
-    y_hat_perturbed = model(inputs=x, gate_mode="pulse", force_mean=True)
+    y_hat_perturbed = model(inputs=inputs, gate_mode="pulse", force_mean=True)
 
-    assert y_hat_original.shape[0] == x.shape[0], "Output batch size mismatch"
+    assert y_hat_original.shape[0] == inputs.shape[0], "Output batch size mismatch"
 
     # ensure output changed after perturbing pulse_params
     assert not np.allclose(
@@ -680,7 +680,6 @@ def test_pulse_model_batching():
     assert res_b.shape == (2, 2), "Batch size mismatch"
 
     inputs = rng.uniform(0, 2 * np.pi, size=(3))
-
     # test pulse params & inputs batching
     res_a = model(inputs=inputs, gate_mode="unitary")
     res_b = model(inputs=inputs, gate_mode="pulse")
