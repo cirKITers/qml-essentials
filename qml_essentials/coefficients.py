@@ -158,21 +158,37 @@ class Coefficients:
         Returns:
             float: The function value at the input point.
         """
-        dims = len(coefficients.shape)
+        if isinstance(frequencies, list):
+            if len(coefficients.shape) <= len(frequencies):
+                coefficients = coefficients[..., np.newaxis]
+        else:
+            if len(coefficients.shape) == 1:
+                coefficients = coefficients[..., np.newaxis]
 
         if not isinstance(inputs, (np.ndarray, list)):
             inputs = [inputs]
 
-        frequencies = np.stack(np.meshgrid(*frequencies)).T.reshape(-1, dims)
-        freq_inputs = np.einsum("...j,j->...", frequencies, inputs)
-        coeffs = coefficients.flatten()
-        freq_inputs = freq_inputs.flatten()
+        if isinstance(frequencies, list):
+            input_dim = len(frequencies)
+            frequencies = np.stack(np.meshgrid(*frequencies))
+            if input_dim != len(inputs):
+                frequencies = np.repeat(
+                    frequencies[np.newaxis, ...], [len(inputs)], axis=0
+                )
+                freq_inputs = np.einsum("bi...,b->b...", frequencies, inputs)
+                exponents = np.exp(1j * freq_inputs).T
+                exp = np.einsum("jl...k,jl...b->b...k", coefficients, exponents)
+            else:
+                freq_inputs = np.einsum("i...,i->...", frequencies, inputs)
+                exponents = np.exp(1j * freq_inputs).T
+                exp = np.einsum("jl...k,jl...->k...", coefficients, exponents)
+        else:
+            frequencies = np.repeat(frequencies[np.newaxis, ...], [len(inputs)], axis=0)
+            freq_inputs = np.einsum("i...,i->i...", frequencies, inputs)
+            exponents = np.exp(1j * freq_inputs)
+            exp = np.einsum("j...k,ij...->ik...", coefficients, exponents)
 
-        exp = 0.0
-        for omega_x, c in zip(freq_inputs, coeffs):
-            exp += c * np.exp(1j * omega_x)
-
-        return np.real_if_close(exp)
+        return np.squeeze(np.real_if_close(exp))
 
 
 class FourierTree:
