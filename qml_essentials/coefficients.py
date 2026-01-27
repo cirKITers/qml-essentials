@@ -68,7 +68,7 @@ class Coefficients:
             for ax in range(model.n_input_feat):
                 if coeffs.shape[ax] % 2 == 0:
                     coeffs = np.delete(coeffs, len(coeffs) // 2, axis=ax)
-                    freqs = np.delete(freqs, len(freqs) // 2, axis=ax)
+                    freqs = [np.delete(freq, len(freq) // 2, axis=ax) for freq in freqs]
 
         if shift:
             coeffs = np.fft.fftshift(coeffs, axes=list(range(model.n_input_feat)))
@@ -108,8 +108,6 @@ class Coefficients:
 
         coeffs = np.fft.fftn(outputs, axes=list(range(model.n_input_feat)))
 
-        # TODO: in the future, this should take into account that there can be a
-        # different number of frequencies per dimension
         freqs = [
             np.fft.fftfreq(int(mts * n_freqs[i]), 1 / n_freqs[i])
             for i in range(model.n_input_feat)
