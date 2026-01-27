@@ -1352,7 +1352,7 @@ class Model:
         pulse_params: Optional[np.ndarray] = None,
         enc_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
-        execution_type: Optional[str] = "expval",
+        execution_type: Optional[str] = None,
         force_mean: bool = False,
         gate_mode: str = "unitary",
     ) -> np.ndarray:
