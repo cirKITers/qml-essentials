@@ -20,12 +20,12 @@ logger = logging.getLogger(__name__)
 @pytest.mark.unittest
 def test_coefficients() -> None:
     test_cases = [
-        # {
-        #     "circuit_type": "Circuit_1",
-        #     "n_qubits": 3,
-        #     "n_layers": 1,
-        #     "output_qubit": [0, 1],
-        # },
+        {
+            "circuit_type": "Circuit_1",
+            "n_qubits": 3,
+            "n_layers": 1,
+            "output_qubit": [0, 1],
+        },
         {
             "circuit_type": "Circuit_9",
             "n_qubits": 4,
@@ -57,7 +57,7 @@ def test_coefficients() -> None:
         ), "Imaginary part is not zero"
 
         partial_circuit = partial(model, model.params.squeeze(), force_mean=True)
-        ref_coeffs = pcoefficients(partial_circuit, 1, int(np.array(model.degree) // 2))
+        ref_coeffs = pcoefficients(partial_circuit, 1, model.degree[0] // 2)
 
         assert np.allclose(
             coeffs, ref_coeffs, rtol=1.0e-5
