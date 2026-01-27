@@ -241,6 +241,12 @@ model(gate_mode="pulse", pulse_params=model.pulse_params_scaler * 1.5)
 Here, input and params are inferred from the `Model` instance, and we scale all pulse parameters by a factor of 1.5.
 Currently there is no way to change the raw values of pulse parameter through the model api directly.
 
+Similar to the input and standard parameters, we also support batching for the `pulse_params` argument, meaning that you can also pass a batched array of pulse parameters of e.g. size 2 to as follows:
+
+```python
+model(pulse_params=np.repeat(model.pulse_params, 2, axis=-1), gate_mode="pulse")
+``` 
+
 > **Note:** Pulse-level simulation currently **does not support noise channels**. Mixing with noise will raise an error.  
 
 ### Quantum Optimal Control (QOC)

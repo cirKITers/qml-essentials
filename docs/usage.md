@@ -155,6 +155,8 @@ See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
 
 The output shape is determined by the `output_qubit` argument, provided in the instantiation of the model.
 When set to -1 all qubits are measured which will result in the shape being of size $n$ by default (depending on the execution type, see below).
+Setting `output_qubit` to an integer will measue the qubit with the index specified.
+Furthermore, "parity measurements" are supported, where `output_qubit` becomes a list of qubit pairs, e.g. `[[0, 1], [2, 3]]` to measure the parity between qubits 0 and 1 and qubits 2 and 3.
 
 If `force_mean` flag is set when calling the model, the output is averaged to a single value (while keeping the batch/ input dimension).
 This is usually helpful, if you want to perform a n-local measurement over all qubits where only the average over $n$ expecation values is of interest.
@@ -271,6 +273,9 @@ Note, that if both, parameters and inputs are batched with size `B_I` and `B_P` 
 Internally, these combinations will be flattened during processing and then reshaped to the original shape afterwards, such that the output shape is `[O, B_I, B_P]`.
 Here, `O` is the general output shape depending on the execution type, `B_I` is the batch dimension of the inputs and `B_P` is the batch dimension of the parameters.
 This shape is also available as a property of the model: `model.batch_shape`.
+Note, that the output shape is always squeezed, i.e. batch axes will be suppressed if their dimension is 1.
+Also, there is a third batch axis in `model.batch_shape` for pulse parameters.
+See more on that topic in [*Ansaetze*](ansaetze.md#pulse_simulation).
 
 Naturally, the question arises which is the best choice for the hyperparameter `mp_threshold` as a higher value will result in fewer processes being spawned, while a lower value might over-allocate the CPU and adds parallelization overhead which reduces the speedup compared to single process.
 To visualize this, we provide following Figure where we computed the speedup for several different configurations of `mp_threshold` and `n_samples` with a 4 qubit circuit, averaging over 8 runs.
