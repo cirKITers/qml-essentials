@@ -78,6 +78,54 @@ def test_coefficients() -> None:
 
 
 @pytest.mark.unittest
+def test_dummy_model() -> None:
+    class Model_Fct:
+        def __init__(self, c, f):
+            self.c = c
+            self.f = f
+            self.degree = (2 * max(f) + 1,)
+            self.frequencies = f
+            self.n_input_feat = 1
+
+        def __call__(self, inputs, **kwargs):
+            return np.sum(
+                [c * np.exp(-1j * inputs * f) for f, c in zip(self.f, self.c)], axis=0
+            )
+
+    mts = 2
+    freqs = [-3, -1.5, 0, 1.5, 3]
+    coeffs = [1, 1, 0, 1, 1]
+
+    fs = max(freqs) * 2 + 1
+    model_fct = Model_Fct(coeffs, freqs)
+
+    x = np.arange(0, mts * 2 * np.pi, 2 * np.pi / fs)
+    out = model_fct(x)
+
+    X = np.fft.fft(out) / out.size
+
+    X_freq = np.fft.fftfreq(X.size, 1 / fs)
+
+    if X.size % 2 == 0:
+        X = np.delete(X, len(X) // 2)
+        X_freq = np.delete(X_freq, len(X_freq) // 2)
+
+    X_shift = np.fft.fftshift(X)
+    X_freq_shift = np.fft.fftshift(X_freq)
+
+    X2_shift, X2_freq_shift = Coefficients.get_spectrum(
+        model_fct, mts=mts, shift=True, trim=True
+    )
+
+    assert np.allclose(
+        X2_shift, X_shift, atol=1.0e-5
+    ), "Model and dummy coefficients are not equal."
+    assert np.allclose(
+        X2_freq_shift, X_freq_shift, atol=1.0e-5
+    ), "Model and dummy frequencies are not equal."
+
+
+@pytest.mark.unittest
 def test_multi_dim_input() -> None:
     model = Model(
         n_qubits=3,
