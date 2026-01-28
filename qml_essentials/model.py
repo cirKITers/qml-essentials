@@ -1,14 +1,15 @@
 from typing import Dict, Optional, Tuple, Callable, Union, List
 import pennylane as qml
 import pennylane.numpy as np
-import hashlib
-import os
 import warnings
 from autograd.numpy import numpy_boxes
 from copy import deepcopy
 import math
+import jax
+import jax.numpy as jnp
 
-from qml_essentials.ansaetze import Gates, Ansaetze, Circuit
+
+from qml_essentials.ansaetze import Gates, Ansaetze, Circuit, Encoding
 from qml_essentials.ansaetze import PulseInformation as pinfo
 from qml_essentials.utils import PauliCircuit, QuanTikz, MultiprocessingPool
 
@@ -34,7 +35,7 @@ class Model:
         state_preparation: Union[
             str, Callable, List[Union[str, Callable]], None
         ] = None,
-        encoding: Union[str, Callable, List[Union[str, Callable]]] = Gates.RX,
+        encoding: Union[Encoding, str, Callable, List[Union[str, Callable]]] = Gates.RX,
         trainable_frequencies: bool = False,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * np.pi],
@@ -103,28 +104,22 @@ class Model:
             None
         """
         # Initialize default parameters needed for circuit evaluation
+        self.n_qubits: int = n_qubits
+        self.output_qubit: Union[List[int], int] = output_qubit
+        self.n_layers: int = n_layers
         self.noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None
-        self.execution_type: Optional[str] = "expval"
         self.shots = shots
         self.remove_zero_encoding = remove_zero_encoding
         self.mp_threshold = mp_threshold
-        self.n_qubits: int = n_qubits
-        self.n_layers: int = n_layers
         self.trainable_frequencies: bool = trainable_frequencies
-
-        if isinstance(output_qubit, list):
-            assert (
-                len(output_qubit) <= n_qubits
-            ), f"Size of output_qubit {len(output_qubit)} cannot be\
-            larger than number of qubits {n_qubits}."
-        self.output_qubit: Union[List[int], int] = output_qubit
+        self.execution_type: str = "expval"
 
         # Initialize rng in Gates
         Gates.init_rng(random_seed)
 
         # --- State Preparation ---
         try:
-            self._sp = self._parse_gates(state_preparation, Gates)
+            self._sp = Gates.parse_gates(state_preparation, Gates)
         except ValueError as e:
             raise ValueError(f"Error parsing encodings: {e}")
 
@@ -141,19 +136,23 @@ class Model:
                 self.sp_pulse_params.append(None)
 
         # --- Encoding ---
-        try:
-            self._enc = self._parse_gates(encoding, Gates)
-        except ValueError as e:
-            raise ValueError(f"Error parsing encodings: {e}")
+        if isinstance(encoding, Encoding):
+            # user wants custom strategy? do it!
+            self._enc = encoding
+        else:
+            # use hammming encoding by default
+            self._enc = Encoding("hamming", encoding)
 
         # Number of possible inputs
         self.n_input_feat = len(self._enc)
-        log.info(f"Number of input features: {self.n_input_feat}")
+        log.debug(f"Number of input features: {self.n_input_feat}")
 
         # Trainable frequencies, default initialization as in arXiv:2309.03279v2
         self.enc_params = np.ones(
             (self.n_qubits, self.n_input_feat), requires_grad=trainable_frequencies
         )
+
+        self._zero_inputs = False
 
         # --- Data-Reuploading ---
         # Process data reuploading strategy and set degree
@@ -196,12 +195,18 @@ class Model:
 
         # convert to boolean values
         self.data_reupload = data_reupload.astype(bool)
-        self.frequencies = [
-            np.count_nonzero(self.data_reupload[..., i])
+        self.degree: Tuple = tuple(
+            self._enc.get_n_freqs(np.count_nonzero(self.data_reupload[..., i]))
             for i in range(self.n_input_feat)
-        ]
+        )
 
-        if self.degree > 1:
+        self.frequencies: Tuple = tuple(
+            self._enc.get_spectrum(np.count_nonzero(self.data_reupload[..., i]))
+            for i in range(self.n_input_feat)
+        )
+
+        # check for the highest degree among all input dimensions
+        if self.has_dru():
             impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
         else:
             impl_n_layers = n_layers
@@ -228,7 +233,7 @@ class Model:
             pulse_params_per_layer,
         )
 
-        self.batch_shape = (1, 1)
+        self.batch_shape = (1, 1, 1)
         # this will also be re-used in the init method,
         # however, only if nothing is provided
         self._inialization_strategy = initialization
@@ -236,6 +241,13 @@ class Model:
 
         # ..here! where we only require a rng
         self.initialize_params(np.random.default_rng(random_seed))
+
+        # Initializing pulse params
+        self.pulse_params: np.ndarray = np.ones(
+            (*self._pulse_params_shape, 1), requires_grad=False
+        )
+
+        log.info(f"Initialized pulse parameters with shape {self.pulse_params.shape}.")
 
         # Initialize two circuits, one with the default device and
         # one with the mixed device
@@ -250,11 +262,6 @@ class Model:
             interface="autograd" if self.shots is not None else "auto",
             diff_method="parameter-shift" if self.shots is not None else "best",
         )
-
-    @property
-    def degree(self):
-
-        return max(self.frequencies)
 
     @property
     def as_pauli_circuit(self) -> bool:
@@ -286,39 +293,6 @@ class Model:
                 PauliCircuit.from_parameterised_circuit
             )
             self.circuit = pauli_circuit_transform(self.circuit)
-
-    def _parse_gates(
-        self,
-        gates: Union[str, Callable, List[Union[str, Callable]]],
-        set_of_gates,
-    ):
-        if isinstance(gates, str):
-            # if str, use the pennylane fct
-            parsed_gates = [getattr(set_of_gates, f"{gates}")]
-        elif isinstance(gates, list):
-            parsed_gates = []
-            for enc in gates:
-                # if list, check if str or callable
-                if isinstance(enc, str):
-                    parsed_gates.append(getattr(set_of_gates, f"{enc}"))
-                # check if callable
-                elif callable(enc):
-                    parsed_gates.append(enc)
-                else:
-                    raise ValueError(
-                        f"Operation {enc} is not a valid gate or callable.\
-                        Got {type(enc)}"
-                    )
-        elif callable(gates):
-            # default to callable
-            parsed_gates = [gates]
-        elif gates is None:
-            parsed_gates = [lambda *args, **kwargs: None]
-        else:
-            raise ValueError(
-                f"Operation {gates} is not a valid gate or callable or list of both."
-            )
-        return parsed_gates
 
     @property
     def noise_params(self) -> Optional[Dict[str, Union[float, Dict[str, float]]]]:
@@ -420,6 +394,28 @@ class Model:
         self._noise_params = kvs
 
     @property
+    def output_qubit(self) -> int:
+        return self._output_qubit
+
+    @output_qubit.setter
+    def output_qubit(self, value: int) -> None:
+        if isinstance(value, list):
+            assert (
+                len(value) <= self.n_qubits
+            ), f"Size of output_qubit {len(value)} cannot be\
+            larger than number of qubits {self.n_qubits}."
+        elif isinstance(value, int):
+            if value == -1:
+                value = list(range(self.n_qubits))
+            else:
+                assert (
+                    value < self.n_qubits
+                ), f"Output qubit {value} cannot be larger than {self.n_qubits}."
+                value = [value]
+
+        self._output_qubit = value
+
+    @property
     def execution_type(self) -> str:
         """
         Gets the execution type of the model.
@@ -431,7 +427,31 @@ class Model:
 
     @execution_type.setter
     def execution_type(self, value: str) -> None:
-        if value not in ["density", "state", "expval", "probs"]:
+        if value == "density":
+            self._result_shape = (
+                2 ** len(self.output_qubit),
+                2 ** len(self.output_qubit),
+            )
+        elif value == "expval":
+            # check if all qubits are used
+            if len(self.output_qubit) == self.n_qubits:
+                self._result_shape = (len(self.output_qubit),)
+            # if not -> parity measurement with only 1D output per pair
+            # or n_local measurement
+            else:
+                self._result_shape = (len(self.output_qubit),)
+        elif value == "probs":
+            # in case this is a list of parities,
+            # each pair has 2^len(qubits) probabilities
+            n_parity = (
+                2 ** len(self.output_qubit[0])
+                if isinstance(self.output_qubit[0], Tuple)
+                else 2
+            )
+            self._result_shape = (len(self.output_qubit), n_parity)
+        elif value == "state":
+            self._result_shape = (2 ** len(self.output_qubit),)
+        else:
             raise ValueError(f"Invalid execution type: {value}.")
 
         if (value == "density" or value == "state") and self.output_qubit != -1:
@@ -484,6 +504,9 @@ class Model:
 
     @params.setter
     def params(self, value: np.ndarray) -> None:
+        if len(value.shape) == 2:
+            value = value.reshape(*value.shape, 1)
+
         self._params = value
 
     @property
@@ -502,10 +525,20 @@ class Model:
     def pulse_params(self, value: np.ndarray) -> None:
         self._pulse_params = value
 
+    def has_dru(self) -> bool:
+        """
+        Checks if the model has DRU looking for a value in
+        model.frequences which is >1.
+
+        Returns:
+            bool: _description_
+        """
+        return np.max([np.max(f) for f in self.frequencies]) > 1
+
     def initialize_params(
         self,
         rng: np.random.Generator,
-        repeat: int = None,
+        repeat: int = 1,
         initialization: str = None,
         initialization_domain: List[float] = None,
     ) -> None:
@@ -525,9 +558,8 @@ class Model:
             None
         """
         # Initializing params
-        params_shape = (
-            self._params_shape if repeat is None else [*self._params_shape, repeat]
-        )
+        params_shape = (*self._params_shape, repeat)
+
         # use existing strategy if not specified
         initialization = initialization or self._inialization_strategy
         initialization_domain = initialization_domain or self._initialization_domain
@@ -574,16 +606,6 @@ class Model:
             using strategy {initialization}."
         )
 
-        # Initializing pulse params
-        shape = (
-            self._pulse_params_shape
-            if repeat is None
-            else (*self._pulse_params_shape, repeat)
-        )
-        self.pulse_params: np.ndarray = np.ones(shape, requires_grad=False)
-
-        log.info(f"Initialized pulse parameters with shape {self.pulse_params.shape}.")
-
     def transform_input(
         self, inputs: np.ndarray, enc_params: Optional[np.ndarray]
     ) -> np.ndarray:
@@ -627,14 +649,17 @@ class Model:
             None
         """
         # check for zero, because due to input validation, input cannot be none
-        if self.remove_zero_encoding and not inputs.any():
+        if self.remove_zero_encoding and self._zero_inputs and self.batch_shape[0] == 1:
             return
 
         for q in range(self.n_qubits):
-            for idx in range(inputs.shape[1]):
+            # use the last dimension of the inputs (feature dimension)
+            for idx in range(inputs.shape[-1]):
                 if data_reupload[q, idx]:
+                    # use elipsis to indiex only the last dimension
+                    # as inputs are generally *not* qubit dependent
                     enc[idx](
-                        self.transform_input(inputs[:, idx], enc_params[q, idx]),
+                        self.transform_input(inputs[..., idx], enc_params[q, idx]),
                         wires=q,
                         noise_params=noise_params,
                     )
@@ -702,6 +727,13 @@ class Model:
         Returns:
             None
         """
+        # TODO: rework
+        if len(params.shape) > 2 and params.shape[2] == 1:
+            params = params[:, :, 0]
+
+        if len(inputs.shape) > 1 and inputs.shape[0] == 1:
+            inputs = inputs[0]
+
         if enc_params is None:
             # TODO: Raise warning if trainable frequencies is True, or similar. I.e., no
             #   warning if user does not care for frequencies or enc_params
@@ -756,13 +788,13 @@ class Model:
             )
 
             # visual barrier
-            if self.degree > 1:
+            if self.has_dru():
                 qml.Barrier(wires=list(range(self.n_qubits)), only_visual=True)
 
         # final ansatz layer
-        if self.degree > 1:  # same check as in init
+        if self.has_dru():  # same check as in init
             self.pqc(
-                params[-1],
+                params[self.n_layers],
                 self.n_qubits,
                 pulse_params=pulse_params[-1],
                 noise_params=self.noise_params,
@@ -776,26 +808,27 @@ class Model:
     def _observable(self):
         # run mixed simualtion and get density matrix
         if self.execution_type == "density":
-            if self.output_qubit == -1:
-                return qml.density_matrix(wires=list(range(self.n_qubits)))
-            else:
-                return qml.density_matrix(wires=self.output_qubit)
+            return qml.density_matrix(wires=self.output_qubit)
         elif self.execution_type == "state":
             return qml.state()
         # run default simulation and get expectation value
         elif self.execution_type == "expval":
             # n-local measurement
-            if self.output_qubit == -1:
-                return [qml.expval(qml.PauliZ(q)) for q in range(self.n_qubits)]
-            # local measurement(s)
-            elif isinstance(self.output_qubit, int):
-                return qml.expval(qml.PauliZ(self.output_qubit))
-            # parity measurenment
+            if self.output_qubit == list(range(self.n_qubits)):
+                return [qml.expval(qml.PauliZ(q)) for q in self.output_qubit]
+            # parity or local measurement(s)
             elif isinstance(self.output_qubit, list):
-                obs = qml.PauliZ(self.output_qubit[0])
-                for out_qubit in self.output_qubit[1:]:
-                    obs = obs @ qml.PauliZ(out_qubit)
-                return qml.expval(obs)
+                ret = []
+                # list of parity pairs
+                for pair in self.output_qubit:
+                    if isinstance(pair, int):
+                        ret.append(qml.expval(qml.PauliZ(pair)))
+                    else:
+                        obs = qml.PauliZ(pair[0])
+                        for q in pair[1:]:
+                            obs = obs @ qml.PauliZ(q)
+                        ret.append(qml.expval(obs))
+                return ret
             else:
                 raise ValueError(
                     f"Invalid parameter `output_qubit`: {self.output_qubit}.\
@@ -803,10 +836,24 @@ class Model:
                 )
         # run default simulation and get probs
         elif self.execution_type == "probs":
-            if self.output_qubit == -1:
-                return qml.probs(wires=list(range(self.n_qubits)))
-            else:
+            # n-local measurement
+            if self.output_qubit == list(range(self.n_qubits)):
                 return qml.probs(wires=self.output_qubit)
+            # parity or local measurement(s)
+            elif isinstance(self.output_qubit, list):
+                ret = []
+                # list of parity pairs
+                for pair in self.output_qubit:
+                    if isinstance(pair, int):
+                        ret.append(qml.probs(wires=[pair]))
+                    else:
+                        ret.append(qml.probs(wires=pair))
+                return ret
+            else:
+                raise ValueError(
+                    f"Invalid parameter `output_qubit`: {self.output_qubit}.\
+                        Must be int, list or -1."
+                )
         else:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
@@ -938,19 +985,19 @@ class Model:
         Returns:
             np.ndarray: Validated parameters.
         """
-        if params is None:
-            params = self.params
-        else:
+        # TODO: replace with getter/setter
+        if params is not None:
             if numpy_boxes.ArrayBox == type(params):
                 self.params = params._value
             else:
                 self.params = params
 
         # Get rid of extra dimension
-        if len(params.shape) == 3 and params.shape[2] == 1:
-            params = params[:, :, 0]
+        # TODO: replaces with params.squeeze()?
+        # if len(params.shape) == 3 and params.shape[2] == 1:
+        #     params = params[:, :, 0]
 
-        return params
+        return self.params
 
     def _pulse_params_validation(self, pulse_params) -> np.ndarray:
         """
@@ -1026,13 +1073,16 @@ class Model:
         Returns:
             np.ndarray: The validated input.
         """
-        if inputs is None:
-            # initialize to zero
-            inputs = np.array([[0] * self.n_input_feat])
-        elif isinstance(inputs, List):
+        self._zero_inputs = False
+        if isinstance(inputs, List):
             inputs = np.stack(inputs)
         elif isinstance(inputs, float) or isinstance(inputs, int):
             inputs = np.array([inputs])
+        elif inputs is None:
+            inputs = np.array([[0] * self.n_input_feat])
+
+        if not inputs.any():
+            self._zero_inputs = True
 
         if len(inputs.shape) <= 1:
             if self.n_input_feat == 1:
@@ -1088,9 +1138,12 @@ class Model:
         """
         min_idx = max(procnum * batch_size, 0)
 
+        # inputs parallelization
         if batch_shape[0] > 1:
             max_idx = min((procnum + 1) * batch_size, inputs.shape[0])
             inputs = inputs[min_idx:max_idx]
+
+        # params parallelization
         if batch_shape[1] > 1:
             max_idx = min((procnum + 1) * batch_size, params.shape[2])
             params = params[:, :, min_idx:max_idx]
@@ -1134,6 +1187,55 @@ class Model:
             and combined_batch_size > self.mp_threshold
         ):
             n_processes = math.ceil(combined_batch_size / self.mp_threshold)
+
+        # the following is a little hack to get the batch shape
+        # in the correct order
+        def _f(*args, **kwargs):
+            result = f(*args, **kwargs)
+            if isinstance(result, list):
+                # we use moveaxis here because in case of parity measure,
+                # there is another dimension appended to the end and
+                # simply transposing would result in a wrong shape
+                if isinstance(result[0], jnp.ndarray):
+                    result = jnp.stack(result)
+                    if len(result.shape) > 1:
+                        result = jnp.moveaxis(result, 0, 1)
+                else:
+                    result = np.stack(result)
+                    if len(result.shape) > 1:
+                        result = np.moveaxis(result, 0, 1)
+            return result
+
+        if gate_mode == "pulse" and combined_batch_size > 1:
+            # save original f
+            orig_f = _f
+
+            # jax fct only taking single param
+            def f_prime(params_single, inputs_single, pulse_params_single):
+                return orig_f(
+                    params=params_single,
+                    pulse_params=pulse_params_single,
+                    inputs=inputs_single,
+                    enc_params=enc_params,
+                    gate_mode=gate_mode,
+                )
+
+            # wrapper to allow kwargs (not supported by jax)
+            def _f(**kwargs):
+                params_single = kwargs.pop("params")
+                inputs_single = kwargs.pop("inputs")
+                pulse_params_single = kwargs.pop("pulse_params")
+                # we know that when batching is enabled, the
+                # batch dimension is the last axis of the params array
+                return jax.vmap(
+                    f_prime,
+                    in_axes=(
+                        2 if self.batch_shape[1] > 1 else None,
+                        0 if self.batch_shape[0] > 1 else None,
+                        2 if self.batch_shape[2] > 1 else None,
+                    ),
+                )(params_single, inputs_single, pulse_params_single)
+
         # check if single process
         if n_processes == 1:
             if self.mp_threshold > 0:
@@ -1141,7 +1243,7 @@ class Model:
                     f"Multiprocessing threshold {self.mp_threshold}>0, but using \
                     single process, because {combined_batch_size} samples per batch.",
                 )
-            result = f(
+            result = _f(
                 params=params,
                 pulse_params=pulse_params,
                 inputs=inputs,
@@ -1155,7 +1257,7 @@ class Model:
                 n_processes=n_processes,
                 cpu_scaler=self.cpu_scaler,
                 batch_size=self.mp_threshold,
-                f=f,
+                f=_f,
                 params=params,
                 pulse_params=pulse_params,
                 enc_params=enc_params,
@@ -1170,36 +1272,55 @@ class Model:
             for k, v in return_dict.items():
                 result[k] = v
 
-            result = np.concat(result, axis=1 if self.execution_type == "expval" else 0)
+            # use first (batch) axis to concat
+            result = np.concat(result, axis=0)
+
         return result
 
     def _assimilate_batch(self, inputs, params, pulse_params):
-        batch_shape = (
-            inputs.shape[0],
-            params.shape[2] if len(params.shape) == 3 else 1,
-        )
+        """
+        inputs:        [B_I, ...]
+        params:        [..., ..., B_P]
+        pulse_params:  [..., ..., B_R]
 
-        if (
-            batch_shape[1] != 1
-            and batch_shape[0] != batch_shape[1]
-            and batch_shape[0] > 1
-        ):
-            # the following code does some dirty reshaping
-            # TODO: optimize but be aware of the rabbit hole
-            # key is to get the right "order" in which we repeat
+        Returns:
+        inputs_      [B_I * B_P * B_R, ...]
+        params_      [..., ..., B_I * B_P * B_R]
+        pulse_params_[..., ..., B_I * B_P * B_R]
+        batch_shape  (B_I, B_P, B_R)
+        """
+        B_I = inputs.shape[0]
+        # we check for the product because there is a chance that
+        # there are no params. In this case we want B_P to be 1
+        B_P = params.shape[-1] if np.prod(params.shape) > 0 else 1
+        B_R = pulse_params.shape[-1]
 
-            # [BI,D] -> [BPxBI,D]
-            inputs = np.repeat(inputs, batch_shape[1], axis=0)
+        batch_shape = (B_I, B_P, B_R)
+        B = B_I * B_P * B_R
 
-            # this is a tricky one, essentially we want to get
-            # [L,Q,BP] -> [L,Q,BI,BP] -> [L,Q,BPxBI]
-            params = np.repeat(
-                params[:, :, np.newaxis, :], batch_shape[0], axis=2
-            ).reshape([*params.shape[:-1], np.prod(batch_shape)])
+        # [B_I, ...] -> [B_I, B_P, B_R, ...] -> [B, ...]
+        if B_I > 1:
+            inputs = np.repeat(inputs[:, None, None, ...], B_P, axis=1)
+            inputs = np.repeat(inputs, B_R, axis=2)
+            inputs = inputs.reshape(B, *inputs.shape[3:])
 
-            pulse_params = np.repeat(
-                pulse_params[:, :, np.newaxis, :], batch_shape[0], axis=2
-            ).reshape([*pulse_params.shape[:-1], np.prod(batch_shape)])
+        # [..., ..., B_P] -> [..., ..., B_I, B_P, B_R] -> [..., ..., B]
+        if B_P > 1:
+            # add B_I axis before last, and B_R axis after last
+            params = params[..., None, :, None]  # [..., B_I(=1), B_P, B_R(=1)]
+            params = np.repeat(params, B_I, axis=-3)  # [..., B_I, B_P, 1]
+            params = np.repeat(params, B_R, axis=-1)  # [..., B_I, B_P, B_R]
+            params = params.reshape(*params.shape[:-3], B)
+
+        # [..., ..., B_R] -> [..., ..., B_I, B_P, B_R] -> [..., ..., B]
+        if B_R > 1:
+            # add B_I axis before last, and B_P axis before last (after adding B_I)
+            pulse_params = pulse_params[
+                ..., None, None, :
+            ]  # [..., B_I(=1), B_P(=1), B_R]
+            pulse_params = np.repeat(pulse_params, B_I, axis=-3)  # [..., B_I, 1, B_R]
+            pulse_params = np.repeat(pulse_params, B_P, axis=-2)  # [..., B_I, B_P, B_R]
+            pulse_params = pulse_params.reshape(*pulse_params.shape[:-3], B)
 
         return inputs, params, pulse_params, batch_shape
 
@@ -1230,7 +1351,6 @@ class Model:
         pulse_params: Optional[np.ndarray] = None,
         enc_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
-        cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
         gate_mode: str = "unitary",
@@ -1253,8 +1373,6 @@ class Model:
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
                 set noise parameters being used.
-            cache (Optional[bool], optional): Whether to cache the results.
-                Defaults to False.
             execution_type (str, optional): The type of execution.
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
@@ -1283,7 +1401,6 @@ class Model:
             pulse_params=pulse_params,
             enc_params=enc_params,
             noise_params=noise_params,
-            cache=cache,
             execution_type=execution_type,
             force_mean=force_mean,
             gate_mode=gate_mode,
@@ -1296,7 +1413,6 @@ class Model:
         pulse_params: Optional[np.ndarray] = None,
         enc_params: Optional[np.ndarray] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
-        cache: Optional[bool] = False,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
         gate_mode: str = "unitary",
@@ -1318,8 +1434,6 @@ class Model:
             noise_params (Optional[Dict[str, float]], optional): The noise parameters.
                 Defaults to None which results in the last
                 set noise parameters being used.
-            cache (Optional[bool], optional): Whether to cache the results.
-                Defaults to False.
             execution_type (str, optional): The type of execution.
                 Must be one of 'expval', 'density', or 'probs'.
                 Defaults to None which results in the last set execution type
@@ -1380,38 +1494,8 @@ class Model:
             params,
             pulse_params,
         )
-        # the qasm representation contains the bound parameters,
-        # thus it is ok to hash that
-        hs = hashlib.md5(
-            repr(
-                {
-                    "n_qubits": self.n_qubits,
-                    "n_layers": self.n_layers,
-                    "pqc": self.pqc.__class__.__name__,
-                    "dru": self.data_reupload,
-                    "params": self.params,  # use safe-params
-                    "pulse_params": self.pulse_params,
-                    "enc_params": self.enc_params,
-                    "noise_params": self.noise_params,
-                    "execution_type": self.execution_type,
-                    "inputs": inputs,
-                    "output_qubit": self.output_qubit,
-                }
-            ).encode("utf-8")
-        ).hexdigest()
 
         result: Optional[np.ndarray] = None
-        if cache:
-            name: str = f"pqc_{hs}.npy"
-
-            cache_folder: str = ".cache"
-            if not os.path.exists(cache_folder):
-                os.mkdir(cache_folder)
-
-            file_path: str = os.path.join(cache_folder, name)
-
-            if os.path.isfile(file_path):
-                result = np.load(file_path)
 
         if result is None:
             # if density matrix requested or noise params used
@@ -1439,28 +1523,14 @@ class Model:
                         gate_mode=gate_mode,
                     )
 
-        if isinstance(result, list):
-            result = np.stack(result)
+        result = result.reshape((*self.batch_shape, *self._result_shape)).squeeze()
 
-        if self.execution_type == "expval" and force_mean and self.output_qubit == -1:
-            # exception for torch layer because it swaps batch and output dimension
-            if not isinstance(self.circuit, qml.QNode):
-                result = result.mean(axis=-1)
-            else:
-                result = result.mean(axis=0)
-        elif self.execution_type == "probs" and force_mean and self.output_qubit == -1:
-            # exception for torch layer because it swaps batch and output dimension
-            if not isinstance(self.circuit, qml.QNode):
-                result = result[..., -1].sum(axis=-1)
-            else:
-                result = result[1:, ...].sum(axis=0)
-
-        if self.batch_shape[0] > 1 and self.batch_shape[1] > 1:
-            result = result.reshape(-1, *self.batch_shape)
-
-        result = result.squeeze()
-
-        if cache:
-            np.save(file_path, result)
+        if (
+            (self.execution_type == "expval" or self.execution_type == "probs")
+            and force_mean
+            and len(result.shape) > 0
+            and self._result_shape[0] > 1
+        ):
+            result = result.mean(axis=-1)
 
         return result

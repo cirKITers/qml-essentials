@@ -29,10 +29,12 @@ class Model_Fct:
     def __init__(self, c, f):
         self.c = c
         self.f = f
-        self.degree = max(f)
+        self.degree = (2*max(f)+1,)
+        self.frequencies = f
+        self.n_input_feat = 1
 
     def __call__(self, inputs, **kwargs):
-        return np.sum([c * np.cos(inputs * f) for f, c in zip(self.f, self.c)], axis=0)
+        return np.sum([c * np.exp(-1j * inputs * f) for f, c in zip(self.f, self.c)], axis=0)
 ```
 
 This model takes a vector of coefficients and frequencies on instantiation.
@@ -40,13 +42,13 @@ When called, these coefficients and frequencies are used to compute the output o
 Let's try that for just two frequencies:
 
 ```python
-freqs = [1,3]
-coeffs = [1,1]
+freqs = [-3, -1.5, 0, 1.5, 3]
+coeffs = [1, 1, 0, 1, 1]
 
 fs = max(freqs) * 2 + 1
-model_fct = Model_Fct(coeffs,freqs)
+model_fct = Model_Fct(coeffs, freqs)
 
-x = np.arange(0,2 * np.pi, 2 * np.pi/fs)
+x = np.arange(0, 2 * np.pi, 2 * np.pi / fs)
 out = model_fct(x)
 ```
 

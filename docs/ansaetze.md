@@ -168,8 +168,8 @@ While we provide a developer-oriented overview in this section, we would like to
 
 We implement a fundamental set of gates (RX, RY, RZ, CZ) upon which other, more complex gates can be built.
 The dependency graph is shown in the following figure:
-![Dependency Graph](figures/pulse_gates_dependencies_light.png#only-light)
-![Dependency Graph](figures/pulse_gates_dependencies_dark.png#only-dark)
+![Dependency Graph](figures/pulse_gates_dependencies_light.png#center#only-light)
+![Dependency Graph](figures/pulse_gates_dependencies_dark.png#center#only-dark)
 In this graph, the edge weights represent the number child gates required to implement a particular gate.
 The gates at the bottom represent the fundamental gates.
 
@@ -241,6 +241,12 @@ model(gate_mode="pulse", pulse_params=model.pulse_params_scaler * 1.5)
 Here, input and params are inferred from the `Model` instance, and we scale all pulse parameters by a factor of 1.5.
 Currently there is no way to change the raw values of pulse parameter through the model api directly.
 
+Similar to the input and standard parameters, we also support batching for the `pulse_params` argument, meaning that you can also pass a batched array of pulse parameters of e.g. size 2 to as follows:
+
+```python
+model(pulse_params=np.repeat(model.pulse_params, 2, axis=-1), gate_mode="pulse")
+``` 
+
 > **Note:** Pulse-level simulation currently **does not support noise channels**. Mixing with noise will raise an error.  
 
 ### Quantum Optimal Control (QOC)
@@ -276,8 +282,8 @@ For further examples we refer to our ["Pulses" notebook](https://github.com/cirK
 
 With the optimized pulse parameters we can generate a fidelities plot as follows:
 
-![Gate Fidelities](figures/gates_fidelities_light.png#only-light)
-![Gate Fidelities](figures/gates_fidelities_dark.png#only-dark)
+![Gate Fidelities](figures/gates_fidelities_light.png#center#only-light)
+![Gate Fidelities](figures/gates_fidelities_dark.png#center#only-dark)
 
 Note that in this plot, the phase error is shown as $1-\text{phase error}$ to align it with the fidelity scale.
 

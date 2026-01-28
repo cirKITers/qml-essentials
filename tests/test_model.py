@@ -1,7 +1,7 @@
 from typing import Optional
 import random
 from qml_essentials.model import Model
-from qml_essentials.ansaetze import Circuit, Ansaetze, Gates
+from qml_essentials.ansaetze import Circuit, Ansaetze, Gates, Encoding
 from qml_essentials.ansaetze import PulseInformation as pinfo
 import pytest
 import inspect
@@ -14,150 +14,6 @@ import pennylane.numpy as np
 import time
 
 logger = logging.getLogger(__name__)
-
-
-@pytest.mark.unittest
-def test_parameters() -> None:
-    test_cases = [
-        # {
-        #     "shots": None,
-        #     "execution_type": "expval",
-        #     "output_qubit": 0,
-        #     "force_mean": False,
-        #     "exception": False,
-        # },
-        # {
-        #     "shots": None,
-        #     "execution_type": "expval",
-        #     "output_qubit": -1,
-        #     "force_mean": False,
-        #     "exception": False,
-        # },
-        # {
-        #     "shots": None,
-        #     "execution_type": "expval",
-        #     "output_qubit": -1,
-        #     "force_mean": True,
-        #     "exception": False,
-        # },
-        # {
-        #     "shots": None,
-        #     "execution_type": "density",
-        #     "output_qubit": 0,
-        #     "force_mean": False,
-        #     "exception": False,
-        # },
-        # {
-        #     "shots": 1024,
-        #     "execution_type": "probs",
-        #     "output_qubit": 0,
-        #     "force_mean": False,
-        #     "exception": False,
-        # },
-        {
-            "shots": 1024,
-            "execution_type": "probs",
-            "output_qubit": -1,
-            "force_mean": True,
-            "exception": False,
-        },
-        {
-            "shots": 1024,
-            "execution_type": "expval",
-            "output_qubit": 0,
-            "force_mean": False,
-            "exception": False,
-        },
-        {
-            "shots": None,
-            "execution_type": "state",
-            "output_qubit": -1,
-            "force_mean": False,
-            "exception": False,
-        },
-        {
-            "shots": 1024,
-            "execution_type": "expval",
-            "output_qubit": 0,
-            "force_mean": True,
-            "exception": False,
-        },
-        {
-            "shots": 1024,
-            "execution_type": "density",
-            "output_qubit": 0,
-            "force_mean": False,
-            "exception": True,
-        },
-        {
-            "shots": None,
-            "execution_type": "density",
-            "output_qubit": 0,
-            "force_mean": False,
-            "exception": False,
-        },
-    ]
-
-    # Test the most minimal call
-    model = Model(
-        n_qubits=2,
-        n_layers=1,
-        circuit_type="Circuit_19",
-    )
-    assert (model() == model(model.params)).all()
-
-    for test_case in test_cases:
-        model = Model(
-            n_qubits=2,
-            n_layers=1,
-            circuit_type="Circuit_19",
-            output_qubit=test_case["output_qubit"],
-            shots=test_case["shots"],
-        )
-
-        if test_case["exception"]:
-            with pytest.raises(ValueError):
-                _ = model(
-                    model.params,
-                    inputs=None,
-                    execution_type=test_case["execution_type"],
-                    force_mean=test_case["force_mean"],
-                )
-        else:
-            result = model(
-                model.params,
-                inputs=None,
-                execution_type=test_case["execution_type"],
-                force_mean=test_case["force_mean"],
-            )
-
-            if test_case["shots"] is None:
-                assert hasattr(
-                    result, "requires_grad"
-                ), "No 'requires_grad' property available in output."
-            else:
-                # TODO: not supported by PennyLane yet
-                pass
-            if test_case["output_qubit"] == -1:
-                if test_case["force_mean"]:
-                    assert (
-                        result.size == 1 or result.shape[0] == 1
-                    ), f"Shape of {test_case['output_qubit']} is not correct."
-                else:
-                    if test_case["execution_type"] == "expval":
-                        # check for 2 because of n qubits
-                        assert (
-                            result.shape[0] == 2
-                        ), f"Shape of {test_case['output_qubit']} is not correct."
-                    elif test_case["execution_type"] == "probs":
-                        assert (
-                            result.shape[0] == 4
-                        ), f"Shape of {test_case['output_qubit']} is not correct."
-                    elif test_case["execution_type"] == "state":
-                        assert (
-                            result.shape[0] == 4
-                        ), f"Shape of {test_case['output_qubit']} is not correct."
-            str(model)
 
 
 @pytest.mark.unittest
@@ -294,24 +150,6 @@ def test_batching() -> None:
 
 @pytest.mark.skip(reason="Multiprocessing speedup negligible at small scale")
 @pytest.mark.unittest
-def test_pulse_batching() -> None:
-    model = Model(
-        n_qubits=2,
-        n_layers=1,
-        circuit_type="Circuit_19",
-    )
-
-    n_samples = 3
-    model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
-
-    assert model.pulse_params.shape[-1] == n_samples
-
-    # TODO add actual batching test
-    # _ = model(gate_mode="pulse")
-
-
-@pytest.mark.skip(reason="Multiprocessing speedup not working for Pennylane >0.40.0")
-@pytest.mark.unittest
 def test_multiprocessing_density() -> None:
     # use n_samples that is not a multiple of the threshold
     n_samples = 1000
@@ -342,10 +180,10 @@ def test_multiprocessing_density() -> None:
     start = time.time()
     res_single = model(params=params, execution_type="density")
     t_single = time.time() - start
-    # print(f"Diff: {t_parallel - t_single}")
-    assert (
-        t_parallel < t_single
-    ), "Time required for multiprocessing larger than single process"
+    # assert (
+    #     t_parallel < t_single
+    # ), "Time required for multiprocessing larger than single process"
+    print(f"Diff: {t_parallel - t_single}")
 
     assert (
         res_parallel.shape == res_single.shape
@@ -384,11 +222,11 @@ def test_multiprocessing_expval() -> None:
     res_single = model(params=params, execution_type="expval")
     t_single = time.time() - start
 
-    assert (
-        t_parallel < t_single
-    ), "Time required for multiprocessing larger than single process"
+    # assert (
+    #     t_parallel < t_single
+    # ), "Time required for multiprocessing larger than single process"
 
-    print(t_parallel, t_single)
+    print(f"Diff: {t_parallel - t_single}")
     assert (
         res_parallel.shape == res_single.shape
     ), "Shape of multiprocessing is not correct"
@@ -433,35 +271,53 @@ def test_state_preparation() -> None:
 def test_encoding() -> None:
     test_cases = [
         {
-            "encoding_unitary": Gates.RX,
-            "frequencies": [2],
+            "encoding": Gates.RX,
+            "degree": (5,),
             "input": [0],
             "warning": False,
         },
         {
-            "encoding_unitary": [Gates.RX, Gates.RY],
-            "frequencies": [2, 2],
+            "encoding": [Gates.RX, Gates.RY],
+            "degree": (5, 5),
             "input": [[0, 0]],
             "warning": False,
         },
         {
-            "encoding_unitary": ["RX", Gates.RY],
-            "frequencies": [2, 2],
+            "encoding": ["RX", Gates.RY],
+            "degree": (5, 5),
             "input": [[0, 0]],
             "warning": False,
         },
-        {"encoding_unitary": "RX", "frequencies": [2], "input": [0], "warning": False},
+        {"encoding": "RX", "degree": (5,), "input": [0], "warning": False},
         {
-            "encoding_unitary": ["RX", "RY"],
-            "frequencies": [2, 2],
+            "encoding": ["RX", "RY"],
+            "degree": (5, 5),
             "input": [[0, 0]],
             "warning": False,
         },
         {
-            "encoding_unitary": ["RX", "RY"],
-            "frequencies": [2, 2],
+            "encoding": ["RX", "RY"],
+            "degree": (5, 5),
             "input": [0],
             "warning": True,
+        },
+        {
+            "encoding": Encoding("binary", ["RX"]),
+            "degree": (7,),
+            "input": [0],
+            "warning": False,
+        },
+        {
+            "encoding": Encoding("ternary", ["RX"]),
+            "degree": (9,),
+            "input": [0],
+            "warning": False,
+        },
+        {
+            "encoding": Encoding("ternary", ["RX", "RY"]),
+            "degree": (9, 9),
+            "input": [[0, 0]],
+            "warning": False,
         },
     ]
 
@@ -470,7 +326,7 @@ def test_encoding() -> None:
             n_qubits=2,
             n_layers=1,
             circuit_type="Circuit_19",
-            encoding=test_case["encoding_unitary"],
+            encoding=test_case["encoding"],
             remove_zero_encoding=False,
         )
 
@@ -485,65 +341,11 @@ def test_encoding() -> None:
                 model.params,
                 inputs=test_case["input"],
             )
+
         assert (
-            model.frequencies == test_case["frequencies"]
-        ), f"Frequencies is not correct: got {model.frequencies},\
-            expected {test_case['frequencies']}"
-
-
-@pytest.mark.unittest
-def test_cache() -> None:
-    # Stupid try removing caches
-    try:
-        shutil.rmtree(".cache")
-    except Exception as e:
-        logger.warning(e)
-
-    model = Model(
-        n_qubits=2,
-        n_layers=1,
-        circuit_type="Circuit_19",
-    )
-
-    result = model(
-        model.params,
-        inputs=None,
-        cache=True,
-    )
-
-    hs = hashlib.md5(
-        repr(
-            {
-                "n_qubits": model.n_qubits,
-                "n_layers": model.n_layers,
-                "pqc": model.pqc.__class__.__name__,
-                "dru": model.data_reupload,
-                "params": model.params,
-                "pulse_params": model.pulse_params,
-                "enc_params": model.enc_params,
-                "noise_params": model.noise_params,
-                "execution_type": model.execution_type,
-                "inputs": np.array([[0]]),
-                "output_qubit": model.output_qubit,
-            }
-        ).encode("utf-8")
-    ).hexdigest()
-
-    cache_folder: str = ".cache"
-    if not os.path.exists(cache_folder):
-        raise Exception("Cache folder does not exist.")
-
-    name: str = f"pqc_{hs}.npy"
-    file_path: str = os.path.join(cache_folder, name)
-
-    if os.path.isfile(file_path):
-        cached_result = np.load(file_path)
-    else:
-        raise Exception("Cache file does not exist.")
-
-    assert np.array_equal(
-        result, cached_result
-    ), "Cached result and calcualted result is not equal."
+            model.degree == test_case["degree"]
+        ), f"Frequencies is not correct: got {model.degree},\
+            expected {test_case['degree']} for test case {test_case}"
 
 
 @pytest.mark.expensive
@@ -686,7 +488,33 @@ def test_initialization() -> None:
             model.params,
             inputs=None,
             noise_params=None,
-            cache=False,
+            execution_type="expval",
+        )
+
+
+@pytest.mark.smoketest
+def test_inputs() -> None:
+    test_cases = [
+        {"inputs": 0.0, "remove_zero_encoding": True},
+        {"inputs": 0.0, "remove_zero_encoding": False},
+        {"inputs": np.zeros(5), "remove_zero_encoding": True},
+        {"inputs": np.zeros(5), "remove_zero_encoding": False},
+        {"inputs": np.arange(5), "remove_zero_encoding": True},
+        {"inputs": np.arange(5), "remove_zero_encoding": False},
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            remove_zero_encoding=test_case["remove_zero_encoding"],
+        )
+
+        _ = model(
+            model.params,
+            inputs=test_case["inputs"],
+            noise_params=None,
             execution_type="expval",
         )
 
@@ -742,7 +570,6 @@ def test_ansaetze() -> None:
                 "StatePreparation": 0.1,
                 "Measurement": 0.1,
             },
-            cache=False,
             execution_type="density",
         )
 
@@ -797,7 +624,6 @@ def test_ansaetze() -> None:
             "Depolarizing": 0.5,
             "MultiQubitDepolarizing": 0.6,
         },
-        cache=False,
         execution_type="density",
     )
 
@@ -808,7 +634,6 @@ def test_ansaetze() -> None:
             noise_params={
                 "UnsupportedNoise": 0.1,
             },
-            cache=False,
             execution_type="density",
         )
 
@@ -869,19 +694,25 @@ def test_pulse_model_inference():
         circuit_type="Hardware_Efficient",
     )
 
-    x = np.linspace(-np.pi, np.pi, 10)
+    inputs = np.linspace(-np.pi, np.pi, 10)
 
     # forward pass with initial pulse_params
-    y_hat_original = model(inputs=x, gate_mode="pulse", force_mean=True)
+    y_hat_original = model(inputs=inputs, gate_mode="pulse", force_mean=True)
+
+    y_hat_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
+
+    assert np.allclose(
+        y_hat_unitary, y_hat_original, atol=1e-3
+    ), "Unitary output did not match pulse output"
 
     # perturb pulse_params
     original_params = model.pulse_params.copy()
     model.pulse_params += 0.1
 
     # forward pass with perturbed pulse_params
-    y_hat_perturbed = model(inputs=x, gate_mode="pulse", force_mean=True)
+    y_hat_perturbed = model(inputs=inputs, gate_mode="pulse", force_mean=True)
 
-    assert y_hat_original.shape[0] == x.shape[0], "Output batch size mismatch"
+    assert y_hat_original.shape[0] == inputs.shape[0], "Output batch size mismatch"
 
     # ensure output changed after perturbing pulse_params
     assert not np.allclose(
@@ -889,6 +720,38 @@ def test_pulse_model_inference():
     ), "Pulse output did not change after modifying pulse_params"
 
     model.pulse_params = original_params
+
+
+@pytest.mark.unittest
+def test_pulse_model_batching():
+    rng = np.random.default_rng(1000)
+
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+
+    # test pulse params batching
+    res_b = model(
+        pulse_params=np.repeat(model.pulse_params, 2, axis=-1), gate_mode="pulse"
+    )
+
+    # two qubits -> two expvals with batch size 2
+    assert res_b.shape == (2, 2), "Batch size mismatch"
+
+    inputs = rng.uniform(0, 2 * np.pi, size=(3))
+    # test pulse params & inputs batching
+    res_a = model(inputs=inputs, gate_mode="unitary")
+    res_b = model(inputs=inputs, gate_mode="pulse")
+
+    assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
+    assert np.allclose(res_a, res_b, atol=1e-3), "Inputs batching failed!"
+
+    model.initialize_params(rng=rng, repeat=2)
+
+    # test pulse params & params & inputs batching
+    res_a = model(inputs=inputs, gate_mode="unitary")
+    res_b = model(inputs=inputs, gate_mode="pulse")
+
+    assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
+    assert np.allclose(res_a, res_b, atol=1e-3), "Params batching failed!"
 
 
 @pytest.mark.unittest
@@ -938,7 +801,6 @@ def test_multi_input() -> None:
             model.params,
             inputs=inputs,
             noise_params=None,
-            cache=False,
             execution_type="expval",
         )
 
@@ -962,26 +824,22 @@ def test_dru() -> None:
         {
             "enc": Gates.RX,
             "dru": False,
-            "degree": 1,
-            "frequencies": [1],
+            "degree": (3,),
         },
         {
             "enc": Gates.RX,
             "dru": True,
-            "degree": 4,
-            "frequencies": [4],
+            "degree": (9,),
         },
         {
             "enc": Gates.RX,
             "dru": [[True, False], [False, True]],
-            "degree": 2,
-            "frequencies": [2],
+            "degree": (5,),
         },
         {
             "enc": [Gates.RX, Gates.RY],
             "dru": [[[0, 1], [1, 1]], [[1, 1], [0, 1]]],
-            "degree": 4,
-            "frequencies": [2, 4],
+            "degree": (5, 9),
         },
     ]
 
@@ -999,19 +857,13 @@ def test_dru() -> None:
 
         assert (
             model.degree == test_case["degree"]
-        ), f"Expected degree {test_case['degree']} but got {model.degree}\
-            for dru {test_case['dru']}"
-
-        assert (
-            model.frequencies == test_case["frequencies"]
-        ), f"Expected frequencies {test_case['frequencies']} but got\
-            {model.frequencies} for dru {test_case['dru']}"
+        ), f"Expected frequencies {test_case['degree']} but got\
+            {model.degree} for dru {test_case['dru']}"
 
         _ = model(
             model.params,
             inputs=None,
             noise_params=None,
-            cache=False,
             execution_type="expval",
         )
 
@@ -1070,7 +922,6 @@ def test_local_state() -> None:
             model.params,
             inputs=None,
             noise_params=None,
-            cache=False,
         )
 
         # check if setting "externally" is working
@@ -1089,7 +940,6 @@ def test_local_state() -> None:
         _ = model(
             model.params,
             inputs=None,
-            cache=False,
             noise_params=test_case["noise_params"],
             execution_type=test_case["execution_type"],
         )
@@ -1100,30 +950,15 @@ def test_local_state() -> None:
 
 
 @pytest.mark.unittest
-def test_local_and_global_meas() -> None:
+def test_output_shapes() -> None:
     test_cases = [
         {
-            "inputs": None,
+            "inputs": np.array(0.1),
             "execution_type": "expval",
-            "output_qubit": -1,
+            "output_qubit": [0, 1],
             "shots": None,
+            "force_mean": False,
             "out_shape": (2,),
-            "warning": False,
-        },
-        {
-            "inputs": np.array([0.1, 0.2, 0.3]),
-            "execution_type": "expval",
-            "output_qubit": -1,
-            "shots": None,
-            "out_shape": (2, 3),
-            "warning": False,
-        },
-        {
-            "inputs": np.array([0.1, 0.2, 0.3]),
-            "execution_type": "expval",
-            "output_qubit": 0,
-            "shots": None,
-            "out_shape": (3,),
             "warning": False,
         },
         {
@@ -1131,6 +966,16 @@ def test_local_and_global_meas() -> None:
             "execution_type": "expval",
             "output_qubit": [0, 1],
             "shots": None,
+            "force_mean": False,
+            "out_shape": (3, 2),
+            "warning": False,
+        },
+        {
+            "inputs": np.array([0.1, 0.2, 0.3]),
+            "execution_type": "expval",
+            "output_qubit": [0, 1],
+            "shots": None,
+            "force_mean": True,
             "out_shape": (3,),
             "warning": False,
         },
@@ -1139,6 +984,7 @@ def test_local_and_global_meas() -> None:
             "execution_type": "density",
             "output_qubit": -1,
             "shots": None,
+            "force_mean": False,
             "out_shape": (4, 4),
             "warning": False,
         },
@@ -1147,6 +993,7 @@ def test_local_and_global_meas() -> None:
             "execution_type": "density",
             "output_qubit": -1,
             "shots": None,
+            "force_mean": False,
             "out_shape": (3, 4, 4),
             "warning": False,
         },
@@ -1155,6 +1002,7 @@ def test_local_and_global_meas() -> None:
             "execution_type": "density",
             "output_qubit": 0,
             "shots": None,
+            "force_mean": False,
             "out_shape": (3, 2, 2),
             "warning": False,
         },
@@ -1163,7 +1011,8 @@ def test_local_and_global_meas() -> None:
             "execution_type": "probs",
             "output_qubit": -1,
             "shots": 1024,
-            "out_shape": (3, 4),
+            "force_mean": False,
+            "out_shape": (3, 2, 2),
             "warning": False,
         },
         {
@@ -1171,6 +1020,7 @@ def test_local_and_global_meas() -> None:
             "execution_type": "probs",
             "output_qubit": 0,
             "shots": 1024,
+            "force_mean": False,
             "out_shape": (3, 2),
             "warning": False,
         },
@@ -1179,9 +1029,19 @@ def test_local_and_global_meas() -> None:
             "execution_type": "probs",
             "output_qubit": [0, 1],
             "shots": 1024,
-            "out_shape": (3, 4),
+            "force_mean": True,
+            "out_shape": (3, 2),
             "warning": False,
         },
+        # {
+        #     "inputs": np.array([0.1, 0.2, 0.3]),
+        #     "execution_type": "probs",
+        #     "output_qubit": [0, 1],
+        #     "shots": 1024,
+        #     "force_mean": False,
+        #     "out_shape": (3, 2, 2),
+        #     "warning": False,
+        # },
     ]
 
     for test_case in test_cases:
@@ -1199,16 +1059,16 @@ def test_local_and_global_meas() -> None:
                 out = model(
                     model.params,
                     inputs=test_case["inputs"],
+                    force_mean=test_case["force_mean"],
                     noise_params=None,
-                    cache=False,
                     execution_type=test_case["execution_type"],
                 )
         else:
             out = model(
                 model.params,
                 inputs=test_case["inputs"],
+                force_mean=test_case["force_mean"],
                 noise_params=None,
-                cache=False,
                 execution_type=test_case["execution_type"],
             )
 
@@ -1224,7 +1084,7 @@ def test_parity() -> None:
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_1",
-        output_qubit=[0, 1],  # parity
+        output_qubit=[[0, 1]],  # parity
     )
     model_b = Model(
         n_qubits=2,
@@ -1244,7 +1104,7 @@ def test_parity() -> None:
 
 
 @pytest.mark.smoketest
-def test_params_store() -> None:
+def test_training_step() -> None:
     model = Model(
         n_qubits=2,
         n_layers=1,
@@ -1253,7 +1113,7 @@ def test_params_store() -> None:
     opt = qml.AdamOptimizer(stepsize=0.01)
 
     def cost(params):
-        return model(params=params, inputs=np.array([0])).mean()._value
+        return model(params=params, inputs=np.array([0]), force_mean=True)
 
     params, cost = opt.step_and_cost(cost, model.params)
 

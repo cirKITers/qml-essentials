@@ -19,8 +19,8 @@ You can take a look at your model, by simply calling
 model.draw(figure="mpl")
 ```
 
-![Hardware Efficient Ansatz](figures/hae_light.png#only-light)
-![Hardware Efficient Ansatz](figures/hae_dark.png#only-dark)
+![Hardware Efficient Ansatz](figures/hae_light.png#center#only-light)
+![Hardware Efficient Ansatz](figures/hae_dark.png#center#only-dark)
 
 Looks good to you? :eyes: Head over to the [*Training*](training.md) page for **getting started** with an easy example, where we also show how to implement **trainable frequencies** :rocket:
 If you want to learn more about, why we get the above results, checkout the [*Data-Reuploading*](#data-reuploading) section.
@@ -52,7 +52,7 @@ Typically, there is a reuploading step after each layer and on each qubit (`data
 However, our package also allows you to specify an array with the number of rows representing the qubits and number of columns representing the layers.
 Then, a `True` means that encoding is applied at the corresponding position within the circuit.
 
-In the following example, the model has two reuploading steps (`model.degree` = 2) although it would be capable of representing four frequencies:
+In the following example, we disable two instances of the data-reuploading step, thus leaving the model with `model.degree = (5)` frequencies (2 negative + zero frequency + 2 positive).
 
 ```python
 model = Model(
@@ -100,15 +100,44 @@ Other options are:
 - A list of strings such as `["RX", "RY"]` that will result in a sequential RX and RY rotation per qubit
 - Any callable such as `Gates.RX`
 - A list of callables such as `[Gates.RX, Gates.RY]`
+- An instance of the `Encoding` class
 
 See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
-Note it is also possible to provide a custom encoding as the `encoding` argument essentially accepts any callable or list of callables see [here](ansaetze.md#custom-encoding) for more details.
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
 Otherwise multiple inputs are treated as batches of inputs.
 If you want to visualize zero-valued encoding gates in the model, set `remove_zero_encoding` to `False` on instantiation.
 
-In case of a multi-dimensional input, you can obtain the highest frequency in each encoding dimension from the `model.frequencies` property.
-Now, `model.degree` in turn will reflect the highest number in this list.
+In case of a multi-dimensional input, you can obtain the highest frequency in each encoding dimension from the `model.degree` property.
+Note that, `model.degree` includes the negative and zero frequency (i.e. the full spectrum).
+Individual frequencies can be obtained via `model.frequencies`.
+
+By default, all encodings are `Hamming` encodings, meaning, all encodings are applied equally in each data-reuploading step.
+Note it is also possible to provide a custom encoding as the `encoding` argument essentially accepts any callable or list of callables see [here](ansaetze.md#custom-encoding) for more details.
+To make things a little bit easier, we implement following encoding strategies as introduced in [Generalization despite overfitting in quantum machine learning models](https://doi.org/10.22331/q-2023-12-20-1210) with their respective spectral properties:
+
+| Encoding strategy | Spectrum $\Omega$                                                                                                  | $\vert\Omega\vert$ |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------ |
+| Hamming           | $\{-n_{q},-(n_{q}-1),\ldots,n_{q}\}$                                                                               | $2 n_{q}+1$        |
+| Binary            | $\{-2^{n_{q}}+1,\ldots,2^{n_{q}}-1\}$                                                                              | $2^{n_{q}+1}- 1$   |
+| Ternary           | $\left\{-\left\lfloor\frac{3^{n_{q}}}{2}\right\rfloor,\ldots,\left\lfloor\frac{3^{n_{q}}}{2}\right\rfloor\right\}$ | $3^{n_{q}}$        |
+
+You can use these templates by instantiating an `Encoding` class with the encoding strategy you like and passing it to the model upon initialization:
+
+```python
+from qml_essentials.ansaetze import Encoding
+
+model = Model(
+    n_qubits=2,
+    n_layers=1,
+    circuit_type="Circuit_19",
+    encoding=Encoding("ternary", ["RX", "RY"]),
+)
+
+model.frequencies
+```
+
+Returns `[9,9]`, which corresponds to the ternary spectrum $3^{2}$ for two indpendent inputs.
+
 
 ## State Preparation
 
@@ -126,6 +155,8 @@ See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
 
 The output shape is determined by the `output_qubit` argument, provided in the instantiation of the model.
 When set to -1 all qubits are measured which will result in the shape being of size $n$ by default (depending on the execution type, see below).
+Setting `output_qubit` to an integer will measue the qubit with the index specified.
+Furthermore, "parity measurements" are supported, where `output_qubit` becomes a list of qubit pairs, e.g. `[[0, 1], [2, 3]]` to measure the parity between qubits 0 and 1 and qubits 2 and 3.
 
 If `force_mean` flag is set when calling the model, the output is averaged to a single value (while keeping the batch/ input dimension).
 This is usually helpful, if you want to perform a n-local measurement over all qubits where only the average over $n$ expecation values is of interest.
@@ -214,22 +245,6 @@ For more details:
 - See [*Training*](training.md#pulse_level) for how to train pulse parameters jointly with rotation angles.  
 
 
-## Caching
-
-To speed up calculation, you can add `cache=True` when calling the model.
-The result of the model call will then be stored in a numpy format in a folder `.cache`.
-Each result is being identified by a md5 hash that is a representation of the following model properties:
-
-- number of qubits
-- number of layers
-- ansatz
-- data-reuploading flag
-- parameters
-- noise parameters
-- execution type
-- inputs
-- output qubit(s)
-
 ## Multiprocessing
 
 Our framework can parallelise the execution of the model by providing a `mp_threshold` parameter (defaults to -1).
@@ -258,12 +273,15 @@ Note, that if both, parameters and inputs are batched with size `B_I` and `B_P` 
 Internally, these combinations will be flattened during processing and then reshaped to the original shape afterwards, such that the output shape is `[O, B_I, B_P]`.
 Here, `O` is the general output shape depending on the execution type, `B_I` is the batch dimension of the inputs and `B_P` is the batch dimension of the parameters.
 This shape is also available as a property of the model: `model.batch_shape`.
+Note, that the output shape is always squeezed, i.e. batch axes will be suppressed if their dimension is 1.
+Also, there is a third batch axis in `model.batch_shape` for pulse parameters.
+See more on that topic in [*Ansaetze*](ansaetze.md#pulse_simulation).
 
 Naturally, the question arises which is the best choice for the hyperparameter `mp_threshold` as a higher value will result in fewer processes being spawned, while a lower value might over-allocate the CPU and adds parallelization overhead which reduces the speedup compared to single process.
 To visualize this, we provide following Figure where we computed the speedup for several different configurations of `mp_threshold` and `n_samples` with a 4 qubit circuit, averaging over 8 runs.
 
-![Multiprocessing Density](figures/mp_result_density_light.png#only-light)
-![Multiprocessing Density](figures/mp_result_density_dark.png#only-dark)
+![Multiprocessing Density](figures/mp_result_density_light.png#center#only-light)
+![Multiprocessing Density](figures/mp_result_density_dark.png#center#only-dark)
 
 The computation was performed on a 16 core CPU with 32GB of RAM.
 It is clearly visible, that e.g. a `mp_threshold` of 500 saturates the multi-processing capability after 4500 samples similar to a `mp_threshold` of 1k at 9k samples.
@@ -272,8 +290,8 @@ Also note how the speedup (over single process) is 1 until the number of samples
 Results above were obtained running density matrix calculations.
 While computing the expectation value is significantly easier, there can still be a speedup achieved for a higher number of samples, as shown in the following Figure.
 
-![Multiprocessing Expval](figures/mp_result_expval_light.png#only-light)
-![Multiprocessing Expval](figures/mp_result_expval_dark.png#only-dark)
+![Multiprocessing Expval](figures/mp_result_expval_light.png#center#only-light)
+![Multiprocessing Expval](figures/mp_result_expval_dark.png#center#only-dark)
 
 Here, the experiment setup is identical to the one above, but the expectation value is computed instead of the density matrix.
 Not how a `mp_threshold` of 1k achives no significant speedup because of the overhead that comes with multiprocessing, whereas increasing the load of each process (e.g. `mp_threshold` > 8k) results in a speedup of almost 4 at 60k samples. 
@@ -291,8 +309,8 @@ fig = model.draw(figure="tikz", inputs_symbols="x", gate_values=False)
 fig.export("tikz_circuit.tex", full_document=True)
 ```
 
-![Tikz Circuit](figures/circuit_tikz_light.png#only-light)
-![Tikz Circuit](figures/circuit_tikz_dark.png#only-dark)
+![Tikz Circuit](figures/circuit_tikz_light.png#center#only-light)
+![Tikz Circuit](figures/circuit_tikz_dark.png#center#only-dark)
 
 Inputs are represented with "x" by default, which can be changed by adjusting the optional parameter `inputs_symbols`.
 If you want to see the actual gate values instead of variables, simply set `gate_values=True` which is also the default option.
