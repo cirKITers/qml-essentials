@@ -650,7 +650,7 @@ class Model:
             None
         """
         # check for zero, because due to input validation, input cannot be none
-        if self.remove_zero_encoding and self._zero_inputs:
+        if self.remove_zero_encoding and self._zero_inputs and self.batch_shape[0] == 1:
             return
 
         for q in range(self.n_qubits):
