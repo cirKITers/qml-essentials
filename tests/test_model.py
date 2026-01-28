@@ -460,6 +460,33 @@ def test_initialization() -> None:
         )
 
 
+@pytest.mark.smoketest
+def test_inputs() -> None:
+    test_cases = [
+        {"inputs": 0.0, "remove_zero_encoding": True},
+        {"inputs": 0.0, "remove_zero_encoding": False},
+        {"inputs": np.zeros(5), "remove_zero_encoding": True},
+        {"inputs": np.zeros(5), "remove_zero_encoding": False},
+        {"inputs": np.arange(5), "remove_zero_encoding": True},
+        {"inputs": np.arange(5), "remove_zero_encoding": False},
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            remove_zero_encoding=test_case["remove_zero_encoding"],
+        )
+
+        out = model(
+            model.params,
+            inputs=test_case["inputs"],
+            noise_params=None,
+            execution_type="expval",
+        )
+
+
 @pytest.mark.unittest
 def test_re_initialization() -> None:
     model = Model(
