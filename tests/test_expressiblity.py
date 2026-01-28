@@ -1,7 +1,7 @@
 from qml_essentials.model import Model
 from qml_essentials.expressibility import Expressibility
 
-import pennylane.numpy as np
+import jax.numpy as jnp
 import logging
 import math
 import pytest
@@ -126,7 +126,7 @@ def test_expressibility_1l(caplog) -> None:
             n_qubits=test_case["n_qubits"],
             n_layers=test_case["n_layers"],
             circuit_type=test_case["circuit_type"],
-            initialization_domain=[0, 2 * np.pi],
+            initialization_domain=[0, 2 * jnp.pi],
             data_reupload=False,
             mp_threshold=1000,
         )
@@ -290,7 +290,7 @@ def test_scaling() -> None:
         n_bins=4,
         n_samples=10,
         n_input_samples=0,
-        input_domain=[0, 2 * np.pi],
+        input_domain=[0, 2 * jnp.pi],
         model=model,
         scale=True,
     )

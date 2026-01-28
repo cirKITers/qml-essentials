@@ -289,10 +289,10 @@ class UnitaryGates:
                 (
                     w.shape
                     if isinstance(w, np.ndarray) and UnitaryGates.batch_gate_error
-                    else None
+                    else (1,)
                 ),
             )
-            self.random_key, _ = random.split(self.random_key)
+            UnitaryGates.random_key, _ = random.split(UnitaryGates.random_key)
         return w
 
     @staticmethod

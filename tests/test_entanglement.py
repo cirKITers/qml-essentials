@@ -344,13 +344,13 @@ def test_relative_entropy() -> None:
     )
 
     separable_ent = Entanglement.relative_entropy(
-        separable_model, n_samples=10, n_sigmas=10, seed=1000, scale=False
+        separable_model, n_samples=10, n_sigmas=20, seed=1000, scale=False
     )
     entangled_ent = Entanglement.relative_entropy(
-        entangled_model, n_samples=10, n_sigmas=10, seed=1000, scale=False
+        entangled_model, n_samples=10, n_sigmas=20, seed=1000, scale=False
     )
     ghz_ent = Entanglement.relative_entropy(
-        ghz_model, n_samples=10, n_sigmas=10, seed=1000, scale=False
+        ghz_model, n_samples=10, n_sigmas=20, seed=1000, scale=False
     )
 
     assert 0.0 < separable_ent < entangled_ent < ghz_ent == 1.0, (

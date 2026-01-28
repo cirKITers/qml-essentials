@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import List, Tuple
-import jax.numpy as np
+import jax.numpy as jnp
+import numpy as np
 import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
@@ -271,7 +272,7 @@ class PauliCircuit:
                     (
                         op
                         if PauliCircuit._is_clifford(op)
-                        else op.__class__(np.tensor(op.parameters), op.wires)
+                        else op.__class__(jnp.tensor(op.parameters), op.wires)
                     )
                     for op in decomposed_ops
                 ]
@@ -585,7 +586,7 @@ class QuanTikz:
 
     @staticmethod
     def search_pi_fraction(w, op_name):
-        w_pi = Fraction(w / np.pi).limit_denominator(100)
+        w_pi = Fraction(w / jnp.pi).limit_denominator(100)
         # Not a small nice Fraction
         if w_pi.denominator > 12:
             return f"\\gate{{{op_name}({w:.2f})}}"

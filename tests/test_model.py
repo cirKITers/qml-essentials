@@ -1,14 +1,12 @@
 from typing import Optional
-import random
+from jax import random
+import random as pyrandom
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Circuit, Ansaetze, Gates, Encoding
 from qml_essentials.ansaetze import PulseInformation as pinfo
 import pytest
 import inspect
 import logging
-import shutil
-import os
-import hashlib
 import pennylane as qml
 import pennylane.numpy as np
 import time
@@ -104,7 +102,7 @@ def test_batching() -> None:
     )
 
     n_samples = 3
-    model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
+    model.initialize_params(random.key(1000), repeat=n_samples)
     params = model.params
 
     res = np.zeros((n_samples, 4, 4), dtype=np.complex128)
@@ -129,7 +127,7 @@ def test_multiprocessing_density() -> None:
         mp_threshold=200,
     )
 
-    model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
+    model.initialize_params(random.key(1000), repeat=n_samples)
     params = model.params
 
     start = time.time()
@@ -142,7 +140,7 @@ def test_multiprocessing_density() -> None:
         circuit_type="Circuit_19",
     )
 
-    model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
+    model.initialize_params(random.key(1000), repeat=n_samples)
     params = model.params
 
     start = time.time()
@@ -170,7 +168,7 @@ def test_multiprocessing_expval() -> None:
         mp_threshold=4000,
     )
 
-    model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
+    model.initialize_params(random.key(1000), repeat=n_samples)
     params = model.params
 
     start = time.time()
@@ -183,7 +181,7 @@ def test_multiprocessing_expval() -> None:
         circuit_type="Circuit_19",
     )
 
-    model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
+    model.initialize_params(random.key(1000), repeat=n_samples)
     params = model.params
 
     start = time.time()
@@ -358,7 +356,7 @@ def test_basic_draw() -> None:
                     np.pi / 2,  # numerator=1
                 ]
                 + [
-                    random.randint(1, 24) * np.pi / random.randint(1, 12)
+                    pyrandom.randint(1, 24) * np.pi / pyrandom.randint(1, 12)
                     for _ in range(rest_pi)
                 ]
                 + [np.random.uniform(0, 2 * np.pi) for _ in range(rest)]
@@ -393,7 +391,7 @@ def test_advanced_draw() -> None:
                 np.pi / 2,  # numerator=1
             ]
             + [
-                random.randint(1, 24) * np.pi / random.randint(1, 12)
+                pyrandom.randint(1, 24) * np.pi / pyrandom.randint(1, 12)
                 for _ in range(rest_pi)
             ]
             + [np.random.uniform(0, 2 * np.pi) for _ in range(rest)]
@@ -501,7 +499,7 @@ def test_re_initialization() -> None:
 
     temp_params = model.params.copy()
 
-    model.initialize_params(rng=np.random.default_rng(seed=1001))
+    model.initialize_params(random.key(1001))
 
     assert not np.allclose(
         model.params, temp_params, atol=1e-3
@@ -694,7 +692,7 @@ def test_pulse_model_inference():
 
 @pytest.mark.unittest
 def test_pulse_model_batching():
-    rng = np.random.default_rng(1000)
+    random_key = random.key(1000)
 
     model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
 
@@ -706,7 +704,9 @@ def test_pulse_model_batching():
     # two qubits -> two expvals with batch size 2
     assert res_b.shape == (2, 2), "Batch size mismatch"
 
-    inputs = rng.uniform(0, 2 * np.pi, size=(3))
+    inputs = random.uniform(random_key, (3,), maxval=2 * np.pi)
+    random_key, _ = random.split(random_key)
+
     # test pulse params & inputs batching
     res_a = model(inputs=inputs, gate_mode="unitary")
     res_b = model(inputs=inputs, gate_mode="pulse")
@@ -714,7 +714,7 @@ def test_pulse_model_batching():
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
     assert np.allclose(res_a, res_b, atol=1e-3), "Inputs batching failed!"
 
-    model.initialize_params(rng=rng, repeat=2)
+    model.initialize_params(random_key, repeat=2)
 
     # test pulse params & params & inputs batching
     res_a = model(inputs=inputs, gate_mode="unitary")
