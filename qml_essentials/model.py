@@ -152,7 +152,7 @@ class Model:
             (self.n_qubits, self.n_input_feat), requires_grad=trainable_frequencies
         )
 
-        # self._zero_inputs = False
+        self._zero_inputs = False
 
         # --- Data-Reuploading ---
         # Process data reuploading strategy and set degree
@@ -650,8 +650,8 @@ class Model:
             None
         """
         # check for zero, because due to input validation, input cannot be none
-        # if self.remove_zero_encoding and self._zero_inputs:
-        #     return
+        if self.remove_zero_encoding and self._zero_inputs:
+            return
 
         for q in range(self.n_qubits):
             # use the last dimension of the inputs (feature dimension)
@@ -1074,7 +1074,7 @@ class Model:
         Returns:
             np.ndarray: The validated input.
         """
-        # self._zero_inputs = False
+        self._zero_inputs = False
         if isinstance(inputs, List):
             inputs = np.stack(inputs)
         elif isinstance(inputs, float) or isinstance(inputs, int):
@@ -1082,8 +1082,8 @@ class Model:
         elif inputs is None:
             inputs = np.array([[0] * self.n_input_feat])
 
-        # if not inputs.any():
-        #     self._zero_inputs = True
+        if not inputs.any():
+            self._zero_inputs = True
 
         if len(inputs.shape) <= 1:
             if self.n_input_feat == 1:
