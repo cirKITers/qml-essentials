@@ -479,7 +479,7 @@ def test_inputs() -> None:
             remove_zero_encoding=test_case["remove_zero_encoding"],
         )
 
-        out = model(
+        _ = model(
             model.params,
             inputs=test_case["inputs"],
             noise_params=None,
