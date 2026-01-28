@@ -1,11 +1,10 @@
 from __future__ import annotations
 from typing import List, Tuple
-import numpy as np
+import jax.numpy as np
 import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
 from pennylane.typing import PostprocessingFn
-import pennylane.numpy as pnp
 import pennylane.ops.op_math as qml_op
 from pennylane.drawer import drawable_layers, tape_text
 from fractions import Fraction
@@ -272,7 +271,7 @@ class PauliCircuit:
                     (
                         op
                         if PauliCircuit._is_clifford(op)
-                        else op.__class__(pnp.tensor(op.parameters), op.wires)
+                        else op.__class__(np.tensor(op.parameters), op.wires)
                     )
                     for op in decomposed_ops
                 ]

@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional, List, Union, Dict, Callable
 import numbers
 import csv
-import pennylane.numpy as np
+import jax.numpy as np
 import pennylane as qml
 import jax
 from jax import numpy as jnp

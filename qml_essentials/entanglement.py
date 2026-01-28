@@ -1,6 +1,6 @@
 from typing import Optional, Any, List
 import pennylane as qml
-import pennylane.numpy as np
+import jax.numpy as np
 from copy import deepcopy
 
 from pennylane.measurements import ProbabilityMP

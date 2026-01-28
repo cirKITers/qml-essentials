@@ -3,8 +3,7 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass
 import pennylane as qml
-import pennylane.numpy as np
-import numpy as nnp
+import jax.numpy as np
 from pennylane.operation import Operator
 import pennylane.ops.op_math as qml_op
 from scipy.stats import rankdata
@@ -1391,7 +1390,7 @@ class FCC:
             )
 
         nc = fourier_fingerprint.shape[0] // 2 + 1
-        weights = nnp.mgrid[0:nc:1, 0:nc:1].sum(axis=0) / ((nc - 1) * 2)
+        weights = np.mgrid[0:nc:1, 0:nc:1].sum(axis=0) / ((nc - 1) * 2)
         weights_matrix = quadrant_to_matrix(weights)
 
         return fourier_fingerprint * weights_matrix

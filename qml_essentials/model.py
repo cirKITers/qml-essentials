@@ -1,12 +1,11 @@
 from typing import Dict, Optional, Tuple, Callable, Union, List
 import pennylane as qml
-import pennylane.numpy as np
 import warnings
-from autograd.numpy import numpy_boxes
+from jax.numpy import numpy_boxes
 from copy import deepcopy
 import math
 import jax
-import jax.numpy as jnp
+import jax.numpy as np
 
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit, Encoding
@@ -1197,10 +1196,10 @@ class Model:
                 # we use moveaxis here because in case of parity measure,
                 # there is another dimension appended to the end and
                 # simply transposing would result in a wrong shape
-                if isinstance(result[0], jnp.ndarray):
-                    result = jnp.stack(result)
+                if isinstance(result[0], np.ndarray):
+                    result = np.stack(result)
                     if len(result.shape) > 1:
-                        result = jnp.moveaxis(result, 0, 1)
+                        result = np.moveaxis(result, 0, 1)
                 else:
                     result = np.stack(result)
                     if len(result.shape) > 1:

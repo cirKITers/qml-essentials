@@ -1,4 +1,4 @@
-import pennylane.numpy as np
+import jax.numpy as np
 from typing import Tuple, List, Any
 from scipy import integrate
 from scipy.linalg import sqrtm
