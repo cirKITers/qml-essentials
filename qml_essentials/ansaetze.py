@@ -1327,7 +1327,7 @@ class Gates(metaclass=GatesMeta):
             n_params = PulseInformation.gate_by_name(gate_name).size
             scalers = pulse_mgr.get(n_params)
             base = PulseInformation.gate_by_name(gate_name).params
-            kwargs["pulse_params"] = scalers * base  # element-wise scaling
+            kwargs["pulse_params"] = base * scalers
 
         # Call the selected gate backend
         gate = getattr(gate_backend, gate_name, None)
@@ -1394,7 +1394,8 @@ class PulseParamManager:
         """Return the next n parameters and advance the cursor."""
         if self.idx + n > len(self.pulse_params):
             raise ValueError("Not enough pulse parameters left for this gate")
-        params = self.pulse_params[self.idx : self.idx + n]
+        # TODO: we squeeze here to get rid of any extra hidden dimension
+        params = self.pulse_params[self.idx : self.idx + n].squeeze()
         self.idx += n
         return params
 

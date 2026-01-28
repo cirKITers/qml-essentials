@@ -234,7 +234,7 @@ def test_bell_measure() -> None:
             circuit_type=test_case["circuit_type"],
             data_reupload=False,
             initialization="random",
-            mp_threshold=1000,
+            # mp_threshold=1000,
         )
 
         ent_cap = Entanglement.bell_measurements(model, n_samples=5000, seed=1000)

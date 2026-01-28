@@ -1802,9 +1802,9 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "dill", specifier = ">=0.4.0,<0.5" },
-    { name = "jax", specifier = ">=0.4.28,<0.5" },
-    { name = "jaxlib", specifier = ">=0.4.28,<0.5" },
-    { name = "optax", specifier = ">=0.2.5,<0.3" },
+    { name = "jax", specifier = "<=0.4.28" },
+    { name = "jaxlib", specifier = "<=0.4.28" },
+    { name = "optax", specifier = "<=0.2.5" },
     { name = "pennylane", specifier = ">=0.40.0,<0.41.0" },
 ]
 

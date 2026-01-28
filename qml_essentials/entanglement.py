@@ -148,9 +148,10 @@ class Entanglement:
                 qml.H(q)
 
             # look at the auxiliary qubits
-            obs_wires = [(q, q + model.n_qubits) for q in range(model.n_qubits)]
-            return [qml.probs(wires=w) for w in obs_wires]
+            return model._observable()
 
+        prev_output_qubit = model.output_qubit
+        model.output_qubit = [(q, q + model.n_qubits) for q in range(model.n_qubits)]
         model.circuit = qml.QNode(
             _circuit,
             qml.device(
@@ -181,7 +182,7 @@ class Entanglement:
 
         # implicitly set input to none in case it's not needed
         kwargs.setdefault("inputs", None)
-        exp = model(params=params, **kwargs)
+        exp = model(params=params, execution_type="probs", **kwargs)
         exp = 1 - 2 * exp[..., -1]
 
         if not np.isclose(np.sum(exp.imag), 0, atol=1e-6):
@@ -192,6 +193,8 @@ class Entanglement:
         entangling_capability = min(max(measure.mean(), 0.0), 1.0)
         log.debug(f"Variance of measure: {measure.var()}")
 
+        # restore state
+        model.output_qubit = prev_output_qubit
         return float(entangling_capability)
 
     @staticmethod
