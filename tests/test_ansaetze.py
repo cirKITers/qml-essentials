@@ -313,6 +313,7 @@ def test_ansaetze() -> None:
         )
 
 
+@pytest.mark.expensive
 @pytest.mark.smoketest
 def test_pulse_params_ansaetze() -> None:
     for ansatz in Ansaetze.get_available():
