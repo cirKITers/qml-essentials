@@ -10,7 +10,7 @@ from jax import random
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit, Encoding
 from qml_essentials.ansaetze import PulseInformation as pinfo
-from qml_essentials.utils import PauliCircuit, QuanTikz, MultiprocessingPool
+from qml_essentials.utils import PauliCircuit, QuanTikz
 
 import logging
 
@@ -1100,54 +1100,6 @@ class Model:
 
         return inputs
 
-    @staticmethod
-    def _parallel_f(
-        procnum,
-        result,
-        f,
-        batch_size,
-        params: jnp.ndarray,
-        pulse_params: jnp.ndarray,
-        inputs: jnp.ndarray,
-        batch_shape,
-        enc_params,
-        gate_mode: str,
-    ):
-        """
-        Helper function for parallelizing a function f over parameters.
-        Sices the batch dimension based on the procnum and batch size.
-
-        Args:
-            procnum: The process number.
-            result: The result array.
-            f: The function to be parallelized.
-            batch_size: The batch size.
-            params: The parameters array.
-            pulse_params (jnp.ndarray): Pulse parameter scalers for pulse-mode gates.
-            inputs: The inputs array.
-            enc_params: The encoding parameters array.
-            gate_mode (str): Mode for gate execution ("unitary" or "pulse").
-        """
-        min_idx = max(procnum * batch_size, 0)
-
-        # inputs parallelization
-        if batch_shape[0] > 1:
-            max_idx = min((procnum + 1) * batch_size, inputs.shape[0])
-            inputs = inputs[min_idx:max_idx]
-
-        # params parallelization
-        if batch_shape[1] > 1:
-            max_idx = min((procnum + 1) * batch_size, params.shape[2])
-            params = params[:, :, min_idx:max_idx]
-
-        result[procnum] = f(
-            params=params,
-            pulse_params=pulse_params,
-            inputs=inputs,
-            enc_params=enc_params,
-            gate_mode=gate_mode,
-        )
-
     def _mp_executor(self, f, params, pulse_params, inputs, enc_params, gate_mode):
         """
         Execute a function f in parallel over parameters.
@@ -1179,24 +1131,6 @@ class Model:
             and combined_batch_size > self.mp_threshold
         ):
             n_processes = math.ceil(combined_batch_size / self.mp_threshold)
-
-        # the following is a little hack to get the batch shape
-        # in the correct order
-        def _f(*args, **kwargs):
-            result = f(*args, **kwargs)
-            if isinstance(result, list):
-                # we use moveaxis here because in case of parity measure,
-                # there is another dimension appended to the end and
-                # simply transposing would result in a wrong shape
-                if isinstance(result[0], jnp.ndarray):
-                    result = jnp.stack(result)
-                    if len(result.shape) > 1:
-                        result = jnp.moveaxis(result, 0, 1)
-                else:
-                    result = jnp.stack(result)
-                    if len(result.shape) > 1:
-                        result = jnp.moveaxis(result, 0, 1)
-            return result
 
         if gate_mode == "pulse" and combined_batch_size > 1:
             # save original f
@@ -1235,38 +1169,57 @@ class Model:
                     f"Multiprocessing threshold {self.mp_threshold}>0, but using \
                     single process, because {combined_batch_size} samples per batch.",
                 )
-            result = _f(
+            result = f(
                 params=params,
                 pulse_params=pulse_params,
                 inputs=inputs,
                 enc_params=enc_params,
                 gate_mode=gate_mode,
             )
+            result = self._postprocess_res(result)
         else:
-            log.info(f"Using {n_processes} processes")
-            mpp = MultiprocessingPool(
-                target=Model._parallel_f,
-                n_processes=n_processes,
-                cpu_scaler=self.cpu_scaler,
-                batch_size=self.mp_threshold,
-                f=_f,
-                params=params,
-                pulse_params=pulse_params,
-                enc_params=enc_params,
-                inputs=inputs,
-                gate_mode=gate_mode,
-                batch_shape=self.batch_shape,
+            result = jax.vmap(
+                f,
+                in_axes=(
+                    2 if self.batch_shape[1] > 1 else None,
+                    0 if self.batch_shape[0] > 1 else None,
+                    2 if self.batch_shape[2] > 1 else None,
+                    None,
+                    None,
+                ),
+            )(
+                params,
+                inputs,
+                pulse_params,
+                enc_params,
+                gate_mode,
             )
-            return_dict = mpp.spawn()
+            result = self._postprocess_res(result)
 
-            # TODO: the following code could use some optimization
-            result = [None] * len(return_dict)
-            for k, v in return_dict.items():
-                result[k] = v
+        return result
 
-            # use first (batch) axis to concat
-            result = jnp.concat(result, axis=0)
+    def _postprocess_res(self, result: Union[list, jnp.ndarray]) -> jnp.ndarray:
+        """
+        Reshapes results for uniformity.
 
+        Args:
+            result (Union[list, jnp.ndarray]): result of a computation
+
+        Returns:
+            jnp.ndarray: Result with shape [B_P, ...]
+        """
+        if isinstance(result, list):
+            # we use moveaxis here because in case of parity measure,
+            # there is another dimension appended to the end and
+            # simply transposing would result in a wrong shape
+            if isinstance(result[0], jnp.ndarray):
+                result = jnp.stack(result)
+                if len(result.shape) > 1:
+                    result = jnp.moveaxis(result, 0, 1)
+            else:
+                result = jnp.stack(result)
+                if len(result.shape) > 1:
+                    result = jnp.moveaxis(result, 0, 1)
         return result
 
     def _assimilate_batch(self, inputs, params, pulse_params):
@@ -1491,31 +1444,30 @@ class Model:
 
         result: Optional[jnp.ndarray] = None
 
-        if result is None:
-            # if density matrix requested or noise params used
-            if self._requires_density():
+        # if density matrix requested or noise params used
+        if self._requires_density():
+            result = self._mp_executor(
+                f=self.circuit_mixed,
+                params=params,  # use arraybox params
+                pulse_params=pulse_params,
+                inputs=inputs,
+                enc_params=enc_params,
+                gate_mode=gate_mode,
+            )
+        else:
+            if not isinstance(self.circuit, qml.QNode):
+                result = self.circuit(
+                    inputs=inputs,
+                )
+            else:
                 result = self._mp_executor(
-                    f=self.circuit_mixed,
+                    f=self.circuit,
                     params=params,  # use arraybox params
                     pulse_params=pulse_params,
                     inputs=inputs,
                     enc_params=enc_params,
                     gate_mode=gate_mode,
                 )
-            else:
-                if not isinstance(self.circuit, qml.QNode):
-                    result = self.circuit(
-                        inputs=inputs,
-                    )
-                else:
-                    result = self._mp_executor(
-                        f=self.circuit,
-                        params=params,  # use arraybox params
-                        pulse_params=pulse_params,
-                        inputs=inputs,
-                        enc_params=enc_params,
-                        gate_mode=gate_mode,
-                    )
 
         result = result.reshape((*self.batch_shape, *self._result_shape)).squeeze()
 

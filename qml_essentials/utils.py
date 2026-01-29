@@ -7,13 +7,9 @@ from pennylane.operation import Operator
 from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
 from pennylane.typing import PostprocessingFn
 import pennylane.ops.op_math as qml_op
-from pennylane.drawer import drawable_layers, tape_text
 from fractions import Fraction
 from itertools import cycle
 from scipy.linalg import logm
-import dill
-import multiprocessing
-import os
 
 CLIFFORD_GATES = (
     qml.PauliX,
@@ -35,78 +31,6 @@ PAULI_ROTATION_GATES = (
 )
 
 SKIPPABLE_OPERATIONS = (qml.Barrier,)
-
-
-class MultiprocessingPool:
-
-    class DillProcess(multiprocessing.Process):
-
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self._target = dill.dumps(
-                self._target
-            )  # Save the target function as bytes, using dill
-
-        def run(self):
-            if self._target:
-                self._target = dill.loads(
-                    self._target
-                )  # Unpickle the target function before executing
-                return self._target(
-                    *self._args, **self._kwargs
-                )  # Execute the target function
-
-    def __init__(self, target, n_processes, cpu_scaler, *args, **kwargs):
-        self.target = target
-        self.n_processes = n_processes
-        self.cpu_scaler = cpu_scaler
-        self.args = args
-        self.kwargs = kwargs
-
-        assert (
-            self.cpu_scaler <= 1 and self.cpu_scaler >= 0
-        ), f"cpu_scaler must in [0..1], got {self.cpu_scaler}"
-
-    def spawn(self):
-        manager = multiprocessing.Manager()
-        return_dict = manager.dict()
-
-        jobs = []
-        # Portable CPU detection
-        try:
-            n_procs = len(os.sched_getaffinity(0))
-        except AttributeError:
-            n_procs = os.cpu_count() or 1
-        n_procs = max(int(n_procs * self.cpu_scaler), 1)
-        # n_procs = max(int(len(os.sched_getaffinity(0)) * self.cpu_scaler), 1)
-
-        c_procs = 0
-        for it in range(self.n_processes):
-            m = self.DillProcess(
-                target=self.target,
-                args=[it, return_dict, *self.args],
-                kwargs=self.kwargs,
-            )
-
-            # append and start job
-            jobs.append(m)
-            jobs[-1].start()
-            c_procs += 1
-
-            # if we reach the max limit of jobs
-            if c_procs > n_procs:
-                # wait for the last n_procs jobs to finish
-                for j in jobs[-c_procs:]:
-                    j.join()
-                # then continue with the next batch
-                c_procs = 0
-
-        # wait for any remaining jobs
-        for j in jobs:
-            if j.is_alive():
-                j.join()
-
-        return return_dict
 
 
 def logm_v(A, **kwargs):
