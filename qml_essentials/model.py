@@ -253,7 +253,7 @@ class Model:
         self.circuit_mixed: qml.QNode = qml.QNode(
             self._circuit,
             qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
-            interface="autograd" if self.shots is not None else "auto",
+            interface="jax",
             diff_method="parameter-shift" if self.shots is not None else "best",
         )
 
@@ -1031,16 +1031,10 @@ class Model:
         if enc_params is None:
             enc_params = self.enc_params
         else:
-            if isinstance(enc_params, numpy_boxes.ArrayBox):
-                if self.trainable_frequencies:
-                    self.enc_params = enc_params._value
-                else:
-                    self.enc_params = jnp.array(enc_params._value)
+            if self.trainable_frequencies:
+                self.enc_params = enc_params
             else:
-                if self.trainable_frequencies:
-                    self.enc_params = enc_params
-                else:
-                    self.enc_params = jnp.array(enc_params)
+                self.enc_params = jnp.array(enc_params)
 
         if len(enc_params.shape) == 1 and self.n_input_feat == 1:
             enc_params = enc_params.reshape(-1, 1)

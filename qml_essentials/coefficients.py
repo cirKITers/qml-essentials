@@ -3,7 +3,9 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass
 import pennylane as qml
-import jax.numpy as np
+import jax.numpy as jnp
+from jax import random
+import numpy as np
 from pennylane.operation import Operator
 import pennylane.ops.op_math as qml_op
 from scipy.stats import rankdata
@@ -26,9 +28,9 @@ class Coefficients:
         shift=False,
         trim=False,
         **kwargs,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
-        Extracts the coefficients of a given model using a FFT (np-fft).
+        Extracts the coefficients of a given model using a FFT (jnp-fft).
 
         Note that the coefficients are complex numbers, but the imaginary part
         of the coefficients should be very close to zero, since the expectation
@@ -41,13 +43,13 @@ class Coefficients:
             model (Model): The model to sample.
             mfs (int): Multiplicator for the highest frequency. Default is 2.
             mts (int): Multiplicator for the number of time samples. Default is 1.
-            shift (bool): Whether to apply np-fftshift. Default is False.
+            shift (bool): Whether to apply jnp-fftshift. Default is False.
             trim (bool): Whether to remove the Nyquist frequency if spectrum is even.
                 Default is False.
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
-            Tuple[np.ndarray, np.ndarray]: Tuple containing the coefficients
+            Tuple[jnp.ndarray, jnp.ndarray]: Tuple containing the coefficients
             and frequencies.
         """
         kwargs.setdefault("force_mean", True)
@@ -57,10 +59,10 @@ class Coefficients:
             model, mfs=mfs, mts=mts, **kwargs
         )
 
-        if not np.isclose(np.sum(coeffs).imag, 0.0, rtol=1.0e-5):
+        if not jnp.isclose(jnp.sum(coeffs).imag, 0.0, rtol=1.0e-5):
             raise ValueError(
                 f"Spectrum is not real. Imaginary part of coefficients is:\
-                {np.sum(coeffs).imag}"
+                {jnp.sum(coeffs).imag}"
             )
 
         if trim:
@@ -70,7 +72,7 @@ class Coefficients:
                     freqs = [np.delete(freq, len(freq) // 2, axis=ax) for freq in freqs]
 
         if shift:
-            coeffs = np.fft.fftshift(coeffs, axes=list(range(model.n_input_feat)))
+            coeffs = jnp.fft.fftshift(coeffs, axes=list(range(model.n_input_feat)))
             freqs = np.fft.fftshift(freqs)
 
         if len(freqs) == 1:
@@ -81,22 +83,22 @@ class Coefficients:
     @staticmethod
     def _fourier_transform(
         model: Model, mfs: int, mts: int, **kwargs: Any
-    ) -> np.ndarray:
+    ) -> jnp.ndarray:
         # Create a frequency vector with as many frequencies as model degrees,
         # oversampled by mfs
-        n_freqs: np.ndarray = np.array(
+        n_freqs: jnp.ndarray = jnp.array(
             [mfs * model.degree[i] for i in range(model.n_input_feat)]
         )
 
-        start, stop, step = 0, 2 * mts * np.pi, 2 * np.pi / n_freqs
+        start, stop, step = 0, 2 * mts * jnp.pi, 2 * jnp.pi / n_freqs
         # Stretch according to the number of frequencies
         inputs: List = [
-            np.arange(start, stop, step[i]) for i in range(model.n_input_feat)
+            jnp.arange(start, stop, step[i]) for i in range(model.n_input_feat)
         ]
 
         # permute with input dimensionality
-        nd_inputs = np.array(
-            np.meshgrid(*[inputs[i] for i in range(model.n_input_feat)])
+        nd_inputs = jnp.array(
+            jnp.meshgrid(*[inputs[i] for i in range(model.n_input_feat)])
         ).T.reshape(-1, model.n_input_feat)
 
         # Output vector is not necessarily the same length as input
@@ -105,33 +107,33 @@ class Coefficients:
             *[inputs[i].shape[0] for i in range(model.n_input_feat)], -1
         ).squeeze()
 
-        coeffs = np.fft.fftn(outputs, axes=list(range(model.n_input_feat)))
+        coeffs = jnp.fft.fftn(outputs, axes=list(range(model.n_input_feat)))
 
         freqs = [
-            np.fft.fftfreq(int(mts * n_freqs[i]), 1 / n_freqs[i])
+            jnp.fft.fftfreq(int(mts * n_freqs[i]), 1 / n_freqs[i])
             for i in range(model.n_input_feat)
         ]
-        # freqs = np.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
+        # freqs = jnp.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
 
         # TODO: this could cause issues with multidim input
         # FIXME: account for different frequencies in multidim input scenarios
         # Run the fft and rearrange +
         # normalize the output (using product if multidim)
         return (
-            coeffs / np.prod(outputs.shape[0 : model.n_input_feat]),
+            coeffs / math.prod(outputs.shape[0 : model.n_input_feat]),
             freqs,
         )
 
     @staticmethod
-    def get_psd(coeffs: np.ndarray) -> np.ndarray:
+    def get_psd(coeffs: jnp.ndarray) -> jnp.ndarray:
         """
         Calculates the power spectral density (PSD) from given Fourier coefficients.
 
         Args:
-            coeffs (np.ndarray): The Fourier coefficients.
+            coeffs (jnp.ndarray): The Fourier coefficients.
 
         Returns:
-            np.ndarray: The power spectral density.
+            jnp.ndarray: The power spectral density.
         """
         # TODO: if we apply trim=True in advance, this will be slightly wrong..
 
@@ -143,51 +145,55 @@ class Coefficients:
 
     @staticmethod
     def evaluate_Fourier_series(
-        coefficients: np.ndarray,
-        frequencies: np.ndarray,
-        inputs: Union[np.ndarray, list, float],
+        coefficients: jnp.ndarray,
+        frequencies: jnp.ndarray,
+        inputs: Union[jnp.ndarray, list, float],
     ) -> float:
         """
         Evaluate the function value of a Fourier series at one point.
 
         Args:
-            coefficients (np.ndarray): Coefficients of the Fourier series.
-            frequencies (np.ndarray): Corresponding frequencies.
-            inputs (np.ndarray): Point at which to evaluate the function.
+            coefficients (jnp.ndarray): Coefficients of the Fourier series.
+            frequencies (jnp.ndarray): Corresponding frequencies.
+            inputs (jnp.ndarray): Point at which to evaluate the function.
         Returns:
             float: The function value at the input point.
         """
         if isinstance(frequencies, list):
             if len(coefficients.shape) <= len(frequencies):
-                coefficients = coefficients[..., np.newaxis]
+                coefficients = coefficients[..., jnp.newaxis]
         else:
             if len(coefficients.shape) == 1:
-                coefficients = coefficients[..., np.newaxis]
+                coefficients = coefficients[..., jnp.newaxis]
 
-        if not isinstance(inputs, (np.ndarray, list)):
-            inputs = [inputs]
+        if isinstance(inputs, list):
+            inputs = jnp.array(inputs)
+        if len(inputs.shape) < 1:
+            inputs = inputs[jnp.newaxis, ...]
 
         if isinstance(frequencies, list):
             input_dim = len(frequencies)
-            frequencies = np.stack(np.meshgrid(*frequencies))
+            frequencies = jnp.stack(jnp.meshgrid(*frequencies))
             if input_dim != len(inputs):
-                frequencies = np.repeat(
-                    frequencies[np.newaxis, ...], [len(inputs)], axis=0
+                frequencies = jnp.repeat(
+                    frequencies[jnp.newaxis, ...], inputs.shape[0], axis=0
                 )
-                freq_inputs = np.einsum("bi...,b->b...", frequencies, inputs)
-                exponents = np.exp(1j * freq_inputs).T
-                exp = np.einsum("jl...k,jl...b->b...k", coefficients, exponents)
+                freq_inputs = jnp.einsum("bi...,b->b...", frequencies, inputs)
+                exponents = jnp.exp(1j * freq_inputs).T
+                exp = jnp.einsum("jl...k,jl...b->b...k", coefficients, exponents)
             else:
-                freq_inputs = np.einsum("i...,i->...", frequencies, inputs)
-                exponents = np.exp(1j * freq_inputs).T
-                exp = np.einsum("jl...k,jl...->k...", coefficients, exponents)
+                freq_inputs = jnp.einsum("i...,i->...", frequencies, inputs)
+                exponents = jnp.exp(1j * freq_inputs).T
+                exp = jnp.einsum("jl...k,jl...->k...", coefficients, exponents)
         else:
-            frequencies = np.repeat(frequencies[np.newaxis, ...], [len(inputs)], axis=0)
-            freq_inputs = np.einsum("i...,i->i...", frequencies, inputs)
-            exponents = np.exp(1j * freq_inputs)
-            exp = np.einsum("j...k,ij...->ik...", coefficients, exponents)
+            frequencies = jnp.repeat(
+                frequencies[jnp.newaxis, ...], inputs.shape[0], axis=0
+            )
+            freq_inputs = jnp.einsum("i...,i->i...", frequencies, inputs)
+            exponents = jnp.exp(1j * freq_inputs)
+            exp = jnp.einsum("j...k,ij...->ik...", coefficients, exponents)
 
-        return np.squeeze(np.real_if_close(exp))
+        return jnp.squeeze(jnp.real(exp))
 
 
 class FourierTree:
@@ -236,7 +242,7 @@ class FourierTree:
 
             # If the observable does not constist of only Z and I, the
             # expectation (and therefore the constant node term) is zero
-            if np.logical_or(
+            if jnp.logical_or(
                 observable.list_repr == 0, observable.list_repr == 1
             ).any():
                 self.term = 0.0
@@ -264,9 +270,9 @@ class FourierTree:
                 else 1.0
             )
             if self.is_sine_factor:
-                factor = 1j * np.sin(factor)
+                factor = 1j * jnp.sin(factor)
             elif self.is_cosine_factor:
-                factor = np.cos(factor)
+                factor = jnp.cos(factor)
             if not (self.left or self.right):  # leaf
                 return factor * self.term
 
@@ -353,13 +359,13 @@ class FourierTree:
             cos_list (List[int]):  Current number of cosine contributions for
                 each parameter. Has the same length as the parameters, as each
                 position corresponds to one parameter.
-            term (np.complex): Constant factor of the leaf, depending on the
+            term (jnp.complex): Constant factor of the leaf, depending on the
                 expectation value of the observable, and a phase.
         """
 
         sin_indices: List[int]
         cos_indices: List[int]
-        term: np.complex128
+        term: jnp.complex128
 
     class PauliOperator:
         """
@@ -368,10 +374,10 @@ class FourierTree:
         certain qubit) and the phase.
 
         Args:
-            pauli (Union[Operator, np.ndarray[int]]): Pauli Rotation Operation
+            pauli (Union[Operator, jnp.ndarray[int]]): Pauli Rotation Operation
                 or list representation
             n_qubits (int): Number of qubits in the circuit
-            prev_xy_indices (Optional[np.ndarray[bool]]): X/Y indices of the
+            prev_xy_indices (Optional[jnp.ndarray[bool]]): X/Y indices of the
                 previous Pauli sequence. Defaults to None.
             is_observable (bool): If the operator is an observable. Defaults to
                 False.
@@ -382,9 +388,9 @@ class FourierTree:
 
         def __init__(
             self,
-            pauli: Union[Operator, np.ndarray[int]],
+            pauli: Union[Operator, jnp.ndarray[int]],
             n_qubits: int,
-            prev_xy_indices: Optional[np.ndarray[bool]] = None,
+            prev_xy_indices: Optional[jnp.ndarray[bool]] = None,
             is_observable: bool = False,
             is_init: bool = True,
             phase: float = 1.0,
@@ -397,30 +403,30 @@ class FourierTree:
                     pauli = pauli.generator()[0].base
                 self.list_repr = self._create_list_representation(pauli, n_qubits)
             else:
-                assert isinstance(pauli, np.ndarray)
+                assert isinstance(pauli, jnp.ndarray)
                 self.list_repr = pauli
 
             if prev_xy_indices is None:
-                prev_xy_indices = np.zeros(n_qubits, dtype=bool)
-            self.xy_indices = np.logical_or(
+                prev_xy_indices = jnp.zeros(n_qubits, dtype=bool)
+            self.xy_indices = jnp.logical_or(
                 prev_xy_indices,
                 self._compute_xy_indices(self.list_repr, rev=is_observable),
             )
 
         @staticmethod
         def _compute_xy_indices(
-            op: np.ndarray[int], rev: bool = False
-        ) -> np.ndarray[bool]:
+            op: jnp.ndarray[int], rev: bool = False
+        ) -> jnp.ndarray[bool]:
             """
             Computes the positions of X or Y gates to an one-hot encoded boolen
             array.
 
             Args:
-                op (np.ndarray[int]): Pauli-Operation list representation.
+                op (jnp.ndarray[int]): Pauli-Operation list representation.
                 rev (bool): Whether to negate the array.
 
             Returns:
-                np.ndarray[bool]: One hot encoded boolean array.
+                jnp.ndarray[bool]: One hot encoded boolean array.
             """
             xy_indices = (op == 0) + (op == 1)
             if rev:
@@ -428,7 +434,9 @@ class FourierTree:
             return xy_indices
 
         @staticmethod
-        def _create_list_representation(op: Operator, n_qubits: int) -> np.ndarray[int]:
+        def _create_list_representation(
+            op: Operator, n_qubits: int
+        ) -> jnp.ndarray[int]:
             """
             Create list representation of a Pennylane Operator.
             Generally, the list representation is a list of length n_qubits,
@@ -443,9 +451,9 @@ class FourierTree:
                 n_qubits (int): number of qubits in the circuit
 
             Returns:
-                np.ndarray[int]: List representation
+                jnp.ndarray[int]: List representation
             """
-            pauli_repr = -np.ones(n_qubits, dtype=int)
+            pauli_repr = -jnp.ones(n_qubits, dtype=int)
             op = op.terms()[1][0] if isinstance(op, qml_op.Prod) else op
             op = op.base if isinstance(op, qml_op.SProd) else op
 
@@ -465,7 +473,7 @@ class FourierTree:
                         pauli_repr[o.wires[0]] = 2
             return pauli_repr
 
-        def is_commuting(self, pauli: np.ndarray[int]) -> bool:
+        def is_commuting(self, pauli: jnp.ndarray[int]) -> bool:
             """
             Computes if this Pauli commutes with another Pauli operator.
             This computation is based on the fact that The commutator is zero
@@ -473,63 +481,63 @@ class FourierTree:
             even.
 
             Args:
-                pauli (np.ndarray[int]): List representation of another Pauli
+                pauli (jnp.ndarray[int]): List representation of another Pauli
 
             Returns:
                 bool: If the current and other Pauli are commuting.
             """
-            anticommutator = np.where(
+            anticommutator = jnp.where(
                 pauli < 0,
                 False,
-                np.where(
+                jnp.where(
                     self.list_repr < 0,
                     False,
-                    np.where(self.list_repr == pauli, False, True),
+                    jnp.where(self.list_repr == pauli, False, True),
                 ),
             )
-            return not (np.sum(anticommutator) % 2)
+            return not (jnp.sum(anticommutator) % 2)
 
-        def tensor(self, pauli: np.ndarray[int]) -> FourierTree.PauliOperator:
+        def tensor(self, pauli: jnp.ndarray[int]) -> FourierTree.PauliOperator:
             """
             Compute tensor product between the current Pauli and a given list
             representation of another Pauli operator.
 
             Args:
-                pauli (np.ndarray[int]): List representation of Pauli
+                pauli (jnp.ndarray[int]): List representation of Pauli
 
             Returns:
                 FourierTree.PauliOperator: New Pauli operator object, which
                 contains the tensor product
             """
             diff = (pauli - self.list_repr + 3) % 3
-            phase = np.where(
+            phase = jnp.where(
                 self.list_repr < 0,
                 1.0,
-                np.where(
+                jnp.where(
                     pauli < 0,
                     1.0,
-                    np.where(
+                    jnp.where(
                         diff == 2,
                         1.0j,
-                        np.where(diff == 1, -1.0j, 1.0),
+                        jnp.where(diff == 1, -1.0j, 1.0),
                     ),
                 ),
             )
 
-            obs = np.where(
+            obs = jnp.where(
                 self.list_repr < 0,
                 pauli,
-                np.where(
+                jnp.where(
                     pauli < 0,
                     self.list_repr,
-                    np.where(
+                    jnp.where(
                         diff == 2,
                         (self.list_repr + 1) % 3,
-                        np.where(diff == 1, (self.list_repr + 2) % 3, -1),
+                        jnp.where(diff == 1, (self.list_repr + 2) % 3, -1),
                     ),
                 ),
             )
-            phase = self.phase * np.prod(phase)
+            phase = self.phase * jnp.prod(phase)
             return FourierTree.PauliOperator(
                 obs, phase=phase, n_qubits=obs.size, is_init=False, is_observable=True
             )
@@ -574,7 +582,7 @@ class FourierTree:
         quantum_tape = qml.workflow.construct_tape(self.model.circuit)(
             params=model.params, inputs=inputs
         )
-        self.parameters = [np.squeeze(p) for p in quantum_tape.get_parameters()]
+        self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
         self.input_indices = [
             i for (i, p) in enumerate(self.parameters) if not p.requires_grad
         ]
@@ -597,23 +605,23 @@ class FourierTree:
 
     def __call__(
         self,
-        params: Optional[np.ndarray] = None,
-        inputs: Optional[np.ndarray] = None,
+        params: Optional[jnp.ndarray] = None,
+        inputs: Optional[jnp.ndarray] = None,
         **kwargs,
-    ) -> np.ndarray:
+    ) -> jnp.ndarray:
         """
         Evaluates the Fourier tree via sine-cosine terms sum. This is
         equivalent to computing the expectation value of the observables with
         respect to the corresponding circuit.
 
         Args:
-            params (Optional[np.ndarray], optional): Parameters of the model.
+            params (Optional[jnp.ndarray], optional): Parameters of the model.
                 Defaults to None.
-            inputs (Optional[np.ndarray], optional): Inputs to the circuit.
+            inputs (Optional[jnp.ndarray], optional): Inputs to the circuit.
                 Defaults to None.
 
         Returns:
-            np.ndarray: Expectation value of the tree.
+            jnp.ndarray: Expectation value of the tree.
 
         Raises:
             NotImplementedError: When using other "execution_type" as expval.
@@ -646,17 +654,17 @@ class FourierTree:
         quantum_tape = qml.workflow.construct_tape(self.model.circuit)(
             params=self.model.params, inputs=inputs
         )
-        self.parameters = [np.squeeze(p) for p in quantum_tape.get_parameters()]
+        self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
         self.input_indices = [
             i for (i, p) in enumerate(self.parameters) if not p.requires_grad
         ]
 
-        results = np.zeros(len(self.tree_roots))
+        results = jnp.zeros(len(self.tree_roots))
         for i, root in enumerate(self.tree_roots):
-            results[i] = np.real_if_close(root.evaluate(self.parameters))
+            results = results.at[i].set(jnp.real(root.evaluate(self.parameters)))
 
         if kwargs.get("force_mean", False):
-            return np.mean(results)
+            return jnp.mean(results)
         else:
             return results
 
@@ -708,14 +716,14 @@ class FourierTree:
         """
         leafs = []
         for root in self.tree_roots:
-            sin_list = np.zeros(len(self.parameters), dtype=np.int32)
-            cos_list = np.zeros(len(self.parameters), dtype=np.int32)
+            sin_list = jnp.zeros(len(self.parameters), dtype=jnp.int32)
+            cos_list = jnp.zeros(len(self.parameters), dtype=jnp.int32)
             leafs.append(root.get_leafs(sin_list, cos_list, []))
         return leafs
 
     def get_spectrum(
         self, force_mean: bool = False
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[List[jnp.ndarray], List[jnp.ndarray]]:
         """
         Computes the Fourier spectrum for the tree, consisting of the
         frequencies and its corresponding coefficinets.
@@ -727,7 +735,7 @@ class FourierTree:
                 observables. Defaults to False.
 
         Returns:
-            Tuple[List[np.ndarray], List[np.ndarray]]:
+            Tuple[List[jnp.ndarray], List[jnp.ndarray]]:
                 - List of frequencies, one list for each observable (root).
                 - List of corresponding coefficents, one list for each
                   observable (root).
@@ -738,7 +746,7 @@ class FourierTree:
 
         coeffs = []
         for leafs in self.leafs:
-            freq_terms = defaultdict(np.complex128)
+            freq_terms = defaultdict(jnp.complex128)
             for leaf in leafs:
                 leaf_factor, s, c = self._compute_leaf_factors(leaf, parameter_indices)
 
@@ -753,8 +761,8 @@ class FourierTree:
         return coefficients, frequencies
 
     def _freq_terms_to_coeffs(
-        self, coeffs: List[Dict[int, np.ndarray]], force_mean: bool
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+        self, coeffs: List[Dict[int, jnp.ndarray]], force_mean: bool
+    ) -> Tuple[List[jnp.ndarray], List[jnp.ndarray]]:
         """
         Given a list of dictionaries of the form:
         [
@@ -787,13 +795,13 @@ class FourierTree:
         list is 1.
 
         Args:
-            coeffs (List[Dict[int, np.ndarray]]): Frequency->Coefficients
+            coeffs (List[Dict[int, jnp.ndarray]]): Frequency->Coefficients
                 dictionary list, one dict for each observable (root).
             force_mean (bool): Whether to average coefficients over multiple
                 observables.
 
         Returns:
-            Tuple[List[np.ndarray], List[np.ndarray]]:
+            Tuple[List[jnp.ndarray], List[jnp.ndarray]]:
                 - List of frequencies, one list for each observable (root).
                 - List of corresponding coefficents, one list for each
                   observable (root).
@@ -803,14 +811,16 @@ class FourierTree:
         if force_mean:
             all_freqs = sorted(set([f for c in coeffs for f in c.keys()]))
             coefficients.append(
-                np.array([np.mean([c.get(f, 0.0) for c in coeffs]) for f in all_freqs])
+                jnp.array(
+                    [jnp.mean([c.get(f, 0.0) for c in coeffs]) for f in all_freqs]
+                )
             )
-            frequencies.append(np.array(all_freqs))
+            frequencies.append(jnp.array(all_freqs))
         else:
             for freq_terms in coeffs:
                 freq_terms = dict(sorted(freq_terms.items()))
-                frequencies.append(np.array(list(freq_terms.keys())))
-                coefficients.append(np.array(list(freq_terms.values())))
+                frequencies.append(jnp.array(list(freq_terms.keys())))
+                coefficients.append(jnp.array(list(freq_terms.values())))
         return frequencies, coefficients
 
     def _compute_leaf_factors(
@@ -835,14 +845,14 @@ class FourierTree:
         leaf_factor = 1.0
         for i in parameter_indices:
             interm_factor = (
-                np.cos(self.parameters[i]) ** leaf.cos_indices[i]
-                * (1j * np.sin(self.parameters[i])) ** leaf.sin_indices[i]
+                jnp.cos(self.parameters[i]) ** leaf.cos_indices[i]
+                * (1j * jnp.sin(self.parameters[i])) ** leaf.sin_indices[i]
             )
             leaf_factor = leaf_factor * interm_factor
 
         # Get number of sine and cosine factors to which the input contributes
-        c = np.sum([leaf.cos_indices[k] for k in self.input_indices], dtype=np.int32)
-        s = np.sum([leaf.sin_indices[k] for k in self.input_indices], dtype=np.int32)
+        c = jnp.sum([leaf.cos_indices[k] for k in self.input_indices], dtype=jnp.int32)
+        s = jnp.sum([leaf.sin_indices[k] for k in self.input_indices], dtype=jnp.int32)
 
         leaf_factor = leaf.term * leaf_factor * 0.5 ** (s + c)
 
@@ -864,7 +874,7 @@ class FourierTree:
                 Gates itself are attributes of the class.
             observable (FourierTree.PauliOperator): Current observable
         """
-        xy_indices_obs = np.logical_or(
+        xy_indices_obs = jnp.logical_or(
             observable.xy_indices, self.pauli_rotations[pauli_rotation_idx].xy_indices
         ).all()
 
@@ -935,14 +945,14 @@ class FourierTree:
         )
 
     def _create_new_observable(
-        self, pauli: np.ndarray[int], observable: FourierTree.PauliOperator
+        self, pauli: jnp.ndarray[int], observable: FourierTree.PauliOperator
     ) -> FourierTree.PauliOperator:
         """
         Utility function to obtain the new observable for a tree node, if the
         last Pauli and the observable do not commute.
 
         Args:
-            pauli (np.ndarray[int]): The int array representation of the last
+            pauli (jnp.ndarray[int]): The int array representation of the last
                 Pauli rotation in the operation sequence.
             observable (FourierTree.PauliOperator): The current observable.
 
@@ -1015,7 +1025,7 @@ class FCC:
         weight: Optional[bool] = False,
         trim_redundant: Optional[bool] = True,
         **kwargs,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Shortcut method to get just the fourier fingerprint.
         This includes
@@ -1038,7 +1048,7 @@ class FCC:
             **kwargs: Additional keyword arguments for the model function.
 
         Returns:
-            Tuple[np.ndarray, np.ndarray]: The fourier fingerprint
+            Tuple[jnp.ndarray, jnp.ndarray]: The fourier fingerprint
             and the frequency indices
         """
         _, coeffs, freqs = FCC._calculate_coefficients(
@@ -1057,8 +1067,8 @@ class FCC:
             # apply the mask on the fingerprint
             fourier_fingerprint = mask * fourier_fingerprint
 
-            row_mask = np.any(np.isfinite(fourier_fingerprint), axis=1)
-            col_mask = np.any(np.isfinite(fourier_fingerprint), axis=0)
+            row_mask = jnp.any(jnp.isfinite(fourier_fingerprint), axis=1)
+            col_mask = jnp.any(jnp.isfinite(fourier_fingerprint), axis=0)
 
             fourier_fingerprint = fourier_fingerprint[row_mask][:, col_mask]
 
@@ -1066,7 +1076,7 @@ class FCC:
 
     @staticmethod
     def calculate_fcc(
-        fourier_fingerprint: np.ndarray,
+        fourier_fingerprint: jnp.ndarray,
     ) -> float:
         """
         Method to calculate the FCC based on an existing correlation matrix.
@@ -1074,14 +1084,14 @@ class FCC:
         The Fingerprint can be obtained via `get_fourier_fingerprint`
 
         Args:
-            coeff_coeff_correlation (np.ndarray): Correlation matrix of coefficients
+            coeff_coeff_correlation (jnp.ndarray): Correlation matrix of coefficients
         Returns:
             float: The FCC
         """
         # apply the mask on the fingerprint
-        return np.nanmean(np.abs(fourier_fingerprint))
+        return jnp.nanmean(jnp.abs(fourier_fingerprint))
 
-    def _calculate_mask(freqs: np.ndarray) -> np.ndarray:
+    def _calculate_mask(freqs: jnp.ndarray) -> jnp.ndarray:
         """
         Method to calculate a mask filtering out redundant elements
         of the Fourier correlation matrix, based on the provided frequency vector.
@@ -1089,10 +1099,10 @@ class FCC:
         by `_correlate`.
 
         Args:
-            freqs (np.ndarray): Array of frequencies
+            freqs (jnp.ndarray): Array of frequencies
 
         Returns:
-            np.ndarray: The mask
+            jnp.ndarray: The mask
         """
         # TODO: this part can be heavily optimized, by e.g. using a "positive_only"
         # flag when calculating the coefficients.
@@ -1100,21 +1110,21 @@ class FCC:
         # (while the order should be still the same).
 
         # disregard all the negativ frequencies
-        freqs[freqs < 0] = np.nan
+        freqs[freqs < 0] = jnp.nan
         # compute the outer product of the frequency vectors for arbitrary dimensions
         # or just use the existing frequency vector if it is 1D
         nd_freqs = (
-            reduce(np.multiply, np.ix_(*freqs)) if len(freqs.shape) > 1 else freqs
+            reduce(jnp.multiply, jnp.ix_(*freqs)) if len(freqs.shape) > 1 else freqs
         )
         # TODO: could prevent this if we're not using .squeeze()..
 
         # "simulate" what would happen on correlating the coefficients
-        corr_freqs = np.outer(nd_freqs, nd_freqs)
+        corr_freqs = jnp.outer(nd_freqs, nd_freqs)
         # mask all frequencies that are nan now
         # (i.e. all correlations with a negative frequency component)
-        corr_mask = np.where(np.isnan(corr_freqs), corr_freqs, 1)
+        corr_mask = jnp.where(jnp.isnan(corr_freqs), corr_freqs, 1)
         # from this, disregard all the other redundant correlations (i.e. c_0_1 = c_1_0)
-        corr_mask[np.triu_indices(corr_mask.shape[0], 0)] = np.nan
+        corr_mask = corr_mask.at[jnp.triu_indices(corr_mask.shape[0], 0)].set(jnp.nan)
 
         return corr_mask
 
@@ -1125,7 +1135,7 @@ class FCC:
         seed: int,
         scale: bool = False,
         **kwargs,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Calculates the Fourier coefficients of a given model
         using `n_samples` and `seed`.
@@ -1140,18 +1150,18 @@ class FCC:
             **kwargs: Additional keyword arguments for the model function.
 
         Returns:
-            Tuple[np.ndarray, np.ndarray]: Parameters and Coefficients of size NxK
+            Tuple[jnp.ndarray, jnp.ndarray]: Parameters and Coefficients of size NxK
         """
         if n_samples > 0:
             if scale:
                 total_samples = int(
-                    np.power(2, model.n_qubits) * n_samples * model.n_input_feat
+                    jnp.power(2, model.n_qubits) * n_samples * model.n_input_feat
                 )
                 log.info(f"Using {total_samples} samples.")
             else:
                 total_samples = n_samples
-            rng = np.random.default_rng(seed)
-            model.initialize_params(rng=rng, repeat=total_samples)
+            random_key = random.key(seed)
+            model.initialize_params(random_key, repeat=total_samples)
         else:
             total_samples = 1
 
@@ -1162,20 +1172,20 @@ class FCC:
         return model.params, coeffs, freqs
 
     @staticmethod
-    def _correlate(mat: np.ndarray, method: str = "pearson") -> np.ndarray:
+    def _correlate(mat: jnp.ndarray, method: str = "pearson") -> jnp.ndarray:
         """
         Correlates two arrays using `method`.
         Currently, `pearson` and `spearman` are supported.
 
         Args:
-            mat (np.ndarray): Array of shape (N, K)
+            mat (jnp.ndarray): Array of shape (N, K)
             method (str, optional): Correlation method. Defaults to "pearson".
 
         Raises:
             ValueError: If the method is not supported.
 
         Returns:
-            np.ndarray: Correlation matrix of `a` and `b`.
+            jnp.ndarray: Correlation matrix of `a` and `b`.
         """
         assert len(mat.shape) >= 2, "Input matrix must have at least 2 dimensions"
 
@@ -1203,8 +1213,8 @@ class FCC:
 
     @staticmethod
     def _pearson(
-        mat: np.ndarray, cov: Optional[bool] = False, minp: Optional[int] = 1
-    ) -> np.ndarray:
+        mat: jnp.ndarray, cov: Optional[bool] = False, minp: Optional[int] = 1
+    ) -> jnp.ndarray:
         """
         Based on Pandas correlation method as implemented here:
         https://github.com/pandas-dev/pandas/blob/main/pandas/_libs/algos.pyx
@@ -1224,14 +1234,14 @@ class FCC:
                 Pearson correlation matrix.
         """
 
-        mat = np.asarray(mat, dtype=np.float64)
+        mat = jnp.asarray(mat, dtype=jnp.float64)
         N, K = mat.shape
 
         # pre‐compute finite‐mask
-        mask = np.isfinite(mat)
+        mask = jnp.isfinite(mat)
 
         # output
-        result = np.empty((K, K), dtype=np.float64)
+        result = np.empty((K, K), dtype=jnp.float64)
 
         # TODO: optimize in future iterations
         # loop over column‐pairs
@@ -1239,10 +1249,10 @@ class FCC:
             for j in range(i + 1):
                 # find rows where both columns are finite
                 m = mask[:, i] & mask[:, j]
-                n = np.count_nonzero(m)
+                n = jnp.count_nonzero(m)
                 if n < minp:
                     # too few pairs
-                    value = np.nan
+                    value = jnp.nan
                 else:
                     x = mat[m, i]
                     y = mat[m, j]
@@ -1256,18 +1266,18 @@ class FCC:
                     dy = y - mean_y
 
                     # sum of squares and cross‐prod
-                    ssx = np.dot(dx, dx)
-                    ssy = np.dot(dy, dy)
-                    cxy = np.dot(dx, dy)
+                    ssx = jnp.dot(dx, dx)
+                    ssy = jnp.dot(dy, dy)
+                    cxy = jnp.dot(dx, dy)
 
                     if cov:
                         # sample covariance (denominator n−1)
-                        value = cxy / (n - 1) if n > 1 else np.nan
+                        value = cxy / (n - 1) if n > 1 else jnp.nan
                     else:
                         # Pearson r = cov / (σx σy)
-                        denom = np.sqrt(ssx * ssy)
+                        denom = jnp.sqrt(ssx * ssy)
                         if denom == 0.0:
-                            value = np.nan
+                            value = jnp.nan
                         else:
                             value = cxy / denom
                             # clip numerical drift
@@ -1280,7 +1290,7 @@ class FCC:
 
         return result
 
-    def _spearman(mat: np.ndarray, minp: Optional[int] = 1) -> np.ndarray:
+    def _spearman(mat: jnp.ndarray, minp: Optional[int] = 1) -> jnp.ndarray:
         """
         Based on Pandas correlation method as implemented here:
         https://github.com/pandas-dev/pandas/blob/main/pandas/_libs/algos.pyx
@@ -1302,13 +1312,13 @@ class FCC:
         N, K = mat.shape
         # trivial all-NaN answer if too few rows
         if N < minp:
-            return np.full((K, K), np.nan, dtype=float)
+            return jnp.full((K, K), jnp.nan, dtype=float)
 
         # mask of finite entries
-        mask = np.isfinite(mat)  # shape (N, K), dtype=bool
+        mask = jnp.isfinite(mat)  # shape (N, K), dtype=bool
 
         # precompute ranks column-wise ignoring NaNs
-        ranks = np.full((N, K), np.nan, dtype=float)
+        ranks = np.full((N, K), jnp.nan, dtype=float)
         for j in range(K):
             valid = mask[:, j]
             if valid.any():
@@ -1327,16 +1337,16 @@ class FCC:
                 nobs = valid.sum()
 
                 if nobs < minp:
-                    rho = np.nan
+                    rho = jnp.nan
                 else:
                     xi = ranks[valid, i]
                     yj = ranks[valid, j]
                     # subtract means
                     xi = xi - xi.mean()
                     yj = yj - yj.mean()
-                    num = np.dot(xi, yj)
-                    den = np.sqrt(np.dot(xi, xi) * np.dot(yj, yj))
-                    rho = num / den if den > 0 else np.nan
+                    num = jnp.dot(xi, yj)
+                    den = jnp.sqrt(jnp.dot(xi, xi) * jnp.dot(yj, yj))
+                    rho = num / den if den > 0 else jnp.nan
 
                 result[i, j] = rho
                 result[j, i] = rho
@@ -1344,13 +1354,13 @@ class FCC:
         return result
 
     @staticmethod
-    def _weighting(fourier_fingerprint: np.ndarray) -> np.ndarray:
+    def _weighting(fourier_fingerprint: jnp.ndarray) -> jnp.ndarray:
         """
         Performs weighting on the given correlation matrix.
         Here, low-frequent coefficients are weighted more heavily.
 
         Args:
-            correlation (np.ndarray): Correlation matrix
+            correlation (jnp.ndarray): Correlation matrix
         """
         # TODO: in Future iterations, this can be optimized by computing
         # on the trimmed matrix instead.
@@ -1364,33 +1374,33 @@ class FCC:
             fourier_fingerprint.shape[0] == fourier_fingerprint.shape[1]
         ), "Correlation matrix must be square."
 
-        def quadrant_to_matrix(a: np.ndarray) -> np.ndarray:
+        def quadrant_to_matrix(a: jnp.ndarray) -> jnp.ndarray:
             """
             Transforms [[1,2],[3,4]] to
             [[1,2,1],[3,4,3],[1,2,1]]
 
             Args:
-                a (np.ndarray): _description_
+                a (jnp.ndarray): _description_
 
             Returns:
-                np.ndarray: _description_
+                jnp.ndarray: _description_
             """
             # rotates a from [[1,2],[3,4]] to [[3,4],[1,2]]
-            a_rot = np.rot90(a)
+            a_rot = jnp.rot90(a)
             # merge the two matrices
-            left = np.concat([a, a_rot])
+            left = jnp.concat([a, a_rot])
             # merges left and right (left flipped)
-            b = np.concat(
-                [left, np.flip(left)],
+            b = jnp.concat(
+                [left, jnp.flip(left)],
                 axis=1,
             )
             # remove the middle column and row
-            return np.delete(
-                np.delete(b, (b.shape[0] // 2), axis=0), (b.shape[1] // 2), axis=1
+            return jnp.delete(
+                jnp.delete(b, (b.shape[0] // 2), axis=0), (b.shape[1] // 2), axis=1
             )
 
         nc = fourier_fingerprint.shape[0] // 2 + 1
-        weights = np.mgrid[0:nc:1, 0:nc:1].sum(axis=0) / ((nc - 1) * 2)
+        weights = jnp.mgrid[0:nc:1, 0:nc:1].sum(axis=0) / ((nc - 1) * 2)
         weights_matrix = quadrant_to_matrix(weights)
 
         return fourier_fingerprint * weights_matrix
@@ -1400,12 +1410,12 @@ class FCC:
 class Datasets:
     @staticmethod
     def generate_fourier_series(
-        rng: np.random.Generator,
+        random_key: random.PRNGKey,
         model: Model,
         coefficients_min: float = 0.0,
         coefficients_max: float = 1.0,
         zero_centered: bool = False,
-    ) -> np.ndarray:
+    ) -> jnp.ndarray:
         """
         Generates the Fourier series representation of a function.
         It uses the `model.frequencies` property to retrieve the frequency
@@ -1419,7 +1429,7 @@ class Datasets:
         Samples of the Fourier coefficients are drawn from a uniform circle.
 
         Args:
-            rng (np.random.Generator): Random number generator.
+            random_key (random.PRNGKey): Random number key for JAX.
             model (Model): The quantum circuit model.
             coefficients_min (float, optional): Minimum value for the coefficients.
                 Defaults to 0.0.
@@ -1429,9 +1439,9 @@ class Datasets:
                 Defaults to False.
 
         Returns:
-            np.ndarray: Input domain samples with shape ((N,)*D, D)
-            np.ndarray: Fourier series values with shape ((N,)*D)
-            np.ndarray: Fourier coefficients with shape ((N,)*D)
+            jnp.ndarray: Input domain samples with shape ((N,)*D, D)
+            jnp.ndarray: Fourier series values with shape ((N,)*D)
+            jnp.ndarray: Fourier coefficients with shape ((N,)*D)
 
         """
         # TODO: the following code can be considered to
@@ -1446,38 +1456,40 @@ class Datasets:
         # going from [0, 2pi] with the resolution required for highest frequency
         # permute with input dimensionality to get an n-d grid of domain samples
         # the output shape comes from the fact that want to create a "coordinate system"
-        domain_samples_per_input_dim = np.stack(
-            np.meshgrid(*[np.arange(0, 2 * np.pi, 2 * np.pi / d) for d in model.degree])
+        domain_samples_per_input_dim = jnp.stack(
+            jnp.meshgrid(
+                *[jnp.arange(0, 2 * jnp.pi, 2 * jnp.pi / d) for d in model.degree]
+            )
         ).T.reshape(-1, model.n_input_feat)
 
         # generate the frequency indices for each dimension.
         # this will have the same shape as the domain samples
-        frequencies = np.stack(np.meshgrid(*model.frequencies)).T.reshape(
+        frequencies = jnp.stack(jnp.meshgrid(*model.frequencies)).T.reshape(
             -1, model.n_input_feat
         )
 
         # using the frequency information, sample coefficients for each dimension
         # shape: (input_dims, n_freqs_per_input_dim // 2 + 1)
         coefficients = Datasets.uniform_circle(
-            rng=rng,
+            random_key,
             low=coefficients_min,
             high=coefficients_max,
-            size=np.prod(model.degree) // 2 + 1,
+            size=math.prod(model.degree) // 2 + 1,
         )
 
         # zero center (first coeff = 0)
         # we can assume the first coeff is the offset, because we're dealing
         # with a non-symmetric spectrum here
         if zero_centered:
-            coefficients[0] = 0.0
+            coefficients = coefficients.at[0].set(0.0)
         else:
-            coefficients[0] = coefficients[0].real
+            coefficients = coefficients.at[0].set(coefficients[0].real)
 
         # ensure symmetry (here, non_negative_ is removed!),
         # giving us the full coefficients vector
-        coefficients = np.concat(
+        coefficients = jnp.concat(
             [
-                np.flip(coefficients[..., 1:]).conjugate(),
+                jnp.flip(coefficients[..., 1:]).conjugate(),
                 coefficients,
             ],
             axis=-1,
@@ -1486,9 +1498,9 @@ class Datasets:
         # Vectorized version of $f(x) = \sum_{n=0}^{N-1} c_n * e^{i * \omega_n * x}$
         # it takes into account the input dimension, i.e. the output is a matrix
         # normalization uses the n_freqs component of the coefficients
-        values = np.real_if_close(
+        values = jnp.real(
             (
-                np.exp(1j * (domain_samples_per_input_dim @ frequencies.T))
+                jnp.exp(1j * (domain_samples_per_input_dim @ frequencies.T))
                 * coefficients
             ).sum(axis=1)
             / coefficients.size
@@ -1502,23 +1514,30 @@ class Datasets:
         ]
 
     @staticmethod
-    def uniform_circle(rng, size: Union[np.ndarray, List, int], low=0.0, high=1.0):
+    def uniform_circle(
+        random_key: random.PRNGKey,
+        size: Union[jnp.ndarray, List, int],
+        low=0.0,
+        high=1.0,
+    ):
         """
         Random number generator for complex numbers sampled inside the unit circle
 
         Args:
-            size : Union[np.ndarray, int]: Number of samples. If a 2D array is passed,
+            random_key (random.PRNGKey): Random number key for JAX.
+            size (Union[jnp.ndarray, int]): Number of samples. If a 2D array is passed,
                 the first dimension will be the number of dimensions.
             low (float, optional): Minimum Radius. Defaults to 0.0.
             high (float, optional): Maximum Radius. Defaults to 1.0.
 
         Returns
-            np.ndarray: Array of complex numbers with shape of `size`
+            jnp.ndarray: Array of complex numbers with shape of `size`
         """
 
         if isinstance(size, int):
-            size = np.array([size])
+            size = jnp.array([size])
 
-        return np.sqrt(rng.uniform(low, high, size)) * np.exp(
-            2j * np.pi * rng.uniform(low=0, high=1, size=size)
-        )
+        random_key, random_key1 = random.split(random_key)
+        return jnp.sqrt(
+            random.uniform(random_key, size, minval=low, maxval=high)
+        ) * jnp.exp(2j * jnp.pi * random.uniform(random_key1, size))
