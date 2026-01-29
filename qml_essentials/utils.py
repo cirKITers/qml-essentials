@@ -272,7 +272,7 @@ class PauliCircuit:
                     (
                         op
                         if PauliCircuit._is_clifford(op)
-                        else op.__class__(jnp.tensor(op.parameters), op.wires)
+                        else op.__class__(jnp.array(op.parameters), op.wires)
                     )
                     for op in decomposed_ops
                 ]
@@ -350,8 +350,6 @@ class PauliCircuit:
 
         gen = pauli.generator()
         param = pauli.parameters[0]
-        requires_grad = param.requires_grad if isinstance(param, pnp.tensor) else False
-        param = pnp.tensor(param)
 
         evolved_gen, _ = PauliCircuit._evolve_clifford_pauli(
             clifford, gen, adjoint_left=False
@@ -365,7 +363,6 @@ class PauliCircuit:
             pauli_str, qubits
         )
         pauli = qml.PauliRot(param * param_factor, pauli_str, qubits)
-        pauli.parameters[0].requires_grad = requires_grad
 
         return pauli, clifford
 
