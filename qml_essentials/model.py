@@ -1121,38 +1121,10 @@ class Model:
             A numpy array of the output of f applied to each batch of
             samples in params, enc_params, and inputs.
         """
-        if gate_mode == "pulse" and combined_batch_size > 1:
-            # save original f
-            orig_f = _f
+        combined_batch_size = math.prod(self.batch_shape)
 
-            # jax fct only taking single param
-            def f_prime(params_single, inputs_single, pulse_params_single):
-                return orig_f(
-                    params=params_single,
-                    pulse_params=pulse_params_single,
-                    inputs=inputs_single,
-                    enc_params=enc_params,
-                    gate_mode=gate_mode,
-                )
-
+        if gate_mode == "pulse" and combined_batch_size > 1 or self.use_multithreading:
             # wrapper to allow kwargs (not supported by jax)
-            def _f(**kwargs):
-                params_single = kwargs.pop("params")
-                inputs_single = kwargs.pop("inputs")
-                pulse_params_single = kwargs.pop("pulse_params")
-                # we know that when batching is enabled, the
-                # batch dimension is the last axis of the params array
-                return jax.vmap(
-                    f_prime,
-                    in_axes=(
-                        2 if self.batch_shape[1] > 1 else None,
-                        0 if self.batch_shape[0] > 1 else None,
-                        2 if self.batch_shape[2] > 1 else None,
-                    ),
-                )(params_single, inputs_single, pulse_params_single)
-
-        # check if single process
-        if self.use_multithreading:
             result = jax.vmap(
                 f,
                 in_axes=(
@@ -1162,14 +1134,7 @@ class Model:
                     None,
                     None,
                 ),
-            )(
-                params,
-                inputs,
-                pulse_params,
-                enc_params,
-                gate_mode,
-            )
-            result = self._postprocess_res(result)
+            )(params, inputs, pulse_params, enc_params, gate_mode)
         else:
             result = f(
                 params=params,
@@ -1178,9 +1143,8 @@ class Model:
                 enc_params=enc_params,
                 gate_mode=gate_mode,
             )
-            result = self._postprocess_res(result)
 
-        return result
+        return self._postprocess_res(result)
 
     def _postprocess_res(self, result: Union[list, jnp.ndarray]) -> jnp.ndarray:
         """
@@ -1432,7 +1396,7 @@ class Model:
         if self._requires_density():
             result = self._mp_executor(
                 f=self.circuit_mixed,
-                params=params,  # use arraybox params
+                params=params,
                 pulse_params=pulse_params,
                 inputs=inputs,
                 enc_params=enc_params,
@@ -1446,7 +1410,7 @@ class Model:
             else:
                 result = self._mp_executor(
                     f=self.circuit,
-                    params=params,  # use arraybox params
+                    params=params,
                     pulse_params=pulse_params,
                     inputs=inputs,
                     enc_params=enc_params,
