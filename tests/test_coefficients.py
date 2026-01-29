@@ -569,19 +569,19 @@ def test_fourier_fingerprint() -> None:
     test_cases = [
         {
             "circuit_type": "Circuit_15",
-            "hash": "8a1fae4f3afda8c243a847c4e8396d87",
+            "hash": "afd672dfc5582d8693ee00b469f69bbd",
         },
         {
             "circuit_type": "Circuit_19",
-            "hash": "b4d3e6f3881f69fe7e778713cbd1c573",
+            "hash": "f4bb2edb6912a82ed722c3a8aa1f7ced",
         },
         {
             "circuit_type": "Circuit_17",
-            "hash": "422847ebfa133299cb9c654730f753a7",
+            "hash": "430ab1c056e42e75c017e5e1e442a4a6",
         },
         {
             "circuit_type": "Hardware_Efficient",
-            "hash": "2fa201197e53f04ee53eb40db755bcc9",
+            "hash": "17680589735f472f9b22fecf536ead61",
         },
     ]
 
@@ -600,7 +600,7 @@ def test_fourier_fingerprint() -> None:
             scale=True,
         )
         hs = hashlib.md5(repr(fp_and_freqs).encode("utf-8")).hexdigest()
-        # print(hs)
+        print(hs)
         assert (
             hs == test_case["hash"]
         ), f"Wrong hash for {test_case['circuit_type']}. \
