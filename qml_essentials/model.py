@@ -43,7 +43,7 @@ class Model:
         random_seed: int = 1000,
         as_pauli_circuit: bool = False,
         remove_zero_encoding: bool = True,
-        mp_threshold: int = -1,
+        use_multithreading: bool = False,
     ) -> None:
         """
         Initialize the quantum circuit model.
@@ -95,9 +95,8 @@ class Model:
                 Defaults to False.
             remove_zero_encoding (bool, optional): whether to
                 remove the zero encoding from the circuit. Defaults to True.
-            mp_threshold (int, optional): threshold above which the parameter
-                batch dimension is split across multiple processes.
-                Defaults to -1.
+            use_multithreading (bool, optional): whether to use JAX
+                multithreading to parallelise over batch dimension.
 
         Returns:
             None
@@ -109,7 +108,7 @@ class Model:
         self.noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None
         self.shots = shots
         self.remove_zero_encoding = remove_zero_encoding
-        self.mp_threshold = mp_threshold
+        self.use_multithreading = use_multithreading
         self.trainable_frequencies: bool = trainable_frequencies
         self.execution_type: str = "expval"
 
@@ -270,7 +269,7 @@ class Model:
             device = "default.qubit"
         else:
             device = "lightning.qubit"
-            self.mp_threshold = -1
+            self.use_multithreading = False
 
         self.circuit: qml.QNode = qml.QNode(
             self._circuit,
@@ -1122,16 +1121,6 @@ class Model:
             A numpy array of the output of f applied to each batch of
             samples in params, enc_params, and inputs.
         """
-        n_processes = 1
-        # batches available?
-        combined_batch_size = math.prod(self.batch_shape)
-        if (
-            combined_batch_size > 1
-            and self.mp_threshold > 0
-            and combined_batch_size > self.mp_threshold
-        ):
-            n_processes = math.ceil(combined_batch_size / self.mp_threshold)
-
         if gate_mode == "pulse" and combined_batch_size > 1:
             # save original f
             orig_f = _f
@@ -1163,21 +1152,7 @@ class Model:
                 )(params_single, inputs_single, pulse_params_single)
 
         # check if single process
-        if n_processes == 1:
-            if self.mp_threshold > 0:
-                warnings.warn(
-                    f"Multiprocessing threshold {self.mp_threshold}>0, but using \
-                    single process, because {combined_batch_size} samples per batch.",
-                )
-            result = f(
-                params=params,
-                pulse_params=pulse_params,
-                inputs=inputs,
-                enc_params=enc_params,
-                gate_mode=gate_mode,
-            )
-            result = self._postprocess_res(result)
-        else:
+        if self.use_multithreading:
             result = jax.vmap(
                 f,
                 in_axes=(
@@ -1193,6 +1168,15 @@ class Model:
                 pulse_params,
                 enc_params,
                 gate_mode,
+            )
+            result = self._postprocess_res(result)
+        else:
+            result = f(
+                params=params,
+                pulse_params=pulse_params,
+                inputs=inputs,
+                enc_params=enc_params,
+                gate_mode=gate_mode,
             )
             result = self._postprocess_res(result)
 

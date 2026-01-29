@@ -124,7 +124,7 @@ def test_multiprocessing_density() -> None:
         n_qubits=3,
         n_layers=1,
         circuit_type="Circuit_19",
-        mp_threshold=200,
+        use_multithreading=True,
     )
 
     model.initialize_params(random.key(1000), repeat=n_samples)
@@ -165,7 +165,7 @@ def test_multiprocessing_expval() -> None:
         n_qubits=6,  # .. and larger circuits
         n_layers=6,
         circuit_type="Circuit_19",
-        mp_threshold=4000,
+        use_multithreading=True,
     )
 
     model.initialize_params(random.key(1000), repeat=n_samples)

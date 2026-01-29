@@ -128,7 +128,7 @@ def test_expressibility_1l(caplog) -> None:
             circuit_type=test_case["circuit_type"],
             initialization_domain=[0, 2 * jnp.pi],
             data_reupload=False,
-            mp_threshold=1000,
+            use_multithreading=True,
         )
 
         _, _, z = Expressibility.state_fidelities(

@@ -177,7 +177,6 @@ def test_batch() -> None:
         n_layers=1,
         circuit_type="Circuit_15",
         output_qubit=-1,
-        # mp_threshold=100,
         # initialization="random",
     )
 
@@ -200,7 +199,6 @@ def test_batch() -> None:
         n_layers=1,
         circuit_type="Circuit_19",
         output_qubit=-1,
-        # mp_threshold=100,
         encoding=["RX", "RY"],
         # initialization="random",
     )
@@ -545,7 +543,7 @@ def test_fcc() -> None:
             circuit_type=test_case["circuit_type"],
             output_qubit=-1,
             encoding=["RY"],
-            mp_threshold=3000,
+            use_multithreading=True,
         )
         fcc = FCC.get_fcc(
             model=model,
@@ -633,7 +631,7 @@ def test_fcc_2d() -> None:
             circuit_type=test_case["circuit_type"],
             output_qubit=-1,
             encoding=["RX", "RY"],
-            mp_threshold=3000,
+            use_multithreading=True,
         )
         fcc = FCC.get_fcc(
             model=model,
@@ -674,7 +672,7 @@ def test_weighting() -> None:
             circuit_type=test_case["circuit_type"],
             output_qubit=-1,
             encoding=["RY"],
-            mp_threshold=3000,
+            use_multithreading=True,
         )
         fcc = FCC.get_fcc(
             model=model,
