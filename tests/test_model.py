@@ -615,18 +615,16 @@ def test_ansaetze() -> None:
         )
 
 
-# TODO: Migrate optimization to JAX and remove skip marker
 @pytest.mark.unittest
-@pytest.mark.skip(reason="JAX migration required")
 def test_pulse_model() -> None:
     model = Model(
-        n_qubits=4,
-        n_layers=2,
+        n_qubits=2,
+        n_layers=1,
         circuit_type="Hardware_Efficient",
     )
 
     # setting test data
-    domain = [-jnp.pi, jnp.pi]
+    domain = np.array([-jnp.pi, jnp.pi])
     omegas = jnp.array([1, 2, 3, 4])
     coefficients = jnp.array([1, 1, 1, 1])
     n_d = int(jnp.ceil(2 * jnp.max(jnp.abs(domain)) * jnp.max(omegas)))
@@ -639,29 +637,33 @@ def test_pulse_model() -> None:
 
     y = jnp.stack([f(sample) for sample in x])
 
-    def cost_fct(params, pulse_params):
+    def cost_fct(all_params):
         y_hat = model(
-            params=params,
-            pulse_params=pulse_params,
+            params=all_params[0],
+            pulse_params=all_params[1],
             inputs=x,
             force_mean=True,
             gate_mode="pulse",
         )
         return jnp.mean((y_hat - y) ** 2)
 
-    opt = qml.AdamOptimizer(stepsize=0.01)
+    opt = optax.adam(0.01)
     pulse_params_before = model.pulse_params.copy()
-    (model.params, model.pulse_params), cost_val = opt.step_and_cost(
-        cost_fct, model.params, model.pulse_params
-    )
+    all_params = (model.params, model.pulse_params)
+    opt_state = opt.init((all_params))
+
+    grads = grad(cost_fct)(all_params)
+
+    updates, opt_state = opt.update(grads, opt_state, all_params)
+    model.params, model.pulse_params = optax.apply_updates(all_params, updates)
+
     pulse_params_after = model.pulse_params.copy()
 
     assert not jnp.allclose(
         pulse_params_before, pulse_params_after
     ), "pulse_params did not update during training"
 
-    grads = qml.grad(cost_fct, argnum=1)(model.params, model.pulse_params)
-    assert jnp.any(jnp.abs(grads) > 1e-6), "Gradient wrt pulse_params is too small"
+    assert jnp.any(jnp.abs(grads[1]) > 1e-6), "Gradient wrt pulse_params is too small"
 
 
 @pytest.mark.expensive
