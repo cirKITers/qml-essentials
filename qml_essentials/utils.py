@@ -676,7 +676,7 @@ class QuanTikz:
             [QuanTikz.ground_state()] for _ in range(quantum_tape.num_wires)
         ]
 
-        index = iter(range(10 * quantum_tape.num_params))
+        index = iter(range(len(quantum_tape.operations)))
         for op in quantum_tape.circuit:
             # catch measurement operations
             if op._queue_category == "_measurements":
@@ -693,7 +693,6 @@ class QuanTikz:
             elif op._queue_category == "_ops":
                 # catch barriers
                 if op.name == "Barrier":
-
                     # get the maximum length of all wires
                     max_len = max(
                         len(circuit_tikz[cw]) for cw in range(len(circuit_tikz))
