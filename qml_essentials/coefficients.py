@@ -822,7 +822,10 @@ class FourierTree:
             all_freqs = sorted(set([f for c in coeffs for f in c.keys()]))
             coefficients.append(
                 jnp.array(
-                    [jnp.mean([c.get(f, 0.0) for c in coeffs]) for f in all_freqs]
+                    [
+                        jnp.mean(jnp.array([c.get(f, 0.0) for c in coeffs]))
+                        for f in all_freqs
+                    ]
                 )
             )
             frequencies.append(jnp.array(all_freqs))
