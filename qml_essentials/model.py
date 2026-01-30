@@ -989,16 +989,12 @@ class Model:
         # TODO: replace with getter/setter
         if params is not None:
             if numpy_boxes.ArrayBox == type(params):
+                # store "plain" parameters
                 self.params = params._value
             else:
                 self.params = params
 
-        # Get rid of extra dimension
-        # TODO: replaces with params.squeeze()?
-        # if len(params.shape) == 3 and params.shape[2] == 1:
-        #     params = params[:, :, 0]
-
-        return self.params
+        return params
 
     def _pulse_params_validation(self, pulse_params) -> np.ndarray:
         """
