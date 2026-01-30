@@ -10,7 +10,7 @@ from jax import random
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit, Encoding
 from qml_essentials.ansaetze import PulseInformation as pinfo
-from qml_essentials.utils import PauliCircuit, QuanTikz
+from qml_essentials.utils import QuanTikz
 
 import logging
 
@@ -41,7 +41,6 @@ class Model:
         output_qubit: Union[List[int], int] = -1,
         shots: Optional[int] = None,
         random_seed: int = 1000,
-        as_pauli_circuit: bool = False,
         remove_zero_encoding: bool = True,
         use_multithreading: bool = False,
     ) -> None:
@@ -88,11 +87,6 @@ class Model:
             random_seed (int, optional): seed for the random number generator
                 in initialization is "random" and for random noise parameters.
                 Defaults to 1000.
-            as_pauli_circuit (bool, optional): whether the circuit is
-                transformed to a Pauli-Clifford circuit as described by Nemkov
-                et al. (https://doi.org/10.1103/PhysRevA.108.032406), which is
-                required for analytical Fourier coefficient computation.
-                Defaults to False.
             remove_zero_encoding (bool, optional): whether to
                 remove the zero encoding from the circuit. Defaults to True.
             use_multithreading (bool, optional): whether to use JAX
@@ -248,29 +242,11 @@ class Model:
         # Initialize two circuits, one with the default device and
         # one with the mixed device
         # which allows us to later route depending on the state_vector flag
-        self.as_pauli_circuit = as_pauli_circuit
-
-        self.circuit_mixed: qml.QNode = qml.QNode(
-            self._circuit,
-            qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
-            interface="jax",
-            diff_method="parameter-shift" if self.shots is not None else "best",
-        )
-
-    @property
-    def as_pauli_circuit(self) -> bool:
-        return self._as_pauli_circuit
-
-    @as_pauli_circuit.setter
-    def as_pauli_circuit(self, value: bool) -> None:
-        self._as_pauli_circuit = value
-
         if self.n_qubits < self.lightning_threshold:
             device = "default.qubit"
         else:
             device = "lightning.qubit"
             self.use_multithreading = False
-
         self.circuit: qml.QNode = qml.QNode(
             self._circuit,
             qml.device(
@@ -282,11 +258,12 @@ class Model:
             diff_method="parameter-shift" if self.shots is not None else "best",
         )
 
-        if value:
-            pauli_circuit_transform = qml.transform(
-                PauliCircuit.from_parameterised_circuit
-            )
-            self.circuit = pauli_circuit_transform(self.circuit)
+        self.circuit_mixed: qml.QNode = qml.QNode(
+            self._circuit,
+            qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
+            interface="jax",
+            diff_method="parameter-shift" if self.shots is not None else "best",
+        )
 
     @property
     def noise_params(self) -> Optional[Dict[str, Union[float, Dict[str, float]]]]:

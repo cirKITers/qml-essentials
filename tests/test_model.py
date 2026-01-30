@@ -6,6 +6,7 @@ import optax
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Circuit, Ansaetze, Gates, Encoding
 from qml_essentials.ansaetze import PulseInformation as pinfo
+from qml_essentials.utils import PauliCircuit
 import pytest
 import inspect
 import logging
@@ -1107,64 +1108,25 @@ def test_pauli_circuit_model() -> None:
         {
             "shots": None,
             "output_qubit": 0,
-            "force_mean": False,
             "inputs": jnp.array([0.1, 0.2, 0.3]),
         },
         {
             "shots": None,
             "output_qubit": -1,
-            "force_mean": False,
-            "inputs": jnp.array([0.1, 0.2, 0.3]),
-        },
-        {
-            "shots": None,
-            "output_qubit": -1,
-            "force_mean": True,
-            "inputs": jnp.array([0.1, 0.2, 0.3]),
-        },
-        {
-            "shots": 1024,
-            "output_qubit": 0,
-            "force_mean": False,
-            "inputs": jnp.array([0.1, 0.2, 0.3]),
-        },
-        {
-            "shots": 1024,
-            "output_qubit": 0,
-            "force_mean": True,
             "inputs": jnp.array([0.1, 0.2, 0.3]),
         },
         {
             "shots": None,
             "output_qubit": 0,
-            "force_mean": False,
             "inputs": None,
         },
         {
             "shots": None,
             "output_qubit": -1,
-            "force_mean": False,
-            "inputs": None,
-        },
-        {
-            "shots": None,
-            "output_qubit": -1,
-            "force_mean": True,
-            "inputs": None,
-        },
-        {
-            "shots": 1024,
-            "output_qubit": 0,
-            "force_mean": False,
-            "inputs": None,
-        },
-        {
-            "shots": 1024,
-            "output_qubit": 0,
-            "force_mean": True,
             "inputs": None,
         },
     ]
+    dev = qml.device("default.qubit", wires=3)
 
     for test_case in test_cases:
         model = Model(
@@ -1173,29 +1135,19 @@ def test_pauli_circuit_model() -> None:
             circuit_type="Circuit_19",
             output_qubit=test_case["output_qubit"],
             shots=test_case["shots"],
-            as_pauli_circuit=True,
         )
-
-        pauli_model = Model(
-            n_qubits=3,
-            n_layers=2,
-            circuit_type="Circuit_19",
-            output_qubit=test_case["output_qubit"],
-            shots=test_case["shots"],
-            as_pauli_circuit=True,
+        inputs = model._inputs_validation(test_case["inputs"])
+        model_tape = qml.workflow.construct_tape(model.circuit)(
+            model.params,
+            inputs=inputs,
         )
+        pauli_tape = PauliCircuit.from_parameterised_circuit(model_tape)
 
         result_circuit = model(
             model.params,
             inputs=test_case["inputs"],
-            force_mean=test_case["force_mean"],
         )
-
-        result_pauli_circuit = pauli_model(
-            pauli_model.params,
-            inputs=test_case["inputs"],
-            force_mean=test_case["force_mean"],
-        )
+        result_pauli_circuit = jnp.array(qml.execute([pauli_tape], dev)[0]).T
 
         assert all(
             jnp.isclose(result_circuit, result_pauli_circuit, atol=1e-5).flatten()

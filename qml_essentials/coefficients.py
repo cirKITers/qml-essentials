@@ -13,6 +13,7 @@ from functools import reduce
 from typing import List, Tuple, Optional, Any, Dict, Union
 
 from qml_essentials.model import Model
+from qml_essentials.utils import PauliCircuit
 
 import logging
 
@@ -569,9 +570,6 @@ class FourierTree:
         self.model = model
         self.tree_roots = None
 
-        if not model.as_pauli_circuit:
-            model.as_pauli_circuit = True
-
         inputs = (
             self.model._inputs_validation(inputs)
             if inputs is not None
@@ -582,6 +580,9 @@ class FourierTree:
         quantum_tape = qml.workflow.construct_tape(self.model.circuit)(
             params=model.params, inputs=inputs
         )
+
+        quantum_tape = PauliCircuit.from_parameterised_circuit(quantum_tape)
+
         self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
         self.input_indices = [
             i for (i, p) in enumerate(self.parameters) if not p.requires_grad
@@ -654,6 +655,8 @@ class FourierTree:
         quantum_tape = qml.workflow.construct_tape(self.model.circuit)(
             params=self.model.params, inputs=inputs
         )
+        quantum_tape = PauliCircuit.from_parameterised_circuit(quantum_tape)
+
         self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
         self.input_indices = [
             i for (i, p) in enumerate(self.parameters) if not p.requires_grad

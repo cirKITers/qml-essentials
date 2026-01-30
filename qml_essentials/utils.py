@@ -4,8 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 import pennylane as qml
 from pennylane.operation import Operator
-from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
-from pennylane.typing import PostprocessingFn
+from pennylane.tape import QuantumScript, QuantumTape
 import pennylane.ops.op_math as qml_op
 from fractions import Fraction
 from itertools import cycle
@@ -59,45 +58,22 @@ class PauliCircuit:
     @staticmethod
     def from_parameterised_circuit(
         tape: QuantumScript,
-    ) -> tuple[QuantumScriptBatch, PostprocessingFn]:
+    ) -> tuple[QuantumScript]:
         """
-        Transformation function (see also qml.transforms) to convert an ansatz
-        into a Pauli-Clifford circuit.
-
-
-        **Usage** (without using Model, Model provides a boolean argument
-               "as_pauli_circuit" that internally uses the Pauli-Clifford):
-        ```
-        # initialise some QNode
-        circuit = qml.QNode(
-            circuit_fkt,  # function for your circuit definition
-            qml.device("default.qubit", wires=5),
-        )
-        pauli_circuit = PauliCircuit.from_parameterised_circuit(circuit)
-
-        # Call exactly the same as circuit
-        some_input = [0.1, 0.2]
-
-        circuit(some_input)
-        pauli_circuit(some_input)
-
-        # Both results should be equal!
-        ```
+        Transforms the quantum tape of a circuit a Pauli-Clifford circuit.
 
         Args:
             tape (QuantumScript): The quantum tape for the operations in the
                 ansatz. This is automatically passed, when initialising the
                 transform function with a QNode. Note: directly calling
                 `PauliCircuit.from_parameterised_circuit(circuit)` for a QNode
-                circuit will fail, see usage above.
+                circuit will fail
 
         Returns:
-            tuple[QuantumScriptBatch, PostprocessingFn]:
+            QuantumScript:
                 - A new quantum tape, containing the operations of the
                   Pauli-Clifford Circuit.
-                - A postprocessing function that does nothing.
         """
-
         operations = PauliCircuit.get_clifford_pauli_gates(tape)
 
         pauli_gates, final_cliffords = PauliCircuit.commute_all_cliffords_to_the_end(
@@ -114,10 +90,7 @@ class PauliCircuit:
             for obs in observables:
                 qml.expval(obs)
 
-        def postprocess(res):
-            return res[0]
-
-        return [tape_new], postprocess
+        return tape_new
 
     @staticmethod
     def commute_all_cliffords_to_the_end(

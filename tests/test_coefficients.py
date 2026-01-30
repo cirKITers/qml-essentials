@@ -248,7 +248,6 @@ def test_coefficients_tree() -> None:
             n_layers=test_case["n_layers"],
             circuit_type=test_case["circuit_type"],
             output_qubit=test_case["output_qubit"],
-            as_pauli_circuit=False,
         )
 
         fft_coeffs, fft_freqs = Coefficients.get_spectrum(
@@ -307,7 +306,6 @@ def test_coefficients_tree_mq() -> None:
         n_layers=1,
         circuit_type="Hardware_Efficient",
         output_qubit=-1,
-        as_pauli_circuit=False,
     )
 
     fft_coeffs, fft_freqs = Coefficients.get_spectrum(model, shift=True)
