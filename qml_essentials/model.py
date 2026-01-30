@@ -993,6 +993,8 @@ class Model:
                 self.params = params._value
             else:
                 self.params = params
+        else:
+            params = self.params
 
         return params
 
