@@ -191,8 +191,8 @@ def test_expressibility_1l(caplog) -> None:
 @pytest.mark.unittest
 @pytest.mark.expensive
 def test_expressibility_3l() -> None:
-    return  # TODO remove when we found a suitable runner
     circuits, _, results, skip_indices = get_test_cases()
+    skip_indices += [4, 6]
 
     test_cases = []
     for circuit_id, result in zip(circuits, results):
@@ -215,8 +215,9 @@ def test_expressibility_3l() -> None:
             n_qubits=test_case["n_qubits"],
             n_layers=test_case["n_layers"],
             circuit_type=test_case["circuit_type"],
-            initialization_domain=[0, 2 * np.pi],
+            initialization_domain=[0, 2 * jnp.pi],
             data_reupload=False,
+            use_multithreading=True,
         )
 
         _, _, z = Expressibility.state_fidelities(
