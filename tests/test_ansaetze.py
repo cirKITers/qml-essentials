@@ -21,8 +21,6 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.unittest
 def test_gate_gateerror_noise():
-    UnitaryGates.rng = np.random.default_rng(1000)
-
     dev = qml.device("default.mixed", wires=1)
 
     @qml.qnode(dev)
@@ -44,8 +42,6 @@ def test_gate_gateerror_noise():
 
 @pytest.mark.unittest
 def test_batch_gate_error():
-    UnitaryGates.rng = np.random.default_rng(1000)
-
     model = Model(
         n_qubits=1,
         n_layers=1,
