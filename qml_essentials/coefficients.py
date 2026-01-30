@@ -318,9 +318,13 @@ class FourierTree:
             """
 
             if self.is_sine_factor:
-                sin_list[self.parameter_idx] += 1
+                sin_list = sin_list.at[self.parameter_idx].set(
+                    sin_list[self.parameter_idx] + 1
+                )
             if self.is_cosine_factor:
-                cos_list[self.parameter_idx] += 1
+                cos_list = cos_list.at[self.parameter_idx].set(
+                    cos_list[self.parameter_idx] + 1
+                )
 
             if not (self.left or self.right):  # leaf
                 if self.term != 0.0:
@@ -459,19 +463,19 @@ class FourierTree:
             op = op.base if isinstance(op, qml_op.SProd) else op
 
             if isinstance(op, qml.PauliX):
-                pauli_repr[op.wires[0]] = 0
+                pauli_repr = pauli_repr.at[op.wires[0]].set(0)
             elif isinstance(op, qml.PauliY):
-                pauli_repr[op.wires[0]] = 1
+                pauli_repr = pauli_repr.at[op.wires[0]].set(1)
             elif isinstance(op, qml.PauliZ):
-                pauli_repr[op.wires[0]] = 2
+                pauli_repr = pauli_repr.at[op.wires[0]].set(2)
             else:
                 for o in op:
                     if isinstance(o, qml.PauliX):
-                        pauli_repr[o.wires[0]] = 0
+                        pauli_repr = pauli_repr.at[o.wires[0]].set(0)
                     elif isinstance(o, qml.PauliY):
-                        pauli_repr[o.wires[0]] = 1
+                        pauli_repr = pauli_repr.at[o.wires[0]].set(1)
                     elif isinstance(o, qml.PauliZ):
-                        pauli_repr[o.wires[0]] = 2
+                        pauli_repr = pauli_repr.at[o.wires[0]].set(2)
             return pauli_repr
 
         def is_commuting(self, pauli: jnp.ndarray[int]) -> bool:
@@ -543,7 +547,7 @@ class FourierTree:
                 obs, phase=phase, n_qubits=obs.size, is_init=False, is_observable=True
             )
 
-    def __init__(self, model: Model, inputs=1.0):
+    def __init__(self, model: Model, inputs: Optional[jnp.ndarray] = None):
         """
         Tree initialisation, based on the Pauli-Clifford representation of a model.
         Currently, only one input feature is supported.
@@ -573,9 +577,13 @@ class FourierTree:
         inputs = (
             self.model._inputs_validation(inputs)
             if inputs is not None
-            else self.model._inputs_validation(1.0)
+            else self.model._inputs_validation([1.0])
         )
-        inputs.requires_grad = False
+
+        # TODO: duplicate the input to find out, where it is in the tape. Not
+        # really pretty.
+        if inputs.shape[0] == 1:
+            inputs = jnp.repeat(inputs, 2, axis=0)
 
         quantum_tape = qml.workflow.construct_tape(self.model.circuit)(
             params=model.params, inputs=inputs
@@ -584,8 +592,9 @@ class FourierTree:
         quantum_tape = PauliCircuit.from_parameterised_circuit(quantum_tape)
 
         self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
+
         self.input_indices = [
-            i for (i, p) in enumerate(self.parameters) if not p.requires_grad
+            i for (i, p) in enumerate(self.parameters) if p.shape != ()
         ]
 
         self.observables = self._encode_observables(quantum_tape.observables)
@@ -640,7 +649,6 @@ class FourierTree:
             if inputs is not None
             else self.model._inputs_validation(1.0)
         )
-        inputs.requires_grad = False
 
         if kwargs.get("execution_type", "expval") != "expval":
             raise NotImplementedError(
@@ -658,9 +666,6 @@ class FourierTree:
         quantum_tape = PauliCircuit.from_parameterised_circuit(quantum_tape)
 
         self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
-        self.input_indices = [
-            i for (i, p) in enumerate(self.parameters) if not p.requires_grad
-        ]
 
         results = jnp.zeros(len(self.tree_roots))
         for i, root in enumerate(self.tree_roots):
@@ -749,14 +754,16 @@ class FourierTree:
 
         coeffs = []
         for leafs in self.leafs:
-            freq_terms = defaultdict(jnp.complex128)
+            freq_terms = defaultdict(np.complex128)
             for leaf in leafs:
                 leaf_factor, s, c = self._compute_leaf_factors(leaf, parameter_indices)
 
                 for a in range(s + 1):
                     for b in range(c + 1):
                         comb = math.comb(s, a) * math.comb(c, b) * (-1) ** (s - a)
-                        freq_terms[2 * a + 2 * b - s - c] += comb * leaf_factor
+                        freq_terms[2 * a + 2 * b - s._value - c._value] += (
+                            comb * leaf_factor
+                        )
 
             coeffs.append(freq_terms)
 
@@ -854,8 +861,8 @@ class FourierTree:
             leaf_factor = leaf_factor * interm_factor
 
         # Get number of sine and cosine factors to which the input contributes
-        c = jnp.sum([leaf.cos_indices[k] for k in self.input_indices], dtype=jnp.int32)
-        s = jnp.sum([leaf.sin_indices[k] for k in self.input_indices], dtype=jnp.int32)
+        c = jnp.sum(jnp.array([leaf.cos_indices[k] for k in self.input_indices]))
+        s = jnp.sum(jnp.array([leaf.sin_indices[k] for k in self.input_indices]))
 
         leaf_factor = leaf.term * leaf_factor * 0.5 ** (s + c)
 
