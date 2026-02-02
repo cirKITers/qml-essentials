@@ -284,6 +284,7 @@ def test_scaling() -> None:
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_1",
+        use_multithreading=True,
     )
 
     _, _, z = Expressibility.state_fidelities(

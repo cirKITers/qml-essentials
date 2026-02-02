@@ -380,7 +380,9 @@ def test_relative_entropy_order() -> None:
 
     entanglement = [0.0]
     for circuit in circuits:
-        model = Model(n_qubits=3, n_layers=1, circuit_type=circuit)
+        model = Model(
+            n_qubits=3, n_layers=1, circuit_type=circuit, use_multithreading=True
+        )
 
         ent = Entanglement.relative_entropy(
             model, n_samples=50, n_sigmas=100, seed=1000, scale=False
@@ -403,12 +405,14 @@ def test_entanglement_of_formation() -> None:
         n_qubits=3,
         n_layers=1,
         circuit_type="Circuit_1",
+        use_multithreading=True,
     )
 
     entangled_model = Model(
         n_qubits=3,
         n_layers=1,
         circuit_type="Strongly_Entangling",
+        use_multithreading=True,
     )
 
     separable_ent = Entanglement.entanglement_of_formation(
