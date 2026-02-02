@@ -41,11 +41,10 @@ class Expressibility:
         model.initialize_params(random_key, repeat=n_samples * 2)
 
         # Initialize array to store fidelities
-        fidelities: np.ndarray = np.zeros((len(x_samples), n_samples))
+        fidelities: jnp.ndarray = jnp.zeros((len(x_samples), n_samples))
 
         # Compute the fidelity for each pair of input samples and parameters
         for idx, x_sample in enumerate(x_samples):
-
             # Evaluate the model for the current pair of input samples and parameters
             # Execution type is explicitly set to density
             sv: jnp.ndarray = model(
@@ -71,7 +70,7 @@ class Expressibility:
                 ** 2
             )
 
-            fidelities[idx] = jnp.abs(fidelity)
+            fidelities = fidelities.at[idx].set(jnp.abs(fidelity))
 
         return fidelities
 

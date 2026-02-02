@@ -3,9 +3,6 @@ import pennylane as qml
 import jax.numpy as jnp
 import numpy as np
 from jax import random
-from copy import deepcopy
-
-from pennylane.measurements import ProbabilityMP
 
 from qml_essentials.utils import logm_v
 from qml_essentials.model import Model
@@ -64,17 +61,17 @@ class Entanglement:
             -1, 2**model.n_qubits, 2**model.n_qubits
         )
 
-        measure = np.zeros(len(rhos))
+        measure = jnp.zeros(len(rhos))
 
         for i, rho in enumerate(rhos):
-            measure[i] = Entanglement._compute_meyer_wallach_meas(rho, model.n_qubits)
+            ent = Entanglement._compute_meyer_wallach_meas(rho, model.n_qubits)
+            measure = measure.at[i].set(ent)
 
         # Average all iterated states
         entangling_capability = min(max(measure.mean(), 0.0), 1.0)
         log.debug(f"Variance of measure: {measure.var()}")
 
-        # catch floating point errors
-        return float(entangling_capability)
+        return entangling_capability
 
     @staticmethod
     def _compute_meyer_wallach_meas(rho: jnp.ndarray, n_qubits: int):
