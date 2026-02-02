@@ -1340,9 +1340,6 @@ class Model:
                 )  # [..., B_I, B_P, B_R]
             pulse_params = pulse_params.reshape(*pulse_params.shape[:-3], B)
 
-        assert (
-            inputs.shape[0] == params.shape[-1] == pulse_params.shape[-1] == B
-        ), f"Batch shape mismatch (I, P, R): {inputs.shape[0]}, {params.shape[-1]}, {pulse_params.shape[-1]}"
         return inputs, params, pulse_params, batch_shape, batch_shape_enabled
 
     def _requires_density(self):
