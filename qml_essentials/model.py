@@ -986,8 +986,13 @@ class Model:
         Returns:
             np.ndarray: Validated parameters.
         """
+        # append batch axis if not provided
+
         # TODO: replace with getter/setter
         if params is not None:
+            if len(params.shape) == 2:
+                params = np.expand_dims(params, axis=-1)
+
             if numpy_boxes.ArrayBox == type(params):
                 # store "plain" parameters
                 self.params = params._value
