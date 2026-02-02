@@ -1094,7 +1094,9 @@ class Model:
         """
         combined_batch_size = math.prod(self.batch_shape)
 
-        if gate_mode == "pulse" and combined_batch_size > 1 or self.use_multithreading:
+        if (
+            gate_mode == "pulse" or self.use_multithreading
+        ) and combined_batch_size > 1:
             # wrapper to allow kwargs (not supported by jax)
             result = jax.vmap(
                 f,
