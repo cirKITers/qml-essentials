@@ -131,13 +131,12 @@ def test_repeat_batch_axis() -> None:
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_19",
-        mp_threshold=1000,
         repeat_batch_axis=[False, True, True],
     )
 
-    rng = np.random.default_rng(1000)
-    model.initialize_params(rng=rng, repeat=10)
-    res_a = model(inputs=rng.random((10, 1)))
+    key = random.key(1000)
+    model.initialize_params(key, repeat=10)
+    res_a = model(inputs=random.uniform(key, (10, 1)))
 
     # we expect a batch size of 10 instead of 100
     assert res_a.shape == (
