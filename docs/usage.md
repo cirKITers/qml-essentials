@@ -277,6 +277,26 @@ Note, that the output shape is always squeezed, i.e. batch axes will be suppress
 Also, there is a third batch axis in `model.batch_shape` for pulse parameters.
 See more on that topic in [*Ansaetze*](ansaetze.md#pulse_simulation).
 
+In addition to letting the model handle repeating the batch axes, it is also possible to disable this functionality by setting `repeat_batch_axis` upon model initialization.
+This parameter is an array of boolean values determining of the corresponding axis in the `batch_shape` (#Inputs, #Params, #PulseParams)should be repeated.
+Of course, when providing the batch manually, the dimensions have to match.
+
+```python
+model = Model(
+    n_qubits=2,
+    n_layers=1,
+    circuit_type="Circuit_19",
+    mp_threshold=1000,
+    repeat_batch_axis=[False, True, True],
+)
+
+rng = np.random.default_rng(1000)
+model.initialize_params(rng=rng, repeat=10)
+model(inputs=rng.random((10, 1)))
+```
+
+In this example, instead of a batch size of `100`, the output will have a batch size of `10` instead (shape `(10,2)`).
+
 Naturally, the question arises which is the best choice for the hyperparameter `mp_threshold` as a higher value will result in fewer processes being spawned, while a lower value might over-allocate the CPU and adds parallelization overhead which reduces the speedup compared to single process.
 To visualize this, we provide following Figure where we computed the speedup for several different configurations of `mp_threshold` and `n_samples` with a 4 qubit circuit, averaging over 8 runs.
 
