@@ -986,19 +986,22 @@ class Model:
         Returns:
             np.ndarray: Validated parameters.
         """
+        # append batch axis if not provided
+
         # TODO: replace with getter/setter
         if params is not None:
+            if len(params.shape) == 2:
+                params = np.expand_dims(params, axis=-1)
+
             if numpy_boxes.ArrayBox == type(params):
+                # store "plain" parameters
                 self.params = params._value
             else:
                 self.params = params
+        else:
+            params = self.params
 
-        # Get rid of extra dimension
-        # TODO: replaces with params.squeeze()?
-        # if len(params.shape) == 3 and params.shape[2] == 1:
-        #     params = params[:, :, 0]
-
-        return self.params
+        return params
 
     def _pulse_params_validation(self, pulse_params) -> np.ndarray:
         """
