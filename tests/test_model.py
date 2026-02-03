@@ -136,6 +136,7 @@ def test_repeat_batch_axis() -> None:
 
     key = random.key(1000)
     model.initialize_params(key, repeat=10)
+    key, _ = random.split(key)
     res_a = model(inputs=random.uniform(key, (10, 1)))
 
     # we expect a batch size of 10 instead of 100
