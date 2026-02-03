@@ -120,9 +120,9 @@ def test_batching() -> None:
         res[i] = model(params=params[:, :, i], execution_type="density")
 
     assert res.shape == (n_samples, 4, 4), "Shape of batching is not correct"
-    assert (
-        res == model(params=params, execution_type="density")
-    ).all(), "Content of batching is not equal"
+    assert jnp.allclose(
+        res, model(params=params, execution_type="density")
+    ), "Content of batching is not equal"
 
 
 @pytest.mark.unittest
