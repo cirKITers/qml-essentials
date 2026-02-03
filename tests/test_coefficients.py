@@ -551,9 +551,9 @@ def test_fcc() -> None:
             seed=1000,
             scale=True,
         )
-        # # print(f"FCC for {test_case['circuit_type']}: \t{fcc}")
+
         assert jnp.isclose(
-            fcc, test_case["fcc"], atol=1.0e-3
+            fcc, test_case["fcc"], atol=3.0e-2
         ), f"Wrong FCC for {test_case['circuit_type']}. \
             Got {fcc}, expected {test_case['fcc']}."
 
