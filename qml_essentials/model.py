@@ -45,6 +45,7 @@ class Model:
         as_pauli_circuit: bool = False,
         remove_zero_encoding: bool = True,
         mp_threshold: int = -1,
+        repeat_batch_axis: List[bool] = [True, True, True],
     ) -> None:
         """
         Initialize the quantum circuit model.
@@ -113,6 +114,7 @@ class Model:
         self.mp_threshold = mp_threshold
         self.trainable_frequencies: bool = trainable_frequencies
         self.execution_type: str = "expval"
+        self.repeat_batch_axis: List[bool] = repeat_batch_axis
 
         # Initialize rng in Gates
         Gates.init_rng(random_seed)
@@ -1300,33 +1302,45 @@ class Model:
         B_R = pulse_params.shape[-1]
 
         batch_shape = (B_I, B_P, B_R)
-        B = B_I * B_P * B_R
+        batch_shape_enabled = np.array(batch_shape) * self.repeat_batch_axis
+        batch_shape_enabled = batch_shape_enabled[batch_shape_enabled != 0]
+        B = np.prod(batch_shape_enabled)
 
         # [B_I, ...] -> [B_I, B_P, B_R, ...] -> [B, ...]
-        if B_I > 1:
-            inputs = np.repeat(inputs[:, None, None, ...], B_P, axis=1)
-            inputs = np.repeat(inputs, B_R, axis=2)
+        if B_I > 1 and self.repeat_batch_axis[0]:
+            if self.repeat_batch_axis[1]:
+                inputs = np.repeat(inputs[:, None, None, ...], B_P, axis=1)
+            if self.repeat_batch_axis[2]:
+                inputs = np.repeat(inputs, B_R, axis=2)
             inputs = inputs.reshape(B, *inputs.shape[3:])
 
         # [..., ..., B_P] -> [..., ..., B_I, B_P, B_R] -> [..., ..., B]
-        if B_P > 1:
+        if B_P > 1 and self.repeat_batch_axis[1]:
             # add B_I axis before last, and B_R axis after last
             params = params[..., None, :, None]  # [..., B_I(=1), B_P, B_R(=1)]
-            params = np.repeat(params, B_I, axis=-3)  # [..., B_I, B_P, 1]
-            params = np.repeat(params, B_R, axis=-1)  # [..., B_I, B_P, B_R]
+            if self.repeat_batch_axis[0]:
+                params = np.repeat(params, B_I, axis=-3)  # [..., B_I, B_P, 1]
+            if self.repeat_batch_axis[2]:
+                params = np.repeat(params, B_R, axis=-1)  # [..., B_I, B_P, B_R]
             params = params.reshape(*params.shape[:-3], B)
 
         # [..., ..., B_R] -> [..., ..., B_I, B_P, B_R] -> [..., ..., B]
-        if B_R > 1:
+        if B_R > 1 and self.repeat_batch_axis[2]:
             # add B_I axis before last, and B_P axis before last (after adding B_I)
             pulse_params = pulse_params[
                 ..., None, None, :
             ]  # [..., B_I(=1), B_P(=1), B_R]
-            pulse_params = np.repeat(pulse_params, B_I, axis=-3)  # [..., B_I, 1, B_R]
-            pulse_params = np.repeat(pulse_params, B_P, axis=-2)  # [..., B_I, B_P, B_R]
+            if self.repeat_batch_axis[0]:
+                pulse_params = np.repeat(
+                    pulse_params, B_I, axis=-3
+                )  # [..., B_I, 1, B_R]
+            if self.repeat_batch_axis[1]:
+                pulse_params = np.repeat(
+                    pulse_params, B_P, axis=-2
+                )  # [..., B_I, B_P, B_R]
             pulse_params = pulse_params.reshape(*pulse_params.shape[:-3], B)
 
-        return inputs, params, pulse_params, batch_shape
+        return inputs, params, pulse_params, batch_shape, batch_shape_enabled
 
     def _requires_density(self):
         """
@@ -1493,10 +1507,12 @@ class Model:
         inputs = self._inputs_validation(inputs)
         enc_params = self._enc_params_validation(enc_params)
 
-        inputs, params, pulse_params, self.batch_shape = self._assimilate_batch(
-            inputs,
-            params,
-            pulse_params,
+        inputs, params, pulse_params, self.batch_shape, batch_shape_enabled = (
+            self._assimilate_batch(
+                inputs,
+                params,
+                pulse_params,
+            )
         )
 
         result: Optional[np.ndarray] = None
@@ -1527,7 +1543,7 @@ class Model:
                         gate_mode=gate_mode,
                     )
 
-        result = result.reshape((*self.batch_shape, *self._result_shape)).squeeze()
+        result = result.reshape((*batch_shape_enabled, *self._result_shape)).squeeze()
 
         if (
             (self.execution_type == "expval" or self.execution_type == "probs")
