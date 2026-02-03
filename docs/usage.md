@@ -88,6 +88,8 @@ Other options are:
 - "pi": All parameters are initialized to $\\pi$
 
 The `initialize_params` method provides the option to re-initialise the parameters after model instantiation using either the previous configuration or a different strategy.
+Given a PRNG key, it returns the result of `random.split(key)` (i.e. a new key and its subkey) as documented [here](https://docs.jax.dev/en/latest/random-numbers.html).
+This allows to repetively call `key, _ = model.initialize_params(key)` to generate a continous sequence of random initializations.
 
 ## Encoding
 
