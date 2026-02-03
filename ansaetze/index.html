@@ -1198,6 +1198,9 @@ If <code>pulse_params</code> are provided for a model or gate, these are treated
 </span></code></pre></div>
 <p>Here, input and params are inferred from the <code>Model</code> instance, and we scale all pulse parameters by a factor of 1.5.
 Currently there is no way to change the raw values of pulse parameter through the model api directly.</p>
+<p>Similar to the input and standard parameters, we also support batching for the <code>pulse_params</code> argument, meaning that you can also pass a batched array of pulse parameters of e.g. size 2 to as follows:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">model</span><span class="p">(</span><span class="n">pulse_params</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">pulse_params</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">),</span> <span class="n">gate_mode</span><span class="o">=</span><span class="s2">&quot;pulse&quot;</span><span class="p">)</span>
+</span></code></pre></div>
 <blockquote>
 <p><strong>Note:</strong> Pulse-level simulation currently <strong>does not support noise channels</strong>. Mixing with noise will raise an error.  </p>
 </blockquote>
@@ -1211,13 +1214,13 @@ For the specific implementation of these methods, we refer to the documentation 
 To test a broad range of states, each of these circuits does not only include the <code>GATE</code> itself, but other, unitary based gates as well.
 Those usually take a paramter <code>w</code>, allowing to sweep through the parameter space and validate if <code>GATE</code> acutally mimics its unitary counterpart.</p>
 <p>Without any parameter specification, we can initialize the QOC class:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.qoc</span><span class="w"> </span><span class="kn">import</span> <span class="n">QOC</span>
-</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
-</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">qoc</span> <span class="o">=</span> <span class="n">QOC</span><span class="p">()</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.qoc</span><span class="w"> </span><span class="kn">import</span> <span class="n">QOC</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="n">qoc</span> <span class="o">=</span> <span class="n">QOC</span><span class="p">()</span>
 </span></code></pre></div>
 <p>For a detailled description of available arguments, we refer to the documentation of the <code>QOC</code> class.
 Now, we can select a gate of pass <code>sel_gates="all"</code> when calling <code>optimize_all</code>:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">qoc</span><span class="o">.</span><span class="n">optimize_all</span><span class="p">(</span><span class="n">sel_gates</span><span class="o">=</span><span class="s2">&quot;GATE&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">qoc</span><span class="o">.</span><span class="n">optimize_all</span><span class="p">(</span><span class="n">sel_gates</span><span class="o">=</span><span class="s2">&quot;GATE&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 <p>which will run the optimization for the specified gate.
 The output of the optimization is logged to <code>qoc_logs.csv</code> whereas the resulting pulse parameters are stored in <code>qoc_results.csv</code>.</p>

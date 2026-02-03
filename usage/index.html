@@ -841,7 +841,9 @@ The default is no state preparation. Similar to the encoding, you can provide th
 <p>See page <a href="../ansaetze/"><em>Ansaetze</em></a> for more details regarding the <code>Gates</code> class.</p>
 <h2 id="output_shape">Output Shape<a class="headerlink" href="#output_shape" title="Permanent link">#</a></h2>
 <p>The output shape is determined by the <code>output_qubit</code> argument, provided in the instantiation of the model.
-When set to -1 all qubits are measured which will result in the shape being of size <span class="arithmatex">\(n\)</span> by default (depending on the execution type, see below).</p>
+When set to -1 all qubits are measured which will result in the shape being of size <span class="arithmatex">\(n\)</span> by default (depending on the execution type, see below).
+Setting <code>output_qubit</code> to an integer will measue the qubit with the index specified.
+Furthermore, "parity measurements" are supported, where <code>output_qubit</code> becomes a list of qubit pairs, e.g. <code>[[0, 1], [2, 3]]</code> to measure the parity between qubits 0 and 1 and qubits 2 and 3.</p>
 <p>If <code>force_mean</code> flag is set when calling the model, the output is averaged to a single value (while keeping the batch/ input dimension).
 This is usually helpful, if you want to perform a n-local measurement over all qubits where only the average over <span class="arithmatex">\(n\)</span> expecation values is of interest.</p>
 <h2 id="execution_type">Execution Type<a class="headerlink" href="#execution_type" title="Permanent link">#</a></h2>
@@ -934,7 +936,10 @@ Also note, that no checks on the available memory will be performed and that the
 Note, that if both, parameters and inputs are batched with size <code>B_I</code> and <code>B_P</code> respectively, the effective batch dimension will multiply, i.e. resulting in <code>B_I * B_P</code> combinations. 
 Internally, these combinations will be flattened during processing and then reshaped to the original shape afterwards, such that the output shape is <code>[O, B_I, B_P]</code>.
 Here, <code>O</code> is the general output shape depending on the execution type, <code>B_I</code> is the batch dimension of the inputs and <code>B_P</code> is the batch dimension of the parameters.
-This shape is also available as a property of the model: <code>model.batch_shape</code>.</p>
+This shape is also available as a property of the model: <code>model.batch_shape</code>.
+Note, that the output shape is always squeezed, i.e. batch axes will be suppressed if their dimension is 1.
+Also, there is a third batch axis in <code>model.batch_shape</code> for pulse parameters.
+See more on that topic in <a href="../ansaetze/#pulse_simulation"><em>Ansaetze</em></a>.</p>
 <p>Naturally, the question arises which is the best choice for the hyperparameter <code>mp_threshold</code> as a higher value will result in fewer processes being spawned, while a lower value might over-allocate the CPU and adds parallelization overhead which reduces the speedup compared to single process.
 To visualize this, we provide following Figure where we computed the speedup for several different configurations of <code>mp_threshold</code> and <code>n_samples</code> with a 4 qubit circuit, averaging over 8 runs.</p>
 <p><a class="glightbox" href="../figures/mp_result_density_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Multiprocessing Density" data-desc-position="top"><img alt="Multiprocessing Density" src="../figures/mp_result_density_light.png#center#only-light" /></a>
