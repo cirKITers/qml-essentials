@@ -280,8 +280,8 @@ model = Model(
     n_qubits=2,
     n_layers=1,
     circuit_type="Circuit_19",
-    mp_threshold=1000,
     repeat_batch_axis=[False, True, True],
+    use_multithreading=True,
 )
 
 rng = np.random.default_rng(1000)
