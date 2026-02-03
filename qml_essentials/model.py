@@ -593,6 +593,8 @@ class Model:
             using strategy {initialization}."
         )
 
+        return random.split(random_key)
+
     def transform_input(
         self, inputs: jnp.ndarray, enc_params: Optional[jnp.ndarray]
     ) -> jnp.ndarray:
