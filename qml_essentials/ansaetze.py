@@ -1522,9 +1522,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = 2 * PulseInformation.num_params("RY")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = 2 * PulseInformation.num_params("RY") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             n_CX = (n_qubits // 2) + ((n_qubits - 1) // 2)
             n_CX += 1 if n_qubits > 2 else 0
@@ -1628,9 +1627,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             if n_qubits > 1:
                 n_params += PulseInformation.num_params("CRX") * n_qubits
@@ -1739,9 +1737,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             if n_qubits > 1:
                 n_params += PulseInformation.num_params("CRZ") * n_qubits
@@ -1847,11 +1844,10 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = 2 * PulseInformation.num_params("RY")
-            n_params *= n_qubits
+            n_params = 2 * PulseInformation.num_params("RY") * n_qubits
 
             if n_qubits > 1:
-                n_params += PulseInformation.num_params("CX") * n_qubits
+                n_params += 2 * PulseInformation.num_params("CX") * n_qubits
 
             return n_params
 
@@ -1952,9 +1948,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("H")
-            n_params += PulseInformation.num_params("RX")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("H") * n_qubits
+            n_params += PulseInformation.num_params("RX") * n_qubits
 
             n_params += (n_qubits - 1) * PulseInformation.num_params("CZ")
 
@@ -2056,14 +2051,13 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = 2 * PulseInformation.num_params("RX")
-            n_params += 2 * PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = 2 * PulseInformation.num_params("RX") * n_qubits
+            n_params += 2 * PulseInformation.num_params("RZ") * n_qubits
 
             n_CRX = n_qubits * (n_qubits - 1)
             n_params += n_CRX * PulseInformation.num_params("CRX")
 
-            return 0
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -2169,9 +2163,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             return n_params
 
@@ -2256,14 +2249,13 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             if n_qubits > 1:
-                n_params += (n_qubits - 1) * PulseInformation.num_params("CX")
+                n_params += PulseInformation.num_params("CX") * (n_qubits - 1)
 
-            return 0
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -2353,9 +2345,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params = PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             n_params += (n_qubits - 1) * PulseInformation.num_params("CRZ")
 
@@ -2452,13 +2443,12 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             n_params += (n_qubits - 1) * PulseInformation.num_params("CRX")
 
-            return 0
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -2552,8 +2542,7 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = 2 * PulseInformation.num_params("RY")
-            n_params *= n_qubits
+            n_params = 2 * PulseInformation.num_params("RY") * n_qubits
 
             n_params += (n_qubits - 1) * PulseInformation.num_params("CZ")
 
@@ -2654,9 +2643,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             n_CRZ = n_qubits * (n_qubits - 1) // 2
             n_params += n_CRZ * PulseInformation.num_params("CRZ")
@@ -2762,9 +2750,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             n_CRZ = n_qubits * (n_qubits - 1) // 2
             n_params += n_CRZ * PulseInformation.num_params("CRX")
@@ -2874,8 +2861,7 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = 2 * PulseInformation.num_params("Rot")
-            n_params *= n_qubits
+            n_params = 2 * PulseInformation.num_params("Rot") * n_qubits
 
             if n_qubits > 1:
                 n_params += n_qubits * 2 * PulseInformation.num_params("CX")
@@ -2986,8 +2972,7 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("Rot")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("Rot") * n_qubits
 
             return n_params
 

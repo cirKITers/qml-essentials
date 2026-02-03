@@ -126,6 +126,27 @@ def test_batching() -> None:
 
 
 @pytest.mark.unittest
+def test_repeat_batch_axis() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        mp_threshold=1000,
+        repeat_batch_axis=[False, True, True],
+    )
+
+    rng = np.random.default_rng(1000)
+    model.initialize_params(rng=rng, repeat=10)
+    res_a = model(inputs=rng.random((10, 1)))
+
+    # we expect a batch size of 10 instead of 100
+    assert res_a.shape == (
+        10,
+        2,
+    ), f"Shape of repeat_batch_axis is not correct. Got {res_a.shape}"
+
+
+@pytest.mark.unittest
 def test_multiprocessing_density() -> None:
     # use n_samples that is not a multiple of the threshold
     n_samples = 1000

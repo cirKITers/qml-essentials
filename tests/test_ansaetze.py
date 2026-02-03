@@ -309,6 +309,24 @@ def test_ansaetze() -> None:
         )
 
 
+@pytest.mark.expensive
+@pytest.mark.smoketest
+def test_pulse_params_ansaetze() -> None:
+    for ansatz in Ansaetze.get_available():
+        logger.info(f"Testing Ansatz: {ansatz.__name__}")
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type=ansatz.__name__,
+            data_reupload=False,
+        )
+
+        try:
+            model(gate_mode="pulse")
+        except Exception as e:
+            raise Exception(f"Error for ansatz {ansatz.__name__}: {e}")
+
+
 @pytest.mark.unittest
 def test_available_ansaetze() -> None:
     ansatze = set(Ansaetze.get_available())

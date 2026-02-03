@@ -57,7 +57,7 @@ def test_coefficients() -> None:
             jnp.sum(coeffs).imag, 0.0, rtol=1.0e-5
         ), "Imaginary part is not zero"
 
-        partial_circuit = partial(model, model.params.squeeze(), force_mean=True)
+        partial_circuit = partial(model, model.params, force_mean=True)
         ref_coeffs = pcoefficients(partial_circuit, 1, model.degree[0] // 2)
 
         assert jnp.allclose(
