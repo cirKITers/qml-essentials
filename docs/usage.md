@@ -286,9 +286,9 @@ model = Model(
     use_multithreading=True,
 )
 
-rng = np.random.default_rng(1000)
-model.initialize_params(rng=rng, repeat=10)
-model(inputs=rng.random((10, 1)))
+key = jax.random.key(1000)
+key = model.initialize_params(key, repeat=10)
+model(inputs=random.uniform(key, (10, 1)))
 ```
 In this example, instead of a batch size of `100`, the output will have a batch size of `10` instead (shape `(10,2)`).
 
