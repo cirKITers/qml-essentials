@@ -305,6 +305,15 @@ While computing the expectation value is significantly easier, there can still b
 ![Multiprocessing Expval](figures/mp_result_expval_light.png#center#only-light)
 ![Multiprocessing Expval](figures/mp_result_expval_dark.png#center#only-dark)
 
+The commands used to generate the plots above are:
+```
+cd docs && uv run python mp_experiment.py --execution_type="expval" --min_n_samples="3000" --max_n_samples="60000" --n_samples="3000" --n_qubits="6" --n_layers="1"
+```
+and
+```
+cd docs && uv run python mp_experiment.py --execution_type="density" --min_n_samples="500" --max_n_samples="10000" --n_samples="500" --n_qubits="6" --n_layers="1"
+```
+respectively.
 
 ## Quantikz Export
 
