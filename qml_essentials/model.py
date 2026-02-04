@@ -90,8 +90,8 @@ class Model:
                 Defaults to 1000.
             remove_zero_encoding (bool, optional): whether to
                 remove the zero encoding from the circuit. Defaults to True.
-            use_multithreading (bool, optional): whether to use JAX
-                multithreading to parallelise over batch dimension.
+            run_parallel (bool, optional): whether to use JAX
+                pmap instead of vmap to parallelise over batch dimension.
 
         Returns:
             None
@@ -199,8 +199,10 @@ class Model:
             for i in range(self.n_input_feat)
         )
 
+        self.has_dru = jnp.max(jnp.array([jnp.max(f) for f in self.frequencies])) > 1
+
         # check for the highest degree among all input dimensions
-        if self.has_dru():
+        if self.has_dru:
             impl_n_layers: int = n_layers + 1  # we need L+1 according to Schuld et al.
         else:
             impl_n_layers = n_layers
@@ -505,16 +507,6 @@ class Model:
     def all_qubit_measurement(self) -> bool:
         return self.output_qubit == list(range(self.n_qubits))
 
-    def has_dru(self) -> bool:
-        """
-        Checks if the model has DRU looking for a value in
-        model.frequences which is >1.
-
-        Returns:
-            bool: _description_
-        """
-        return jnp.max(jnp.array([jnp.max(f) for f in self.frequencies])) > 1
-
     def initialize_params(
         self,
         random_key: random.PRNGKey,
@@ -781,11 +773,11 @@ class Model:
             )
 
             # visual barrier
-            if self.has_dru():
+            if self.has_dru:
                 qml.Barrier(wires=list(range(self.n_qubits)), only_visual=True)
 
         # final ansatz layer
-        if self.has_dru():  # same check as in init
+        if self.has_dru:  # same check as in init
             self.pqc(
                 params[self.n_layers],
                 self.n_qubits,
