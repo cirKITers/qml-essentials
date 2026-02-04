@@ -90,8 +90,8 @@ class Model:
                 Defaults to 1000.
             remove_zero_encoding (bool, optional): whether to
                 remove the zero encoding from the circuit. Defaults to True.
-            run_parallel (bool, optional): whether to use JAX
-                pmap instead of vmap to parallelise over batch dimension.
+            use_multithreading (bool, optional): whether to use JAX
+                multithreading to parallelise over batch dimension.
 
         Returns:
             None
