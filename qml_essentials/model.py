@@ -427,7 +427,7 @@ class Model:
         else:
             raise ValueError(f"Invalid execution type: {value}.")
 
-        if (value == "density" or value == "state") and self.output_qubit != -1:
+        if value == "state" and not self.all_qubit_measurement:
             warnings.warn(
                 f"{value} measurement does ignore output_qubit, which is "
                 f"{self.output_qubit}.",
@@ -500,6 +500,10 @@ class Model:
     @pulse_params.setter
     def pulse_params(self, value: jnp.ndarray) -> None:
         self._pulse_params = value
+
+    @property
+    def all_qubit_measurement(self) -> bool:
+        return self.output_qubit == list(range(self.n_qubits))
 
     def has_dru(self) -> bool:
         """
@@ -803,7 +807,7 @@ class Model:
         # run default simulation and get expectation value
         elif self.execution_type == "expval":
             # n-local measurement
-            if self.output_qubit == list(range(self.n_qubits)):
+            if self.all_qubit_measurement:
                 return [qml.expval(qml.PauliZ(q)) for q in self.output_qubit]
             # parity or local measurement(s)
             elif isinstance(self.output_qubit, list):
@@ -826,7 +830,7 @@ class Model:
         # run default simulation and get probs
         elif self.execution_type == "probs":
             # n-local measurement
-            if self.output_qubit == list(range(self.n_qubits)):
+            if self.all_qubit_measurement:
                 return qml.probs(wires=self.output_qubit)
             # parity or local measurement(s)
             elif isinstance(self.output_qubit, list):
