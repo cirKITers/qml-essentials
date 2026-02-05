@@ -300,7 +300,7 @@ For density matrix calculations, we computed the speedup of a multi-threaded com
 
 The computation was performed on a 16 core CPU with 32GB of RAM.
 
-While computing the expectation value is significantly easier, there can still be a speedup achieved, as shown in the following figure.
+As shown in the following figure, computing the expectation value is significantly easier, with no, or only a small speedup over the single-threaded computation.
 
 ![Multiprocessing Expval](figures/mp_result_expval_light.png#center#only-light)
 ![Multiprocessing Expval](figures/mp_result_expval_dark.png#center#only-dark)
