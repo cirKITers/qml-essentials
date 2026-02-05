@@ -32,14 +32,25 @@ PAULI_ROTATION_GATES = (
 SKIPPABLE_OPERATIONS = (qml.Barrier,)
 
 
-def logm_v(A, **kwargs):
+def logm_v(A: jnp.ndarray, **kwargs) -> jnp.ndarray:
+    """
+    Compute the logarithm of a matrix. If the provided matrix has an additional
+    batch dimension, the logarithm of each matrix is computed.
+
+    Args:
+        A (jnp.ndarray): The (potentially batched) matrices of which to compute
+        the logarithm.
+
+    Returns:
+        jnp.ndarray: The log matrices
+    """
     # TODO: check warnings
     if len(A.shape) == 2:
         return logm(A, **kwargs)
     elif len(A.shape) == 3:
-        AV = np.zeros(A.shape, dtype=A.dtype)
+        AV = jnp.zeros(A.shape, dtype=jnp.complex128)
         for i in range(A.shape[0]):
-            AV[i] = logm(A[i], **kwargs)
+            AV = AV.at[i].set(logm(A[i], **kwargs))
         return AV
     else:
         raise NotImplementedError("Unsupported shape of input matrix")

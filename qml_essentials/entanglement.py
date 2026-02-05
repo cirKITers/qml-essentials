@@ -1,4 +1,4 @@
-from typing import Optional, Any, List
+from typing import Optional, Any, List, Tuple
 import pennylane as qml
 import jax.numpy as jnp
 import numpy as np
@@ -12,7 +12,6 @@ log = logging.getLogger(__name__)
 
 
 class Entanglement:
-
     @staticmethod
     def meyer_wallach(
         model: Model,
@@ -49,7 +48,7 @@ class Entanglement:
         random_key = random.key(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
-            model.initialize_params(random_key, repeat=n_samples)
+            random_key = model.initialize_params(random_key, repeat=n_samples)
         else:
             if seed is not None:
                 log.warning("Seed is ignored when samples is 0")
@@ -162,7 +161,7 @@ class Entanglement:
         random_key = random.key(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
-            model.initialize_params(random_key, repeat=n_samples)
+            random_key = model.initialize_params(random_key, repeat=n_samples)
             params = model.params
         else:
             if seed is not None:
@@ -258,21 +257,21 @@ class Entanglement:
                 log.info(f"Using sample size of model params: {model.params.shape[-1]}")
 
         ghz_model = Model(model.n_qubits, 1, "GHZ", data_reupload=False)
+        rho_ghz, log_rho_ghz = Entanglement._compute_log_density(ghz_model, **kwargs)
 
-        normalised_entropies = np.zeros((n_sigmas, model.params.shape[-1]))
+        normalised_entropies = jnp.zeros((n_sigmas, model.params.shape[-1]))
         for j, log_sigma in enumerate(log_sigmas):
-
             # Entropy of GHZ states should be maximal
             ghz_entropy = Entanglement._compute_rel_entropies(
-                ghz_model,
-                log_sigma,
+                rho_ghz, log_rho_ghz, log_sigma
             )
 
-            rel_entropy = Entanglement._compute_rel_entropies(
-                model, log_sigma, **kwargs
-            )
+            rho, log_rho = Entanglement._compute_log_density(model, **kwargs)
+            rel_entropy = Entanglement._compute_rel_entropies(rho, log_rho, log_sigma)
 
-            normalised_entropies[j] = rel_entropy / ghz_entropy
+            normalised_entropies = normalised_entropies.at[j].set(
+                rel_entropy / ghz_entropy
+            )
 
         # Average all iterated states
         entangling_capability = normalised_entropies.min(axis=0).mean()
@@ -281,20 +280,17 @@ class Entanglement:
         return entangling_capability
 
     @staticmethod
-    def _compute_rel_entropies(
-        model: Model,
-        log_sigma: jnp.ndarray,
-        **kwargs,
-    ) -> jnp.ndarray:
+    def _compute_log_density(model: Model, **kwargs) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
-        Compute the relative entropy for a given model.
+        Obtains the density matrix of a model and computes its logarithm.
 
         Args:
-            model (Model): The model for which to compute entanglement
-            log_sigma (jnp.ndarray): Density matrix of next separable state
+            model (Model): The model for which to compute the density matrix.
 
         Returns:
-            jnp.ndarray: Relative Entropy for each sample
+            Tuple[jnp.ndarray, jnp.ndarray]:
+                - jnp.ndarray: density matrix.
+                - jnp.ndarray: logarithm of the density matrix.
         """
         # implicitly set input to none in case it's not needed
         kwargs.setdefault("inputs", None)
@@ -302,7 +298,26 @@ class Entanglement:
         rho = model(execution_type="density", **kwargs)
         rho = rho.reshape(-1, 2**model.n_qubits, 2**model.n_qubits)
         log_rho = logm_v(rho) / jnp.log(2)
+        return rho, log_rho
 
+    @staticmethod
+    def _compute_rel_entropies(
+        rho: jnp.ndarray,
+        log_rho: jnp.ndarray,
+        log_sigma: jnp.ndarray,
+    ) -> jnp.ndarray:
+        """
+        Compute the relative entropy for a given model.
+
+        Args:
+            log_rho (jnp.ndarray): Density matrix result of the circuit
+            log_rho (jnp.ndarray): Corresponding logarithm of the density
+                matrix
+            log_sigma (jnp.ndarray): Density matrix of next separable state
+
+        Returns:
+            jnp.ndarray: Relative Entropy for each sample
+        """
         rel_entropies = jnp.abs(
             jnp.trace(rho @ (log_rho - log_sigma), axis1=1, axis2=2)
         )
@@ -519,6 +534,6 @@ def sample_random_separable_states(
     # explicitly set execution type because everything else won't work
     sigmas = model(execution_type="density", inputs=None)
     if take_log:
-        sigmas = logm_v(sigmas) / np.log(2)
+        sigmas = logm_v(sigmas) / jnp.log(2.0 + 0j)
 
     return sigmas
