@@ -88,6 +88,8 @@ Other options are:
 - "pi": All parameters are initialized to $\\pi$
 
 The `initialize_params` method provides the option to re-initialise the parameters after model instantiation using either the previous configuration or a different strategy.
+Given a PRNG key, it returns the result of `random.split(key)` (i.e. a new key and its subkey) as documented [here](https://docs.jax.dev/en/latest/random-numbers.html).
+This allows to repetively call `key, _ = model.initialize_params(key)` to generate a continous sequence of random initializations.
 
 ## Encoding
 
@@ -245,30 +247,24 @@ For more details:
 - See [*Training*](training.md#pulse_level) for how to train pulse parameters jointly with rotation angles.  
 
 
-## Multiprocessing
+## Multithreading (using JAX)
 
-Our framework can parallelise the execution of the model by providing a `mp_threshold` parameter (defaults to -1).
-This parameter effectively determines the batch size above which the model is executed in parallel.
-Given a parameter shape of, i.e. `[x,y,1000]` and a `mp_threshold` of 400, three separate processes will be launched.
-If there are only two processes available on the machine, then the model will execute only two processes concurrently, wait for them to finish and then execute the remaining process.
-
+Our framework can parallelise the execution of the model setting the `use_multithreading` flag (defaults to False).
+In our framework, JAX then automatically handles the number and distribution of the workers depending on the batch sizes and available CPUs.
 ```
-n_samples = 4500
-
 model = Model(
     n_qubits=2,
     n_layers=1,
     circuit_type="Circuit_19",
-    mp_threshold=1000,
+    use_multithreading=True,
 )
 ```
 
-Depending on the chosen parameters and your machine, this can result in a significant speedup.
+Depending your machine, this can result in a significant speedup.
 Note however, that this is currently only available for `n_qubits<model.lightning_threshold` which is 12 by default.
 Above this threshold, Pennylane's `lightning.qubit` device is used which would interfere with an additional parallelism.
-Also note, that no checks on the available memory will be performed and that the memory consumption could multiply with the number of parallel processes.
 
-Multiprocessing works for both parameters and inputs, meaning that if a batched input is provided, processing will be parallelized in the same way as explained above.
+Mutlithreading works for both parameters and inputs, meaning that if a batched input is provided, processing will be parallelized in the same way as explained above.
 Note, that if both, parameters and inputs are batched with size `B_I` and `B_P` respectively, the effective batch dimension will multiply, i.e. resulting in `B_I * B_P` combinations. 
 Internally, these combinations will be flattened during processing and then reshaped to the original shape afterwards, such that the output shape is `[O, B_I, B_P]`.
 Here, `O` is the general output shape depending on the execution type, `B_I` is the batch dimension of the inputs and `B_P` is the batch dimension of the parameters.
@@ -286,38 +282,38 @@ model = Model(
     n_qubits=2,
     n_layers=1,
     circuit_type="Circuit_19",
-    mp_threshold=1000,
     repeat_batch_axis=[False, True, True],
+    use_multithreading=True,
 )
 
-rng = np.random.default_rng(1000)
-model.initialize_params(rng=rng, repeat=10)
-model(inputs=rng.random((10, 1)))
+key = jax.random.key(1000)
+key = model.initialize_params(key, repeat=10)
+model(inputs=random.uniform(key, (10, 1)))
 ```
-
 In this example, instead of a batch size of `100`, the output will have a batch size of `10` instead (shape `(10,2)`).
 
-Naturally, the question arises which is the best choice for the hyperparameter `mp_threshold` as a higher value will result in fewer processes being spawned, while a lower value might over-allocate the CPU and adds parallelization overhead which reduces the speedup compared to single process.
-To visualize this, we provide following Figure where we computed the speedup for several different configurations of `mp_threshold` and `n_samples` with a 4 qubit circuit, averaging over 8 runs.
+
+For density matrix calculations, we computed the speedup of a multi-threaded computation over a single-threaded computation with a 4 qubit circuit, averaged over 8 runs, as shown in the following figure.
 
 ![Multiprocessing Density](figures/mp_result_density_light.png#center#only-light)
 ![Multiprocessing Density](figures/mp_result_density_dark.png#center#only-dark)
 
 The computation was performed on a 16 core CPU with 32GB of RAM.
-It is clearly visible, that e.g. a `mp_threshold` of 500 saturates the multi-processing capability after 4500 samples similar to a `mp_threshold` of 1k at 9k samples.
-Also note how the speedup (over single process) is 1 until the number of samples equal `mp_threshold`.
 
-Results above were obtained running density matrix calculations.
-While computing the expectation value is significantly easier, there can still be a speedup achieved for a higher number of samples, as shown in the following Figure.
+As shown in the following figure, computing the expectation value is significantly easier, with no, or only a small speedup over the single-threaded computation.
 
 ![Multiprocessing Expval](figures/mp_result_expval_light.png#center#only-light)
 ![Multiprocessing Expval](figures/mp_result_expval_dark.png#center#only-dark)
 
-Here, the experiment setup is identical to the one above, but the expectation value is computed instead of the density matrix.
-Not how a `mp_threshold` of 1k achives no significant speedup because of the overhead that comes with multiprocessing, whereas increasing the load of each process (e.g. `mp_threshold` > 8k) results in a speedup of almost 4 at 60k samples. 
-
-In all experiments, a CPU load factor of 0.9 was used, meaning that the actual number of spawned processes is `int(0.9*n_cores)` of the CPU.
-This value can be adjusted by overwriting `mode.cpu_scaler`.
+The commands used to generate the plots above are:
+```
+cd docs && uv run python mp_experiment.py --execution_type="expval" --min_n_samples="3000" --max_n_samples="60000" --n_samples="3000" --n_qubits="6" --n_layers="1"
+```
+and
+```
+cd docs && uv run python mp_experiment.py --execution_type="density" --min_n_samples="500" --max_n_samples="10000" --n_samples="500" --n_qubits="6" --n_layers="1"
+```
+respectively.
 
 ## Quantikz Export
 

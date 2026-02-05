@@ -1,4 +1,6 @@
-import pennylane.numpy as np
+import jax.numpy as jnp
+from jax import random
+import numpy as np
 from typing import Tuple, List, Any
 from scipy import integrate
 from scipy.linalg import sqrtm
@@ -11,42 +13,41 @@ class Expressibility:
     @staticmethod
     def _sample_state_fidelities(
         model: Model,
-        x_samples: np.ndarray,
+        x_samples: jnp.ndarray,
         n_samples: int,
         seed: int,
         kwargs: Any,
-    ) -> np.ndarray:
+    ) -> jnp.ndarray:
         """
         Compute the fidelities for each pair of input samples and parameter sets.
 
         Args:
             model (Callable): Function that models the quantum circuit.
-            x_samples (np.ndarray): Array of shape (n_input_samples, n_features)
+            x_samples (jnp.ndarray): Array of shape (n_input_samples, n_features)
                 containing the input samples.
             n_samples (int): Number of parameter sets to generate.
             seed (int): Random number generator seed.
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
-            np.ndarray: Array of shape (n_input_samples, n_samples)
+            jnp.ndarray: Array of shape (n_input_samples, n_samples)
             containing the fidelities.
         """
-        rng = np.random.default_rng(seed)
+        random_key = random.key(seed)
 
         # Generate random parameter sets
         # We need two sets of parameters, as we are computing fidelities for a
         # pair of random state vectors
-        model.initialize_params(rng=rng, repeat=n_samples * 2)
+        model.initialize_params(random_key, repeat=n_samples * 2)
 
         # Initialize array to store fidelities
-        fidelities: np.ndarray = np.zeros((len(x_samples), n_samples))
+        fidelities: jnp.ndarray = jnp.zeros((len(x_samples), n_samples))
 
         # Compute the fidelity for each pair of input samples and parameters
         for idx, x_sample in enumerate(x_samples):
-
             # Evaluate the model for the current pair of input samples and parameters
             # Execution type is explicitly set to density
-            sv: np.ndarray = model(
+            sv: jnp.ndarray = model(
                 inputs=x_sample,
                 params=model.params,
                 execution_type="density",
@@ -54,22 +55,22 @@ class Expressibility:
             )
 
             # $\sqrt{\rho}$
-            sqrt_sv1: np.ndarray = np.array([sqrtm(m) for m in sv[:n_samples]])
+            sqrt_sv1: jnp.ndarray = jnp.array([sqrtm(m) for m in sv[:n_samples]])
 
             # $\sqrt{\rho} \sigma \sqrt{\rho}$
             inner_fidelity = sqrt_sv1 @ sv[n_samples:] @ sqrt_sv1
 
             # Compute the fidelity using the partial trace of the statevector
-            fidelity: np.ndarray = (
-                np.trace(
-                    np.array([sqrtm(m) for m in inner_fidelity]),
+            fidelity: jnp.ndarray = (
+                jnp.trace(
+                    jnp.array([sqrtm(m) for m in inner_fidelity]),
                     axis1=1,
                     axis2=2,
                 )
                 ** 2
             )
 
-            fidelities[idx] = np.abs(fidelity)
+            fidelities = fidelities.at[idx].set(jnp.abs(fidelity))
 
         return fidelities
 
@@ -83,7 +84,7 @@ class Expressibility:
         input_domain: List[float] = None,
         scale: bool = False,
         **kwargs: Any,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         """
         Sample the state fidelities and histogram them into a 2D array.
 
@@ -98,18 +99,18 @@ class Expressibility:
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
-            Tuple[np.ndarray, np.ndarray, np.ndarray]: Tuple containing the
+            Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]: Tuple containing the
                 input samples, bin edges, and histogram values.
         """
         if scale:
-            n_samples = np.power(2, model.n_qubits) * n_samples
+            n_samples = jnp.power(2, model.n_qubits) * n_samples
             n_bins = model.n_qubits * n_bins
 
         if input_domain is None or n_input_samples is None or n_input_samples == 0:
-            x = np.zeros((1))
+            x = jnp.zeros((1))
             n_input_samples = 1
         else:
-            x = np.linspace(*input_domain, n_input_samples, requires_grad=False)
+            x = jnp.linspace(*input_domain, n_input_samples)
 
         fidelities = Expressibility._sample_state_fidelities(
             x_samples=x,
@@ -120,10 +121,10 @@ class Expressibility:
         )
         z: np.ndarray = np.zeros((n_input_samples, n_bins))
 
-        y: np.ndarray = np.linspace(0, 1, n_bins + 1)
+        y: jnp.ndarray = jnp.linspace(0, 1, n_bins + 1)
 
         for i, f in enumerate(fidelities):
-            z[i], _ = np.histogram(f, bins=y)
+            z[i], _ = jnp.histogram(f, bins=y)
 
         z = z / n_samples
 
@@ -151,7 +152,7 @@ class Expressibility:
         return prob
 
     @staticmethod
-    def _sample_haar_integral(n_qubits: int, n_bins: int) -> np.ndarray:
+    def _sample_haar_integral(n_qubits: int, n_bins: int) -> jnp.ndarray:
         """
         Calculates theoretical probability density function for random Haar states
         as proposed by Sim et al. (https://arxiv.org/abs/1905.10876) and bins it
@@ -162,7 +163,7 @@ class Expressibility:
             n_bins (int): number of histogram bins
 
         Returns:
-            np.ndarray: probability distribution for all fidelities
+            jnp.ndarray: probability distribution for all fidelities
         """
         dist = np.zeros(n_bins)
         for idx in range(n_bins):
@@ -180,7 +181,7 @@ class Expressibility:
         n_bins: int,
         cache: bool = True,
         scale: bool = False,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Calculates theoretical probability density function for random Haar states
         as proposed by Sim et al. (https://arxiv.org/abs/1905.10876) and bins it
@@ -193,7 +194,7 @@ class Expressibility:
             scale (bool): whether to scale the number of bins
 
         Returns:
-            Tuple[np.ndarray, np.ndarray]:
+            Tuple[jnp.ndarray, jnp.ndarray]:
                 - x component (bins): the input domain
                 - y component (probabilities): the haar probability density
                   funtion for random Haar states
@@ -201,7 +202,7 @@ class Expressibility:
         if scale:
             n_bins = n_qubits * n_bins
 
-        x = np.linspace(0, 1, n_bins)
+        x = jnp.linspace(0, 1, n_bins)
 
         if cache:
             name = f"haar_{n_qubits}q_{n_bins}s_{'scaled' if scale else ''}.npy"
@@ -213,33 +214,33 @@ class Expressibility:
             file_path = os.path.join(cache_folder, name)
 
             if os.path.isfile(file_path):
-                y = np.load(file_path)
+                y = jnp.load(file_path)
                 return x, y
 
         y = Expressibility._sample_haar_integral(n_qubits, n_bins)
 
         if cache:
-            np.save(file_path, y)
+            jnp.save(file_path, y)
 
         return x, y
 
     @staticmethod
     def kullback_leibler_divergence(
-        vqc_prob_dist: np.ndarray,
-        haar_dist: np.ndarray,
-    ) -> np.ndarray:
+        vqc_prob_dist: jnp.ndarray,
+        haar_dist: jnp.ndarray,
+    ) -> jnp.ndarray:
         """
         Calculates the KL divergence between two probability distributions (Haar
         probability distribution and the fidelity distribution sampled from a VQC).
 
         Args:
-            vqc_prob_dist (np.ndarray): VQC fidelity probability distribution.
+            vqc_prob_dist (jnp.ndarray): VQC fidelity probability distribution.
                 Should have shape (n_inputs_samples, n_bins)
-            haar_dist (np.ndarray): Haar probability distribution with shape.
+            haar_dist (jnp.ndarray): Haar probability distribution with shape.
                 Should have shape (n_bins, )
 
         Returns:
-            np.ndarray: Array of KL-Divergence values for all values in axis 1
+            jnp.ndarray: Array of KL-Divergence values for all values in axis 1
         """
         if len(vqc_prob_dist.shape) > 1:
             assert all([haar_dist.shape == p.shape for p in vqc_prob_dist]), (
@@ -251,6 +252,6 @@ class Expressibility:
 
         kl_divergence = np.zeros(vqc_prob_dist.shape[0])
         for idx, p in enumerate(vqc_prob_dist):
-            kl_divergence[idx] = np.sum(rel_entr(p, haar_dist))
+            kl_divergence[idx] = jnp.sum(rel_entr(p, haar_dist))
 
         return kl_divergence

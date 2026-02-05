@@ -1,9 +1,11 @@
 import time
-import pennylane.numpy as np
+import numpy as np
+from jax import random
 import json
 from qml_essentials.model import Model
 import matplotlib.pyplot as plt
 import argparse
+
 
 time_measure = time.time
 
@@ -14,9 +16,6 @@ def main(
     min_n_samples,
     max_n_samples,
     n_samples_step,
-    min_mp_threshold,
-    max_mp_threshold,
-    mp_threshold_step,
     n_runs,
     n_qubits,
     execution_type,
@@ -32,8 +31,6 @@ def main(
         print(f"min_n_samples: {min_n_samples}")
         print(f"max_n_samples: {max_n_samples}")
         print(f"n_qubits: {n_qubits}")
-        print(f"min_mp_threshold: {min_mp_threshold}")
-        print(f"max_mp_threshold: {max_mp_threshold}")
         print(f"n_samples_step: {n_samples_step}")
         print(f"n_runs: {n_runs}")
 
@@ -41,81 +38,72 @@ def main(
 
     if len(results) == 0:
         try:
-            for mp_threshold in range(
-                min_mp_threshold, max_mp_threshold + 1, mp_threshold_step
-            ):
-                results[mp_threshold] = {}
-                for n_samples in range(
-                    min_n_samples, max_n_samples + 1, n_samples_step
-                ):
-                    results[mp_threshold][n_samples] = {}
-                    rng_s = np.random.default_rng(seed)
-                    rng_p = np.random.default_rng(seed)
-                    for run in range(n_runs):
-                        model = Model(
-                            n_qubits=n_qubits,
-                            n_layers=n_layers,
-                            circuit_type="Circuit_19",
-                            random_seed=seed,
-                        )
-                        model.initialize_params(rng=rng_s, repeat=n_samples)
+            results = {}
+            for n_samples in range(min_n_samples, max_n_samples + 1, n_samples_step):
+                results[n_samples] = {}
+                random_key_s = random.key(seed)
+                random_key_p = random.key(seed)
+                for run in range(n_runs):
+                    model = Model(
+                        n_qubits=n_qubits,
+                        n_layers=n_layers,
+                        circuit_type="Circuit_19",
+                        random_seed=seed,
+                    )
+                    model.initialize_params(random_key_s, repeat=n_samples)
 
-                        start = time_measure()
-                        model(execution_type=execution_type)
-                        t_single = time_measure() - start
+                    start = time_measure()
+                    model(execution_type=execution_type)
+                    t_single = time_measure() - start
 
-                        model = Model(
-                            n_qubits=n_qubits,
-                            n_layers=n_layers,
-                            circuit_type="Circuit_19",
-                            mp_threshold=mp_threshold,
-                            random_seed=seed,
-                        )
+                    model = Model(
+                        n_qubits=n_qubits,
+                        n_layers=n_layers,
+                        circuit_type="Circuit_19",
+                        random_seed=seed,
+                        use_multithreading=True,
+                    )
 
-                        model.initialize_params(rng=rng_p, repeat=n_samples)
+                    model.initialize_params(random_key_p, repeat=n_samples)
+                    random_key_s, random_key_p = random.split(random_key_s)
 
-                        start = time_measure()
-                        model(execution_type=execution_type)
-                        t_parallel = time_measure() - start
+                    start = time_measure()
+                    model(execution_type=execution_type)
+                    t_parallel = time_measure() - start
 
-                        print(
-                            f"{run} | {mp_threshold}/{max_mp_threshold} mp | "
-                            f"{n_samples}/{max_n_samples} samples: "
-                            f"{t_single / t_parallel:.2f}"
-                        )
+                    print(
+                        f"{run} | "
+                        f"{n_samples}/{max_n_samples} samples: "
+                        f"{t_single / t_parallel:.2f}"
+                    )
 
-                        results[mp_threshold][n_samples][run] = t_single / t_parallel
+                    results[n_samples][run] = t_single / t_parallel
         except KeyboardInterrupt:
             pass
 
         with open(f"mp_results_{execution_type}.json", "w") as f:
             json.dump(results, f)
 
-    for mp_threshold in results.keys():
-        y_mean = []
-        y_max = []
-        y_min = []
-        for n_samples in results[mp_threshold].keys():
-            samples = list(results[mp_threshold][n_samples].values())
-            y_mean.append(np.mean(samples))
+    y_mean = []
+    y_max = []
+    y_min = []
+    for n_samples in results.keys():
+        samples = list(results[n_samples].values())
+        y_mean.append(np.mean(samples))
 
-        std = np.std(y_mean)
-        for y_mean_i in y_mean:
-            y_max.append(y_mean_i + std)
-            y_min.append(y_mean_i - std)
+    std = np.std(y_mean)
+    for y_mean_i in y_mean:
+        y_max.append(y_mean_i + std)
+        y_min.append(y_mean_i - std)
 
-        plt.plot(
-            list(results[mp_threshold].keys()),
-            y_mean,
-            label=f"{int(mp_threshold)} mp",
-        )
+    plt.plot(list(results.keys()), y_mean, label="Multi-Threading")
 
-        plt.fill_between(
-            list(results[mp_threshold].keys()),
-            y_min,
-            y_max,
-            alpha=0.2,
-        )
+    plt.fill_between(
+        list(results.keys()),
+        y_min,
+        y_max,
+        alpha=0.2,
+    )
 
     ax = plt.gca()
     ax.tick_params("x", rotation=45)
@@ -174,24 +162,6 @@ if __name__ == "__main__":
         help="number of qubits",
     )
     parser.add_argument(
-        "--min_mp_threshold",
-        type=int,
-        default=1000,  # 500, 1000
-        help="minimal multiprocessing threshold",
-    )
-    parser.add_argument(
-        "--max_mp_threshold",
-        type=int,
-        default=10000,  # 5000, 10000
-        help="maximal multiprocessing threshold",
-    )
-    parser.add_argument(
-        "--mp_threshold_step",
-        type=int,
-        default=1000,  # 500, 1000
-        help="step size for the multiprocessing threshold",
-    )
-    parser.add_argument(
         "--n_layers",
         type=int,
         default=1,
@@ -212,9 +182,6 @@ if __name__ == "__main__":
         max_n_samples=args.max_n_samples,
         n_samples_step=args.n_samples_step,
         n_qubits=args.n_qubits,
-        min_mp_threshold=args.min_mp_threshold,
-        max_mp_threshold=args.max_mp_threshold,
-        mp_threshold_step=args.mp_threshold_step,
         n_layers=args.n_layers,
         n_runs=args.n_runs,
     )
