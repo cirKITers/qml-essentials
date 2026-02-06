@@ -762,7 +762,7 @@ class Model:
                     RuntimeWarning,
                 )
                 random_key = self.random_key
-            self._apply_state_prep_noise()
+            self._apply_state_prep_noise(noise_params=noise_params)
 
         # state preparation
         for q in range(self.n_qubits):
@@ -818,7 +818,7 @@ class Model:
 
         # channel noise
         if noise_params is not None:
-            self._apply_general_noise()
+            self._apply_general_noise(noise_params=noise_params)
 
     def _observable(self):
         # run mixed simualtion and get density matrix
@@ -872,17 +872,17 @@ class Model:
         else:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
-    def _apply_state_prep_noise(self) -> None:
+    def _apply_state_prep_noise(self, noise_params: dict) -> None:
         """
         Applies a state preparation error on each qubit according to the
         probability for StatePreparation provided in the noise_params.
         """
-        p = self.noise_params.get("StatePreparation", 0.0)
+        p = noise_params.get("StatePreparation", 0.0)
         for q in range(self.n_qubits):
             if p > 0:
                 qml.BitFlip(p, wires=q)
 
-    def _apply_general_noise(self) -> None:
+    def _apply_general_noise(self, noise_params: dict) -> None:
         """
         Applies general types of noise the full circuit (in contrast to gate
         errors, applied directly at gate level, see Gates.Noise).
@@ -894,10 +894,10 @@ class Model:
                                  "t1", "t2", "t_factor")
             - Measurement (specified through probability)
         """
-        amp_damp = self.noise_params.get("AmplitudeDamping", 0.0)
-        phase_damp = self.noise_params.get("PhaseDamping", 0.0)
-        thermal_relax = self.noise_params.get("ThermalRelaxation", 0.0)
-        meas = self.noise_params.get("Measurement", 0.0)
+        amp_damp = noise_params.get("AmplitudeDamping", 0.0)
+        phase_damp = noise_params.get("PhaseDamping", 0.0)
+        thermal_relax = noise_params.get("ThermalRelaxation", 0.0)
+        meas = noise_params.get("Measurement", 0.0)
         for q in range(self.n_qubits):
             if amp_damp > 0:
                 qml.AmplitudeDamping(amp_damp, wires=q)
@@ -1134,35 +1134,40 @@ class Model:
             A numpy array of the output of f applied to each batch of
             samples in params, enc_params, and inputs.
         """
-        max_batch_size = max(self.batch_shape)
 
-        if (gate_mode == "pulse" or self.use_multithreading) and max_batch_size > 1:
+        def _f(_params, _inputs, _pulse_params, _random_key):
+            return f(
+                params=_params,
+                inputs=_inputs,
+                pulse_params=_pulse_params,
+                random_key=_random_key,
+                noise_params=noise_params,
+                enc_params=enc_params,
+                gate_mode=gate_mode,
+            )
+
+        n_batches = np.prod(self.batch_shape)
+        if (gate_mode == "pulse" or self.use_multithreading) and n_batches > 1:
             random_keys = []
-            for _ in range(max_batch_size):
+            for _ in range(n_batches):
                 random_key, sub_key = safe_random_split(random_key)
                 random_keys.append(sub_key)
             random_keys = jnp.array(random_keys)
 
             # wrapper to allow kwargs (not supported by jax)
             result = jax.vmap(
-                f,
+                _f,
                 in_axes=(
-                    2 if self.batch_shape[1] > 1 else None,
-                    0 if self.batch_shape[0] > 1 else None,
-                    2 if self.batch_shape[2] > 1 else None,
-                    None,
-                    None,
-                    0,
-                    None,
+                    2 if self.batch_shape[1] > 1 else None,  # params
+                    0 if self.batch_shape[0] > 1 else None,  # inputs
+                    2 if self.batch_shape[2] > 1 else None,  # pulse_params
+                    0,  # random_keys
                 ),
             )(
                 params,
                 inputs,
                 pulse_params,
-                enc_params,
-                noise_params,
                 random_keys,
-                gate_mode,
             )
         else:
             result = f(
