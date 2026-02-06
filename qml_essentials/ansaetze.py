@@ -3,10 +3,10 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional, List, Union, Dict, Callable
 import numbers
 import csv
-import pennylane.numpy as np
+import jax.numpy as np
 import pennylane as qml
 import jax
-from jax import numpy as jnp
+from jax import random
 import itertools
 from contextlib import contextmanager
 import logging
@@ -90,7 +90,7 @@ class Circuit(ABC):
             Additional keyword arguments. Supports:
             - gate_mode : str, optional
                 "unitary" (default) or "pulse" to use pulse-level simulation.
-            - pulse_params : jnp.ndarray, optional
+            - pulse_params : np.ndarray, optional
                 Array of pulse parameters to use if gate_mode="pulse".
             - noise_params : dict, optional
                 Dictionary of noise parameters.
@@ -127,7 +127,7 @@ class Circuit(ABC):
 
 
 class UnitaryGates:
-    rng = np.random.default_rng()
+    random_key = random.key(0)
     batch_gate_error = True
 
     @staticmethod
@@ -140,7 +140,7 @@ class UnitaryGates:
         seed : int
             The seed for the random number generator.
         """
-        UnitaryGates.rng = np.random.default_rng(seed)
+        UnitaryGates.random_key = random.key(seed)
 
     @staticmethod
     def NQubitDepolarizingChannel(p, wires):
@@ -284,15 +284,15 @@ class UnitaryGates:
             The modified rotation angle after applying the gate error.
         """
         if noise_params is not None and noise_params.get("GateError", None) is not None:
-            w += UnitaryGates.rng.normal(
-                0,
-                noise_params["GateError"],
+            w += noise_params["GateError"] * random.normal(
+                UnitaryGates.random_key,
                 (
                     w.shape
                     if isinstance(w, np.ndarray) and UnitaryGates.batch_gate_error
-                    else None
+                    else (1,)
                 ),
             )
+            UnitaryGates.random_key, _ = random.split(UnitaryGates.random_key)
         return w
 
     @staticmethod
@@ -571,7 +571,7 @@ class UnitaryGates:
 
 class PulseParams:
     def __init__(
-        self, name: str = "", params: jnp.ndarray = None, pulse_obj: List = None
+        self, name: str = "", params: np.ndarray = None, pulse_obj: List = None
     ):
         assert (params is None and pulse_obj is not None) or (
             params is not None and pulse_obj is None
@@ -699,7 +699,7 @@ class PulseParams:
 
         Returns
         -------
-        jnp.ndarray
+        np.ndarray
             The pulse parameters.
         """
         if self.is_leaf:
@@ -707,7 +707,7 @@ class PulseParams:
 
         params = self.split_params(params=None, leafs=False)
 
-        return jnp.concatenate(params)
+        return np.concatenate(params)
 
     @params.setter
     def params(self, value):
@@ -722,16 +722,16 @@ class PulseParams:
 
         Parameters
         ----------
-        value : jnp.ndarray
+        value : np.ndarray
             The pulse parameters to set.
 
         Raises
         -------
         AssertionError
-            If the PulseParams object has no children and `value` is not a jnp.ndarray.
+            If the PulseParams object has no children and `value` is not a np.ndarray.
         """
         if self.is_leaf:
-            assert isinstance(value, jnp.ndarray), "params must be a jnp.ndarray"
+            assert isinstance(value, np.ndarray), "params must be a np.ndarray"
             self._params = value
 
         idx = 0
@@ -747,7 +747,7 @@ class PulseParams:
 
         params = self.split_params(None, leafs=True)
 
-        return jnp.concatenate(params)
+        return np.concatenate(params)
 
     @leaf_params.setter
     def leaf_params(self, value):
@@ -793,14 +793,14 @@ class PulseInformation:
 
     RX = PulseParams(
         name="RX",
-        params=jnp.array([15.863171563255692, 29.66617464185762, 0.7544382603281181]),
+        params=np.array([15.863171563255692, 29.66617464185762, 0.7544382603281181]),
     )
     RY = PulseParams(
         name="RY",
-        params=jnp.array([7.921864297441735, 22.038129802391797, 1.0940923114464387]),
+        params=np.array([7.921864297441735, 22.038129802391797, 1.0940923114464387]),
     )
-    RZ = PulseParams(name="RZ", params=jnp.array([0.5]))
-    CZ = PulseParams(name="CZ", params=jnp.array([0.3183095268754836]))
+    RZ = PulseParams(name="RZ", params=np.array([0.5]))
+    CZ = PulseParams(name="CZ", params=np.array([0.3183095268754836]))
     H = PulseParams(
         name="H",
         pulse_obj=[RZ, RY],
@@ -836,7 +836,7 @@ class PulseInformation:
                         f"Loading optimized pulses for {row[0]}\
                             (Fidelity: {float(row[1]):.5f}): {row[2:]}"
                     )
-                    PulseInformation.OPTIMIZED_PULSES[row[0]] = jnp.array(
+                    PulseInformation.OPTIMIZED_PULSES[row[0]] = np.array(
                         [float(x) for x in row[2:]]
                     )
         else:
@@ -844,7 +844,8 @@ class PulseInformation:
 
     @staticmethod
     def shuffle_params(seed=1000):
-        rng = np.random.default_rng(seed)
+        # TODO: use global random_key?
+        random_key = random.key(seed)
         unique_gate_set = [
             PulseInformation.RX,
             PulseInformation.RY,
@@ -856,24 +857,23 @@ class PulseInformation:
             f"Shuffling optimized pulses with seed {seed} of gates {unique_gate_set}"
         )
         for gate in unique_gate_set:
-            gate.params = jnp.array(rng.random(len(gate)))
+            gate.params = random.uniform(random_key, (len(gate),))
+            random_key, _ = random.split(random_key)
 
 
 class PulseGates:
     # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT/CX and H pulse level
     #   gates closely follow https://doi.org/10.5445/IR/1000184129
     # TODO: Mention deviations from the above?
-    omega_q = 10 * jnp.pi
-    omega_c = 10 * jnp.pi
+    omega_q = 10 * np.pi
+    omega_c = 10 * np.pi
 
-    H_static = jnp.array(
-        [[jnp.exp(1j * omega_q / 2), 0], [0, jnp.exp(-1j * omega_q / 2)]]
-    )
+    H_static = np.array([[np.exp(1j * omega_q / 2), 0], [0, np.exp(-1j * omega_q / 2)]])
 
-    Id = jnp.eye(2, dtype=jnp.complex64)
-    X = jnp.array([[0, 1], [1, 0]])
-    Y = jnp.array([[0, -1j], [1j, 0]])
-    Z = jnp.array([[1, 0], [0, -1]])
+    Id = np.eye(2, dtype=np.complex64)
+    X = np.array([[0, 1], [1, 0]])
+    Y = np.array([[0, -1j], [1j, 0]])
+    Z = np.array([[1, 0], [0, -1]])
 
     @staticmethod
     def _S(p, t, phi_c):
@@ -898,14 +898,14 @@ class PulseGates:
 
         Returns
         -------
-        jnp.ndarray
+        np.ndarray
             The shaped pulse at each time step `t`.
         """
         A, sigma = p
         t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
 
-        f = A * jnp.exp(-0.5 * ((t - t_c) / sigma) ** 2)
-        x = jnp.cos(PulseGates.omega_c * t + phi_c)
+        f = A * np.exp(-0.5 * ((t - t_c) / sigma) ** 2)
+        x = np.cos(PulseGates.omega_c * t + phi_c)
 
         return f * x
 
@@ -957,7 +957,7 @@ class PulseGates:
         pulse_params = PulseInformation.RX.split_params(pulse_params)
 
         def Sx(p, t):
-            return PulseGates._S(p, t, phi_c=jnp.pi) * w
+            return PulseGates._S(p, t, phi_c=np.pi) * w
 
         _H = PulseGates.H_static.conj().T @ PulseGates.X @ PulseGates.H_static
         _H = qml.Hermitian(_H, wires=wires)
@@ -983,7 +983,7 @@ class PulseGates:
         pulse_params = PulseInformation.RY.split_params(pulse_params)
 
         def Sy(p, t):
-            return PulseGates._S(p, t, phi_c=-jnp.pi / 2) * w
+            return PulseGates._S(p, t, phi_c=-np.pi / 2) * w
 
         _H = PulseGates.H_static.conj().T @ PulseGates.Y @ PulseGates.H_static
         _H = qml.Hermitian(_H, wires=wires)
@@ -1032,14 +1032,14 @@ class PulseGates:
         """
         pulse_params_RZ, pulse_params_RY = PulseInformation.H.split_params(pulse_params)
 
-        # qml.GlobalPhase(-jnp.pi / 2)  # this could act as substitute to Sc
-        PulseGates.RZ(jnp.pi, wires=wires, pulse_params=pulse_params_RZ)
-        PulseGates.RY(jnp.pi / 2, wires=wires, pulse_params=pulse_params_RY)
+        # qml.GlobalPhase(-np.pi / 2)  # this could act as substitute to Sc
+        PulseGates.RZ(np.pi, wires=wires, pulse_params=pulse_params_RZ)
+        PulseGates.RY(np.pi / 2, wires=wires, pulse_params=pulse_params_RY)
 
         def Sc(p, t):
             return -1.0
 
-        _H = jnp.pi / 2 * jnp.eye(2, dtype=jnp.complex64)
+        _H = np.pi / 2 * np.eye(2, dtype=np.complex64)
         _H = qml.Hermitian(_H, wires=wires)
         H_corr = Sc * _H
 
@@ -1115,15 +1115,15 @@ class PulseGates:
         else:
             pulse_params = pulse_params
 
-        I_I = jnp.kron(PulseGates.Id, PulseGates.Id)
-        Z_I = jnp.kron(PulseGates.Z, PulseGates.Id)
-        I_Z = jnp.kron(PulseGates.Id, PulseGates.Z)
-        Z_Z = jnp.kron(PulseGates.Z, PulseGates.Z)
+        I_I = np.kron(PulseGates.Id, PulseGates.Id)
+        Z_I = np.kron(PulseGates.Z, PulseGates.Id)
+        I_Z = np.kron(PulseGates.Id, PulseGates.Z)
+        Z_Z = np.kron(PulseGates.Z, PulseGates.Z)
 
         def Scz(p, t):
-            return p * jnp.pi
+            return p * np.pi
 
-        _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
+        _H = (np.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
         _H = qml.Hermitian(_H, wires=wires)
         H_eff = Scz * _H
 
@@ -1292,9 +1292,9 @@ class Gates(metaclass=GatesMeta):
                 flat_params = pulse_params
 
             elif isinstance(pulse_params, jax.core.Tracer):
-                flat_params = jnp.ravel(pulse_params)
+                flat_params = np.ravel(pulse_params)
 
-            elif isinstance(pulse_params, (np.ndarray, jnp.ndarray)):
+            elif isinstance(pulse_params, (np.ndarray, np.ndarray)):
                 flat_params = pulse_params.flatten().tolist()
             elif isinstance(pulse_params, PulseParams):
                 # extract the params in case a full object is given
@@ -1530,9 +1530,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = 2 * PulseInformation.num_params("RY")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = 2 * PulseInformation.num_params("RY") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             n_CX = (n_qubits // 2) + ((n_qubits - 1) // 2)
             n_CX += 1 if n_qubits > 2 else 0
@@ -1636,9 +1635,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             if n_qubits > 1:
                 n_params += PulseInformation.num_params("CRX") * n_qubits
@@ -1747,9 +1745,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             if n_qubits > 1:
                 n_params += PulseInformation.num_params("CRZ") * n_qubits
@@ -1855,11 +1852,10 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = 2 * PulseInformation.num_params("RY")
-            n_params *= n_qubits
+            n_params = 2 * PulseInformation.num_params("RY") * n_qubits
 
             if n_qubits > 1:
-                n_params += PulseInformation.num_params("CX") * n_qubits
+                n_params += 2 * PulseInformation.num_params("CX") * n_qubits
 
             return n_params
 
@@ -1960,9 +1956,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("H")
-            n_params += PulseInformation.num_params("RX")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("H") * n_qubits
+            n_params += PulseInformation.num_params("RX") * n_qubits
 
             n_params += (n_qubits - 1) * PulseInformation.num_params("CZ")
 
@@ -2064,14 +2059,13 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = 2 * PulseInformation.num_params("RX")
-            n_params += 2 * PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = 2 * PulseInformation.num_params("RX") * n_qubits
+            n_params += 2 * PulseInformation.num_params("RZ") * n_qubits
 
             n_CRX = n_qubits * (n_qubits - 1)
             n_params += n_CRX * PulseInformation.num_params("CRX")
 
-            return 0
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -2177,9 +2171,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             return n_params
 
@@ -2264,14 +2257,13 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             if n_qubits > 1:
-                n_params += (n_qubits - 1) * PulseInformation.num_params("CX")
+                n_params += PulseInformation.num_params("CX") * (n_qubits - 1)
 
-            return 0
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -2361,9 +2353,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params = PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             n_params += (n_qubits - 1) * PulseInformation.num_params("CRZ")
 
@@ -2460,13 +2451,12 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             n_params += (n_qubits - 1) * PulseInformation.num_params("CRX")
 
-            return 0
+            return n_params
 
         @staticmethod
         def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
@@ -2560,8 +2550,7 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = 2 * PulseInformation.num_params("RY")
-            n_params *= n_qubits
+            n_params = 2 * PulseInformation.num_params("RY") * n_qubits
 
             n_params += (n_qubits - 1) * PulseInformation.num_params("CZ")
 
@@ -2662,9 +2651,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             n_CRZ = n_qubits * (n_qubits - 1) // 2
             n_params += n_CRZ * PulseInformation.num_params("CRZ")
@@ -2770,9 +2758,8 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("RX")
-            n_params += PulseInformation.num_params("RZ")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("RX") * n_qubits
+            n_params += PulseInformation.num_params("RZ") * n_qubits
 
             n_CRZ = n_qubits * (n_qubits - 1) // 2
             n_params += n_CRZ * PulseInformation.num_params("CRX")
@@ -2882,8 +2869,7 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = 2 * PulseInformation.num_params("Rot")
-            n_params *= n_qubits
+            n_params = 2 * PulseInformation.num_params("Rot") * n_qubits
 
             if n_qubits > 1:
                 n_params += n_qubits * 2 * PulseInformation.num_params("CX")
@@ -2994,8 +2980,7 @@ class Ansaetze:
             int
                 Number of pulse parameters required for one layer of the circuit.
             """
-            n_params = PulseInformation.num_params("Rot")
-            n_params *= n_qubits
+            n_params = PulseInformation.num_params("Rot") * n_qubits
 
             return n_params
 

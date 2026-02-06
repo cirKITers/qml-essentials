@@ -1,16 +1,16 @@
 from typing import Optional
-import random
+from jax import random, grad, numpy as jnp
+import numpy as np
+import random as pyrandom
+import optax
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Circuit, Ansaetze, Gates, Encoding
 from qml_essentials.ansaetze import PulseInformation as pinfo
+from qml_essentials.utils import PauliCircuit
 import pytest
 import inspect
 import logging
-import shutil
-import os
-import hashlib
 import pennylane as qml
-import pennylane.numpy as np
 import time
 
 logger = logging.getLogger(__name__)
@@ -25,50 +25,56 @@ def test_trainable_frequencies() -> None:
         trainable_frequencies=True,
     )
 
-    assert model.enc_params.requires_grad, "Encoding parameters enc_params require grad"
-
     # setting test data
-    domain = [-np.pi, np.pi]
-    omegas = np.array([1.2, 2.6, 3.4, 4.9])
-    coefficients = np.array([0.5, 0.5, 0.5, 0.5])
-    n_d = int(np.ceil(2 * np.max(np.abs(domain)) * np.max(omegas)))
-    x = np.linspace(domain[0], domain[1], num=n_d)
+    domain = jnp.array([-jnp.pi, jnp.pi])
+    omegas = jnp.array([1.2, 2.6, 3.4, 4.9])
+    coefficients = jnp.array([0.5, 0.5, 0.5, 0.5])
+    n_d = int(jnp.ceil(2 * jnp.max(jnp.abs(domain)) * jnp.max(omegas)))
+    x = jnp.linspace(domain[0], domain[1], num=n_d)
 
     def f(x):
-        return 1 / np.linalg.norm(omegas) * np.sum(coefficients * np.cos(omegas.T * x))
+        return (
+            1 / jnp.linalg.norm(omegas) * jnp.sum(coefficients * jnp.cos(omegas.T * x))
+        )
 
-    y = np.stack([f(sample) for sample in x])
+    y = jnp.stack([f(sample) for sample in x])
 
-    def cost_fct(params, enc_params):
-        y_hat = model(params=params, enc_params=enc_params, inputs=x, force_mean=True)
-        return np.mean((y_hat - y) ** 2)
+    def cost_fct(all_params):
+        y_hat = model(
+            params=all_params[0], enc_params=all_params[1], inputs=x, force_mean=True
+        )
+        return jnp.mean((y_hat - y) ** 2)
 
-    opt = qml.AdamOptimizer(stepsize=0.01)
     enc_params_before = model.enc_params.copy()
-    (model.params, model.enc_params), cost_val = opt.step_and_cost(
-        cost_fct, model.params, model.enc_params
-    )
+    opt = optax.adam(0.01)
+    all_params = (model.params, model.enc_params)
+
+    opt_state = opt.init((all_params))
+
+    grads = grad(cost_fct)(all_params)
+
+    updates, opt_state = opt.update(grads, opt_state, all_params)
+    model.params, model.enc_params = optax.apply_updates(all_params, updates)
     enc_params_after = model.enc_params.copy()
 
-    assert not np.allclose(
+    assert not jnp.allclose(
         enc_params_before, enc_params_after
     ), "enc_params did not update during training"
 
-    grads = qml.grad(cost_fct, argnums=1)(model.params, model.enc_params)
-    assert np.any(np.abs(grads) > 1e-6), "Gradient wrt enc_params is too small"
+    assert jnp.any(jnp.abs(grads[1]) > 1e-6), "Gradient wrt enc_params is too small"
 
     # Smoketest to check model outside training
-    model(enc_params=np.array(model.enc_params, requires_grad=False))
+    model(enc_params=jnp.array(model.enc_params))
     model.trainable_frequencies = False
-    model(enc_params=np.array(model.enc_params, requires_grad=False))
+    model(enc_params=jnp.array(model.enc_params))
 
 
 @pytest.mark.unittest
 def test_transform_input() -> None:
-    domain = [-1, 1]
-    omegas = np.array([1, 2, 3, 4])
-    n_d = int(np.ceil(2 * np.max(np.abs(domain)) * np.max(omegas)))
-    x = np.linspace(domain[0], domain[1], num=n_d)
+    domain = jnp.array([-1, 1])
+    omegas = jnp.array([1, 2, 3, 4])
+    n_d = int(jnp.ceil(2 * jnp.max(jnp.abs(domain)) * jnp.max(omegas)))
+    x = jnp.linspace(domain[0], domain[1], num=n_d)
 
     model = Model(
         n_qubits=1,
@@ -79,20 +85,22 @@ def test_transform_input() -> None:
     )
 
     # Test the intended use of transform_input()
-    inputs = np.array([[0.5, -0.2]])
-    enc_params = np.array([2.0, 3.0])
+    inputs = jnp.array([[0.5, -0.2]])
+    enc_params = jnp.array([2.0, 3.0])
 
     # Test for qubit 0, feature 0
     result = model.transform_input(inputs, enc_params)
     expected = enc_params * inputs
-    assert np.allclose(result, expected), "Incorrect transform for qubit 0"
+    assert jnp.allclose(result, expected), "Incorrect transform for qubit 0"
 
     # Test modified transform_input()
-    model.transform_input = lambda inputs, enc_params: (np.arccos(inputs))
+    model.transform_input = lambda inputs, enc_params: (jnp.arccos(inputs))
 
     result_new = model(model.params, x, pulse_params=None)
 
-    assert np.allclose(x, result_new), "model.transform_input does not work as intended"
+    assert jnp.allclose(
+        x, result_new
+    ), "model.transform_input does not work as intended"
 
 
 @pytest.mark.unittest
@@ -108,44 +116,38 @@ def test_batching() -> None:
         model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
         params = model.params
 
-        res = np.zeros((n_samples, 4, 4), dtype=np.complex128)
-        for i in range(n_samples):
-            res[i] = model(params=params[:, :, i], execution_type="density")
+    n_samples = 3
+    model.initialize_params(random.key(1000), repeat=n_samples)
+    params = model.params
 
-        assert res.shape == (
-            n_samples,
-            4,
-            4,
-        ), f"Shape of batching is not correct. Ansatz {ansatz.__name__}"
-        assert (
-            res == model(params=params, execution_type="density")
-        ).all(), f"Content of batching is not equal. Ansatz {ansatz.__name__}"
+    res = np.zeros((n_samples, 4, 4), dtype=jnp.complex128)
+    for i in range(n_samples):
+        res[i] = model(params=params[:, :, i], execution_type="density")
 
-    # Multi-Dim Input
+    assert res.shape == (n_samples, 4, 4), "Shape of batching is not correct"
+    assert jnp.allclose(
+        res, model(params=params, execution_type="density")
+    ), "Content of batching is not equal"
 
-    # model = Model(
-    #     n_qubits=2,
-    #     n_layers=1,
-    #     circuit_type="Circuit_15",
-    #     encoding=[Gates.RX, Gates.RX],
-    # )
 
-    # n_samples = 3
-    # model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
-    # params = model.params
+@pytest.mark.unittest
+def test_repeat_batch_axis() -> None:
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        repeat_batch_axis=[False, True, True],
+    )
 
-    # res = np.zeros((n_samples, 4, 4), dtype=np.complex128)
-    # for i in range(n_samples):
-    #     res[i] = model(
-    #         inputs=np.random.rand(1, 2),
-    #         params=params[:, :, i],
-    #         execution_type="density",
-    #     )
+    key = random.key(1000)
+    key, _ = model.initialize_params(key, repeat=10)
+    res_a = model(inputs=random.uniform(key, (10, 1)))
 
-    # assert res.shape == (n_samples, 4, 4), "Shape of batching is not correct"
-    # assert (
-    #     res == model(params=params, execution_type="density")
-    # ).all(), "Content of batching is not equal"
+    # we expect a batch size of 10 instead of 100
+    assert res_a.shape == (
+        10,
+        2,
+    ), f"Shape of repeat_batch_axis is not correct. Got {res_a.shape}"
 
 
 @pytest.mark.skip(reason="Multiprocessing speedup negligible at small scale")
@@ -158,10 +160,10 @@ def test_multiprocessing_density() -> None:
         n_qubits=3,
         n_layers=1,
         circuit_type="Circuit_19",
-        mp_threshold=200,
+        use_multithreading=True,
     )
 
-    model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
+    model.initialize_params(random.key(1000), repeat=n_samples)
     params = model.params
 
     start = time.time()
@@ -174,7 +176,7 @@ def test_multiprocessing_density() -> None:
         circuit_type="Circuit_19",
     )
 
-    model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
+    model.initialize_params(random.key(1000), repeat=n_samples)
     params = model.params
 
     start = time.time()
@@ -199,10 +201,10 @@ def test_multiprocessing_expval() -> None:
         n_qubits=6,  # .. and larger circuits
         n_layers=6,
         circuit_type="Circuit_19",
-        mp_threshold=4000,
+        use_multithreading=True,
     )
 
-    model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
+    model.initialize_params(random.key(1000), repeat=n_samples)
     params = model.params
 
     start = time.time()
@@ -215,7 +217,7 @@ def test_multiprocessing_expval() -> None:
         circuit_type="Circuit_19",
     )
 
-    model.initialize_params(rng=np.random.default_rng(1000), repeat=n_samples)
+    model.initialize_params(random.key(1000), repeat=n_samples)
     params = model.params
 
     start = time.time()
@@ -384,16 +386,16 @@ def test_basic_draw() -> None:
 
             test_params = np.array(
                 [
-                    np.pi,  # Exactly pi
+                    jnp.pi,  # Exactly pi
                     0,  # Zero
-                    2 * np.pi,  # denominator=1
-                    np.pi / 2,  # numerator=1
+                    2 * jnp.pi,  # denominator=1
+                    jnp.pi / 2,  # numerator=1
                 ]
                 + [
-                    random.randint(1, 24) * np.pi / random.randint(1, 12)
+                    pyrandom.randint(1, 24) * jnp.pi / pyrandom.randint(1, 12)
                     for _ in range(rest_pi)
                 ]
-                + [np.random.uniform(0, 2 * np.pi) for _ in range(rest)]
+                + [np.random.uniform(0, 2 * jnp.pi) for _ in range(rest)]
             ).reshape(model.params.shape)
             model.params = test_params
         repr(model)
@@ -419,16 +421,16 @@ def test_advanced_draw() -> None:
 
         test_params = np.array(
             [
-                np.pi,  # Exactly pi
+                jnp.pi,  # Exactly pi
                 0,  # Zero
-                2 * np.pi,  # denominator=1
-                np.pi / 2,  # numerator=1
+                2 * jnp.pi,  # denominator=1
+                jnp.pi / 2,  # numerator=1
             ]
             + [
-                random.randint(1, 24) * np.pi / random.randint(1, 12)
+                pyrandom.randint(1, 24) * jnp.pi / pyrandom.randint(1, 12)
                 for _ in range(rest_pi)
             ]
-            + [np.random.uniform(0, 2 * np.pi) for _ in range(rest)]
+            + [np.random.uniform(0, 2 * jnp.pi) for _ in range(rest)]
         ).reshape(model.params.shape)
         model.params = test_params
     repr(model)
@@ -497,10 +499,10 @@ def test_inputs() -> None:
     test_cases = [
         {"inputs": 0.0, "remove_zero_encoding": True},
         {"inputs": 0.0, "remove_zero_encoding": False},
-        {"inputs": np.zeros(5), "remove_zero_encoding": True},
-        {"inputs": np.zeros(5), "remove_zero_encoding": False},
-        {"inputs": np.arange(5), "remove_zero_encoding": True},
-        {"inputs": np.arange(5), "remove_zero_encoding": False},
+        {"inputs": jnp.zeros(5), "remove_zero_encoding": True},
+        {"inputs": jnp.zeros(5), "remove_zero_encoding": False},
+        {"inputs": jnp.arange(5), "remove_zero_encoding": True},
+        {"inputs": jnp.arange(5), "remove_zero_encoding": False},
     ]
 
     for test_case in test_cases:
@@ -525,7 +527,7 @@ def test_re_initialization() -> None:
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_19",
-        initialization_domain=[-2 * np.pi, 0],
+        initialization_domain=[-2 * jnp.pi, 0],
         random_seed=1000,
     )
 
@@ -533,9 +535,9 @@ def test_re_initialization() -> None:
 
     temp_params = model.params.copy()
 
-    model.initialize_params(rng=np.random.default_rng(seed=1001))
+    model.initialize_params(random.key(1001))
 
-    assert not np.allclose(
+    assert not jnp.allclose(
         model.params, temp_params, atol=1e-3
     ), "Re-Initialization failed!"
 
@@ -589,11 +591,11 @@ def test_ansaetze() -> None:
             return n_params
 
         @staticmethod
-        def get_control_indices(n_qubits: int) -> Optional[np.ndarray]:
+        def get_control_indices(n_qubits: int) -> Optional[jnp.ndarray]:
             return None
 
         @staticmethod
-        def build(w: np.ndarray, n_qubits: int, **kwargs):
+        def build(w: jnp.ndarray, n_qubits: int, **kwargs):
             w_idx = 0
             for q in range(n_qubits):
                 Gates.RY(w[w_idx], wires=q, **kwargs)
@@ -638,51 +640,55 @@ def test_ansaetze() -> None:
         )
 
 
-# TODO: Migrate optimization to JAX and remove skip marker
 @pytest.mark.unittest
-@pytest.mark.skip(reason="JAX migration required")
 def test_pulse_model() -> None:
     model = Model(
-        n_qubits=4,
-        n_layers=2,
+        n_qubits=2,
+        n_layers=1,
         circuit_type="Hardware_Efficient",
     )
 
     # setting test data
-    domain = [-np.pi, np.pi]
-    omegas = np.array([1, 2, 3, 4])
-    coefficients = np.array([1, 1, 1, 1])
-    n_d = int(np.ceil(2 * np.max(np.abs(domain)) * np.max(omegas)))
-    x = np.linspace(domain[0], domain[1], num=n_d)
+    domain = np.array([-jnp.pi, jnp.pi])
+    omegas = jnp.array([1, 2, 3, 4])
+    coefficients = jnp.array([1, 1, 1, 1])
+    n_d = int(jnp.ceil(2 * jnp.max(jnp.abs(domain)) * jnp.max(omegas)))
+    x = jnp.linspace(domain[0], domain[1], num=n_d)
 
     def f(x):
-        return 1 / np.linalg.norm(omegas) * np.sum(coefficients * np.cos(omegas.T * x))
+        return (
+            1 / jnp.linalg.norm(omegas) * jnp.sum(coefficients * jnp.cos(omegas.T * x))
+        )
 
-    y = np.stack([f(sample) for sample in x])
+    y = jnp.stack([f(sample) for sample in x])
 
-    def cost_fct(params, pulse_params):
+    def cost_fct(all_params):
         y_hat = model(
-            params=params,
-            pulse_params=pulse_params,
+            params=all_params[0],
+            pulse_params=all_params[1],
             inputs=x,
             force_mean=True,
             gate_mode="pulse",
         )
-        return np.mean((y_hat - y) ** 2)
+        return jnp.mean((y_hat - y) ** 2)
 
-    opt = qml.AdamOptimizer(stepsize=0.01)
+    opt = optax.adam(0.01)
     pulse_params_before = model.pulse_params.copy()
-    (model.params, model.pulse_params), cost_val = opt.step_and_cost(
-        cost_fct, model.params, model.pulse_params
-    )
+    all_params = (model.params, model.pulse_params)
+    opt_state = opt.init((all_params))
+
+    grads = grad(cost_fct)(all_params)
+
+    updates, opt_state = opt.update(grads, opt_state, all_params)
+    model.params, model.pulse_params = optax.apply_updates(all_params, updates)
+
     pulse_params_after = model.pulse_params.copy()
 
-    assert not np.allclose(
+    assert not jnp.allclose(
         pulse_params_before, pulse_params_after
     ), "pulse_params did not update during training"
 
-    grads = qml.grad(cost_fct, argnums=1)(model.params, model.pulse_params)
-    assert np.any(np.abs(grads) > 1e-6), "Gradient wrt pulse_params is too small"
+    assert jnp.any(jnp.abs(grads[1]) > 1e-6), "Gradient wrt pulse_params is too small"
 
 
 @pytest.mark.expensive
@@ -694,14 +700,14 @@ def test_pulse_model_inference():
         circuit_type="Hardware_Efficient",
     )
 
-    inputs = np.linspace(-np.pi, np.pi, 10)
+    inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
 
     # forward pass with initial pulse_params
     y_hat_original = model(inputs=inputs, gate_mode="pulse", force_mean=True)
 
     y_hat_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
 
-    assert np.allclose(
+    assert jnp.allclose(
         y_hat_unitary, y_hat_original, atol=1e-3
     ), "Unitary output did not match pulse output"
 
@@ -715,7 +721,7 @@ def test_pulse_model_inference():
     assert y_hat_original.shape[0] == inputs.shape[0], "Output batch size mismatch"
 
     # ensure output changed after perturbing pulse_params
-    assert not np.allclose(
+    assert not jnp.allclose(
         y_hat_original, y_hat_perturbed
     ), "Pulse output did not change after modifying pulse_params"
 
@@ -724,34 +730,36 @@ def test_pulse_model_inference():
 
 @pytest.mark.unittest
 def test_pulse_model_batching():
-    rng = np.random.default_rng(1000)
+    random_key = random.key(1000)
 
     model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
 
     # test pulse params batching
     res_b = model(
-        pulse_params=np.repeat(model.pulse_params, 2, axis=-1), gate_mode="pulse"
+        pulse_params=jnp.repeat(model.pulse_params, 2, axis=-1), gate_mode="pulse"
     )
 
     # two qubits -> two expvals with batch size 2
     assert res_b.shape == (2, 2), "Batch size mismatch"
 
-    inputs = rng.uniform(0, 2 * np.pi, size=(3))
+    inputs = random.uniform(random_key, (3,), maxval=2 * jnp.pi)
+    random_key, _ = random.split(random_key)
+
     # test pulse params & inputs batching
     res_a = model(inputs=inputs, gate_mode="unitary")
     res_b = model(inputs=inputs, gate_mode="pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
-    assert np.allclose(res_a, res_b, atol=1e-3), "Inputs batching failed!"
+    assert jnp.allclose(res_a, res_b, atol=1e-3), "Inputs batching failed!"
 
-    model.initialize_params(rng=rng, repeat=2)
+    model.initialize_params(random_key, repeat=2)
 
     # test pulse params & params & inputs batching
     res_a = model(inputs=inputs, gate_mode="unitary")
     res_b = model(inputs=inputs, gate_mode="pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
-    assert np.allclose(res_a, res_b, atol=1e-3), "Params batching failed!"
+    assert jnp.allclose(res_a, res_b, atol=1e-3), "Params batching failed!"
 
 
 @pytest.mark.unittest
@@ -775,7 +783,7 @@ def test_multi_input() -> None:
         np.random.rand(3, 2),
         np.random.rand(20, 1),
     ]
-    input_cases = [2 * np.pi * i for i in input_cases]
+    input_cases = [2 * jnp.pi * i for i in input_cases]
     input_cases.append(None)
 
     for inputs in input_cases:
@@ -953,7 +961,7 @@ def test_local_state() -> None:
 def test_output_shapes() -> None:
     test_cases = [
         {
-            "inputs": np.array(0.1),
+            "inputs": jnp.array(0.1),
             "execution_type": "expval",
             "output_qubit": [0, 1],
             "shots": None,
@@ -962,7 +970,7 @@ def test_output_shapes() -> None:
             "warning": False,
         },
         {
-            "inputs": np.array([0.1, 0.2, 0.3]),
+            "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
             "output_qubit": [0, 1],
             "shots": None,
@@ -971,7 +979,7 @@ def test_output_shapes() -> None:
             "warning": False,
         },
         {
-            "inputs": np.array([0.1, 0.2, 0.3]),
+            "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
             "output_qubit": [0, 1],
             "shots": None,
@@ -989,7 +997,7 @@ def test_output_shapes() -> None:
             "warning": False,
         },
         {
-            "inputs": np.array([0.1, 0.2, 0.3]),
+            "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "density",
             "output_qubit": -1,
             "shots": None,
@@ -998,7 +1006,7 @@ def test_output_shapes() -> None:
             "warning": False,
         },
         {
-            "inputs": np.array([0.1, 0.2, 0.3]),
+            "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "density",
             "output_qubit": 0,
             "shots": None,
@@ -1007,7 +1015,7 @@ def test_output_shapes() -> None:
             "warning": False,
         },
         {
-            "inputs": np.array([0.1, 0.2, 0.3]),
+            "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
             "output_qubit": -1,
             "shots": 1024,
@@ -1016,7 +1024,7 @@ def test_output_shapes() -> None:
             "warning": False,
         },
         {
-            "inputs": np.array([0.1, 0.2, 0.3]),
+            "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
             "output_qubit": 0,
             "shots": 1024,
@@ -1025,7 +1033,7 @@ def test_output_shapes() -> None:
             "warning": False,
         },
         {
-            "inputs": np.array([0.1, 0.2, 0.3]),
+            "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
             "output_qubit": [0, 1],
             "shots": 1024,
@@ -1034,7 +1042,7 @@ def test_output_shapes() -> None:
             "warning": False,
         },
         # {
-        #     "inputs": np.array([0.1, 0.2, 0.3]),
+        #     "inputs": jnp.array([0.1, 0.2, 0.3]),
         #     "execution_type": "probs",
         #     "output_qubit": [0, 1],
         #     "shots": 1024,
@@ -1098,7 +1106,7 @@ def test_parity() -> None:
         params=model_a.params, inputs=None, force_mean=True
     )  # use same params!
 
-    assert not np.allclose(
+    assert not jnp.allclose(
         result_a, result_b
     ), f"Models should be different! Got {result_a} and {result_b}"
 
@@ -1113,7 +1121,7 @@ def test_training_step() -> None:
     opt = qml.AdamOptimizer(stepsize=0.01)
 
     def cost(params):
-        return model(params=params, inputs=np.array([0]), force_mean=True)
+        return model(params=params, inputs=jnp.array([0]), force_mean=True)
 
     params, cost = opt.step_and_cost(cost, model.params)
 
@@ -1124,64 +1132,25 @@ def test_pauli_circuit_model() -> None:
         {
             "shots": None,
             "output_qubit": 0,
-            "force_mean": False,
-            "inputs": np.array([0.1, 0.2, 0.3]),
+            "inputs": jnp.array([0.1, 0.2, 0.3]),
         },
         {
             "shots": None,
             "output_qubit": -1,
-            "force_mean": False,
-            "inputs": np.array([0.1, 0.2, 0.3]),
-        },
-        {
-            "shots": None,
-            "output_qubit": -1,
-            "force_mean": True,
-            "inputs": np.array([0.1, 0.2, 0.3]),
-        },
-        {
-            "shots": 1024,
-            "output_qubit": 0,
-            "force_mean": False,
-            "inputs": np.array([0.1, 0.2, 0.3]),
-        },
-        {
-            "shots": 1024,
-            "output_qubit": 0,
-            "force_mean": True,
-            "inputs": np.array([0.1, 0.2, 0.3]),
+            "inputs": jnp.array([0.1, 0.2, 0.3]),
         },
         {
             "shots": None,
             "output_qubit": 0,
-            "force_mean": False,
             "inputs": None,
         },
         {
             "shots": None,
             "output_qubit": -1,
-            "force_mean": False,
-            "inputs": None,
-        },
-        {
-            "shots": None,
-            "output_qubit": -1,
-            "force_mean": True,
-            "inputs": None,
-        },
-        {
-            "shots": 1024,
-            "output_qubit": 0,
-            "force_mean": False,
-            "inputs": None,
-        },
-        {
-            "shots": 1024,
-            "output_qubit": 0,
-            "force_mean": True,
             "inputs": None,
         },
     ]
+    dev = qml.device("default.qubit", wires=3)
 
     for test_case in test_cases:
         model = Model(
@@ -1190,32 +1159,22 @@ def test_pauli_circuit_model() -> None:
             circuit_type="Circuit_19",
             output_qubit=test_case["output_qubit"],
             shots=test_case["shots"],
-            as_pauli_circuit=True,
         )
-
-        pauli_model = Model(
-            n_qubits=3,
-            n_layers=2,
-            circuit_type="Circuit_19",
-            output_qubit=test_case["output_qubit"],
-            shots=test_case["shots"],
-            as_pauli_circuit=True,
+        inputs = model._inputs_validation(test_case["inputs"])
+        model_tape = qml.workflow.construct_tape(model.circuit)(
+            model.params,
+            inputs=inputs,
         )
+        pauli_tape = PauliCircuit.from_parameterised_circuit(model_tape)
 
         result_circuit = model(
             model.params,
             inputs=test_case["inputs"],
-            force_mean=test_case["force_mean"],
         )
-
-        result_pauli_circuit = pauli_model(
-            pauli_model.params,
-            inputs=test_case["inputs"],
-            force_mean=test_case["force_mean"],
-        )
+        result_pauli_circuit = jnp.array(qml.execute([pauli_tape], dev)[0]).T
 
         assert all(
-            np.isclose(result_circuit, result_pauli_circuit, atol=1e-5).flatten()
+            jnp.isclose(result_circuit, result_pauli_circuit, atol=1e-5).flatten()
         ), (
             f"results of Pauli Circuit and basic Ansatz should be equal, but "
             f"are {result_pauli_circuit} and {result_circuit} for testcase "

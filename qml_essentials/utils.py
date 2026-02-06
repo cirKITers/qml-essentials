@@ -1,19 +1,14 @@
 from __future__ import annotations
 from typing import List, Tuple
+import jax.numpy as jnp
 import numpy as np
 import pennylane as qml
 from pennylane.operation import Operator
-from pennylane.tape import QuantumScript, QuantumScriptBatch, QuantumTape
-from pennylane.typing import PostprocessingFn
-import pennylane.numpy as pnp
+from pennylane.tape import QuantumScript, QuantumTape
 import pennylane.ops.op_math as qml_op
-from pennylane.drawer import drawable_layers, tape_text
 from fractions import Fraction
 from itertools import cycle
 from scipy.linalg import logm
-import dill
-import multiprocessing
-import os
 
 CLIFFORD_GATES = (
     qml.PauliX,
@@ -37,86 +32,25 @@ PAULI_ROTATION_GATES = (
 SKIPPABLE_OPERATIONS = (qml.Barrier,)
 
 
-class MultiprocessingPool:
+def logm_v(A: jnp.ndarray, **kwargs) -> jnp.ndarray:
+    """
+    Compute the logarithm of a matrix. If the provided matrix has an additional
+    batch dimension, the logarithm of each matrix is computed.
 
-    class DillProcess(multiprocessing.Process):
+    Args:
+        A (jnp.ndarray): The (potentially batched) matrices of which to compute
+        the logarithm.
 
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self._target = dill.dumps(
-                self._target
-            )  # Save the target function as bytes, using dill
-
-        def run(self):
-            if self._target:
-                self._target = dill.loads(
-                    self._target
-                )  # Unpickle the target function before executing
-                return self._target(
-                    *self._args, **self._kwargs
-                )  # Execute the target function
-
-    def __init__(self, target, n_processes, cpu_scaler, *args, **kwargs):
-        self.target = target
-        self.n_processes = n_processes
-        self.cpu_scaler = cpu_scaler
-        self.args = args
-        self.kwargs = kwargs
-
-        assert (
-            self.cpu_scaler <= 1 and self.cpu_scaler >= 0
-        ), f"cpu_scaler must in [0..1], got {self.cpu_scaler}"
-
-    def spawn(self):
-        manager = multiprocessing.Manager()
-        return_dict = manager.dict()
-
-        jobs = []
-        # Portable CPU detection
-        try:
-            n_procs = len(os.sched_getaffinity(0))
-        except AttributeError:
-            n_procs = os.cpu_count() or 1
-        n_procs = max(int(n_procs * self.cpu_scaler), 1)
-        # n_procs = max(int(len(os.sched_getaffinity(0)) * self.cpu_scaler), 1)
-
-        c_procs = 0
-        for it in range(self.n_processes):
-            m = self.DillProcess(
-                target=self.target,
-                args=[it, return_dict, *self.args],
-                kwargs=self.kwargs,
-            )
-
-            # append and start job
-            jobs.append(m)
-            jobs[-1].start()
-            c_procs += 1
-
-            # if we reach the max limit of jobs
-            if c_procs > n_procs:
-                # wait for the last n_procs jobs to finish
-                for j in jobs[-c_procs:]:
-                    j.join()
-                # then continue with the next batch
-                c_procs = 0
-
-        # wait for any remaining jobs
-        for j in jobs:
-            if j.is_alive():
-                j.join()
-
-        return return_dict
-
-
-def logm_v(A, **kwargs):
+    Returns:
+        jnp.ndarray: The log matrices
+    """
     # TODO: check warnings
     if len(A.shape) == 2:
         return logm(A, **kwargs)
     elif len(A.shape) == 3:
-        AV = np.zeros(A.shape, dtype=A.dtype)
+        AV = jnp.zeros(A.shape, dtype=jnp.complex128)
         for i in range(A.shape[0]):
-            AV[i] = logm(A[i], **kwargs)
+            AV = AV.at[i].set(logm(A[i], **kwargs))
         return AV
     else:
         raise NotImplementedError("Unsupported shape of input matrix")
@@ -135,45 +69,22 @@ class PauliCircuit:
     @staticmethod
     def from_parameterised_circuit(
         tape: QuantumScript,
-    ) -> tuple[QuantumScriptBatch, PostprocessingFn]:
+    ) -> tuple[QuantumScript]:
         """
-        Transformation function (see also qml.transforms) to convert an ansatz
-        into a Pauli-Clifford circuit.
-
-
-        **Usage** (without using Model, Model provides a boolean argument
-               "as_pauli_circuit" that internally uses the Pauli-Clifford):
-        ```
-        # initialise some QNode
-        circuit = qml.QNode(
-            circuit_fkt,  # function for your circuit definition
-            qml.device("default.qubit", wires=5),
-        )
-        pauli_circuit = PauliCircuit.from_parameterised_circuit(circuit)
-
-        # Call exactly the same as circuit
-        some_input = [0.1, 0.2]
-
-        circuit(some_input)
-        pauli_circuit(some_input)
-
-        # Both results should be equal!
-        ```
+        Transforms the quantum tape of a circuit a Pauli-Clifford circuit.
 
         Args:
             tape (QuantumScript): The quantum tape for the operations in the
                 ansatz. This is automatically passed, when initialising the
                 transform function with a QNode. Note: directly calling
                 `PauliCircuit.from_parameterised_circuit(circuit)` for a QNode
-                circuit will fail, see usage above.
+                circuit will fail
 
         Returns:
-            tuple[QuantumScriptBatch, PostprocessingFn]:
+            QuantumScript:
                 - A new quantum tape, containing the operations of the
                   Pauli-Clifford Circuit.
-                - A postprocessing function that does nothing.
         """
-
         operations = PauliCircuit.get_clifford_pauli_gates(tape)
 
         pauli_gates, final_cliffords = PauliCircuit.commute_all_cliffords_to_the_end(
@@ -190,10 +101,7 @@ class PauliCircuit:
             for obs in observables:
                 qml.expval(obs)
 
-        def postprocess(res):
-            return res[0]
-
-        return [tape_new], postprocess
+        return tape_new
 
     @staticmethod
     def commute_all_cliffords_to_the_end(
@@ -272,7 +180,7 @@ class PauliCircuit:
                     (
                         op
                         if PauliCircuit._is_clifford(op)
-                        else op.__class__(pnp.tensor(op.parameters), op.wires)
+                        else op.__class__(jnp.array(op.parameters), op.wires)
                     )
                     for op in decomposed_ops
                 ]
@@ -350,8 +258,6 @@ class PauliCircuit:
 
         gen = pauli.generator()
         param = pauli.parameters[0]
-        requires_grad = param.requires_grad if isinstance(param, pnp.tensor) else False
-        param = pnp.tensor(param)
 
         evolved_gen, _ = PauliCircuit._evolve_clifford_pauli(
             clifford, gen, adjoint_left=False
@@ -365,7 +271,6 @@ class PauliCircuit:
             pauli_str, qubits
         )
         pauli = qml.PauliRot(param * param_factor, pauli_str, qubits)
-        pauli.parameters[0].requires_grad = requires_grad
 
         return pauli, clifford
 
@@ -586,7 +491,7 @@ class QuanTikz:
 
     @staticmethod
     def search_pi_fraction(w, op_name):
-        w_pi = Fraction(w / np.pi).limit_denominator(100)
+        w_pi = Fraction(w / jnp.pi).limit_denominator(100)
         # Not a small nice Fraction
         if w_pi.denominator > 12:
             return f"\\gate{{{op_name}({w:.2f})}}"
@@ -755,7 +660,7 @@ class QuanTikz:
             [QuanTikz.ground_state()] for _ in range(quantum_tape.num_wires)
         ]
 
-        index = iter(range(10 * quantum_tape.num_params))
+        index = iter(range(len(quantum_tape.operations)))
         for op in quantum_tape.circuit:
             # catch measurement operations
             if op._queue_category == "_measurements":
@@ -772,7 +677,6 @@ class QuanTikz:
             elif op._queue_category == "_ops":
                 # catch barriers
                 if op.name == "Barrier":
-
                     # get the maximum length of all wires
                     max_len = max(
                         len(circuit_tikz[cw]) for cw in range(len(circuit_tikz))

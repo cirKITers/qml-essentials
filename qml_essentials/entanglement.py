@@ -1,9 +1,8 @@
-from typing import Optional, Any, List
+from typing import Optional, Any, List, Tuple
 import pennylane as qml
-import pennylane.numpy as np
-from copy import deepcopy
-
-from pennylane.measurements import ProbabilityMP
+import jax.numpy as jnp
+import numpy as np
+from jax import random
 
 from qml_essentials.utils import logm_v
 from qml_essentials.model import Model
@@ -13,7 +12,6 @@ log = logging.getLogger(__name__)
 
 
 class Entanglement:
-
     @staticmethod
     def meyer_wallach(
         model: Model,
@@ -45,13 +43,12 @@ class Entanglement:
             )
 
         if scale:
-            n_samples = np.power(2, model.n_qubits) * n_samples
+            n_samples = jnp.power(2, model.n_qubits) * n_samples
 
-        rng = np.random.default_rng(seed)
+        random_key = random.key(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
-            # TODO: maybe switch to JAX rng
-            model.initialize_params(rng=rng, repeat=n_samples)
+            random_key = model.initialize_params(random_key, repeat=n_samples)
         else:
             if seed is not None:
                 log.warning("Seed is ignored when samples is 0")
@@ -63,20 +60,20 @@ class Entanglement:
             -1, 2**model.n_qubits, 2**model.n_qubits
         )
 
-        measure = np.zeros(len(rhos))
+        measure = jnp.zeros(len(rhos))
 
         for i, rho in enumerate(rhos):
-            measure[i] = Entanglement._compute_meyer_wallach_meas(rho, model.n_qubits)
+            ent = Entanglement._compute_meyer_wallach_meas(rho, model.n_qubits)
+            measure = measure.at[i].set(ent)
 
         # Average all iterated states
         entangling_capability = min(max(measure.mean(), 0.0), 1.0)
         log.debug(f"Variance of measure: {measure.var()}")
 
-        # catch floating point errors
-        return float(entangling_capability)
+        return entangling_capability
 
     @staticmethod
-    def _compute_meyer_wallach_meas(rho: np.ndarray, n_qubits: int):
+    def _compute_meyer_wallach_meas(rho: jnp.ndarray, n_qubits: int):
         qb = list(range(n_qubits))
         entropy = 0
         for j in range(n_qubits):
@@ -85,7 +82,7 @@ class Entanglement:
             # only real values, because imaginary part will be separate
             # in all following calculations anyway
             # entropy should be 1/2 <= entropy <= 1
-            entropy += np.trace((density @ density).real)
+            entropy += jnp.trace((density @ density).real)
 
         # inverse averaged entropy and scale to [0, 1]
         return 2 * (1 - entropy / n_qubits)
@@ -115,26 +112,26 @@ class Entanglement:
             )
 
         if scale:
-            n_samples = np.power(2, model.n_qubits) * n_samples
+            n_samples = jnp.power(2, model.n_qubits) * n_samples
 
         def _circuit(
-            params: np.ndarray,
-            inputs: np.ndarray,
-            pulse_params: Optional[np.ndarray] = None,
-            enc_params: Optional[np.ndarray] = None,
+            params: jnp.ndarray,
+            inputs: jnp.ndarray,
+            pulse_params: Optional[jnp.ndarray] = None,
+            enc_params: Optional[jnp.ndarray] = None,
             gate_mode: str = "unitary",
-        ) -> List[np.ndarray]:
+        ) -> List[jnp.ndarray]:
             """
             Compute the Bell measurement circuit.
 
             Args:
-                params (np.ndarray): The model parameters.
-                inputs (np.ndarray): The input to the model.
-                pulse_params (np.ndarray): The model pulse parameters.
-                enc_params (Optional[np.ndarray]): The frequency encoding parameters.
+                params (jnp.ndarray): The model parameters.
+                inputs (jnp.ndarray): The input to the model.
+                pulse_params (jnp.ndarray): The model pulse parameters.
+                enc_params (Optional[jnp.ndarray]): The frequency encoding parameters.
 
             Returns:
-                List[np.ndarray]: The probabilities of the Bell measurement.
+                List[jnp.ndarray]: The probabilities of the Bell measurement.
             """
             model._variational(params, inputs, pulse_params, enc_params, gate_mode)
 
@@ -161,11 +158,10 @@ class Entanglement:
             ),
         )
 
-        rng = np.random.default_rng(seed)
+        random_key = random.key(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
-            # TODO: maybe switch to JAX rng
-            model.initialize_params(rng=rng, repeat=n_samples)
+            random_key = model.initialize_params(random_key, repeat=n_samples)
             params = model.params
         else:
             if seed is not None:
@@ -178,16 +174,16 @@ class Entanglement:
                 params = model.params
 
         n_samples = params.shape[-1]
-        measure = np.zeros(n_samples)
+        measure = jnp.zeros(n_samples)
 
         # implicitly set input to none in case it's not needed
         kwargs.setdefault("inputs", None)
         exp = model(params=params, execution_type="probs", **kwargs)
         exp = 1 - 2 * exp[..., -1]
 
-        if not np.isclose(np.sum(exp.imag), 0, atol=1e-6):
+        if not jnp.isclose(jnp.sum(exp.imag), 0, atol=1e-6):
             log.warning("Imaginary part of probabilities detected")
-            exp = np.abs(exp)
+            exp = jnp.abs(exp)
 
         measure = 2 * (1 - exp.mean(axis=0))
         entangling_capability = min(max(measure.mean(), 0.0), 1.0)
@@ -234,21 +230,23 @@ class Entanglement:
             float: Entangling capacity of the given circuit, guaranteed
                 to be between 0.0 and 1.0.
         """
-        dim = np.power(2, model.n_qubits)
+        dim = jnp.power(2, model.n_qubits)
         if scale:
             n_samples = dim * n_samples
             n_sigmas = dim * n_sigmas
 
-        rng = np.random.default_rng(seed)
+        random_key = random.key(seed)
 
         # Random separable states
         log_sigmas = sample_random_separable_states(
-            model.n_qubits, n_samples=n_sigmas, rng=rng, take_log=True
+            model.n_qubits, n_samples=n_sigmas, random_key=random_key, take_log=True
         )
+
+        random_key, _ = random.split(random_key)
 
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
-            model.initialize_params(rng=rng, repeat=n_samples)
+            model.initialize_params(random_key, repeat=n_samples)
         else:
             if seed is not None:
                 log.warning("Seed is ignored when samples is 0")
@@ -259,21 +257,21 @@ class Entanglement:
                 log.info(f"Using sample size of model params: {model.params.shape[-1]}")
 
         ghz_model = Model(model.n_qubits, 1, "GHZ", data_reupload=False)
+        rho_ghz, log_rho_ghz = Entanglement._compute_log_density(ghz_model, **kwargs)
 
-        normalised_entropies = np.zeros((n_sigmas, model.params.shape[-1]))
+        normalised_entropies = jnp.zeros((n_sigmas, model.params.shape[-1]))
         for j, log_sigma in enumerate(log_sigmas):
-
             # Entropy of GHZ states should be maximal
             ghz_entropy = Entanglement._compute_rel_entropies(
-                ghz_model,
-                log_sigma,
+                rho_ghz, log_rho_ghz, log_sigma
             )
 
-            rel_entropy = Entanglement._compute_rel_entropies(
-                model, log_sigma, **kwargs
-            )
+            rho, log_rho = Entanglement._compute_log_density(model, **kwargs)
+            rel_entropy = Entanglement._compute_rel_entropies(rho, log_rho, log_sigma)
 
-            normalised_entropies[j] = rel_entropy / ghz_entropy
+            normalised_entropies = normalised_entropies.at[j].set(
+                rel_entropy / ghz_entropy
+            )
 
         # Average all iterated states
         entangling_capability = normalised_entropies.min(axis=0).mean()
@@ -282,29 +280,47 @@ class Entanglement:
         return entangling_capability
 
     @staticmethod
-    def _compute_rel_entropies(
-        model: Model,
-        log_sigma: np.ndarray,
-        **kwargs,
-    ) -> np.ndarray:
+    def _compute_log_density(model: Model, **kwargs) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
-        Compute the relative entropy for a given model.
+        Obtains the density matrix of a model and computes its logarithm.
 
         Args:
-            model (Model): The model for which to compute entanglement
-            log_sigma (np.ndarray): Density matrix of next separable state
+            model (Model): The model for which to compute the density matrix.
 
         Returns:
-            np.ndarray: Relative Entropy for each sample
+            Tuple[jnp.ndarray, jnp.ndarray]:
+                - jnp.ndarray: density matrix.
+                - jnp.ndarray: logarithm of the density matrix.
         """
         # implicitly set input to none in case it's not needed
         kwargs.setdefault("inputs", None)
         # explicitly set execution type because everything else won't work
         rho = model(execution_type="density", **kwargs)
         rho = rho.reshape(-1, 2**model.n_qubits, 2**model.n_qubits)
-        log_rho = logm_v(rho) / np.log(2)
+        log_rho = logm_v(rho) / jnp.log(2)
+        return rho, log_rho
 
-        rel_entropies = np.abs(np.trace(rho @ (log_rho - log_sigma), axis1=1, axis2=2))
+    @staticmethod
+    def _compute_rel_entropies(
+        rho: jnp.ndarray,
+        log_rho: jnp.ndarray,
+        log_sigma: jnp.ndarray,
+    ) -> jnp.ndarray:
+        """
+        Compute the relative entropy for a given model.
+
+        Args:
+            log_rho (jnp.ndarray): Density matrix result of the circuit
+            log_rho (jnp.ndarray): Corresponding logarithm of the density
+                matrix
+            log_sigma (jnp.ndarray): Density matrix of next separable state
+
+        Returns:
+            jnp.ndarray: Relative Entropy for each sample
+        """
+        rel_entropies = jnp.abs(
+            jnp.trace(rho @ (log_rho - log_sigma), axis1=1, axis2=2)
+        )
 
         return rel_entropies
 
@@ -349,12 +365,12 @@ class Entanglement:
         """
 
         if scale:
-            n_samples = np.power(2, model.n_qubits) * n_samples
+            n_samples = jnp.power(2, model.n_qubits) * n_samples
 
-        rng = np.random.default_rng(seed)
+        random_key = random.key(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
-            model.initialize_params(rng=rng, repeat=n_samples)
+            model.initialize_params(random_key, repeat=n_samples)
         else:
             if seed is not None:
                 log.warning("Seed is ignored when samples is 0")
@@ -378,13 +394,13 @@ class Entanglement:
 
     @staticmethod
     def _compute_entanglement_of_formation(
-        rho: np.ndarray, n_qubits: int, always_decompose: bool
+        rho: jnp.ndarray, n_qubits: int, always_decompose: bool
     ) -> float:
         """
         Computes the entanglement of formation for a given density matrix rho.
 
         Args:
-            rho (np.ndarray): The density matrix
+            rho (jnp.ndarray): The density matrix
             n_qubits (int): Number of qubits
             always_decompose (bool): Whether to explicitly compute the
                 entantlement of formation for the eigendecomposition of a pure
@@ -393,13 +409,13 @@ class Entanglement:
         Returns:
             float: Entanglement for the provided state.
         """
-        eigenvalues, eigenvectors = np.linalg.eigh(rho)
-        if any(np.isclose(eigenvalues, 1.0)) and not always_decompose:  # Pure state
+        eigenvalues, eigenvectors = jnp.linalg.eigh(rho)
+        if any(jnp.isclose(eigenvalues, 1.0)) and not always_decompose:  # Pure state
             return Entanglement._compute_meyer_wallach_meas(rho, n_qubits)
         ent = 0
         for prob, ev in zip(eigenvalues, eigenvectors):
             ev = ev.reshape(-1, 1)
-            rho = ev @ np.conjugate(ev).T
+            rho = ev @ jnp.conjugate(ev).T
             measure = Entanglement._compute_meyer_wallach_meas(rho, n_qubits)
             ent += prob * measure
         return ent
@@ -439,18 +455,18 @@ class Entanglement:
         )
 
         @qml.qnode(device=dev)
-        def _swap_test(rho: np.ndarray, n: int) -> np.ndarray:
+        def _swap_test(rho: jnp.ndarray, n: int) -> jnp.ndarray:
             """
             Constructs a circuit to compute the concentratable entanglement using the
             swap test by creating two copies of a state given by a density matrix rho
             and mapping the output wires accordingly.
 
             Args:
-                rho (np.ndarray): the density matrix of the state on which the swap
+                rho (jnp.ndarray): the density matrix of the state on which the swap
                     test is performed.
 
             Returns:
-                List[np.ndarray]: Probabilities obtained from the swap test circuit.
+                List[jnp.ndarray]: Probabilities obtained from the swap test circuit.
             """
 
             qml.QubitDensityMatrix(rho, wires=[i for i in range(n, 2 * n)])
@@ -468,10 +484,10 @@ class Entanglement:
 
             return qml.probs(wires=[i for i in range(n)])
 
-        rng = np.random.default_rng(seed)
+        random_key = random.key(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
-            model.initialize_params(rng=rng, repeat=n_samples)
+            model.initialize_params(random_key, repeat=n_samples)
         else:
             if seed is not None:
                 log.warning("Seed is ignored when samples is 0")
@@ -499,25 +515,25 @@ class Entanglement:
 
 
 def sample_random_separable_states(
-    n_qubits: int, n_samples: int, rng: np.random.Generator, take_log: bool = False
-) -> np.ndarray:
+    n_qubits: int, n_samples: int, random_key: random.PRNGKey, take_log: bool = False
+) -> jnp.ndarray:
     """
     Sample random separable states (density matrix).
 
     Args:
         n_qubits (int): number of qubits in the state
         n_samples (int): number of states
-        rng (np.random.Generator): random number generator
+        random_key (random.PRNGKey): JAX random key
         take_log (bool): if the matrix logarithm of the density matrix should be taken.
 
     Returns:
-        np.ndarray: Density matrices of shape (n_samples, 2**n_qubits, 2**n_qubits)
+        jnp.ndarray: Density matrices of shape (n_samples, 2**n_qubits, 2**n_qubits)
     """
     model = Model(n_qubits, 1, "No_Entangling", data_reupload=False)
-    model.initialize_params(rng=rng, repeat=n_samples)
+    model.initialize_params(random_key, repeat=n_samples)
     # explicitly set execution type because everything else won't work
     sigmas = model(execution_type="density", inputs=None)
     if take_log:
-        sigmas = logm_v(sigmas) / np.log(2)
+        sigmas = logm_v(sigmas) / jnp.log(2.0 + 0j)
 
     return sigmas

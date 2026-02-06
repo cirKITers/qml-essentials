@@ -21,8 +21,6 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.unittest
 def test_gate_gateerror_noise():
-    UnitaryGates.rng = np.random.default_rng(1000)
-
     dev = qml.device("default.mixed", wires=1)
 
     @qml.qnode(dev)
@@ -44,8 +42,6 @@ def test_gate_gateerror_noise():
 
 @pytest.mark.unittest
 def test_batch_gate_error():
-    UnitaryGates.rng = np.random.default_rng(1000)
-
     model = Model(
         n_qubits=1,
         n_layers=1,
@@ -309,6 +305,24 @@ def test_ansaetze() -> None:
             },
             execution_type="density",
         )
+
+
+@pytest.mark.expensive
+@pytest.mark.smoketest
+def test_pulse_params_ansaetze() -> None:
+    for ansatz in Ansaetze.get_available():
+        logger.info(f"Testing Ansatz: {ansatz.__name__}")
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type=ansatz.__name__,
+            data_reupload=False,
+        )
+
+        try:
+            model(gate_mode="pulse")
+        except Exception as e:
+            raise Exception(f"Error for ansatz {ansatz.__name__}: {e}")
 
 
 @pytest.mark.unittest

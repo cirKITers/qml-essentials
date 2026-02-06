@@ -4,7 +4,7 @@ on:
 permissions:
   contents: write
 jobs:
-  test-expensive:
+  test-all:
     runs-on: self-hosted
     if: ${{ (github.actor != 'github-actions[bot]') }}
     steps:
@@ -18,8 +18,8 @@ jobs:
           # cache: "uv"
       - name: Install dependencies
         run: uv sync --group dev
-      - name: Test with pytest
-        run: uv run pytest --cov=qml_essentials --cov-report html --dist load -n auto
+      - name: Test with pytest (expensive)
+        run: uv run pytest --cov=qml_essentials --cov-report html --dist load -n 0
       - name: Share coverage report
         uses: actions/upload-artifact@v6
         with:

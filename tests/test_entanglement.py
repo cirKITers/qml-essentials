@@ -133,7 +133,7 @@ def test_mw_measure() -> None:
             circuit_type=test_case["circuit_type"],
             data_reupload=False,
             initialization="random",
-            mp_threshold=1000,
+            use_multithreading=True,
         )
 
         ent_cap = Entanglement.meyer_wallach(model, n_samples=5000, seed=1000)
@@ -234,7 +234,6 @@ def test_bell_measure() -> None:
             circuit_type=test_case["circuit_type"],
             data_reupload=False,
             initialization="random",
-            # mp_threshold=1000,
         )
 
         ent_cap = Entanglement.bell_measurements(model, n_samples=5000, seed=1000)
@@ -344,13 +343,13 @@ def test_relative_entropy() -> None:
     )
 
     separable_ent = Entanglement.relative_entropy(
-        separable_model, n_samples=10, n_sigmas=10, seed=1000, scale=False
+        separable_model, n_samples=10, n_sigmas=20, seed=1000, scale=False
     )
     entangled_ent = Entanglement.relative_entropy(
-        entangled_model, n_samples=10, n_sigmas=10, seed=1000, scale=False
+        entangled_model, n_samples=10, n_sigmas=20, seed=1000, scale=False
     )
     ghz_ent = Entanglement.relative_entropy(
-        ghz_model, n_samples=10, n_sigmas=10, seed=1000, scale=False
+        ghz_model, n_samples=10, n_sigmas=20, seed=1000, scale=False
     )
 
     assert 0.0 < separable_ent < entangled_ent < ghz_ent == 1.0, (
@@ -376,12 +375,14 @@ def test_relative_entropy_order() -> None:
         n_layers=1,
         circuit_type="GHZ",
         data_reupload=False,
-        mp_threshold=1000,
+        use_multithreading=True,
     )
 
     entanglement = [0.0]
     for circuit in circuits:
-        model = Model(n_qubits=3, n_layers=1, circuit_type=circuit)
+        model = Model(
+            n_qubits=3, n_layers=1, circuit_type=circuit, use_multithreading=True
+        )
 
         ent = Entanglement.relative_entropy(
             model, n_samples=50, n_sigmas=100, seed=1000, scale=False
@@ -404,12 +405,14 @@ def test_entanglement_of_formation() -> None:
         n_qubits=3,
         n_layers=1,
         circuit_type="Circuit_1",
+        use_multithreading=True,
     )
 
     entangled_model = Model(
         n_qubits=3,
         n_layers=1,
         circuit_type="Strongly_Entangling",
+        use_multithreading=True,
     )
 
     separable_ent = Entanglement.entanglement_of_formation(
