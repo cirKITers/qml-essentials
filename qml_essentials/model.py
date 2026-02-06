@@ -506,7 +506,7 @@ class Model:
 
     def initialize_params(
         self,
-        random_key: random.PRNGKey,
+        random_key: random.PRNGKey = None,
         repeat: int = 1,
         initialization: str = None,
         initialization_domain: List[float] = None,
@@ -533,7 +533,9 @@ class Model:
         initialization = initialization or self._inialization_strategy
         initialization_domain = initialization_domain or self._initialization_domain
 
-        random_key, sub_key = safe_random_split(random_key)
+        random_key, sub_key = safe_random_split(
+            random_key if random_key is not None else self.random_key
+        )
 
         def set_control_params(params: jnp.ndarray, value: float) -> jnp.ndarray:
             indices = self.pqc.get_control_indices(self.n_qubits)
