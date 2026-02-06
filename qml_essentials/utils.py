@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import List, Tuple
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pennylane as qml
@@ -30,6 +31,13 @@ PAULI_ROTATION_GATES = (
 )
 
 SKIPPABLE_OPERATIONS = (qml.Barrier,)
+
+
+def safe_random_split(random_key: jax.random.PRNGKey, *args, **kwargs):
+    if random_key is None:
+        return None, None
+    else:
+        return jax.random.split(random_key, *args, **kwargs)
 
 
 def logm_v(A: jnp.ndarray, **kwargs) -> jnp.ndarray:

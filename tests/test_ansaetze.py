@@ -22,10 +22,11 @@ logger = logging.getLogger(__name__)
 @pytest.mark.unittest
 def test_gate_gateerror_noise():
     dev = qml.device("default.mixed", wires=1)
+    random_key = jax.random.key(1000)
 
     @qml.qnode(dev)
     def circuit(noise_params=None):
-        Gates.RX(np.pi, wires=0, noise_params=noise_params)
+        Gates.RX(np.pi, wires=0, noise_params=noise_params, random_key=random_key)
         return qml.expval(qml.PauliZ(0))
 
     no_noise = circuit({})

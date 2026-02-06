@@ -6,10 +6,12 @@ import csv
 import jax.numpy as np
 import pennylane as qml
 import jax
-from jax import random
 import itertools
 from contextlib import contextmanager
 import logging
+import warnings
+
+from qml_essentials.utils import safe_random_split
 
 jax.config.update("jax_enable_x64", True)
 log = logging.getLogger(__name__)
@@ -127,20 +129,7 @@ class Circuit(ABC):
 
 
 class UnitaryGates:
-    random_key = random.key(0)
     batch_gate_error = True
-
-    @staticmethod
-    def init_rng(seed: int):
-        """
-        Initializes the random number generator with the given seed.
-
-        Parameters
-        ----------
-        seed : int
-            The seed for the random number generator.
-        """
-        UnitaryGates.random_key = random.key(seed)
 
     @staticmethod
     def NQubitDepolarizingChannel(p, wires):
@@ -260,7 +249,7 @@ class UnitaryGates:
 
     @staticmethod
     def GateError(
-        w: float, noise_params: Optional[Dict[str, float]] = None
+        w: float, noise_params: Optional[Dict[str, float]] = None, random_key=None
     ) -> np.ndarray:
         """
         Applies a gate error to the given rotation angle(s).
@@ -284,19 +273,23 @@ class UnitaryGates:
             The modified rotation angle after applying the gate error.
         """
         if noise_params is not None and noise_params.get("GateError", None) is not None:
-            w += noise_params["GateError"] * random.normal(
-                UnitaryGates.random_key,
+            assert (
+                random_key is not None
+            ), "A random_key must be provided when using GateError"
+
+            random_key, sub_key = safe_random_split(random_key)
+            w += noise_params["GateError"] * jax.random.normal(
+                sub_key,
                 (
                     w.shape
                     if isinstance(w, np.ndarray) and UnitaryGates.batch_gate_error
                     else (1,)
                 ),
             )
-            UnitaryGates.random_key, _ = random.split(UnitaryGates.random_key)
-        return w
+        return w, random_key
 
     @staticmethod
-    def Rot(phi, theta, omega, wires, noise_params=None):
+    def Rot(phi, theta, omega, wires, noise_params=None, random_key=None):
         """
         Applies a rotation gate to the given wires and adds `Noise`.
 
@@ -321,14 +314,14 @@ class UnitaryGates:
             All parameters are optional and default to 0.0 if not provided.
         """
         if noise_params is not None and "GateError" in noise_params:
-            phi = UnitaryGates.GateError(phi, noise_params)
-            theta = UnitaryGates.GateError(theta, noise_params)
-            omega = UnitaryGates.GateError(omega, noise_params)
+            phi = UnitaryGates.GateError(phi, noise_params, random_key)
+            theta = UnitaryGates.GateError(theta, noise_params, random_key)
+            omega = UnitaryGates.GateError(omega, noise_params, random_key)
         qml.Rot(phi, theta, omega, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def RX(w, wires, noise_params=None):
+    def RX(w, wires, noise_params=None, random_key=None):
         """
         Applies a rotation around the X axis to the given wires and adds `Noise`
 
@@ -348,12 +341,12 @@ class UnitaryGates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        w = UnitaryGates.GateError(w, noise_params)
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.RX(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def RY(w, wires, noise_params=None):
+    def RY(w, wires, noise_params=None, random_key=None):
         """
         Applies a rotation around the Y axis to the given wires and adds `Noise`
 
@@ -373,12 +366,12 @@ class UnitaryGates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        w = UnitaryGates.GateError(w, noise_params)
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.RY(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def RZ(w, wires, noise_params=None):
+    def RZ(w, wires, noise_params=None, random_key=None):
         """
         Applies a rotation around the Z axis to the given wires and adds `Noise`
 
@@ -398,12 +391,12 @@ class UnitaryGates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        w = UnitaryGates.GateError(w, noise_params)
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.RZ(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CRX(w, wires, noise_params=None):
+    def CRX(w, wires, noise_params=None, random_key=None):
         """
         Applies a controlled rotation around the X axis to the given wires
         and adds `Noise`
@@ -424,12 +417,12 @@ class UnitaryGates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        w = UnitaryGates.GateError(w, noise_params)
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.CRX(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CRY(w, wires, noise_params=None):
+    def CRY(w, wires, noise_params=None, random_key=None):
         """
         Applies a controlled rotation around the Y axis to the given wires
         and adds `Noise`
@@ -450,12 +443,12 @@ class UnitaryGates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        w = UnitaryGates.GateError(w, noise_params)
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.CRY(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CRZ(w, wires, noise_params=None):
+    def CRZ(w, wires, noise_params=None, random_key=None):
         """
         Applies a controlled rotation around the Z axis to the given wires
         and adds `Noise`
@@ -476,12 +469,12 @@ class UnitaryGates:
 
             All parameters are optional and default to 0.0 if not provided.
         """
-        w = UnitaryGates.GateError(w, noise_params)
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.CRZ(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CX(wires, noise_params=None):
+    def CX(wires, noise_params=None, random_key=None):
         """
         Applies a controlled NOT gate to the given wires and adds `Noise`
 
@@ -503,7 +496,7 @@ class UnitaryGates:
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CY(wires, noise_params=None):
+    def CY(wires, noise_params=None, random_key=None):
         """
         Applies a controlled Y gate to the given wires and adds `Noise`
 
@@ -525,7 +518,7 @@ class UnitaryGates:
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CZ(wires, noise_params=None):
+    def CZ(wires, noise_params=None, random_key=None):
         """
         Applies a controlled Z gate to the given wires and adds `Noise`
 
@@ -547,7 +540,7 @@ class UnitaryGates:
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def H(wires, noise_params=None):
+    def H(wires, noise_params=None, random_key=None):
         """
         Applies a Hadamard gate to the given wires and adds `Noise`
 
@@ -816,6 +809,13 @@ class PulseInformation:
 
     Rot = PulseParams(name="Rot", pulse_obj=[RZ, RY, RZ])
 
+    unique_gate_set = [
+        RX,
+        RY,
+        RZ,
+        CZ,
+    ]
+
     @staticmethod
     def gate_by_name(gate_name):
         return getattr(PulseInformation, gate_name, None)
@@ -843,22 +843,14 @@ class PulseInformation:
             log.error(f"No optimized pulses found at {path}")
 
     @staticmethod
-    def shuffle_params(seed=1000):
-        # TODO: use global random_key?
-        random_key = random.key(seed)
-        unique_gate_set = [
-            PulseInformation.RX,
-            PulseInformation.RY,
-            PulseInformation.RZ,
-            PulseInformation.CZ,
-        ]
-
+    def shuffle_params(random_key):
         log.info(
-            f"Shuffling optimized pulses with seed {seed} of gates {unique_gate_set}"
+            f"Shuffling optimized pulses with random key {random_key}\
+              of gates {PulseInformation.unique_gate_set}"
         )
-        for gate in unique_gate_set:
-            gate.params = random.uniform(random_key, (len(gate),))
-            random_key, _ = random.split(random_key)
+        for gate in PulseInformation.unique_gate_set:
+            random_key, sub_key = safe_random_split(random_key)
+            gate.params = jax.random.uniform(sub_key, (len(gate),))
 
 
 class PulseGates:
@@ -1271,13 +1263,18 @@ class Gates(metaclass=GatesMeta):
         allowed_args = ["w", "wires", "phi", "theta", "omega"]
         if gate_mode == "unitary":
             gate_backend = UnitaryGates
-            allowed_args += ["noise_params"]
+            allowed_args += ["noise_params", "random_key"]
         elif gate_mode == "pulse":
             gate_backend = PulseGates
             allowed_args += ["pulse_params"]
         else:
             raise ValueError(
                 f"Unknown gate mode: {gate_mode}. Use 'unitary' or 'pulse'."
+            )
+
+        if len(kwargs.keys() - allowed_args) > 0:
+            warnings.warn(
+                f"Unsupported keyword arguments: {list(kwargs.keys() - allowed_args)}"
             )
 
         kwargs = {k: v for k, v in kwargs.items() if k in allowed_args}
@@ -1498,7 +1495,7 @@ class Ansaetze:
                 Number of parameters required for one layer of the circuit.
             """
             if n_qubits < 2:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
             return n_qubits * 3
 
         @staticmethod
@@ -1605,7 +1602,7 @@ class Ansaetze:
             if n_qubits > 1:
                 return n_qubits * 3
             else:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
                 return 2
 
         @staticmethod
@@ -1715,7 +1712,7 @@ class Ansaetze:
             if n_qubits > 1:
                 return n_qubits * 3
             else:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
                 return 2
 
         @staticmethod
@@ -1822,7 +1819,7 @@ class Ansaetze:
             if n_qubits > 1:
                 return n_qubits * 2
             else:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
                 return 2
 
         @staticmethod
@@ -2029,7 +2026,7 @@ class Ansaetze:
             if n_qubits > 1:
                 return n_qubits * 3 + n_qubits**2
             else:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
                 return 4
 
         @staticmethod
@@ -2839,7 +2836,7 @@ class Ansaetze:
                 Number of parameters per layer
             """
             if n_qubits < 2:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
             return n_qubits * 6
 
         @staticmethod

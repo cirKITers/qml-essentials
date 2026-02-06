@@ -511,7 +511,9 @@ class QOC:
         log_history = {}
         optimize_1q = self.optimize("default.qubit", wires=1)
         optimize_2q = self.optimize("default.qubit", wires=2)
-        # PulseInformation.shuffle_params(seed=1000)
+
+        # random_key = jax.random.key(seed=1000)
+        # PulseInformation.shuffle_params(random_key)
         for loop in range(self.n_loops):
             log.info("Reading back optimized pulse parameters")
             # PulseInformation.update_params()
