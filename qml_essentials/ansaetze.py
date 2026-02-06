@@ -9,6 +9,9 @@ import jax
 import itertools
 from contextlib import contextmanager
 import logging
+import warnings
+
+from qml_essentials.utils import safe_random_split
 
 jax.config.update("jax_enable_x64", True)
 log = logging.getLogger(__name__)
@@ -274,7 +277,7 @@ class UnitaryGates:
                 random_key is not None
             ), "A random_key must be provided when using GateError"
 
-            random_key, sub_key = jax.random.split(random_key)
+            random_key, sub_key = safe_random_split(random_key)
             w += noise_params["GateError"] * jax.random.normal(
                 sub_key,
                 (
@@ -846,7 +849,7 @@ class PulseInformation:
               of gates {PulseInformation.unique_gate_set}"
         )
         for gate in PulseInformation.unique_gate_set:
-            random_key, sub_key = jax.random.split(random_key)
+            random_key, sub_key = safe_random_split(random_key)
             gate.params = jax.random.uniform(sub_key, (len(gate),))
 
 
@@ -1260,13 +1263,18 @@ class Gates(metaclass=GatesMeta):
         allowed_args = ["w", "wires", "phi", "theta", "omega"]
         if gate_mode == "unitary":
             gate_backend = UnitaryGates
-            allowed_args += ["noise_params"]
+            allowed_args += ["noise_params", "random_key"]
         elif gate_mode == "pulse":
             gate_backend = PulseGates
             allowed_args += ["pulse_params"]
         else:
             raise ValueError(
                 f"Unknown gate mode: {gate_mode}. Use 'unitary' or 'pulse'."
+            )
+
+        if len(kwargs.keys() - allowed_args) > 0:
+            warnings.warn(
+                f"Unsupported keyword arguments: {list(kwargs.keys() - allowed_args)}"
             )
 
         kwargs = {k: v for k, v in kwargs.items() if k in allowed_args}
@@ -1487,7 +1495,7 @@ class Ansaetze:
                 Number of parameters required for one layer of the circuit.
             """
             if n_qubits < 2:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
             return n_qubits * 3
 
         @staticmethod
@@ -1594,7 +1602,7 @@ class Ansaetze:
             if n_qubits > 1:
                 return n_qubits * 3
             else:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
                 return 2
 
         @staticmethod
@@ -1704,7 +1712,7 @@ class Ansaetze:
             if n_qubits > 1:
                 return n_qubits * 3
             else:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
                 return 2
 
         @staticmethod
@@ -1811,7 +1819,7 @@ class Ansaetze:
             if n_qubits > 1:
                 return n_qubits * 2
             else:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
                 return 2
 
         @staticmethod
@@ -2018,7 +2026,7 @@ class Ansaetze:
             if n_qubits > 1:
                 return n_qubits * 3 + n_qubits**2
             else:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
                 return 4
 
         @staticmethod
@@ -2828,7 +2836,7 @@ class Ansaetze:
                 Number of parameters per layer
             """
             if n_qubits < 2:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
             return n_qubits * 6
 
         @staticmethod

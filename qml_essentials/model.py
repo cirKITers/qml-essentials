@@ -10,7 +10,7 @@ from jax import random
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit, Encoding
 from qml_essentials.ansaetze import PulseInformation as pinfo
-from qml_essentials.utils import QuanTikz
+from qml_essentials.utils import QuanTikz, safe_random_split
 
 import logging
 
@@ -533,6 +533,8 @@ class Model:
         initialization = initialization or self._inialization_strategy
         initialization_domain = initialization_domain or self._initialization_domain
 
+        random_key, sub_key = safe_random_split(random_key)
+
         def set_control_params(params: jnp.ndarray, value: float) -> jnp.ndarray:
             indices = self.pqc.get_control_indices(self.n_qubits)
             if indices is None:
@@ -553,7 +555,7 @@ class Model:
 
         if initialization == "random":
             self.params: jnp.ndarray = random.uniform(
-                random_key,
+                sub_key,
                 params_shape,
                 minval=initialization_domain[0],
                 maxval=initialization_domain[1],
@@ -564,7 +566,7 @@ class Model:
             self.params: jnp.ndarray = jnp.ones(params_shape) * jnp.pi
         elif initialization == "zero-controlled":
             self.params: jnp.ndarray = random.uniform(
-                random_key,
+                sub_key,
                 params_shape,
                 minval=initialization_domain[0],
                 maxval=initialization_domain[1],
@@ -572,7 +574,7 @@ class Model:
             self.params = set_control_params(self.params, 0)
         elif initialization == "pi-controlled":
             self.params: jnp.ndarray = random.uniform(
-                random_key,
+                sub_key,
                 params_shape,
                 minval=initialization_domain[0],
                 maxval=initialization_domain[1],
@@ -586,7 +588,7 @@ class Model:
             using strategy {initialization}."
         )
 
-        return random.split(random_key)
+        return random_key
 
     def transform_input(
         self, inputs: jnp.ndarray, enc_params: Optional[jnp.ndarray]
@@ -641,7 +643,7 @@ class Model:
                 if data_reupload[q, idx]:
                     # use elipsis to indiex only the last dimension
                     # as inputs are generally *not* qubit dependent
-                    random_key, sub_key = random.split(random_key)
+                    random_key, sub_key = safe_random_split(random_key)
                     enc[idx](
                         self.transform_input(inputs[..., idx], enc_params[q, idx]),
                         wires=q,
@@ -753,12 +755,19 @@ class Model:
                 noise_params = self.noise_params
 
         if noise_params is not None:
+            if random_key is None:
+                warnings.warn(
+                    "Explicit call to `_circuit` or `_variational` detected: "
+                    "`random_key` is None, using `random.PRNGKey(0)` instead.",
+                    RuntimeWarning,
+                )
+                random_key = self.random_key
             self._apply_state_prep_noise()
 
         # state preparation
         for q in range(self.n_qubits):
             for _sp, sp_pulse_params in zip(self._sp, self.sp_pulse_params):
-                random_key, sub_key = random.split(random_key)
+                random_key, sub_key = safe_random_split(random_key)
                 _sp(
                     wires=q,
                     pulse_params=sp_pulse_params,
@@ -769,7 +778,7 @@ class Model:
 
         # circuit building
         for layer in range(0, self.n_layers):
-            self.random_key, sub_key = random.split(self.random_key)
+            self.random_key, sub_key = safe_random_split(self.random_key)
             # ansatz layers
             self.pqc(
                 params[layer],
@@ -780,7 +789,7 @@ class Model:
                 gate_mode=gate_mode,
             )
 
-            self.random_key, sub_key = random.split(self.random_key)
+            self.random_key, sub_key = safe_random_split(self.random_key)
             # encoding layers
             self._iec(
                 inputs,
@@ -797,7 +806,7 @@ class Model:
 
         # final ansatz layer
         if self.has_dru:  # same check as in init
-            self.random_key, sub_key = random.split(self.random_key)
+            self.random_key, sub_key = safe_random_split(self.random_key)
             self.pqc(
                 params[self.n_layers],
                 self.n_qubits,
@@ -1130,7 +1139,7 @@ class Model:
         if (gate_mode == "pulse" or self.use_multithreading) and max_batch_size > 1:
             random_keys = []
             for _ in range(max_batch_size):
-                random_key, sub_key = jax.random.split(random_key)
+                random_key, sub_key = safe_random_split(random_key)
                 random_keys.append(sub_key)
             random_keys = jnp.array(random_keys)
 
@@ -1425,7 +1434,7 @@ class Model:
         )
 
         result: Optional[jnp.ndarray] = None
-        self.random_key, subkey = jax.random.split(self.random_key)
+        self.random_key, subkey = safe_random_split(self.random_key)
 
         # if density matrix requested or noise params used
         if self._requires_density():
