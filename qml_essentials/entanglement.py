@@ -115,11 +115,7 @@ class Entanglement:
             n_samples = jnp.power(2, model.n_qubits) * n_samples
 
         def _circuit(
-            params: jnp.ndarray,
-            inputs: jnp.ndarray,
-            pulse_params: Optional[jnp.ndarray] = None,
-            enc_params: Optional[jnp.ndarray] = None,
-            gate_mode: str = "unitary",
+            params: jnp.ndarray, inputs: jnp.ndarray, **kwargs
         ) -> List[jnp.ndarray]:
             """
             Compute the Bell measurement circuit.
@@ -133,7 +129,7 @@ class Entanglement:
             Returns:
                 List[jnp.ndarray]: The probabilities of the Bell measurement.
             """
-            model._variational(params, inputs, pulse_params, enc_params, gate_mode)
+            model._variational(params, inputs, **kwargs)
 
             qml.map_wires(
                 model._variational,
