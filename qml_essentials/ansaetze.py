@@ -1274,7 +1274,8 @@ class Gates(metaclass=GatesMeta):
             )
 
         if len(kwargs.keys() - allowed_args) > 0:
-            warnings.warn(
+            # TODO: pulse params are always provided?
+            log.debug(
                 f"Unsupported keyword arguments: {list(kwargs.keys() - allowed_args)}"
             )
 

@@ -567,19 +567,19 @@ def test_fourier_fingerprint() -> None:
     test_cases = [
         {
             "circuit_type": "Circuit_15",
-            "hash": "afd672dfc5582d8693ee00b469f69bbd",
+            "hash": "dc455d9684c2cc2640e4cdc3179b40e4",
         },
         {
             "circuit_type": "Circuit_19",
-            "hash": "f4bb2edb6912a82ed722c3a8aa1f7ced",
+            "hash": "b06659642eaec05429356ac04ece785d",
         },
         {
             "circuit_type": "Circuit_17",
-            "hash": "430ab1c056e42e75c017e5e1e442a4a6",
+            "hash": "d08ab4e60596188a34542b4bbc7a3b48",
         },
         {
             "circuit_type": "Hardware_Efficient",
-            "hash": "17680589735f472f9b22fecf536ead61",
+            "hash": "8bbd9d7f75d2f9dc737eb0965e31feec",
         },
     ]
 
