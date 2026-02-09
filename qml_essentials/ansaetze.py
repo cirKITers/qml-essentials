@@ -278,15 +278,14 @@ class UnitaryGates:
             ), "A random_key must be provided when using GateError"
 
             random_key, sub_key = safe_random_split(random_key)
-            # w += noise_params["GateError"] * jax.random.normal(
-            #     sub_key,
-            #     (
-            #         w.shape
-            #         if isinstance(w, np.ndarray) and UnitaryGates.batch_gate_error
-            #         else (1,)
-            #     ),
-            # )
-            w += noise_params["GateError"] * jax.random.normal(sub_key, w.shape)
+            w += noise_params["GateError"] * jax.random.normal(
+                sub_key,
+                (
+                    w.shape
+                    if isinstance(w, np.ndarray) and UnitaryGates.batch_gate_error
+                    else (1,)
+                ),
+            )
         return w, random_key
 
     @staticmethod

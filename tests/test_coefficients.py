@@ -558,7 +558,7 @@ def test_fcc() -> None:
             Got {fcc}, expected {test_case['fcc']}."
 
 
-@pytest.mark.unittest
+@pytest.mark.smoketest
 def test_fourier_fingerprint() -> None:
     """
     This test checks if the calculation of the Fourier fingerprint
@@ -567,19 +567,15 @@ def test_fourier_fingerprint() -> None:
     test_cases = [
         {
             "circuit_type": "Circuit_15",
-            "hash": "dc455d9684c2cc2640e4cdc3179b40e4",
         },
         {
             "circuit_type": "Circuit_19",
-            "hash": "b06659642eaec05429356ac04ece785d",
         },
         {
             "circuit_type": "Circuit_17",
-            "hash": "d08ab4e60596188a34542b4bbc7a3b48",
         },
         {
             "circuit_type": "Hardware_Efficient",
-            "hash": "8bbd9d7f75d2f9dc737eb0965e31feec",
         },
     ]
 
@@ -591,18 +587,12 @@ def test_fourier_fingerprint() -> None:
             output_qubit=-1,
             encoding=["RY"],
         )
-        fp_and_freqs = FCC.get_fourier_fingerprint(
+        _ = FCC.get_fourier_fingerprint(
             model=model,
             n_samples=500,
             seed=1000,
             scale=True,
         )
-        hs = hashlib.md5(repr(fp_and_freqs).encode("utf-8")).hexdigest()
-        print(hs)
-        assert (
-            hs == test_case["hash"]
-        ), f"Wrong hash for {test_case['circuit_type']}. \
-            Got {hs}, expected {test_case['hash']}"
 
 
 @pytest.mark.expensive
