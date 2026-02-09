@@ -278,14 +278,15 @@ class UnitaryGates:
             ), "A random_key must be provided when using GateError"
 
             random_key, sub_key = safe_random_split(random_key)
-            w += noise_params["GateError"] * jax.random.normal(
-                sub_key,
-                (
-                    w.shape
-                    if isinstance(w, np.ndarray) and UnitaryGates.batch_gate_error
-                    else (1,)
-                ),
-            )
+            # w += noise_params["GateError"] * jax.random.normal(
+            #     sub_key,
+            #     (
+            #         w.shape
+            #         if isinstance(w, np.ndarray) and UnitaryGates.batch_gate_error
+            #         else (1,)
+            #     ),
+            # )
+            w += noise_params["GateError"] * jax.random.normal(sub_key, w.shape)
         return w, random_key
 
     @staticmethod
@@ -314,9 +315,9 @@ class UnitaryGates:
             All parameters are optional and default to 0.0 if not provided.
         """
         if noise_params is not None and "GateError" in noise_params:
-            phi = UnitaryGates.GateError(phi, noise_params, random_key)
-            theta = UnitaryGates.GateError(theta, noise_params, random_key)
-            omega = UnitaryGates.GateError(omega, noise_params, random_key)
+            phi, random_key = UnitaryGates.GateError(phi, noise_params, random_key)
+            theta, random_key = UnitaryGates.GateError(theta, noise_params, random_key)
+            omega, random_key = UnitaryGates.GateError(omega, noise_params, random_key)
         qml.Rot(phi, theta, omega, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
