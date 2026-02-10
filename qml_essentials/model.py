@@ -10,7 +10,7 @@ from jax import random
 
 from qml_essentials.ansaetze import Gates, Ansaetze, Circuit, Encoding
 from qml_essentials.ansaetze import PulseInformation as pinfo
-from qml_essentials.utils import QuanTikz
+from qml_essentials.utils import QuanTikz, safe_random_split
 
 import logging
 
@@ -107,9 +107,6 @@ class Model:
         self.trainable_frequencies: bool = trainable_frequencies
         self.execution_type: str = "expval"
         self.repeat_batch_axis: List[bool] = repeat_batch_axis
-
-        # Initialize random key in Gates
-        Gates.init_rng(random_seed)
 
         # --- State Preparation ---
         try:
@@ -236,7 +233,7 @@ class Model:
         self._initialization_domain = initialization_domain
 
         # ..here! where we only require a JAX random key
-        self.initialize_params(random.key(random_seed))
+        self.random_key = self.initialize_params(random.key(random_seed))
 
         # Initializing pulse params
         self.pulse_params: jnp.ndarray = jnp.ones((*self._pulse_params_shape, 1))
@@ -509,7 +506,7 @@ class Model:
 
     def initialize_params(
         self,
-        random_key: random.PRNGKey,
+        random_key: random.PRNGKey = None,
         repeat: int = 1,
         initialization: str = None,
         initialization_domain: List[float] = None,
@@ -536,6 +533,10 @@ class Model:
         initialization = initialization or self._inialization_strategy
         initialization_domain = initialization_domain or self._initialization_domain
 
+        random_key, sub_key = safe_random_split(
+            random_key if random_key is not None else self.random_key
+        )
+
         def set_control_params(params: jnp.ndarray, value: float) -> jnp.ndarray:
             indices = self.pqc.get_control_indices(self.n_qubits)
             if indices is None:
@@ -556,7 +557,7 @@ class Model:
 
         if initialization == "random":
             self.params: jnp.ndarray = random.uniform(
-                random_key,
+                sub_key,
                 params_shape,
                 minval=initialization_domain[0],
                 maxval=initialization_domain[1],
@@ -567,7 +568,7 @@ class Model:
             self.params: jnp.ndarray = jnp.ones(params_shape) * jnp.pi
         elif initialization == "zero-controlled":
             self.params: jnp.ndarray = random.uniform(
-                random_key,
+                sub_key,
                 params_shape,
                 minval=initialization_domain[0],
                 maxval=initialization_domain[1],
@@ -575,7 +576,7 @@ class Model:
             self.params = set_control_params(self.params, 0)
         elif initialization == "pi-controlled":
             self.params: jnp.ndarray = random.uniform(
-                random_key,
+                sub_key,
                 params_shape,
                 minval=initialization_domain[0],
                 maxval=initialization_domain[1],
@@ -589,7 +590,7 @@ class Model:
             using strategy {initialization}."
         )
 
-        return random.split(random_key)
+        return random_key
 
     def transform_input(
         self, inputs: jnp.ndarray, enc_params: Optional[jnp.ndarray]
@@ -615,6 +616,7 @@ class Model:
         enc: Union[Callable, List[Callable]],
         enc_params: jnp.ndarray,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
+        random_key: random.PRNGKey = None,
     ) -> None:
         """
         Creates an AngleEncoding using RX gates
@@ -643,10 +645,12 @@ class Model:
                 if data_reupload[q, idx]:
                     # use elipsis to indiex only the last dimension
                     # as inputs are generally *not* qubit dependent
+                    random_key, sub_key = safe_random_split(random_key)
                     enc[idx](
                         self.transform_input(inputs[..., idx], enc_params[q, idx]),
                         wires=q,
                         noise_params=noise_params,
+                        random_key=sub_key,
                     )
 
     def _circuit(
@@ -656,8 +660,9 @@ class Model:
         pulse_params: jnp.ndarray = None,
         enc_params: Optional[jnp.ndarray] = None,
         gate_mode: str = "unitary",
+        noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
+        random_key: random.PRNGKey = None,
     ) -> Union[float, jnp.ndarray]:
-        # TODO: Is the shape of params below correct?
         """
         Creates a quantum circuit, optionally with noise or pulse simulation.
 
@@ -676,13 +681,14 @@ class Model:
                 of the circuit if state_vector is False and expval is True,
                 otherwise the density matrix of all qubits.
         """
-
         self._variational(
             params=params,
             inputs=inputs,
             pulse_params=pulse_params,
             enc_params=enc_params,
             gate_mode=gate_mode,
+            noise_params=noise_params,
+            random_key=random_key,
         )
         return self._observable()
 
@@ -693,6 +699,8 @@ class Model:
         pulse_params: Optional[jnp.ndarray] = None,
         enc_params: Optional[jnp.ndarray] = None,
         gate_mode: str = "unitary",
+        noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
+        random_key: random.PRNGKey = None,
     ) -> None:
         """
         Builds the variational quantum circuit with state preparation,
@@ -712,7 +720,7 @@ class Model:
         Returns:
             None
         """
-        # TODO: rework
+        # TODO: rework and double check params shape
         if len(params.shape) > 2 and params.shape[2] == 1:
             params = params[:, :, 0]
 
@@ -739,37 +747,59 @@ class Model:
                 )
             pulse_params = self.pulse_params
 
-        if self.noise_params is not None:
-            self._apply_state_prep_noise()
+        if noise_params is None:
+            if self.noise_params is not None:
+                warnings.warn(
+                    "Explicit call to `_circuit` or `_variational` detected: "
+                    "`noise_params` is None, using `self.noise_params` instead.",
+                    RuntimeWarning,
+                )
+                noise_params = self.noise_params
+
+        if noise_params is not None:
+            if random_key is None:
+                warnings.warn(
+                    "Explicit call to `_circuit` or `_variational` detected: "
+                    "`random_key` is None, using `random.PRNGKey(0)` instead.",
+                    RuntimeWarning,
+                )
+                random_key = self.random_key
+            self._apply_state_prep_noise(noise_params=noise_params)
 
         # state preparation
         for q in range(self.n_qubits):
             for _sp, sp_pulse_params in zip(self._sp, self.sp_pulse_params):
+                random_key, sub_key = safe_random_split(random_key)
                 _sp(
                     wires=q,
                     pulse_params=sp_pulse_params,
-                    noise_params=self.noise_params,
+                    noise_params=noise_params,
+                    random_key=sub_key,
                     gate_mode=gate_mode,
                 )
 
         # circuit building
         for layer in range(0, self.n_layers):
+            self.random_key, sub_key = safe_random_split(self.random_key)
             # ansatz layers
             self.pqc(
                 params[layer],
                 self.n_qubits,
                 pulse_params=pulse_params[layer],
-                noise_params=self.noise_params,
+                noise_params=noise_params,
+                random_key=sub_key,
                 gate_mode=gate_mode,
             )
 
+            self.random_key, sub_key = safe_random_split(self.random_key)
             # encoding layers
             self._iec(
                 inputs,
                 data_reupload=self.data_reupload[layer],
                 enc=self._enc,
                 enc_params=enc_params,
-                noise_params=self.noise_params,
+                noise_params=noise_params,
+                random_key=sub_key,
             )
 
             # visual barrier
@@ -778,17 +808,19 @@ class Model:
 
         # final ansatz layer
         if self.has_dru:  # same check as in init
+            self.random_key, sub_key = safe_random_split(self.random_key)
             self.pqc(
                 params[self.n_layers],
                 self.n_qubits,
                 pulse_params=pulse_params[-1],
-                noise_params=self.noise_params,
+                noise_params=noise_params,
+                random_key=sub_key,
                 gate_mode=gate_mode,
             )
 
         # channel noise
-        if self.noise_params is not None:
-            self._apply_general_noise()
+        if noise_params is not None:
+            self._apply_general_noise(noise_params=noise_params)
 
     def _observable(self):
         # run mixed simualtion and get density matrix
@@ -842,17 +874,17 @@ class Model:
         else:
             raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
-    def _apply_state_prep_noise(self) -> None:
+    def _apply_state_prep_noise(self, noise_params: dict) -> None:
         """
         Applies a state preparation error on each qubit according to the
         probability for StatePreparation provided in the noise_params.
         """
-        p = self.noise_params.get("StatePreparation", 0.0)
+        p = noise_params.get("StatePreparation", 0.0)
         for q in range(self.n_qubits):
             if p > 0:
                 qml.BitFlip(p, wires=q)
 
-    def _apply_general_noise(self) -> None:
+    def _apply_general_noise(self, noise_params: dict) -> None:
         """
         Applies general types of noise the full circuit (in contrast to gate
         errors, applied directly at gate level, see Gates.Noise).
@@ -864,10 +896,10 @@ class Model:
                                  "t1", "t2", "t_factor")
             - Measurement (specified through probability)
         """
-        amp_damp = self.noise_params.get("AmplitudeDamping", 0.0)
-        phase_damp = self.noise_params.get("PhaseDamping", 0.0)
-        thermal_relax = self.noise_params.get("ThermalRelaxation", 0.0)
-        meas = self.noise_params.get("Measurement", 0.0)
+        amp_damp = noise_params.get("AmplitudeDamping", 0.0)
+        phase_damp = noise_params.get("PhaseDamping", 0.0)
+        thermal_relax = noise_params.get("ThermalRelaxation", 0.0)
+        meas = noise_params.get("Measurement", 0.0)
         for q in range(self.n_qubits):
             if amp_damp > 0:
                 qml.AmplitudeDamping(amp_damp, wires=q)
@@ -1072,7 +1104,17 @@ class Model:
 
         return inputs
 
-    def _mp_executor(self, f, params, pulse_params, inputs, enc_params, gate_mode):
+    def _mp_executor(
+        self,
+        f,
+        params,
+        pulse_params,
+        inputs,
+        enc_params,
+        noise_params,
+        random_key,
+        gate_mode,
+    ):
         """
         Execute a function f in parallel over parameters.
 
@@ -1094,28 +1136,49 @@ class Model:
             A numpy array of the output of f applied to each batch of
             samples in params, enc_params, and inputs.
         """
-        combined_batch_size = math.prod(self.batch_shape)
 
-        if (
-            gate_mode == "pulse" or self.use_multithreading
-        ) and combined_batch_size > 1:
+        def _f(_params, _inputs, _pulse_params, _random_key):
+            return f(
+                params=_params,
+                inputs=_inputs,
+                pulse_params=_pulse_params,
+                random_key=_random_key,
+                noise_params=noise_params,
+                enc_params=enc_params,
+                gate_mode=gate_mode,
+            )
+
+        n_batches = np.prod(self.batch_shape)
+        if (gate_mode == "pulse" or self.use_multithreading) and n_batches > 1:
+            random_keys = []
+            for _ in range(n_batches):
+                random_key, sub_key = safe_random_split(random_key)
+                random_keys.append(sub_key)
+            random_keys = jnp.array(random_keys)
+
             # wrapper to allow kwargs (not supported by jax)
             result = jax.vmap(
-                f,
+                _f,
                 in_axes=(
-                    2 if self.batch_shape[1] > 1 else None,
-                    0 if self.batch_shape[0] > 1 else None,
-                    2 if self.batch_shape[2] > 1 else None,
-                    None,
-                    None,
+                    2 if self.batch_shape[1] > 1 else None,  # params
+                    0 if self.batch_shape[0] > 1 else None,  # inputs
+                    2 if self.batch_shape[2] > 1 else None,  # pulse_params
+                    0,  # random_keys
                 ),
-            )(params, inputs, pulse_params, enc_params, gate_mode)
+            )(
+                params,
+                inputs,
+                pulse_params,
+                random_keys,
+            )
         else:
             result = f(
                 params=params,
                 pulse_params=pulse_params,
                 inputs=inputs,
                 enc_params=enc_params,
+                noise_params=noise_params,
+                random_key=random_key,
                 gate_mode=gate_mode,
             )
 
@@ -1378,6 +1441,7 @@ class Model:
         )
 
         result: Optional[jnp.ndarray] = None
+        self.random_key, subkey = safe_random_split(self.random_key)
 
         # if density matrix requested or noise params used
         if self._requires_density():
@@ -1387,6 +1451,8 @@ class Model:
                 pulse_params=pulse_params,
                 inputs=inputs,
                 enc_params=enc_params,
+                noise_params=self.noise_params,
+                random_key=subkey,
                 gate_mode=gate_mode,
             )
         else:
@@ -1401,6 +1467,8 @@ class Model:
                     pulse_params=pulse_params,
                     inputs=inputs,
                     enc_params=enc_params,
+                    noise_params=self.noise_params,
+                    random_key=subkey,
                     gate_mode=gate_mode,
                 )
 
