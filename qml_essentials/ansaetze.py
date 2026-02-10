@@ -1,6 +1,6 @@
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Optional, List, Union, Dict, Callable
+from typing import Any, Optional, List, Union, Dict, Callable, Tuple
 import numbers
 import csv
 import jax.numpy as np
@@ -249,8 +249,10 @@ class UnitaryGates:
 
     @staticmethod
     def GateError(
-        w: float, noise_params: Optional[Dict[str, float]] = None, random_key=None
-    ) -> np.ndarray:
+        w: Union[float, np.ndarray, List[float]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> Tuple[np.ndarray, jax.random.PRNGKey]:
         """
         Applies a gate error to the given rotation angle(s).
 
@@ -261,16 +263,18 @@ class UnitaryGates:
         noise_params : Optional[Dict[str, float]]
             A dictionary of noise parameters. The following noise gates are
             supported:
-           -GateError: Applies a normal distribution error to the rotation
-            angle. The standard deviation of the noise is specified by
-            the "GateError" key in the dictionary.
-
-            All parameters are optional and default to 0.0 if not provided.
+            - GateError: Applies a normal distribution error to the rotation
+              angle. The standard deviation of the noise is specified by the
+              "GateError" key in the dictionary.
+              All parameters are optional and default to 0.0 if not provided.
+        random_key : Optional[jax.random.PRNGKey]
+            A JAX random key
 
         Returns
         -------
-        float
-            The modified rotation angle after applying the gate error.
+        Tuple[np.ndarray, jax.random.PRNGKey]
+            - The modified rotation angle after applying the gate error.
+            - A new JAX random key
         """
         if noise_params is not None and noise_params.get("GateError", None) is not None:
             assert (
@@ -289,7 +293,14 @@ class UnitaryGates:
         return w, random_key
 
     @staticmethod
-    def Rot(phi, theta, omega, wires, noise_params=None, random_key=None):
+    def Rot(
+        phi: Union[float, np.ndarray, List[float]],
+        theta: Union[float, np.ndarray, List[float]],
+        omega: Union[float, np.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ):
         """
         Applies a rotation gate to the given wires and adds `Noise`.
 
@@ -310,6 +321,8 @@ class UnitaryGates:
            -PhaseFlip: Applies a phase flip error to the given wires.
            -Depolarizing: Applies a depolarizing channel error to the
               given wires.
+        random_key : Optional[jax.random.PRNGKey]
+            A JAX random key
 
             All parameters are optional and default to 0.0 if not provided.
         """
@@ -321,7 +334,12 @@ class UnitaryGates:
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def RX(w, wires, noise_params=None, random_key=None):
+    def RX(
+        w: Union[float, np.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ):
         """
         Applies a rotation around the X axis to the given wires and adds `Noise`
 
@@ -338,6 +356,8 @@ class UnitaryGates:
            -PhaseFlip: Applies a phase flip error to the given wires.
            -Depolarizing: Applies a depolarizing channel error to the
               given wires.
+        random_key : Optional[jax.random.PRNGKey]
+            A JAX random key
 
             All parameters are optional and default to 0.0 if not provided.
         """
@@ -346,7 +366,12 @@ class UnitaryGates:
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def RY(w, wires, noise_params=None, random_key=None):
+    def RY(
+        w: Union[float, np.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ):
         """
         Applies a rotation around the Y axis to the given wires and adds `Noise`
 
@@ -363,6 +388,8 @@ class UnitaryGates:
            -PhaseFlip: Applies a phase flip error to the given wires.
            -Depolarizing: Applies a depolarizing channel error to the
             given wires.
+        random_key : Optional[jax.random.PRNGKey]
+            A JAX random key
 
             All parameters are optional and default to 0.0 if not provided.
         """
@@ -371,7 +398,12 @@ class UnitaryGates:
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def RZ(w, wires, noise_params=None, random_key=None):
+    def RZ(
+        w: Union[float, np.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ):
         """
         Applies a rotation around the Z axis to the given wires and adds `Noise`
 
@@ -388,15 +420,21 @@ class UnitaryGates:
            -PhaseFlip: Applies a phase flip error to the given wires.
            -Depolarizing: Applies a depolarizing channel error to the
               given wires.
-
             All parameters are optional and default to 0.0 if not provided.
+        random_key : Optional[jax.random.PRNGKey]
+            A JAX random key
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.RZ(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CRX(w, wires, noise_params=None, random_key=None):
+    def CRX(
+        w: Union[float, np.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ):
         """
         Applies a controlled rotation around the X axis to the given wires
         and adds `Noise`
@@ -414,15 +452,21 @@ class UnitaryGates:
            -PhaseFlip: Applies a phase flip error to the given wires.
            -Depolarizing: Applies a depolarizing channel error to the
               given wires.
-
             All parameters are optional and default to 0.0 if not provided.
+        random_key : Optional[jax.random.PRNGKey]
+            A JAX random key
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.CRX(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CRY(w, wires, noise_params=None, random_key=None):
+    def CRY(
+        w: Union[float, np.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ):
         """
         Applies a controlled rotation around the Y axis to the given wires
         and adds `Noise`
@@ -440,15 +484,21 @@ class UnitaryGates:
            -PhaseFlip: Applies a phase flip error to the given wires.
            -Depolarizing: Applies a depolarizing channel error to the
               given wires.
-
             All parameters are optional and default to 0.0 if not provided.
+        random_key : Optional[jax.random.PRNGKey]
+            A JAX random key
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.CRY(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CRZ(w, wires, noise_params=None, random_key=None):
+    def CRZ(
+        w: Union[float, np.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ):
         """
         Applies a controlled rotation around the Z axis to the given wires
         and adds `Noise`
@@ -466,15 +516,20 @@ class UnitaryGates:
            -PhaseFlip: Applies a phase flip error to the given wires.
            -Depolarizing: Applies a depolarizing channel error to the
             given wires.
-
             All parameters are optional and default to 0.0 if not provided.
+        random_key : Optional[jax.random.PRNGKey]
+            A JAX random key
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.CRZ(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CX(wires, noise_params=None, random_key=None):
+    def CX(
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ):
         """
         Applies a controlled NOT gate to the given wires and adds `Noise`
 
@@ -489,14 +544,19 @@ class UnitaryGates:
            -PhaseFlip: Applies a phase flip error to the given wires.
            -Depolarizing: Applies a depolarizing channel error to the
               given wires.
-
             All parameters are optional and default to 0.0 if not provided.
+        random_key : Optional[jax.random.PRNGKey]
+            A JAX random key, for compatibility. Not used in this gate.
         """
         qml.CNOT(wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CY(wires, noise_params=None, random_key=None):
+    def CY(
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ):
         """
         Applies a controlled Y gate to the given wires and adds `Noise`
 
@@ -511,14 +571,19 @@ class UnitaryGates:
            -PhaseFlip: Applies a phase flip error to the given wires.
            -Depolarizing: Applies a depolarizing channel error to the
               given wires.
-
             All parameters are optional and default to 0.0 if not provided.
+        random_key : Optional[jax.random.PRNGKey]
+            A JAX random key, for compatibility. Not used in this gate.
         """
         qml.CY(wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CZ(wires, noise_params=None, random_key=None):
+    def CZ(
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ):
         """
         Applies a controlled Z gate to the given wires and adds `Noise`
 
@@ -533,14 +598,19 @@ class UnitaryGates:
            -PhaseFlip: Applies a phase flip error to the given wires.
            -Depolarizing: Applies a depolarizing channel error to the
               given wires.
-
             All parameters are optional and default to 0.0 if not provided.
+        random_key : Optional[jax.random.PRNGKey]
+            A JAX random key, for compatibility. Not used in this gate.
         """
         qml.CZ(wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def H(wires, noise_params=None, random_key=None):
+    def H(
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ):
         """
         Applies a Hadamard gate to the given wires and adds `Noise`
 
@@ -555,8 +625,9 @@ class UnitaryGates:
            -PhaseFlip: Applies a phase flip error to the given wires.
            -Depolarizing: Applies a depolarizing channel error to the
               given wires.
-
             All parameters are optional and default to 0.0 if not provided.
+        random_key : Optional[jax.random.PRNGKey]
+            A JAX random key, for compatibility. Not used in this gate.
         """
         qml.Hadamard(wires=wires)
         UnitaryGates.Noise(wires, noise_params)
