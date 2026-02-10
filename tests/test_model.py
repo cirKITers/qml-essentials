@@ -229,6 +229,17 @@ def test_multiprocessing_expval() -> None:
     assert (res_parallel == res_single).all(), "Content of multiprocessing is not equal"
 
 
+@pytest.mark.unittest
+def test_random_key() -> None:
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Circuit_19", random_seed=1000)
+
+    key_a = model.random_key
+    key_b = model.initialize_params(key_a, repeat=10)
+
+    assert key_a != key_b, "Keys should be different"
+    assert key_b != model.random_key, "Keys should be different"
+
+
 @pytest.mark.smoketest
 def test_state_preparation() -> None:
     test_cases = [

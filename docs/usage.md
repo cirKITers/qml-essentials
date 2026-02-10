@@ -89,7 +89,9 @@ Other options are:
 
 The `initialize_params` method provides the option to re-initialise the parameters after model instantiation using either the previous configuration or a different strategy.
 Given a PRNG key, it returns the `key` from `key, subkey = random.split(key)`  as documented [here](https://docs.jax.dev/en/latest/random-numbers.html) and uses the subkey for the actual parameter initialization.
-This allows to repetively call `key = model.initialize_params(key)` to generate a continous sequence of random initializations.
+It's also possible to omit the `key` argument entirely, as the model has an internal `random_key` state which is updated every time randomness is utilized.
+This allows to repetively call `model.initialize_params()` to generate a continous sequence of random initializations.
+
 
 ## Encoding
 
