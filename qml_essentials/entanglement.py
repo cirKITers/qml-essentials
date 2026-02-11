@@ -2,7 +2,7 @@ from typing import Optional, Any, List, Tuple
 import pennylane as qml
 import jax.numpy as jnp
 import numpy as np
-from jax import random
+from jax import random, vmap
 
 from qml_essentials.utils import logm_v
 from qml_essentials.model import Model
@@ -60,14 +60,18 @@ class Entanglement:
             -1, 2**model.n_qubits, 2**model.n_qubits
         )
 
-        ent = Entanglement._compute_meyer_wallach_meas(rhos, model.n_qubits)
+        ent = Entanglement._compute_meyer_wallach_meas(
+            rhos, model.n_qubits, model.use_multithreading
+        )
 
         log.debug(f"Variance of measure: {ent.var()}")
 
         return ent.mean()
 
     @staticmethod
-    def _compute_meyer_wallach_meas(rhos: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
+    def _compute_meyer_wallach_meas(
+        rhos: jnp.ndarray, n_qubits: int, use_multithreading: bool = False
+    ) -> jnp.ndarray:
         """
         Computes the Meyer-Wallach entangling capability measure for a given
         set of density matrices.
@@ -77,23 +81,31 @@ class Entanglement:
                 The shape is (B_s, 2^n, 2^n), where B_s is the number of samples
                 (batch) and n the number of qubits
             n_qubits (int): The number of qubits
+            use_multithreading (bool): Whether to use JAX vectorisation.
 
         Returns:
             jnp.ndarray: Entangling capability for each sample, array with
                 shape (B_s,)
         """
         qb = list(range(n_qubits))
-        entropy = 0
-        for j in range(n_qubits):
-            # Formula 6 in https://doi.org/10.48550/arXiv.quant-ph/0305094
-            density = qml.math.partial_trace(rhos, qb[:j] + qb[j + 1 :])
-            # only real values, because imaginary part will be separate
-            # in all following calculations anyway
-            # entropy should be 1/2 <= entropy <= 1
-            entropy += jnp.trace((density @ density).real, axis1=1, axis2=2)
 
-        # inverse averaged entropy and scale to [0, 1]
-        return 2 * (1 - entropy / n_qubits)
+        def _f(rhos):
+            entropy = 0
+            for j in range(n_qubits):
+                # Formula 6 in https://doi.org/10.48550/arXiv.quant-ph/0305094
+                density = qml.math.partial_trace(rhos, qb[:j] + qb[j + 1 :])
+                # only real values, because imaginary part will be separate
+                # in all following calculations anyway
+                # entropy should be 1/2 <= entropy <= 1
+                entropy += jnp.trace((density @ density).real, axis1=-2, axis2=-1)
+
+            # inverse averaged entropy and scale to [0, 1]
+            return 2 * (1 - entropy / n_qubits)
+
+        if use_multithreading:
+            return vmap(_f)(rhos)
+        else:
+            return _f(rhos)
 
     @staticmethod
     def bell_measurements(
@@ -264,13 +276,15 @@ class Entanglement:
 
         normalised_entropies = jnp.zeros((n_sigmas, model.params.shape[-1]))
 
-        rel_entropies = Entanglement._compute_rel_entropies(rhos, log_rhos, log_sigmas)
+        rel_entropies = Entanglement._compute_rel_entropies(
+            rhos, log_rhos, log_sigmas, model.use_multithreading
+        )
 
         # Entropy of GHZ states should be maximal
         ghz_model = Model(model.n_qubits, 1, "GHZ", data_reupload=False)
         rho_ghz, log_rho_ghz = Entanglement._compute_log_density(ghz_model, **kwargs)
         ghz_entropies = Entanglement._compute_rel_entropies(
-            rho_ghz, log_rho_ghz, log_sigmas
+            rho_ghz, log_rho_ghz, log_sigmas, use_multithreading=False
         )
         ghz_min_dist = jnp.min(ghz_entropies)
 
@@ -308,6 +322,7 @@ class Entanglement:
         rhos: jnp.ndarray,
         log_rhos: jnp.ndarray,
         log_sigmas: jnp.ndarray,
+        use_multithreading: bool,
     ) -> jnp.ndarray:
         """
         Compute the relative entropy for a given model.
@@ -326,14 +341,22 @@ class Entanglement:
         """
         n_rhos = rhos.shape[0]
         n_sigmas = log_sigmas.shape[0]
-
         rhos = jnp.tile(rhos, (n_sigmas, 1, 1))
         log_rhos = jnp.tile(log_rhos, (n_sigmas, 1, 1))
         log_sigmas = log_sigmas.repeat(n_rhos, axis=0)
-        prod = jnp.einsum("sij,sjk->sik", rhos, log_rhos - log_sigmas)
-        rel_entropies = jnp.abs(jnp.trace(prod, axis1=1, axis2=2))
-        rel_entropies = rel_entropies.reshape(n_sigmas, n_rhos).T
+        einsum_subscript = "ij,jk->ik" if use_multithreading else "sij,sjk->sik"
 
+        def _f(rhos, log_rhos, log_sigmas):
+            prod = jnp.einsum(einsum_subscript, rhos, log_rhos - log_sigmas)
+            rel_entropies = jnp.abs(jnp.trace(prod, axis1=-2, axis2=-1))
+            return rel_entropies
+
+        if use_multithreading:
+            rel_entropies = vmap(_f, in_axes=(0, 0, 0))(rhos, log_rhos, log_sigmas)
+        else:
+            rel_entropies = _f(rhos, log_rhos, log_sigmas)
+
+        rel_entropies = rel_entropies.reshape(n_sigmas, n_rhos).T
         return rel_entropies
 
     @staticmethod
@@ -397,13 +420,16 @@ class Entanglement:
         rhos = model(execution_type="density", **kwargs)
         rhos = rhos.reshape(-1, 2**model.n_qubits, 2**model.n_qubits)
         ent = Entanglement._compute_entanglement_of_formation(
-            rhos, model.n_qubits, always_decompose
+            rhos, model.n_qubits, always_decompose, model.use_multithreading
         )
         return ent.mean()
 
     @staticmethod
     def _compute_entanglement_of_formation(
-        rhos: jnp.ndarray, n_qubits: int, always_decompose: bool
+        rhos: jnp.ndarray,
+        n_qubits: int,
+        always_decompose: bool,
+        use_multithreading: bool,
     ) -> jnp.ndarray:
         """
         Computes the entanglement of formation for a given batch of density
@@ -416,18 +442,20 @@ class Entanglement:
             always_decompose (bool): Whether to explicitly compute the
                 entantlement of formation for the eigendecomposition of a pure
                 state.
+            use_multithreading (bool): Whether to use JAX vectorisation.
 
         Returns:
             jnp.ndarray: Entanglement for the provided density matrices.
         """
-        ent = jnp.zeros(len(rhos))
         eigenvalues, eigenvectors = jnp.linalg.eigh(rhos)
         if not always_decompose and jnp.isclose(eigenvalues, 1.0).any(axis=-1).all():
-            return Entanglement._compute_meyer_wallach_meas(rhos, n_qubits)
+            return Entanglement._compute_meyer_wallach_meas(
+                rhos, n_qubits, use_multithreading
+            )
 
         rhos = np.einsum("sij,sik->sijk", eigenvectors, eigenvectors.conjugate())
         measures = Entanglement._compute_meyer_wallach_meas(
-            rhos.reshape(-1, 2**n_qubits, 2**n_qubits), n_qubits
+            rhos.reshape(-1, 2**n_qubits, 2**n_qubits), n_qubits, use_multithreading
         )
         ent = np.einsum("si,si->s", measures.reshape(-1, 2**n_qubits), eigenvalues)
         return ent
@@ -515,8 +543,15 @@ class Entanglement:
             else:
                 log.info(f"Using sample size of model params: {model.params.shape[-1]}")
 
-        probs = _swap_test(model.params, model._inputs_validation(None), **kwargs)
-        ent = 1 - probs[..., 0]
+        def _f(params):
+            probs = _swap_test(params, model._inputs_validation(None), **kwargs)
+            ent = 1 - probs[..., 0]
+            return ent
+
+        if model.use_multithreading:
+            ent = vmap(_f, in_axes=2)(model.params)
+        else:
+            ent = _f(model.params)
 
         # Catch floating point errors
         log.debug(f"Variance of measure: {ent.var()}")
