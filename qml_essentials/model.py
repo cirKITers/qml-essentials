@@ -305,36 +305,29 @@ class Model:
             None
         """
         # set to None if only zero values provided
-        if kvs is not None and all(jnp == 0.0 for jnp in kvs.values()):
+        if kvs is not None and all(v == 0.0 for v in kvs.values()):
             kvs = None
 
         # set default values
         if kvs is not None:
-            kvs.setdefault("BitFlip", 0.0)
-            kvs.setdefault("PhaseFlip", 0.0)
-            kvs.setdefault("Depolarizing", 0.0)
-            kvs.setdefault("MultiQubitDepolarizing", 0.0)
-            kvs.setdefault("AmplitudeDamping", 0.0)
-            kvs.setdefault("PhaseDamping", 0.0)
-            kvs.setdefault("GateError", 0.0)
-            kvs.setdefault("ThermalRelaxation", None)
-            kvs.setdefault("StatePreparation", 0.0)
-            kvs.setdefault("Measurement", 0.0)
+            defaults = {
+                "BitFlip": 0.0,
+                "PhaseFlip": 0.0,
+                "Depolarizing": 0.0,
+                "MultiQubitDepolarizing": 0.0,
+                "AmplitudeDamping": 0.0,
+                "PhaseDamping": 0.0,
+                "GateError": 0.0,
+                "ThermalRelaxation": None,
+                "StatePreparation": 0.0,
+                "Measurement": 0.0,
+            }
+            for key, default_val in defaults.items():
+                kvs.setdefault(key, default_val)
 
             # check if there are any keys not supported
             for key in kvs.keys():
-                if key not in [
-                    "BitFlip",
-                    "PhaseFlip",
-                    "Depolarizing",
-                    "MultiQubitDepolarizing",
-                    "AmplitudeDamping",
-                    "PhaseDamping",
-                    "GateError",
-                    "ThermalRelaxation",
-                    "StatePreparation",
-                    "Measurement",
-                ]:
+                if key not in defaults:
                     warnings.warn(
                         f"Noise type {key} is not supported by this package",
                         UserWarning,
@@ -346,12 +339,9 @@ class Model:
                 tr_params.setdefault("t1", 0.0)
                 tr_params.setdefault("t2", 0.0)
                 tr_params.setdefault("t_factor", 0.0)
+                valid_tr_keys = {"t1", "t2", "t_factor"}
                 for k in tr_params.keys():
-                    if k not in [
-                        "t1",
-                        "t2",
-                        "t_factor",
-                    ]:
+                    if k not in valid_tr_keys:
                         warnings.warn(
                             f"Thermal Relaxation parameter {k} is not supported "
                             f"by this package",
@@ -896,8 +886,8 @@ class Model:
         probability for StatePreparation provided in the noise_params.
         """
         p = noise_params.get("StatePreparation", 0.0)
-        for q in range(self.n_qubits):
-            if p > 0:
+        if p > 0:
+            for q in range(self.n_qubits):
                 qml.BitFlip(p, wires=q)
 
     def _apply_general_noise(self, noise_params: dict) -> None:
@@ -984,14 +974,14 @@ class Model:
         inputs = self._inputs_validation(inputs)
 
         if figure == "mpl":
-            result = qml.draw_mpl(self.circuit)(
+            return qml.draw_mpl(self.circuit)(
                 params=self.params,
                 inputs=inputs,
                 *args,
                 **kwargs,
             )
         elif figure == "tikz":
-            result = QuanTikz.build(
+            return QuanTikz.build(
                 self.circuit,
                 params=self.params,
                 inputs=inputs,
@@ -999,8 +989,7 @@ class Model:
                 **kwargs,
             )
         else:
-            result = qml.draw(self.circuit)(params=self.params, inputs=inputs)
-        return result
+            return qml.draw(self.circuit)(params=self.params, inputs=inputs)
 
     def __repr__(self) -> str:
         return self.draw(figure="text")
@@ -1019,8 +1008,6 @@ class Model:
             jnp.ndarray: Validated parameters.
         """
         # append batch axis if not provided
-
-        # TODO: replace with getter/setter
         if params is not None:
             if len(params.shape) == 2:
                 params = np.expand_dims(params, axis=-1)
@@ -1210,14 +1197,9 @@ class Model:
             # we use moveaxis here because in case of parity measure,
             # there is another dimension appended to the end and
             # simply transposing would result in a wrong shape
-            if isinstance(result[0], jnp.ndarray):
-                result = jnp.stack(result)
-                if len(result.shape) > 1:
-                    result = jnp.moveaxis(result, 0, 1)
-            else:
-                result = jnp.stack(result)
-                if len(result.shape) > 1:
-                    result = jnp.moveaxis(result, 0, 1)
+            result = jnp.stack(result)
+            if len(result.shape) > 1:
+                result = jnp.moveaxis(result, 0, 1)
         return result
 
     def _assimilate_batch(self, inputs, params, pulse_params):
@@ -1289,13 +1271,15 @@ class Model:
         if self.execution_type == "density":
             return True
 
-        if self.noise_params is not None:
-            coherent_noise = ["GateError"]
-            for k, v in self.noise_params.items():
-                if k in coherent_noise:
-                    continue
-                if v is not None and v > 0:
-                    return True
+        if self.noise_params is None:
+            return False
+
+        coherent_noise = {"GateError"}
+        for k, v in self.noise_params.items():
+            if k in coherent_noise:
+                continue
+            if v is not None and v > 0:
+                return True
         return False
 
     def __call__(
@@ -1484,7 +1468,7 @@ class Model:
         result = result.reshape((*self.eff_batch_shape, *self._result_shape)).squeeze()
 
         if (
-            (self.execution_type == "expval" or self.execution_type == "probs")
+            self.execution_type in ("expval", "probs")
             and force_mean
             and len(result.shape) > 0
             and self._result_shape[0] > 1
