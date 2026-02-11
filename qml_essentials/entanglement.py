@@ -467,7 +467,9 @@ class Entanglement:
         )
 
         @qml.qnode(device=dev)
-        def _swap_test(rho: jnp.ndarray, n: int) -> jnp.ndarray:
+        def _swap_test(
+            params: jnp.ndarray, inputs: jnp.ndarray, **kwargs
+        ) -> jnp.ndarray:
             """
             Constructs a circuit to compute the concentratable entanglement using the
             swap test by creating two copies of a state given by a density matrix rho
@@ -481,8 +483,12 @@ class Entanglement:
                 List[jnp.ndarray]: Probabilities obtained from the swap test circuit.
             """
 
-            qml.QubitDensityMatrix(rho, wires=[i for i in range(n, 2 * n)])
-            qml.QubitDensityMatrix(rho, wires=[i for i in range(2 * n, 3 * n)])
+            qml.map_wires(model._variational, wire_map={o: o + n for o in range(n)})(
+                params, inputs, **kwargs
+            )
+            qml.map_wires(
+                model._variational, wire_map={o: o + 2 * n for o in range(n)}
+            )(params, inputs, **kwargs)
 
             # Perform swap test
             for i in range(n):
@@ -509,21 +515,13 @@ class Entanglement:
             else:
                 log.info(f"Using sample size of model params: {model.params.shape[-1]}")
 
-        kwargs.setdefault("inputs", None)
-        rhos = model(execution_type="density", **kwargs)
-        rhos = rhos.reshape(-1, N, N)
-
-        entanglement = np.zeros(len(rhos))
-
-        for i, rho in enumerate(rhos):
-            probs = _swap_test(rho, n)
-            entanglement[i] = 1 - probs[0]
+        probs = _swap_test(model.params, model._inputs_validation(None), **kwargs)
+        ent = 1 - probs[..., 0]
 
         # Catch floating point errors
-        entangling_capability = min(max(entanglement.mean(), 0.0), 1.0)
-        log.debug(f"Variance of measure: {entanglement.var()}")
+        log.debug(f"Variance of measure: {ent.var()}")
 
-        return float(entangling_capability)
+        return ent.mean()
 
 
 def sample_random_separable_states(
