@@ -226,7 +226,9 @@ class Model:
             pulse_params_per_layer,
         )
 
-        self.batch_shape = (1, 1, 1)
+        # intialize to None as we can't know this yet
+        self._batch_shape = None
+
         # this will also be re-used in the init method,
         # however, only if nothing is provided
         self._inialization_strategy = initialization
@@ -503,6 +505,20 @@ class Model:
     @property
     def all_qubit_measurement(self) -> bool:
         return self.output_qubit == list(range(self.n_qubits))
+
+    @property
+    def batch_shape(self) -> Tuple[int, ...]:
+        # check if the model was called already
+        if self._batch_shape is None:
+            log.warning("Model was not called yet. Returning (1,1,1).")
+            return (1, 1, 1)
+        return self._batch_shape
+
+    @property
+    def eff_batch_shape(self) -> Tuple[int, ...]:
+        batch_shape = np.array(self.batch_shape) * self.repeat_batch_axis
+        batch_shape = batch_shape[batch_shape != 0]
+        return batch_shape
 
     def initialize_params(
         self,
@@ -1148,13 +1164,9 @@ class Model:
                 gate_mode=gate_mode,
             )
 
-        n_batches = np.prod(self.batch_shape)
-        if (gate_mode == "pulse" or self.use_multithreading) and n_batches > 1:
-            random_keys = []
-            for _ in range(n_batches):
-                random_key, sub_key = safe_random_split(random_key)
-                random_keys.append(sub_key)
-            random_keys = jnp.array(random_keys)
+        B = np.prod(self.eff_batch_shape)
+        if (gate_mode == "pulse" or self.use_multithreading) and B > 1:
+            random_keys = safe_random_split(random_key, num=B)
 
             # wrapper to allow kwargs (not supported by jax)
             result = jax.vmap(
@@ -1226,10 +1238,9 @@ class Model:
         B_P = 1 if 0 in params.shape else params.shape[-1]
         B_R = pulse_params.shape[-1]
 
-        batch_shape = (B_I, B_P, B_R)
-        batch_shape_enabled = np.array(batch_shape) * self.repeat_batch_axis
-        batch_shape_enabled = batch_shape_enabled[batch_shape_enabled != 0]
-        B = np.prod(batch_shape_enabled)
+        # THIS is the only place where we set the batch shape
+        self._batch_shape = (B_I, B_P, B_R)
+        B = np.prod(self.eff_batch_shape)
 
         # [B_I, ...] -> [B_I, B_P, B_R, ...] -> [B, ...]
         if B_I > 1 and self.repeat_batch_axis[0]:
@@ -1265,7 +1276,7 @@ class Model:
                 )  # [..., B_I, B_P, B_R]
             pulse_params = pulse_params.reshape(*pulse_params.shape[:-3], B)
 
-        return inputs, params, pulse_params, batch_shape, batch_shape_enabled
+        return inputs, params, pulse_params
 
     def _requires_density(self):
         """
@@ -1432,12 +1443,10 @@ class Model:
         inputs = self._inputs_validation(inputs)
         enc_params = self._enc_params_validation(enc_params)
 
-        inputs, params, pulse_params, self.batch_shape, batch_shape_enabled = (
-            self._assimilate_batch(
-                inputs,
-                params,
-                pulse_params,
-            )
+        inputs, params, pulse_params = self._assimilate_batch(
+            inputs,
+            params,
+            pulse_params,
         )
 
         result: Optional[jnp.ndarray] = None
@@ -1472,7 +1481,7 @@ class Model:
                     gate_mode=gate_mode,
                 )
 
-        result = result.reshape((*batch_shape_enabled, *self._result_shape)).squeeze()
+        result = result.reshape((*self.eff_batch_shape, *self._result_shape)).squeeze()
 
         if (
             (self.execution_type == "expval" or self.execution_type == "probs")
