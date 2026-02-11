@@ -1497,8 +1497,8 @@ class Model:
             params (Optional[jnp.ndarray]): Variational parameters of shape
                 (n_layers, n_params_per_layer) or (n_layers, n_params_per_layer, batch).
                 If None, uses model's internal parameters.
-            inputs (Optional[jnp.ndarray]): Input data of shape (batch_size, n_input_feat).
-                If None, uses zero inputs.
+            inputs (Optional[jnp.ndarray]): Input data of shape
+                (batch_size, n_input_feat). If None, uses zero inputs.
             pulse_params (Optional[jnp.ndarray]): Pulse parameter scalers for
                 pulse-mode gate execution.
             enc_params (Optional[jnp.ndarray]): Encoding parameters of shape
@@ -1550,9 +1550,11 @@ class Model:
 
         Args:
             params (Optional[jnp.ndarray]): Variational parameters of shape
-                (n_layers, n_params_per_layer) or (n_layers, n_params_per_layer, batch).
+                (n_layers, n_params_per_layer) or
+                (n_layers, n_params_per_layer, batch).
                 If None, uses model's internal parameters.
-            inputs (Optional[jnp.ndarray]): Input data of shape (batch_size, n_input_feat).
+            inputs (Optional[jnp.ndarray]): Input data of shape
+                (batch_size, n_input_feat).
                 If None, uses zero inputs.
             pulse_params (Optional[jnp.ndarray]): Pulse parameter scalers for
                 pulse-mode gate execution.
