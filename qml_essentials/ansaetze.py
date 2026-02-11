@@ -330,9 +330,9 @@ class UnitaryGates:
         gate errors and noise channels.
 
         Args:
-            phi (Union[float, np.ndarray, List[float]]): First rotation angle (radians).
-            theta (Union[float, np.ndarray, List[float]]): Second rotation angle (radians).
-            omega (Union[float, np.ndarray, List[float]]): Third rotation angle (radians).
+            phi (Union[float, np.ndarray, List[float]]): First rotation angle.
+            theta (Union[float, np.ndarray, List[float]]): Second rotation angle.
+            omega (Union[float, np.ndarray, List[float]]): Third rotation angle.
             wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
                 Supports BitFlip, PhaseFlip, Depolarizing, and GateError.
@@ -359,7 +359,7 @@ class UnitaryGates:
         Apply X-axis rotation with optional noise.
 
         Args:
-            w (Union[float, np.ndarray, List[float]]): Rotation angle (radians).
+            w (Union[float, np.ndarray, List[float]]): Rotation angle.
             wires (Union[int, List[int]]): Qubit index or indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
@@ -382,7 +382,7 @@ class UnitaryGates:
         Apply Y-axis rotation with optional noise.
 
         Args:
-            w (Union[float, np.ndarray, List[float]]): Rotation angle (radians).
+            w (Union[float, np.ndarray, List[float]]): Rotation angle.
             wires (Union[int, List[int]]): Qubit index or indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
@@ -405,7 +405,7 @@ class UnitaryGates:
         Apply Z-axis rotation with optional noise.
 
         Args:
-            w (Union[float, np.ndarray, List[float]]): Rotation angle (radians).
+            w (Union[float, np.ndarray, List[float]]): Rotation angle.
             wires (Union[int, List[int]]): Qubit index or indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
@@ -428,7 +428,7 @@ class UnitaryGates:
         Apply controlled X-rotation with optional noise.
 
         Args:
-            w (Union[float, np.ndarray, List[float]]): Rotation angle (radians).
+            w (Union[float, np.ndarray, List[float]]): Rotation angle.
             wires (Union[int, List[int]]): Control and target qubit indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
@@ -451,7 +451,7 @@ class UnitaryGates:
         Apply controlled Y-rotation with optional noise.
 
         Args:
-            w (Union[float, np.ndarray, List[float]]): Rotation angle (radians).
+            w (Union[float, np.ndarray, List[float]]): Rotation angle.
             wires (Union[int, List[int]]): Control and target qubit indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
@@ -474,7 +474,7 @@ class UnitaryGates:
         Apply controlled Z-rotation with optional noise.
 
         Args:
-            w (Union[float, np.ndarray, List[float]]): Rotation angle (radians).
+            w (Union[float, np.ndarray, List[float]]): Rotation angle.
             wires (Union[int, List[int]]): Control and target qubit indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
@@ -954,7 +954,7 @@ class PulseGates:
                 - sigma (float): Width (standard deviation) of the Gaussian
             t (Union[float, List[float], np.ndarray]): Time or time interval
                 for pulse application. If sequence, center is computed as midpoint.
-            phi_c (float): Phase offset for the cosine carrier (radians).
+            phi_c (float): Phase offset for the cosine carrier.
 
         Returns:
             np.ndarray: Shaped pulse amplitude at time(s) t.
@@ -982,9 +982,9 @@ class PulseGates:
         and applies each component using pulse-level implementations.
 
         Args:
-            phi (float): First rotation angle (radians).
-            theta (float): Second rotation angle (radians).
-            omega (float): Third rotation angle (radians).
+            phi (float): First rotation angle.
+            theta (float): Second rotation angle.
+            omega (float): Third rotation angle.
             wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
             pulse_params (Optional[np.ndarray]): Pulse parameters for the
                 composing gates. If None, uses optimized parameters.
