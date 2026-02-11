@@ -60,29 +60,37 @@ class Entanglement:
             -1, 2**model.n_qubits, 2**model.n_qubits
         )
 
-        measure = jnp.zeros(len(rhos))
+        ent = Entanglement._compute_meyer_wallach_meas(rhos, model.n_qubits)
 
-        for i, rho in enumerate(rhos):
-            ent = Entanglement._compute_meyer_wallach_meas(rho, model.n_qubits)
-            measure = measure.at[i].set(ent)
+        log.debug(f"Variance of measure: {ent.var()}")
 
-        # Average all iterated states
-        entangling_capability = min(max(measure.mean(), 0.0), 1.0)
-        log.debug(f"Variance of measure: {measure.var()}")
-
-        return entangling_capability
+        return ent.mean()
 
     @staticmethod
-    def _compute_meyer_wallach_meas(rho: jnp.ndarray, n_qubits: int):
+    def _compute_meyer_wallach_meas(rhos: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
+        """
+        Computes the Meyer-Wallach entangling capability measure for a given
+        set of density matrices.
+
+        Args:
+            rhos (jnp.ndarray): Density matrices of the sample quantum states.
+                The shape is (B_s, n, n), where B_s is the number of samples
+                (batch) and n the number of qubits
+            n_qubits (int): The number of qubits
+
+        Returns:
+            jnp.ndarray: Entangling capability for each sample, array with
+                shape (B_s,)
+        """
         qb = list(range(n_qubits))
         entropy = 0
         for j in range(n_qubits):
             # Formula 6 in https://doi.org/10.48550/arXiv.quant-ph/0305094
-            density = qml.math.partial_trace(rho, qb[:j] + qb[j + 1 :])
+            density = qml.math.partial_trace(rhos, qb[:j] + qb[j + 1 :])
             # only real values, because imaginary part will be separate
             # in all following calculations anyway
             # entropy should be 1/2 <= entropy <= 1
-            entropy += jnp.trace((density @ density).real)
+            entropy += jnp.trace((density @ density).real, axis1=1, axis2=2)
 
         # inverse averaged entropy and scale to [0, 1]
         return 2 * (1 - entropy / n_qubits)
@@ -407,7 +415,9 @@ class Entanglement:
         """
         eigenvalues, eigenvectors = jnp.linalg.eigh(rho)
         if any(jnp.isclose(eigenvalues, 1.0)) and not always_decompose:  # Pure state
-            return Entanglement._compute_meyer_wallach_meas(rho, n_qubits)
+            return Entanglement._compute_meyer_wallach_meas(
+                rho[jnp.newaxis, ...], n_qubits
+            )[0]
         ent = 0
         for prob, ev in zip(eigenvalues, eigenvectors):
             ev = ev.reshape(-1, 1)
