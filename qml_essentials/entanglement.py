@@ -74,7 +74,7 @@ class Entanglement:
 
         Args:
             rhos (jnp.ndarray): Density matrices of the sample quantum states.
-                The shape is (B_s, n, n), where B_s is the number of samples
+                The shape is (B_s, 2^n, 2^n), where B_s is the number of samples
                 (batch) and n the number of qubits
             n_qubits (int): The number of qubits
 
@@ -388,42 +388,40 @@ class Entanglement:
         kwargs.setdefault("inputs", None)
         rhos = model(execution_type="density", **kwargs)
         rhos = rhos.reshape(-1, 2**model.n_qubits, 2**model.n_qubits)
-        entanglement = np.zeros(len(rhos))
-        for i, rho in enumerate(rhos):
-            entanglement[i] = Entanglement._compute_entanglement_of_formation(
-                rho, model.n_qubits, always_decompose
-            )
-        entangling_capability = min(max(entanglement.mean(), 0.0), 1.0)
-        return float(entangling_capability)
+        ent = Entanglement._compute_entanglement_of_formation(
+            rhos, model.n_qubits, always_decompose
+        )
+        return ent.mean()
 
     @staticmethod
     def _compute_entanglement_of_formation(
-        rho: jnp.ndarray, n_qubits: int, always_decompose: bool
-    ) -> float:
+        rhos: jnp.ndarray, n_qubits: int, always_decompose: bool
+    ) -> jnp.ndarray:
         """
-        Computes the entanglement of formation for a given density matrix rho.
+        Computes the entanglement of formation for a given batch of density
+        matrices.
 
         Args:
-            rho (jnp.ndarray): The density matrix
+            rho (jnp.ndarray): The density matrices, has shape (B_s, 2^n, 2^n),
+                where B_s is the batch size and n the number of qubits.
             n_qubits (int): Number of qubits
             always_decompose (bool): Whether to explicitly compute the
                 entantlement of formation for the eigendecomposition of a pure
                 state.
 
         Returns:
-            float: Entanglement for the provided state.
+            jnp.ndarray: Entanglement for the provided density matrices.
         """
-        eigenvalues, eigenvectors = jnp.linalg.eigh(rho)
-        if any(jnp.isclose(eigenvalues, 1.0)) and not always_decompose:  # Pure state
-            return Entanglement._compute_meyer_wallach_meas(
-                rho[jnp.newaxis, ...], n_qubits
-            )[0]
-        ent = 0
-        for prob, ev in zip(eigenvalues, eigenvectors):
-            ev = ev.reshape(-1, 1)
-            rho = ev @ jnp.conjugate(ev).T
-            measure = Entanglement._compute_meyer_wallach_meas(rho, n_qubits)
-            ent += prob * measure
+        ent = jnp.zeros(len(rhos))
+        eigenvalues, eigenvectors = jnp.linalg.eigh(rhos)
+        if not always_decompose and jnp.isclose(eigenvalues, 1.0).any(axis=-1).all():
+            return Entanglement._compute_meyer_wallach_meas(rhos, n_qubits)
+
+        rhos = np.einsum("sij,sik->sijk", eigenvectors, eigenvectors.conjugate())
+        measures = Entanglement._compute_meyer_wallach_meas(
+            rhos.reshape(-1, 2**n_qubits, 2**n_qubits), n_qubits
+        )
+        ent = np.einsum("si,si->s", measures.reshape(-1, 2**n_qubits), eigenvalues)
         return ent
 
     @staticmethod
