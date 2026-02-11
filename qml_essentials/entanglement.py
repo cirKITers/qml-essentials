@@ -260,25 +260,24 @@ class Entanglement:
             else:
                 log.info(f"Using sample size of model params: {model.params.shape[-1]}")
 
-        ghz_model = Model(model.n_qubits, 1, "GHZ", data_reupload=False)
-        rho_ghz, log_rho_ghz = Entanglement._compute_log_density(ghz_model, **kwargs)
+        rhos, log_rhos = Entanglement._compute_log_density(model, **kwargs)
 
         normalised_entropies = jnp.zeros((n_sigmas, model.params.shape[-1]))
-        for j, log_sigma in enumerate(log_sigmas):
-            # Entropy of GHZ states should be maximal
-            ghz_entropy = Entanglement._compute_rel_entropies(
-                rho_ghz, log_rho_ghz, log_sigma
-            )
 
-            rho, log_rho = Entanglement._compute_log_density(model, **kwargs)
-            rel_entropy = Entanglement._compute_rel_entropies(rho, log_rho, log_sigma)
+        rel_entropies = Entanglement._compute_rel_entropies(rhos, log_rhos, log_sigmas)
 
-            normalised_entropies = normalised_entropies.at[j].set(
-                rel_entropy / ghz_entropy
-            )
+        # Entropy of GHZ states should be maximal
+        ghz_model = Model(model.n_qubits, 1, "GHZ", data_reupload=False)
+        rho_ghz, log_rho_ghz = Entanglement._compute_log_density(ghz_model, **kwargs)
+        ghz_entropies = Entanglement._compute_rel_entropies(
+            rho_ghz, log_rho_ghz, log_sigmas
+        )
+        ghz_min_dist = jnp.min(ghz_entropies)
+
+        normalised_entropies = rel_entropies / ghz_min_dist
 
         # Average all iterated states
-        entangling_capability = normalised_entropies.min(axis=0).mean()
+        entangling_capability = normalised_entropies.min(axis=1).mean()
         log.debug(f"Variance of measure: {normalised_entropies.var()}")
 
         return entangling_capability
@@ -306,25 +305,34 @@ class Entanglement:
 
     @staticmethod
     def _compute_rel_entropies(
-        rho: jnp.ndarray,
-        log_rho: jnp.ndarray,
-        log_sigma: jnp.ndarray,
+        rhos: jnp.ndarray,
+        log_rhos: jnp.ndarray,
+        log_sigmas: jnp.ndarray,
     ) -> jnp.ndarray:
         """
         Compute the relative entropy for a given model.
 
         Args:
-            log_rho (jnp.ndarray): Density matrix result of the circuit
-            log_rho (jnp.ndarray): Corresponding logarithm of the density
-                matrix
-            log_sigma (jnp.ndarray): Density matrix of next separable state
+            rhos (jnp.ndarray): Density matrix result of the circuit, has shape
+                (R, 2^n, 2^n), with the batch size R and number of qubits n
+            log_rhos (jnp.ndarray): Corresponding logarithm of the density
+                matrix, has shape (R, 2^n, 2^n).
+            log_sigmas (jnp.ndarray): Density matrix of next separable state,
+                has shape (S, 2^n, 2^n), with the batch size S (number of
+                sigmas).
 
         Returns:
             jnp.ndarray: Relative Entropy for each sample
         """
-        rel_entropies = jnp.abs(
-            jnp.trace(rho @ (log_rho - log_sigma), axis1=1, axis2=2)
-        )
+        n_rhos = rhos.shape[0]
+        n_sigmas = log_sigmas.shape[0]
+
+        rhos = jnp.tile(rhos, (n_sigmas, 1, 1))
+        log_rhos = jnp.tile(log_rhos, (n_sigmas, 1, 1))
+        log_sigmas = log_sigmas.repeat(n_rhos, axis=0)
+        prod = jnp.einsum("sij,sjk->sik", rhos, log_rhos - log_sigmas)
+        rel_entropies = jnp.abs(jnp.trace(prod, axis1=1, axis2=2))
+        rel_entropies = rel_entropies.reshape(n_sigmas, n_rhos).T
 
         return rel_entropies
 
