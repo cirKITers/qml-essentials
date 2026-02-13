@@ -519,7 +519,7 @@ class Model:
                 Returns (1, 1, 1) if model has not been called yet.
         """
         if self._batch_shape is None:
-            log.warning("Model was not called yet. Returning (1,1,1).")
+            log.warning("Model was not called yet. Returning (1,1,1) as batch shape.")
             return (1, 1, 1)
         return self._batch_shape
 
