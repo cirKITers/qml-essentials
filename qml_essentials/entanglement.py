@@ -1,5 +1,6 @@
 from typing import Optional, Any, List, Tuple
 import pennylane as qml
+import jax
 import jax.numpy as jnp
 import numpy as np
 
