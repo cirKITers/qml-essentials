@@ -19,4 +19,4 @@ jobs:
       - name: Install dependencies
         run: pipx run uv sync --group dev
       - name: Test with pytest
-        run: pipx run uv run pytest --cov=qml_essentials --cov-report html --dist load -m "expensive" -n auto
+        run: pipx run uv run pytest --cov=qml_essentials --cov-report html --dist load -m "expensive" -n 4
