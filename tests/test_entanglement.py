@@ -4,6 +4,7 @@ from qml_essentials.entanglement import Entanglement
 import logging
 import math
 import pytest
+import numpy as np
 
 from copy import deepcopy
 
@@ -194,6 +195,56 @@ def test_no_sampling() -> None:
     _ = Entanglement.bell_measurements(model, n_samples=None, seed=1000)
     _ = Entanglement.relative_entropy(model, n_samples=None, n_sigmas=10, seed=1000)
     _ = Entanglement.entanglement_of_formation(model, n_samples=None, seed=1000)
+    _ = Entanglement.concentratable_entanglement(model, n_samples=None, seed=1000)
+
+
+@pytest.mark.unittest
+def test_multithreaded_entanglement() -> None:
+    test_cases = [
+        {"fct": Entanglement.meyer_wallach, "kwargs": {}},
+        {"fct": Entanglement.bell_measurements, "kwargs": {}},
+        {
+            "fct": Entanglement.entanglement_of_formation,
+            "kwargs": {"always_decompose": True},
+        },
+        {"fct": Entanglement.relative_entropy, "kwargs": {"n_sigmas": 10}},
+        {"fct": Entanglement.concentratable_entanglement, "kwargs": {}},
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Hardware_Efficient",
+            data_reupload=False,
+            initialization="random",
+            use_multithreading=True,
+        )
+        multi_threaded = test_case["fct"](
+            model,
+            n_samples=10,
+            seed=1000,
+            **test_case["kwargs"],
+        )
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Hardware_Efficient",
+            data_reupload=False,
+            initialization="random",
+            use_multithreading=False,
+        )
+        single_threaded = test_case["fct"](
+            model,
+            n_samples=10,
+            seed=1000,
+            **test_case["kwargs"],
+        )
+        assert np.isclose(multi_threaded, single_threaded), (
+            f"Got different results for multi vs. single_threaded entanglement "
+            f"measure {test_case['fct'].__name__}: {multi_threaded} vs. "
+            f"{single_threaded}"
+        )
 
 
 @pytest.mark.expensive
