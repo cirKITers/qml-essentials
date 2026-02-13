@@ -1471,21 +1471,88 @@ class PulseParamManager:
         return params
 
 
+class DeclarativeCircuit(Circuit):
+    """
+    A circuit defined entirely by a sequence of Block descriptors.
+
+    Subclasses only need to set the class attribute `structure` — a tuple of
+
+    All of `n_params_per_layer`, `n_pulse_params_per_layer`,
+    `get_control_indices`, and `build` are derived automatically.
+    """
+
+    structure: Tuple[Any, ...] = ()
+
+    @staticmethod
+    def structure() -> Tuple[Any, ...]:
+        """Override in subclass to return the structure tuple."""
+        raise NotImplementedError
+
+    @classmethod
+    def n_params_per_layer(cls, n_qubits: int) -> int:
+        structure = cls.structure()
+        n_params = 0
+        for block in structure:
+            if block.n_params(n_qubits) > block.min_qubits:
+                n_params += block.n_params(n_qubits)
+            else:
+                warnings.warn(
+                    f"Skipping {block} with n_qubits={n_qubits} "
+                    f"since it requires {block.min_qubits} qubits."
+                )
+
+        return n_params
+
+    @classmethod
+    def n_pulse_params_per_layer(cls, n_qubits: int) -> int:
+        structure = cls.structure()
+        return sum(block.n_pulse_params(n_qubits) for block in structure)
+
+    @classmethod
+    def get_control_indices(cls, n_qubits: int) -> Optional[List]:
+        """
+        Computes parameter indices for controlled rotation gates.
+        Scans the structure for ControlledRotationBlock with
+        is_controlled_param=True and returns a slice descriptor
+        [start, stop, step] into the flat parameter vector, or None.
+        """
+        structure = cls.structure()
+        total_params = sum(block.n_params(n_qubits) for block in structure)
+
+        # Collect which parameter indices correspond to controlled rotations
+        controlled_indices = []
+        offset = 0
+        for block in structure:
+            n = block.n_params(n_qubits)
+            if (
+                isinstance(block, Ansaetze.ControlledRotationBlock)
+                and block.is_controlled_param
+            ):
+                controlled_indices.extend(range(offset, offset + n))
+            offset += n
+
+        if not controlled_indices:
+            return None
+
+        # Check if indices form a contiguous tail (the common case)
+        # This preserves backwards compatibility with the [start, None, None] format
+        if controlled_indices == list(
+            range(total_params - len(controlled_indices), total_params)
+        ):
+            return [-len(controlled_indices), None, None]
+
+        # Fallback: return raw indices (future-proof)
+        return controlled_indices
+
+    @classmethod
+    def build(cls, w: np.ndarray, n_qubits: int, **kwargs) -> None:
+        structure = cls.structure()
+        w_idx = 0
+        for block in structure:
+            w_idx = block.apply(w, w_idx, n_qubits, **kwargs)
+
+
 class Ansaetze:
-    # Add BRICK_LAYER_REVERSED and RING_CZ / RING_CZ_WRAP to the Topology enum:
-    class Topology(Enum):
-        LINEAR = auto()
-        LINEAR_REVERSED = auto()
-        CIRCULAR = auto()
-        CIRCULAR_REVERSED = auto()
-        BRICK_LAYER = auto()
-        BRICK_LAYER_WRAP = auto()
-        BRICK_LAYER_REVERSED = auto()
-        ALL_TO_ALL = auto()
-        STRONGLY_ENT_1 = auto()
-        STRONGLY_ENT_2 = auto()
-        RING_CZ = auto()
-        RING_CZ_WRAP = auto()
 
     def get_available():
         return [
@@ -1507,6 +1574,20 @@ class Ansaetze:
             Ansaetze.Hardware_Efficient,
             Ansaetze.GHZ,
         ]
+
+    class Topology(Enum):
+        LINEAR = auto()
+        LINEAR_REVERSED = auto()
+        CIRCULAR = auto()
+        CIRCULAR_REVERSED = auto()
+        BRICK_LAYER = auto()
+        BRICK_LAYER_WRAP = auto()
+        BRICK_LAYER_REVERSED = auto()
+        ALL_TO_ALL = auto()
+        STRONGLY_ENT_1 = auto()
+        STRONGLY_ENT_2 = auto()
+        RING_CZ = auto()
+        RING_CZ_WRAP = auto()
 
     @staticmethod
     def get_wiring(topology: Topology, n_qubits: int) -> List[List[int]]:
@@ -1590,14 +1671,15 @@ class Ansaetze:
             raise ValueError(f"Unknown topology: {topology}")
 
     # ──────────────────────────────────────────────────────────────────────
-    # 2. Block descriptors — the "atoms" of an ansatz description
+    # Block descriptors — the "atoms" of an ansatz description
     # ──────────────────────────────────────────────────────────────────────
     @dataclass(frozen=True)
     class Block:
-        gates: Tuple[str, ...]
-        topology: Any = None
-        is_controlled_param: bool = False
-        min_qubits: int = 1
+        def __init__(self, gates: Tuple[str, ...], topology: Any = None):
+            gates: Tuple[str, ...]
+            topology: Any = None
+            is_controlled_param: bool = False
+            min_qubits: int = 1
 
     class RotationBlock(Block):
         """
@@ -1742,90 +1824,6 @@ class Ansaetze:
                 w_idx += 1
             return w_idx
 
-    # ──────────────────────────────────────────────────────────────────────
-    # 3. Declarative Circuit base class
-    # ──────────────────────────────────────────────────────────────────────
-
-    class DeclarativeCircuit(Circuit):
-        """
-        A circuit defined entirely by a sequence of Block descriptors.
-
-        Subclasses only need to set the class attribute `structure` — a tuple of
-
-        All of `n_params_per_layer`, `n_pulse_params_per_layer`,
-        `get_control_indices`, and `build` are derived automatically.
-        """
-
-        structure: Tuple[Any, ...] = ()
-
-        @staticmethod
-        def structure() -> Tuple[Any, ...]:
-            """Override in subclass to return the structure tuple."""
-            raise NotImplementedError
-
-        @classmethod
-        def n_params_per_layer(cls, n_qubits: int) -> int:
-            structure = cls.structure()
-            n_params = 0
-            for block in structure:
-                if block.n_params(n_qubits) > block.min_qubits:
-                    n_params += block.n_params(n_qubits)
-                else:
-                    warnings.warn(
-                        f"Skipping {block} with n_qubits={n_qubits} "
-                        f"since it requires {block.min_qubits} qubits."
-                    )
-
-            return n_params
-
-        @classmethod
-        def n_pulse_params_per_layer(cls, n_qubits: int) -> int:
-            structure = cls.structure()
-            return sum(block.n_pulse_params(n_qubits) for block in structure)
-
-        @classmethod
-        def get_control_indices(cls, n_qubits: int) -> Optional[List]:
-            """
-            Computes parameter indices for controlled rotation gates.
-            Scans the structure for ControlledRotationBlock with
-            is_controlled_param=True and returns a slice descriptor
-            [start, stop, step] into the flat parameter vector, or None.
-            """
-            structure = cls.structure()
-            total_params = sum(block.n_params(n_qubits) for block in structure)
-
-            # Collect which parameter indices correspond to controlled rotations
-            controlled_indices = []
-            offset = 0
-            for block in structure:
-                n = block.n_params(n_qubits)
-                if (
-                    isinstance(block, topology=Ansaetze.ControlledRotationBlock)
-                    and block.is_controlled_param
-                ):
-                    controlled_indices.extend(range(offset, offset + n))
-                offset += n
-
-            if not controlled_indices:
-                return None
-
-            # Check if indices form a contiguous tail (the common case)
-            # This preserves backwards compatibility with the [start, None, None] format
-            if controlled_indices == list(
-                range(total_params - len(controlled_indices), total_params)
-            ):
-                return [-len(controlled_indices), None, None]
-
-            # Fallback: return raw indices (future-proof)
-            return controlled_indices
-
-        @classmethod
-        def build(cls, w: np.ndarray, n_qubits: int, **kwargs) -> None:
-            structure = cls.structure()
-            w_idx = 0
-            for block in structure:
-                w_idx = block.apply(w, w_idx, n_qubits, **kwargs)
-
     # ── No_Ansatz ──────────────────────────────────────────────────
     class No_Ansatz(DeclarativeCircuit):
         @staticmethod
@@ -1954,7 +1952,8 @@ class Ansaetze:
                 ),
                 Ansaetze.RotationBlock(gates=("RY",)),
                 Ansaetze.EntanglingBlock(
-                    gates=("CX",), topology=Ansaetze.Topology.CIRCULAR_REVERSED
+                    gates=("CX",),
+                    topology=Ansaetze.Topology.CIRCULAR_REVERSED,
                 ),
             )
 
@@ -1972,7 +1971,8 @@ class Ansaetze:
             return (
                 Ansaetze.RotationBlock(gates=("RX", "RZ")),
                 Ansaetze.ControlledRotationBlock(
-                    gates=("CRZ",), topology=Ansaetze.Topology.BRICK_LAYER_REVERSED
+                    gates=("CRZ",),
+                    topology=Ansaetze.Topology.BRICK_LAYER_REVERSED,
                 ),
             )
 
@@ -1983,7 +1983,8 @@ class Ansaetze:
             return (
                 Ansaetze.RotationBlock(gates=("RX", "RZ")),
                 Ansaetze.ControlledRotationBlock(
-                    gates=("CRX",), topology=Ansaetze.Topology.BRICK_LAYER_REVERSED
+                    gates=("CRX",),
+                    topology=Ansaetze.Topology.BRICK_LAYER_REVERSED,
                 ),
             )
 
