@@ -1472,7 +1472,6 @@ class PulseParamManager:
 
 
 class Ansaetze:
-
     # Add BRICK_LAYER_REVERSED and RING_CZ / RING_CZ_WRAP to the Topology enum:
     class Topology(Enum):
         LINEAR = auto()
@@ -1527,22 +1526,18 @@ class Ansaetze:
             List of [control, target] pairs.
         """
         if n_qubits < 2:
-            return []
+            raise ValueError("Number of qubits must be at least 2")
 
         if topology == Ansaetze.Topology.LINEAR:
             return [[n_qubits - q - 1, n_qubits - q - 2] for q in range(n_qubits - 1)]
-
         elif topology == Ansaetze.Topology.LINEAR_REVERSED:
             return [[q, q + 1] for q in range(n_qubits - 1)]
-
         elif topology == Ansaetze.Topology.CIRCULAR:
             return [
                 [n_qubits - q - 1, (n_qubits - q) % n_qubits] for q in range(n_qubits)
             ]
-
         elif topology == Ansaetze.Topology.CIRCULAR_REVERSED:
             return [[(q - 1) % n_qubits, (q - 2) % n_qubits] for q in range(n_qubits)]
-
         elif topology == Ansaetze.Topology.BRICK_LAYER:
             pairs = []
             for q in range(n_qubits // 2):
@@ -1550,13 +1545,11 @@ class Ansaetze:
             for q in range((n_qubits - 1) // 2):
                 pairs.append([2 * q + 1, 2 * q + 2])
             return pairs
-
         elif topology == Ansaetze.Topology.BRICK_LAYER_WRAP:
             pairs = Ansaetze.get_wiring(Ansaetze.Topology.BRICK_LAYER, n_qubits)
             if n_qubits > 2:
                 pairs.append([n_qubits - 1, 0])
             return pairs
-
         elif topology == Ansaetze.Topology.BRICK_LAYER_REVERSED:
             # For Circuit_16/17: [1,0], [3,2], ... then [2,1], [4,3], ...
             pairs = []
@@ -1565,7 +1558,6 @@ class Ansaetze:
             for q in range((n_qubits - 1) // 2):
                 pairs.append([2 * q + 2, 2 * q + 1])
             return pairs
-
         elif topology == Ansaetze.Topology.ALL_TO_ALL:
             pairs = []
             for ql in range(n_qubits):
@@ -1578,13 +1570,10 @@ class Ansaetze:
                             ]
                         )
             return pairs
-
         elif topology == Ansaetze.Topology.STRONGLY_ENT_1:
             return [[q, (q + 1) % n_qubits] for q in range(n_qubits)]
-
         elif topology == Ansaetze.Topology.STRONGLY_ENT_2:
             return [[q, (q + n_qubits // 2) % n_qubits] for q in range(n_qubits)]
-
         elif topology == Ansaetze.Topology.RING_CZ:
             # CZ: q[n-2]->q[n-1], q[n-3]->q[n-2], ... then optionally wrap
             pairs = [
@@ -1592,13 +1581,11 @@ class Ansaetze:
                 for q in range(n_qubits - 1)
             ]
             return pairs
-
         elif topology == Ansaetze.Topology.RING_CZ_WRAP:
             pairs = Ansaetze.get_wiring(Ansaetze.Topology.RING_CZ, n_qubits)
             if n_qubits > 2:
                 pairs.append([n_qubits - 1, 0])
             return pairs
-
         else:
             raise ValueError(f"Unknown topology: {topology}")
 
