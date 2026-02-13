@@ -234,6 +234,82 @@ class DeclarativeCircuit(Circuit):
             w_idx = block.apply(w, w_idx, n_qubits, **kwargs)
 
 
+class Block:
+    def __init__(
+        self,
+        gate: str,
+        topology: Any = None,
+    ):
+        """
+        Initialize a Block object; the atoms of Ansatzes.
+
+        Args:
+            gate (str): Name of the Gate class to use.
+            topology (Any, optional): Topology of the gate for entangling gates.
+                Defaults to None.
+        """
+        if isinstance(gate, str):
+            self.gate = getattr(Gates, gate)
+        else:
+            self.gate = gate
+
+        if Gates.is_entangling(self.gate):
+            assert (
+                topology is not None
+            ), "Topology must be specified for entangling gates"
+
+        self.topology = topology
+
+    @property
+    def is_entangling(self):
+        return Gates.is_entangling(self.gate)
+
+    @property
+    def is_rotational(self):
+        return Gates.is_rotational(self.gate)
+
+    @property
+    def is_controlled_rotation(self):
+        return self.is_entangling and self.is_rotational
+
+    def n_params(self, n_qubits: int) -> int:
+        assert n_qubits > 0, "Number of qubits must be positive"
+
+        if Gates.is_entangling(self.gate):
+            return len(self.topology(n_qubits)) if n_qubits > 1 else 0
+
+        if Gates.is_rotational(self.gate):
+            return n_qubits if self.gate.__name__ != "Rot" else 3 * n_qubits
+
+        return 0
+
+    def n_pulse_params(self, n_qubits: int) -> int:
+        return PulseInformation.num_params(self.gate) * n_qubits
+
+    def apply(self, w: np.ndarray, w_idx: int, n_qubits: int, **kwargs) -> int:
+        assert n_qubits > 0, "Number of qubits must be positive"
+
+        iterator = (
+            self.topology(n_qubits)
+            if Gates.is_entangling(self.gate)
+            else range(n_qubits)
+        )
+
+        for wires in iterator:
+            if Gates.is_rotational(self.gate):
+                if self.gate.__name__ == "Rot":
+                    self.gate(
+                        w[w_idx], w[w_idx + 1], w[w_idx + 2], wires=wires, **kwargs
+                    )
+                    w_idx += 3
+                else:
+                    self.gate(w[w_idx], wires=wires, **kwargs)
+                    w_idx += 1
+            else:
+                self.gate(wires=wires, **kwargs)
+        return w_idx
+
+
 class Ansaetze:
 
     def get_available():
@@ -257,80 +333,6 @@ class Ansaetze:
             Ansaetze.GHZ,
         ]
 
-    # ──────────────────────────────────────────────────────────────────────
-    # Block descriptors — the "atoms" of an ansatz description
-    # ──────────────────────────────────────────────────────────────────────
-    class Block:
-        def __init__(
-            self,
-            gate: str,
-            topology: Any = None,
-        ):
-            if isinstance(gate, str):
-                self.gate = getattr(Gates, gate)
-            else:
-                self.gate = gate
-
-            if Gates.is_entangling(self.gate):
-                assert (
-                    topology is not None
-                ), "Topology must be specified for entangling gates"
-
-            self.topology = topology
-
-        @property
-        def min_qubits(self):
-            return 2 if self.is_entangling else 1
-
-        @property
-        def is_entangling(self):
-            return Gates.is_entangling(self.gate)
-
-        @property
-        def is_rotational(self):
-            return Gates.is_rotational(self.gate)
-
-        @property
-        def is_controlled_rotation(self):
-            return self.is_entangling and self.is_rotational
-
-        def n_params(self, n_qubits: int) -> int:
-            assert n_qubits > 0, "Number of qubits must be positive"
-
-            if Gates.is_entangling(self.gate):
-                return len(self.topology(n_qubits))
-
-            if Gates.is_rotational(self.gate):
-                return n_qubits if self.gate.__name__ != "Rot" else 3 * n_qubits
-
-            return 0
-
-        def n_pulse_params(self, n_qubits: int) -> int:
-            return PulseInformation.num_params(self.gate) * n_qubits
-
-        def apply(self, w: np.ndarray, w_idx: int, n_qubits: int, **kwargs) -> int:
-            assert n_qubits > 0, "Number of qubits must be positive"
-
-            iterator = (
-                self.topology(n_qubits)
-                if Gates.is_entangling(self.gate)
-                else range(n_qubits)
-            )
-
-            for wires in iterator:
-                if Gates.is_rotational(self.gate):
-                    if self.gate.__name__ == "Rot":
-                        self.gate(
-                            w[w_idx], w[w_idx + 1], w[w_idx + 2], wires=wires, **kwargs
-                        )
-                        w_idx += 3
-                    else:
-                        self.gate(w[w_idx], wires=wires, **kwargs)
-                        w_idx += 1
-                else:
-                    self.gate(wires=wires, **kwargs)
-            return w_idx
-
     # ── No_Ansatz ──────────────────────────────────────────────────
     class No_Ansatz(DeclarativeCircuit):
         @staticmethod
@@ -342,8 +344,8 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.Block(gate=Gates.H),
-                Ansaetze.Block(gate=Gates.CX, topology=Topology.linear_reversed),
+                Block(gate=Gates.H),
+                Block(gate=Gates.CX, topology=Topology.linear_reversed),
             )
 
         # GHZ is special: H only on qubit 0, not all qubits
@@ -364,8 +366,8 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.Block(gate=Gates.RX),
-                Ansaetze.Block(gate=Gates.RZ),
+                Block(gate=Gates.RX),
+                Block(gate=Gates.RZ),
             )
 
     # ── Circuit_2: [RX, RZ] per qubit + linear CX ─────────────────
@@ -373,9 +375,9 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.Block(gate=Gates.RX),
-                Ansaetze.Block(gate=Gates.RZ),
-                Ansaetze.Block(gate=Gates.CX, topology=Topology.linear),
+                Block(gate=Gates.RX),
+                Block(gate=Gates.RZ),
+                Block(gate=Gates.CX, topology=Topology.linear),
             )
 
     # ── Circuit_3: [RX, RZ] per qubit + linear CRZ ────────────────
@@ -383,9 +385,9 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.Block(gate=Gates.RX),
-                Ansaetze.Block(gate=Gates.RZ),
-                Ansaetze.Block(gate=Gates.CRZ, topology=Topology.linear),
+                Block(gate=Gates.RX),
+                Block(gate=Gates.RZ),
+                Block(gate=Gates.CRZ, topology=Topology.linear),
             )
 
     # ── Circuit_4: [RX, RZ] per qubit + linear CRX ────────────────
@@ -393,9 +395,9 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.Block(gate=Gates.RX),
-                Ansaetze.Block(gate=Gates.RZ),
-                Ansaetze.Block(gate=Gates.CRX, topology=Topology.linear),
+                Block(gate=Gates.RX),
+                Block(gate=Gates.RZ),
+                Block(gate=Gates.CRX, topology=Topology.linear),
             )
 
     # ── Circuit_6: [RX,RZ] + all-to-all CRX + [RX,RZ] ────────────
@@ -404,11 +406,11 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.Block(gate=Gates.RX),
-                Ansaetze.Block(gate=Gates.RZ),
-                Ansaetze.Block(gate=Gates.CRX, topology=Topology.all_to_all),
-                Ansaetze.Block(gate=Gates.RX),
-                Ansaetze.Block(gate=Gates.RZ),
+                Block(gate=Gates.RX),
+                Block(gate=Gates.RZ),
+                Block(gate=Gates.CRX, topology=Topology.all_to_all),
+                Block(gate=Gates.RX),
+                Block(gate=Gates.RZ),
             )
 
     # ── Circuit_9: H + linear CZ + RX ─────────────────────────────
@@ -416,9 +418,9 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.Block(gate=Gates.H),
-                Ansaetze.Block(gate="CZ", topology=Topology.ring_cz),
-                Ansaetze.Block(gate=Gates.RX),
+                Block(gate=Gates.H),
+                Block(gate="CZ", topology=Topology.ring_cz),
+                Block(gate=Gates.RX),
             )
 
     # ── Circuit_10: RY + ring CZ (+ wrap) + RY ────────────────────
@@ -426,9 +428,9 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.Block(gate=Gates.RY),
-                Ansaetze.Block(gate="CZ", topology=Topology.ring_cz_wrap),
-                Ansaetze.Block(gate=Gates.RY),
+                Block(gate=Gates.RY),
+                Block(gate="CZ", topology=Topology.ring_cz_wrap),
+                Block(gate=Gates.RY),
             )
 
     # ── Circuit_15: RY + circular CX + RY + circular_reversed CX ──
@@ -437,10 +439,10 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.Block(gate=Gates.RY),
-                Ansaetze.Block(gate=Gates.CX, topology=Topology.circular),
-                Ansaetze.Block(gate=Gates.RY),
-                Ansaetze.Block(
+                Block(gate=Gates.RY),
+                Block(gate=Gates.CX, topology=Topology.circular),
+                Block(gate=Gates.RY),
+                Block(
                     gate=Gates.CX,
                     topology=Topology.circular_reversed,
                 ),
@@ -451,9 +453,9 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.Block(gate=Gates.RX),
-                Ansaetze.Block(gate=Gates.RZ),
-                Ansaetze.Block(
+                Block(gate=Gates.RX),
+                Block(gate=Gates.RZ),
+                Block(
                     gate=Gates.CRZ,
                     topology=Topology.brick_layer_reversed,
                 ),
@@ -464,9 +466,9 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.Block(gate=Gates.RX),
-                Ansaetze.Block(gate=Gates.RZ),
-                Ansaetze.Block(
+                Block(gate=Gates.RX),
+                Block(gate=Gates.RZ),
+                Block(
                     gate=Gates.CRX,
                     topology=Topology.brick_layer_reversed,
                 ),
@@ -478,9 +480,9 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.Block(gate=Gates.RX),
-                Ansaetze.Block(gate=Gates.RZ),
-                Ansaetze.Block(gate=Gates.CRZ, topology=Topology.circular),
+                Block(gate=Gates.RX),
+                Block(gate=Gates.RZ),
+                Block(gate=Gates.CRZ, topology=Topology.circular),
             )
 
     # ── Circuit_19: [RX, RZ] + circular CRX ───────────────────────
@@ -489,16 +491,16 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.Block(gate=Gates.RX),
-                Ansaetze.Block(gate=Gates.RZ),
-                Ansaetze.Block(gate=Gates.CRX, topology=Topology.circular),
+                Block(gate=Gates.RX),
+                Block(gate=Gates.RZ),
+                Block(gate=Gates.CRX, topology=Topology.circular),
             )
 
     # ── No_Entangling: Rot per qubit ──────────────────────────────
     class No_Entangling(DeclarativeCircuit):
         @staticmethod
         def structure():
-            return (Ansaetze.Block(gate=Gates.Rot),)
+            return (Block(gate=Gates.Rot),)
 
     # ── Hardware_Efficient: [RY, RZ, RY] + brick-layer-wrap CX ───
     class Hardware_Efficient(DeclarativeCircuit):
@@ -506,10 +508,10 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.Block(gate=Gates.RY),
-                Ansaetze.Block(gate=Gates.RZ),
-                Ansaetze.Block(gate=Gates.RY),
-                Ansaetze.Block(gate=Gates.CX, topology=Topology.brick_layer_wrap),
+                Block(gate=Gates.RY),
+                Block(gate=Gates.RZ),
+                Block(gate=Gates.RY),
+                Block(gate=Gates.CX, topology=Topology.brick_layer_wrap),
             )
 
     # ── Strongly_Entangling: Rot + SE1 CX + Rot + SE2 CX ────────
@@ -518,13 +520,13 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.Block(gate=Gates.Rot),
-                Ansaetze.Block(
+                Block(gate=Gates.Rot),
+                Block(
                     gate=Gates.CX,
                     topology=lambda n: Topology.strongly_ent(n, stride=1),
                 ),
-                Ansaetze.Block(gate=Gates.Rot),
-                Ansaetze.Block(
+                Block(gate=Gates.Rot),
+                Block(
                     gate=Gates.CX,
                     topology=lambda n: Topology.strongly_ent(n, stride=n // 2),
                 ),
