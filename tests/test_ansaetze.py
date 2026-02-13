@@ -47,7 +47,7 @@ def test_batch_gate_error():
     model = Model(
         n_qubits=1,
         n_layers=1,
-        circuit_type="Circuit_19",
+        circuit_type="Circuit_1",
     )
 
     inputs = np.array([0.1, 0.1, 0.1, 0.1])
@@ -68,7 +68,7 @@ def test_coherent_as_expval():
     model = Model(
         n_qubits=1,
         n_layers=1,
-        circuit_type="Circuit_19",
+        circuit_type="Circuit_1",
     )
     # should raise error if gate error is not filtered out correctly
     # as density operations would then run on sv simulator
@@ -314,7 +314,7 @@ def test_ansaetze() -> None:
 @pytest.mark.unittest
 def test_min_qubit_warning() -> None:
     with pytest.warns(UserWarning):
-        model = Model(
+        _ = Model(
             n_qubits=1,
             n_layers=1,
             circuit_type="Circuit_19",
