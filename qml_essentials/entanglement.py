@@ -2,7 +2,7 @@ from typing import Optional, Any, List, Tuple
 import pennylane as qml
 import jax.numpy as jnp
 import numpy as np
-from jax import random, vmap
+from jax import random, jax.vmap
 
 from qml_essentials.utils import logm_v
 from qml_essentials.model import Model
@@ -45,7 +45,7 @@ class Entanglement:
         if scale:
             n_samples = jnp.power(2, model.n_qubits) * n_samples
 
-        random_key = random.key(seed)
+        random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             random_key = model.initialize_params(random_key, repeat=n_samples)
@@ -103,7 +103,7 @@ class Entanglement:
             return 2 * (1 - entropy / n_qubits)
 
         if use_multithreading:
-            return vmap(_f)(rhos)
+            return jax.vmap(_f)(rhos)
         else:
             return _f(rhos)
 
@@ -174,7 +174,7 @@ class Entanglement:
             ),
         )
 
-        random_key = random.key(seed)
+        random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             random_key = model.initialize_params(random_key, repeat=n_samples)
@@ -251,14 +251,14 @@ class Entanglement:
             n_samples = dim * n_samples
             n_sigmas = dim * n_sigmas
 
-        random_key = random.key(seed)
+        random_key = jax.random.key(seed)
 
         # Random separable states
         log_sigmas = sample_random_separable_states(
             model.n_qubits, n_samples=n_sigmas, random_key=random_key, take_log=True
         )
 
-        random_key, _ = random.split(random_key)
+        random_key, _ = jax.random.split(random_key)
 
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
@@ -352,7 +352,7 @@ class Entanglement:
             return rel_entropies
 
         if use_multithreading:
-            rel_entropies = vmap(_f, in_axes=(0, 0, 0))(rhos, log_rhos, log_sigmas)
+            rel_entropies = jax.vmap(_f, in_axes=(0, 0, 0))(rhos, log_rhos, log_sigmas)
         else:
             rel_entropies = _f(rhos, log_rhos, log_sigmas)
 
@@ -402,7 +402,7 @@ class Entanglement:
         if scale:
             n_samples = jnp.power(2, model.n_qubits) * n_samples
 
-        random_key = random.key(seed)
+        random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             model.initialize_params(random_key, repeat=n_samples)
@@ -530,7 +530,7 @@ class Entanglement:
 
             return qml.probs(wires=[i for i in range(n)])
 
-        random_key = random.key(seed)
+        random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             model.initialize_params(random_key, repeat=n_samples)
@@ -549,7 +549,7 @@ class Entanglement:
             return ent
 
         if model.use_multithreading:
-            ent = vmap(_f, in_axes=2)(model.params)
+            ent = jax.vmap(_f, in_axes=2)(model.params)
         else:
             ent = _f(model.params)
 
@@ -560,7 +560,7 @@ class Entanglement:
 
 
 def sample_random_separable_states(
-    n_qubits: int, n_samples: int, random_key: random.PRNGKey, take_log: bool = False
+    n_qubits: int, n_samples: int, random_key: jax.random.PRNGKey, take_log: bool = False
 ) -> jnp.ndarray:
     """
     Sample random separable states (density matrix).
