@@ -27,8 +27,6 @@ jobs:
         with:
           fetch-tags: true
           ssh-key: ${{ secrets.DEPLOY_KEY }}
-      - name: Install UV
-        run: pipx install uv
       - name: Set up Python 3.13
         uses: actions/setup-python@v6
         with:
@@ -37,17 +35,17 @@ jobs:
       - name: Compare tag and version
         run: |
           git fetch --tags
-          if [ "$(git tag | sort -g | tail -1)" = "$(uv version --short)" ]; then
+          if [ "$(git tag | sort -g | tail -1)" = "$(pipx run uv version --short)" ]; then
             echo "The tag and the version are the same, nothing to do."
             echo "DORELEASE=false" >> $GITHUB_ENV
           else
-            echo "The tag ($(git tag | sort -g | tail -1)) and the version ($(uv version --short)) differ, trigging a release."
+            echo "The tag ($(git tag | sort -g | tail -1)) and the version ($(pipx run uv version --short)) differ, trigging a release."
             echo "DORELEASE=true" >> $GITHUB_ENV
           fi
       - name: Update Citation
         if: env.DORELEASE == 'true'
         run: |
-          sed -i "/^cff/! s/version:\s\S*/version: $(uv version --short)/" CITATION.cff
+          sed -i "/^cff/! s/version:\s\S*/version: $(pipx run uv version --short)/" CITATION.cff
           sed -i "s/date-released:\s\S*/date-released: $(date +'%Y-%m-%d')/" CITATION.cff
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
@@ -58,15 +56,15 @@ jobs:
       - name: Create Release & Tag
         if: env.DORELEASE == 'true'
         run: |
-          gh release create "$(uv version --short)" \
+          gh release create "$(pipx run uv version --short)" \
           --repo="$GITHUB_REPOSITORY" \
-          --title="${GITHUB_REPOSITORY#*/} $(uv version --short)" \
+          --title="${GITHUB_REPOSITORY#*/} $(pipx run uv version --short)" \
           --generate-notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish to PyPI
         if: env.DORELEASE == 'true'
         run: |
-          uv sync --group dev
-          uv build
-          uv publish --token ${{ secrets.PYPI_API_TOKEN }}
+          pipx run uv sync --group dev
+          pipx run uv build
+          pipx run uv publish --token ${{ secrets.PYPI_API_TOKEN }}
