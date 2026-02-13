@@ -1,0 +1,1072 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://cirkiters.github.io/qml-essentials/usage/">
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../ansaetze/">
+      
+      
+      <link rel="icon" href="../logo.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.15">
+    
+    
+      
+        <title>Usage - QML Essentials</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.342714a4.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../style.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+   <link href="../assets/stylesheets/glightbox.min.css" rel="stylesheet"/><style>
+    html.glightbox-open { overflow: initial; height: 100%; }
+    .gslide-title { margin-top: 0px; user-select: text; }
+    .gslide-desc { color: #666; user-select: text; }
+    .gslide-image img { background: white; }
+    .gscrollbar-fixer { padding-right: 15px; }
+    .gdesc-inner { font-size: 0.75rem; }
+    body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color);}
+    body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color);}
+    body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color);}</style> <script src="../assets/javascripts/glightbox.min.js"></script></head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#usage" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="QML Essentials" class="md-header__button md-logo" aria-label="QML Essentials" data-md-component="logo">
+      
+  <img src="../logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            QML Essentials
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Usage
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="QML Essentials" class="md-nav__button md-logo" aria-label="QML Essentials" data-md-component="logo">
+      
+  <img src="../logo.svg" alt="logo">
+
+    </a>
+    QML Essentials
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Usage
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Usage
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the_essentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      The essentials
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-reuploading" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data-Reuploading
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameter_initialization" class="md-nav__link">
+    <span class="md-ellipsis">
+      Parameter Initialization
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      Encoding
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#state_preparation" class="md-nav__link">
+    <span class="md-ellipsis">
+      State Preparation
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output_shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      Output Shape
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#execution_type" class="md-nav__link">
+    <span class="md-ellipsis">
+      Execution Type
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#noise" class="md-nav__link">
+    <span class="md-ellipsis">
+      Noise
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pulse_level_simulation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pulse Level Simulation
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multithreading_using_jax" class="md-nav__link">
+    <span class="md-ellipsis">
+      Multithreading (using JAX)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quantikz_export" class="md-nav__link">
+    <span class="md-ellipsis">
+      Quantikz Export
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ansaetze/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ansaetze
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coefficients/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Coefficients
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../entanglement/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Entanglement
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../expressibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Expressibility
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../references/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    References
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the_essentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      The essentials
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-reuploading" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data-Reuploading
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameter_initialization" class="md-nav__link">
+    <span class="md-ellipsis">
+      Parameter Initialization
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      Encoding
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#state_preparation" class="md-nav__link">
+    <span class="md-ellipsis">
+      State Preparation
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output_shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      Output Shape
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#execution_type" class="md-nav__link">
+    <span class="md-ellipsis">
+      Execution Type
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#noise" class="md-nav__link">
+    <span class="md-ellipsis">
+      Noise
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pulse_level_simulation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pulse Level Simulation
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multithreading_using_jax" class="md-nav__link">
+    <span class="md-ellipsis">
+      Multithreading (using JAX)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quantikz_export" class="md-nav__link">
+    <span class="md-ellipsis">
+      Quantikz Export
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">#</a></h1>
+<p>Central component of our package is the Fourier model which you can import with 
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.model</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span>
+</span></code></pre></div></p>
+<p>In the simplest scenario, one would instantiate such a model with <span class="arithmatex">\(4\)</span> qubits and a single layer using the "Hardware Efficient" ansatz by:
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">model</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">n_qubits</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">n_layers</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">circuit_type</span><span class="o">=</span><span class="s2">&quot;Hardware_Efficient&quot;</span><span class="p">,</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">)</span>
+</span></code></pre></div></p>
+<p>You can take a look at your model, by simply calling
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">model</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">figure</span><span class="o">=</span><span class="s2">&quot;mpl&quot;</span><span class="p">)</span>
+</span></code></pre></div></p>
+<p><a class="glightbox" href="../figures/hae_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Hardware Efficient Ansatz" data-desc-position="top"><img alt="Hardware Efficient Ansatz" src="../figures/hae_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/hae_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Hardware Efficient Ansatz" data-desc-position="top"><img alt="Hardware Efficient Ansatz" src="../figures/hae_dark.png#center#only-dark" /></a></p>
+<p>Looks good to you? <img alt="👀" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f440.svg" title=":eyes:" /> Head over to the <a href="../training/"><em>Training</em></a> page for <strong>getting started</strong> with an easy example, where we also show how to implement <strong>trainable frequencies</strong> <img alt="🚀" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f680.svg" title=":rocket:" />
+If you want to learn more about, why we get the above results, checkout the <a href="#data-reuploading"><em>Data-Reuploading</em></a> section.</p>
+<p>Note that calling the model without any (<code>None</code>) values for the <code>params</code> and <code>inputs</code> argument, will implicitly call the model with the recently (or initial) parameters and <code>0</code>s as input.
+I.e. simply running the following
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">model</span><span class="p">()</span>
+</span></code></pre></div>
+will return the combined expectation value of a n-local measurement (<code>output_qubit=-1</code> is default). </p>
+<p>In the following we will describe some concepts of the <code>Model</code> class.
+For a more detailled reference on the methods and arguments that are available, please see the <a href="https://cirkiters.github.io/qml-essentials/references/#model">references page</a>.</p>
+<h2 id="the_essentials">The essentials<a class="headerlink" href="#the_essentials" title="Permanent link">#</a></h2>
+<p>There is much more to this package than just providing a Fourier model.
+You can calculate the <a href="../expressibility/">Expressibility</a> or <a href="../entanglement/">Entangling Capability</a> besides the <a href="../coefficients/">Coefficients</a> which are unique to this kind of QML interpretation.
+You can also provide a custom circuit, by instantiating from the <code>Circuit</code> class in <code>qml_essentials.ansaetze.Circuit</code>.
+See page <a href="../ansaetze/"><em>Ansaetze</em></a> for more details and a list of available Ansatzes that we provide with this package.</p>
+<h2 id="data-reuploading">Data-Reuploading<a class="headerlink" href="#data-reuploading" title="Permanent link">#</a></h2>
+<p>The idea of repeating the input encoding is one of the core features of our framework and builds upon the work by <a href="https://doi.org/10.48550/arXiv.2008.08605"><em>Schuld et al. (2020)</em></a>.
+Essentially, it allows us to represent a quantum circuit as a truncated Fourier series, which is a powerful feature that enables the model to mimic arbitrary non-linear functions.
+The number of frequencies that the model can represent is constrained by the number of data encoding steps within the circuit.</p>
+<p>Typically, there is a reuploading step after each layer and on each qubit (<code>data_reupload=True</code>).
+However, our package also allows you to specify an array with the number of rows representing the qubits and number of columns representing the layers.
+Then, a <code>True</code> means that encoding is applied at the corresponding position within the circuit.</p>
+<p>In the following example, we disable two instances of the data-reuploading step, thus leaving the model with <code>model.degree = (5)</code> frequencies (2 negative + zero frequency + 2 positive).</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">model</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">n_qubits</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">n_layers</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">circuit_type</span><span class="o">=</span><span class="s2">&quot;Hardware_Efficient&quot;</span><span class="p">,</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">data_reupload</span><span class="o">=</span><span class="p">[[</span><span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">],</span> <span class="p">[</span><span class="kc">False</span><span class="p">,</span> <span class="kc">True</span><span class="p">]],</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Checkout the <a href="../coefficients/"><em>Coefficients</em></a> page for more details on how you can visualize such a model using tools from signal analysis.
+If you want to encode multi-dimensional data (check out the <a href="./#encoding"><em>Encoding</em></a> section on how to do that), you can specify another dimension in the <code>data_reupload</code> argument (which just extents naturally).
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">model</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">n_qubits</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">n_layers</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">circuit_type</span><span class="o">=</span><span class="s2">&quot;Hardware_Efficient&quot;</span><span class="p">,</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">data_reupload</span><span class="o">=</span><span class="p">[[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]],</span> <span class="p">[[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]]],</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="p">)</span>
+</span></code></pre></div>
+Now, the first input will have two frequencies (<code>sum([0,1,1,0]) = 2</code>), and the second input will have four frequencies (<code>sum([1,1,1,1]) = 4</code>).
+Of course, this is just a rule of thumb and can vary depending on the exact encoding strategy.</p>
+<h2 id="parameter_initialization">Parameter Initialization<a class="headerlink" href="#parameter_initialization" title="Permanent link">#</a></h2>
+<p>The initialization strategy can be set when instantiating the model with the <code>initialization</code> argument.</p>
+<p>The default strategy is "random" which will result in random initialization of the parameters using the domain specified in the <code>initialization_domain</code> argument.
+Other options are:
+- "zeros": All parameters are initialized to <span class="arithmatex">\(0\)</span>
+- "zero-controlled": All parameters are initialized to randomly except for the angles of the controlled rotations which are initialized to <span class="arithmatex">\(0\)</span>
+- "pi-controlled": All parameters are initialized to randomly except for the angles of the controlled rotations which are initialized to <span class="arithmatex">\(\\pi\)</span>
+- "pi": All parameters are initialized to <span class="arithmatex">\(\\pi\)</span></p>
+<p>The <code>initialize_params</code> method provides the option to re-initialise the parameters after model instantiation using either the previous configuration or a different strategy.
+Given a PRNG key, it returns the <code>key</code> from <code>key, subkey = random.split(key)</code>  as documented <a href="https://docs.jax.dev/en/latest/random-numbers.html">here</a> and uses the subkey for the actual parameter initialization.
+It's also possible to omit the <code>key</code> argument entirely, as the model has an internal <code>random_key</code> state which is updated every time randomness is utilized.
+This allows to repeatingly call <code>model.initialize_params()</code> to generate a continous sequence of random initializations.</p>
+<h2 id="encoding">Encoding<a class="headerlink" href="#encoding" title="Permanent link">#</a></h2>
+<p>The encoding can be set when instantiating the model with the <code>encoding</code> argument.</p>
+<p>The default encoding is "RX" which will result in a single RX rotation per qubit.
+Other options are:</p>
+<ul>
+<li>A string such as <code>"RX"</code> that will result in a single RX rotation per qubit</li>
+<li>A list of strings such as <code>["RX", "RY"]</code> that will result in a sequential RX and RY rotation per qubit</li>
+<li>Any callable such as <code>Gates.RX</code></li>
+<li>A list of callables such as <code>[Gates.RX, Gates.RY]</code></li>
+<li>An instance of the <code>Encoding</code> class</li>
+</ul>
+<p>See page <a href="../ansaetze/"><em>Ansaetze</em></a> for more details regarding the <code>Gates</code> class.
+If a list of encodings is provided, the input is assumed to be multi-dimensional.
+Otherwise multiple inputs are treated as batches of inputs.
+If you want to visualize zero-valued encoding gates in the model, set <code>remove_zero_encoding</code> to <code>False</code> on instantiation.</p>
+<p>In case of a multi-dimensional input, you can obtain the highest frequency in each encoding dimension from the <code>model.degree</code> property.
+Note that, <code>model.degree</code> includes the negative and zero frequency (i.e. the full spectrum).
+Individual frequencies can be obtained via <code>model.frequencies</code>.</p>
+<p>By default, all encodings are <code>Hamming</code> encodings, meaning, all encodings are applied equally in each data-reuploading step.
+Note it is also possible to provide a custom encoding as the <code>encoding</code> argument essentially accepts any callable or list of callables see <a href="../ansaetze/#custom-encoding">here</a> for more details.
+To make things a little bit easier, we implement following encoding strategies as introduced in <a href="https://doi.org/10.22331/q-2023-12-20-1210">Generalization despite overfitting in quantum machine learning models</a> with their respective spectral properties:</p>
+<table>
+<thead>
+<tr>
+<th>Encoding strategy</th>
+<th>Spectrum <span class="arithmatex">\(\Omega\)</span></th>
+<th><span class="arithmatex">\(\vert\Omega\vert\)</span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hamming</td>
+<td><span class="arithmatex">\(\{-n_{q},-(n_{q}-1),\ldots,n_{q}\}\)</span></td>
+<td><span class="arithmatex">\(2 n_{q}+1\)</span></td>
+</tr>
+<tr>
+<td>Binary</td>
+<td><span class="arithmatex">\(\{-2^{n_{q}}+1,\ldots,2^{n_{q}}-1\}\)</span></td>
+<td><span class="arithmatex">\(2^{n_{q}+1}- 1\)</span></td>
+</tr>
+<tr>
+<td>Ternary</td>
+<td><span class="arithmatex">\(\left\{-\left\lfloor\frac{3^{n_{q}}}{2}\right\rfloor,\ldots,\left\lfloor\frac{3^{n_{q}}}{2}\right\rfloor\right\}\)</span></td>
+<td><span class="arithmatex">\(3^{n_{q}}\)</span></td>
+</tr>
+</tbody>
+</table>
+<p>You can use these templates by instantiating an <code>Encoding</code> class with the encoding strategy you like and passing it to the model upon initialization:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.ansaetze</span><span class="w"> </span><span class="kn">import</span> <span class="n">Encoding</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">model</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">n_qubits</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">n_layers</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">circuit_type</span><span class="o">=</span><span class="s2">&quot;Circuit_19&quot;</span><span class="p">,</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">encoding</span><span class="o">=</span><span class="n">Encoding</span><span class="p">(</span><span class="s2">&quot;ternary&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;RX&quot;</span><span class="p">,</span> <span class="s2">&quot;RY&quot;</span><span class="p">]),</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="p">)</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="n">model</span><span class="o">.</span><span class="n">frequencies</span>
+</span></code></pre></div>
+<p>Returns <code>[9,9]</code>, which corresponds to the ternary spectrum <span class="arithmatex">\(3^{2}\)</span> for two indpendent inputs.</p>
+<h2 id="state_preparation">State Preparation<a class="headerlink" href="#state_preparation" title="Permanent link">#</a></h2>
+<p>While the encoding is applied in each data-reuploading step, the state preparation is only applied at the beginning of the circuit, but after the <code>StatePreparation</code> noise (see <a href="#noise">below</a> for details).
+The default is no state preparation. Similar to the encoding, you can provide the <code>state_preparation</code> argument as</p>
+<ul>
+<li>A string such as <code>"H"</code> that will result in a single Hadamard per qubit</li>
+<li>A list of strings such as <code>["H", "H"]</code> that will result in two consecutive Hadamards per qubit</li>
+<li>Any callable such as <code>Gates.H</code></li>
+<li>A list of callables such as <code>[Gates.H, Gates.H]</code></li>
+</ul>
+<p>See page <a href="../ansaetze/"><em>Ansaetze</em></a> for more details regarding the <code>Gates</code> class.</p>
+<h2 id="output_shape">Output Shape<a class="headerlink" href="#output_shape" title="Permanent link">#</a></h2>
+<p>The output shape is determined by the <code>output_qubit</code> argument, provided in the instantiation of the model.
+When set to -1 all qubits are measured which will result in the shape being of size <span class="arithmatex">\(n\)</span> by default (depending on the execution type, see below).
+Setting <code>output_qubit</code> to an integer will measue the qubit with the index specified.
+Furthermore, "parity measurements" are supported, where <code>output_qubit</code> becomes a list of qubit pairs, e.g. <code>[[0, 1], [2, 3]]</code> to measure the parity between qubits 0 and 1 and qubits 2 and 3.</p>
+<p>If <code>force_mean</code> flag is set when calling the model, the output is averaged to a single value (while keeping the batch/ input dimension).
+This is usually helpful, if you want to perform a n-local measurement over all qubits where only the average over <span class="arithmatex">\(n\)</span> expecation values is of interest.</p>
+<h2 id="execution_type">Execution Type<a class="headerlink" href="#execution_type" title="Permanent link">#</a></h2>
+<p>Our model be simulated in different ways by setting the <code>execution_type</code> property, when calling the model, to:</p>
+<ul>
+<li><code>expval</code>: Returns the expectation value between <span class="arithmatex">\(0\)</span> and <span class="arithmatex">\(1\)</span></li>
+<li><code>density</code>: Calculates the density matrix</li>
+<li><code>probs</code>: Simulates the model with the number of shots, set by <code>model.shots</code></li>
+</ul>
+<p>For all three different execution types, the output shape is determined by the <code>output_qubit</code> argument, provided in the instantiation of the model.
+In case of <code>density</code> the partial density matrix is returned.</p>
+<h2 id="noise">Noise<a class="headerlink" href="#noise" title="Permanent link">#</a></h2>
+<p>Noise can be added to the model by providing a <code>noise_params</code> argument, when calling the model, which is a dictionary with following keys</p>
+<ul>
+<li><code>BitFlip</code></li>
+<li><code>PhaseFlip</code></li>
+<li><code>AmplitudeDamping</code></li>
+<li><code>PhaseDamping</code></li>
+<li><code>Depolarizing</code></li>
+<li><code>MultiQubitDepolarizing</code></li>
+<li><code>StatePreparation</code></li>
+<li><code>Measurement</code></li>
+</ul>
+<p>with values between <span class="arithmatex">\(0\)</span> and <span class="arithmatex">\(1\)</span>.
+Additionally, a <code>GateError</code> can be applied, which controls the variance of a Gaussian distribution with zero mean applied on the input vector.</p>
+<p>While <code>BitFlip</code>, <code>PhaseFlip</code>, <code>Depolarizing</code> and <code>GateError</code>s are applied on each gate, <code>AmplitudeDamping</code>, <code>PhaseDamping</code>, <code>StatePreparation</code> and <code>Measurement</code> are applied on the whole circuit.</p>
+<p>Furthermore, <code>ThermalRelaxation</code> can be applied. 
+Instead of the probability, the entry for this type of error consists of another dict with the keys:</p>
+<ul>
+<li><code>t1</code>: The relative T1 relaxation time (a typical value might be <span class="arithmatex">\(180\mathrm{us}\)</span>)</li>
+<li><code>t2</code>: The relative T2 relaxation time (a typical value might be <span class="arithmatex">\(100\mathrm{us}\)</span>)</li>
+<li><code>t_factor</code>: The relative gate time factor (a typical value might be <span class="arithmatex">\(0.018\mathrm{us}\)</span>)</li>
+</ul>
+<p>The units can be ignored as we are only interested in relative times, above values might belong to some superconducting system.
+Note that <code>t2</code> is required to be max. <span class="arithmatex">\(2\times\)</span><code>t1</code>.
+Based on <code>t_factor</code> and the circuit depth the execution time is estimated, and therefore the influence of thermal relaxation over time.</p>
+<h2 id="pulse_level_simulation">Pulse Level Simulation<a class="headerlink" href="#pulse_level_simulation" title="Permanent link">#</a></h2>
+<p>Our framework extends beyond unitary-level simulation by integrating <strong>pulse-level simulation</strong> through <a href="https://docs.pennylane.ai/en/stable/code/qml_pulse.html">PennyLane’s pulse module</a>.<br />
+This allows you to move from the abstract unitary layer, where gates are treated as instantaneous idealized operations, down to the physical pulse layer, where gates are represented by time-dependent microwave control fields.  </p>
+<p>In the pulse representation, each gate is decomposed into Gaussian-shaped pulses parameterized by:</p>
+<ul>
+<li><span class="arithmatex">\(A\)</span>: amplitude of the pulse</li>
+<li><span class="arithmatex">\(\sigma\)</span>: width (standard deviation) of the Gaussian envelope</li>
+<li><span class="arithmatex">\(t\)</span>: pulse duration</li>
+</ul>
+<p>By default, the framework provides optimized pulse parameters based on typical superconducting qubit frequencies (<span class="arithmatex">\(\omega_q = 10\pi\)</span>, <span class="arithmatex">\(\omega_c = 10\pi\)</span>).  </p>
+<p>Switching between unitary-level and pulse-level execution is seamless and controlled via the <code>gate_mode</code> argument:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Default unitary-level simulation</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">model</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">inputs</span><span class="p">)</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Pulse-level simulation</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">model</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">gate_mode</span><span class="o">=</span><span class="s2">&quot;pulse&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Pulse-level gates can also be instantiated directly:</p>
+<p><div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">qml_essentials.ansaetze</span><span class="w"> </span><span class="kn">import</span> <span class="n">Gates</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="c1"># RX gate represented by its microwave pulse</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">Gates</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">wires</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">gate_mode</span><span class="o">=</span><span class="s2">&quot;pulse&quot;</span><span class="p">)</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="c1"># With custom pulse parameters [A, sigma, t]</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">pulse_params</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">Gates</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">wires</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">pulse_params</span><span class="o">=</span><span class="n">pulse_params</span><span class="p">,</span> <span class="n">gate_mode</span><span class="o">=</span><span class="s2">&quot;pulse&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+and then used in <a href="../ansaetze/#custom_ansatz">custom Ansaetze</a> or directly as <a href="../ansaetze/#custom_encoding">encoding gates</a>.
+See our documentation on <a href="../ansaetze/#quantum_optimal_control_qoc">Quantum Optimal Control (QOC)</a> for more details on how to choose pulse parameters.</p>
+<p>For more details:</p>
+<ul>
+<li>See <a href="../ansaetze/#pulse_simulation"><em>Ansaetze</em></a> for a deeper explanation of our pulse-level gates and ansaetze, as well as details on Quantum Optimal Control (QOC), which enables optimizing pulses directly for target unitaries.  </li>
+<li>See <a href="../training/#pulse_level"><em>Training</em></a> for how to train pulse parameters jointly with rotation angles.  </li>
+</ul>
+<h2 id="multithreading_using_jax">Multithreading (using JAX)<a class="headerlink" href="#multithreading_using_jax" title="Permanent link">#</a></h2>
+<p>Our framework can parallelise the execution of the model setting the <code>use_multithreading</code> flag (defaults to False).
+In our framework, JAX then automatically handles the number and distribution of the workers depending on the batch sizes and available CPUs.
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>model = Model(
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    n_qubits=2,
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    n_layers=1,
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    circuit_type=&quot;Circuit_19&quot;,
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    use_multithreading=True,
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>)
+</span></code></pre></div></p>
+<p>Depending your machine, this can result in a significant speedup.
+Note however, that this is currently only available for <code>n_qubits&lt;model.lightning_threshold</code> which is 12 by default.
+Above this threshold, Pennylane's <code>lightning.qubit</code> device is used which would interfere with an additional parallelism.</p>
+<p>Mutlithreading works for both parameters and inputs, meaning that if a batched input is provided, processing will be parallelized in the same way as explained above.
+Note, that if both, parameters and inputs are batched with size <code>B_I</code> and <code>B_P</code> respectively, the effective batch dimension will multiply, i.e. resulting in <code>B_I * B_P</code> combinations. 
+Internally, these combinations will be flattened during processing and then reshaped to the original shape afterwards, such that the output shape is <code>[O, B_I, B_P]</code>.
+Here, <code>O</code> is the general output shape depending on the execution type, <code>B_I</code> is the batch dimension of the inputs and <code>B_P</code> is the batch dimension of the parameters.
+This shape is also available as a property of the model: <code>model.batch_shape</code>.
+Note, that the output shape is always squeezed, i.e. batch axes will be suppressed if their dimension is 1.
+Also, there is a third batch axis in <code>model.batch_shape</code> for pulse parameters.
+See more on that topic in <a href="../ansaetze/#pulse_simulation"><em>Ansaetze</em></a>.</p>
+<p>In addition to letting the model handle repeating the batch axes, it is also possible to disable this functionality by setting <code>repeat_batch_axis</code> upon model initialization.
+This parameter is an array of boolean values determining of the corresponding axis in the <code>batch_shape</code> (#Inputs, #Params, #PulseParams)should be repeated.
+Of course, when providing the batch manually, the dimensions have to match.</p>
+<p><div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">model</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="n">n_qubits</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">n_layers</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">circuit_type</span><span class="o">=</span><span class="s2">&quot;Circuit_19&quot;</span><span class="p">,</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    <span class="n">repeat_batch_axis</span><span class="o">=</span><span class="p">[</span><span class="kc">False</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="kc">True</span><span class="p">],</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="n">use_multithreading</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="p">)</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="n">key</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">key</span><span class="p">(</span><span class="mi">1000</span><span class="p">)</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="n">key</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">initialize_params</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">repeat</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="n">model</span><span class="p">(</span><span class="n">inputs</span><span class="o">=</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">1</span><span class="p">)))</span>
+</span></code></pre></div>
+In this example, instead of a batch size of <code>100</code>, the output will have a batch size of <code>10</code> instead (shape <code>(10,2)</code>).</p>
+<p>For density matrix calculations, we computed the speedup of a multi-threaded computation over a single-threaded computation with a 4 qubit circuit, averaged over 8 runs, as shown in the following figure.</p>
+<p><a class="glightbox" href="../figures/mp_result_density_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Multiprocessing Density" data-desc-position="top"><img alt="Multiprocessing Density" src="../figures/mp_result_density_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/mp_result_density_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Multiprocessing Density" data-desc-position="top"><img alt="Multiprocessing Density" src="../figures/mp_result_density_dark.png#center#only-dark" /></a></p>
+<p>The computation was performed on a 16 core CPU with 32GB of RAM.</p>
+<p>As shown in the following figure, computing the expectation value is significantly easier, with no, or only a small speedup over the single-threaded computation.</p>
+<p><a class="glightbox" href="../figures/mp_result_expval_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Multiprocessing Expval" data-desc-position="top"><img alt="Multiprocessing Expval" src="../figures/mp_result_expval_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/mp_result_expval_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Multiprocessing Expval" data-desc-position="top"><img alt="Multiprocessing Expval" src="../figures/mp_result_expval_dark.png#center#only-dark" /></a></p>
+<p>The commands used to generate the plots above are:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>cd docs &amp;&amp; uv run python mp_experiment.py --execution_type=&quot;expval&quot; --min_n_samples=&quot;3000&quot; --max_n_samples=&quot;60000&quot; --n_samples=&quot;3000&quot; --n_qubits=&quot;6&quot; --n_layers=&quot;1&quot;
+</span></code></pre></div>
+and
+<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>cd docs &amp;&amp; uv run python mp_experiment.py --execution_type=&quot;density&quot; --min_n_samples=&quot;500&quot; --max_n_samples=&quot;10000&quot; --n_samples=&quot;500&quot; --n_qubits=&quot;6&quot; --n_layers=&quot;1&quot;
+</span></code></pre></div>
+respectively.</p>
+<h2 id="quantikz_export">Quantikz Export<a class="headerlink" href="#quantikz_export" title="Permanent link">#</a></h2>
+<p>In addition to the printing the model to console and into a figure using matplotlib (thanks to Pennylane); our framework extends this functionality by allowing you to create nice <a href="https://doi.org/10.48550/arXiv.1809.03842">Quantikz</a> figures that you can embedd in a Latex document <img alt="😍" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f60d.svg" title=":heart_eyes:" />.
+This can be achieved by </p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">fig</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">figure</span><span class="o">=</span><span class="s2">&quot;tikz&quot;</span><span class="p">,</span> <span class="n">inputs_symbols</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">gate_values</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="n">fig</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="s2">&quot;tikz_circuit.tex&quot;</span><span class="p">,</span> <span class="n">full_document</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span></code></pre></div>
+<p><a class="glightbox" href="../figures/circuit_tikz_light.png#center#only-light" data-type="image" data-width="auto" data-height="auto" data-title="Tikz Circuit" data-desc-position="top"><img alt="Tikz Circuit" src="../figures/circuit_tikz_light.png#center#only-light" /></a>
+<a class="glightbox" href="../figures/circuit_tikz_dark.png#center#only-dark" data-type="image" data-width="auto" data-height="auto" data-title="Tikz Circuit" data-desc-position="top"><img alt="Tikz Circuit" src="../figures/circuit_tikz_dark.png#center#only-dark" /></a></p>
+<p>Inputs are represented with "x" by default, which can be changed by adjusting the optional parameter <code>inputs_symbols</code>.
+If you want to see the actual gate values instead of variables, simply set <code>gate_values=True</code> which is also the default option.
+The returned <code>fig</code> variable is a <code>TikzFigure</code> object that stores the Latex string and allows exporting to a specified file.
+To create a document that can be compiled, simply pass <code>full_document=True</code> when calling <code>export</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        <div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://www.kit.edu/impressum.php" target="_blank" rel="noopener" title="Impressum" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M64.9 96c2.2-11.6 8.8-19.8 21.1-25.4 13.8-6.2 34.8-8.9 61.2-4.5 8.8 1.4 36.1 7.1 44.1 9.3 17 4.8 34.7-5.1 39.5-22.2s-5.1-34.7-22.2-39.5c-11.1-3.1-41-9.2-50.9-10.8-34.7-5.6-69.4-3.5-98 9.4C29.9 25.8 7.5 50.9 1.6 86.5c-.1.5-.2 1.1-.2 1.6-2.2 19.7.3 37.9 8.1 54.1 7.7 16.1 19.4 28 32 36.9.6.5 1.3.9 2 1.4-21.2 13.7-37 34.6-41.8 62.5-.1.6-.2 1.1-.2 1.7-2.3 19.3.4 37.1 8.4 53 7.9 15.6 19.8 27 32.3 35.5 22.4 15.2 51.9 24 75.4 31l3.7 1.1c27.2 8.2 46.9 14.6 59.4 23.8 5.5 4 8.2 7.6 9.5 10.9 1.3 3.2 2.6 8.6.9 18.1-1.7 10.1-7.7 18-20.7 23.5-14 6-35.4 8.5-62 4.4-12.8-2.1-35.1-9.7-54.1-16.2-4.3-1.5-8.5-2.9-12.3-4.2-16.7-5.6-34.8 3.5-40.4 20.2s3.5 34.9 20.3 40.5c2.6.8 5.7 1.9 9.2 3.1 18.6 6.3 48.5 16.6 67.3 19.6h.2c34.5 5.4 68.8 3.4 97.2-8.7 29.4-12.6 52.5-36.5 58.5-71.5 3.3-19.3 1.9-37.4-5-53.9-6.3-15-16.4-26.4-27.6-35.2 16.5-13.9 28.5-33.2 32.6-58.2 3.2-19.8 1.9-38.3-4.8-55.1s-17.8-29.4-30.2-39c-22.8-17.6-53.6-27.4-77.7-35l-1.4-.5c-27.4-8.7-47.8-15.3-61.5-25-6.1-4.4-9.5-8.5-11.4-12.4-1.8-3.7-3.2-9.3-2.3-18.5zm76.7 208.5-.6-.2-1.4-.4c-27.4-8.2-47.9-14.5-61.7-23.8-6.2-4.2-9.3-7.9-11-11.3-1.5-3-2.9-7.7-2.1-15.7 1.9-9.7 7.9-17.3 20.5-22.7 14-6 35.4-8.5 62.1-4.3l16.4 2.6c6.3 2.9 11.7 6 16.2 9.5 5.5 4.2 8.4 8.2 10 12.2s2.8 10.4 1.1 20.9c-2.4 14.7-12.8 26.4-37.1 31l-12.4 2.3z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://www.kit.edu/datenschutz.php" target="_blank" rel="noopener" title="Datenschutz" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M0 96h576c0-35.3-28.7-64-64-64H64C28.7 32 0 60.7 0 96m0 32v288c0 35.3 28.7 64 64 64h448c35.3 0 64-28.7 64-64V128zm64 277.3c0-29.5 23.9-53.3 53.3-53.3h117.3c29.5 0 53.3 23.9 53.3 53.3 0 5.9-4.8 10.7-10.7 10.7H74.7c-5.9 0-10.7-4.8-10.7-10.7M176 192a64 64 0 1 1 0 128 64 64 0 1 1 0-128m176 16c0-8.8 7.2-16 16-16h128c8.8 0 16 7.2 16 16s-7.2 16-16 16H368c-8.8 0-16-7.2-16-16m0 64c0-8.8 7.2-16 16-16h128c8.8 0 16 7.2 16 16s-7.2 16-16 16H368c-8.8 0-16-7.2-16-16m0 64c0-8.8 7.2-16 16-16h128c8.8 0 16 7.2 16 16s-7.2 16-16 16H368c-8.8 0-16-7.2-16-16"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://github.com/cirKITers/qml-essentials" target="_blank" rel="noopener" title="CirKITers @ Github" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": ["content.code.select", "content.code.copy"], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.56ea9cef.min.js"></script>
+      
+        <script src="../javascripts/mathjax.js"></script>
+      
+        <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  <script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(() => { lightbox.reload() });
+</script></body>
+</html>

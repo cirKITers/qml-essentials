@@ -1,0 +1,10 @@
+img[src*='#center'] {
+    display: block;
+    margin: auto;
+}
+
+img[src*='#circuit'] {
+    display: block;
+    margin: auto;
+    height: 250px;
+}
