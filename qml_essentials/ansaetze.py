@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional, List, Union, Dict, Callable, Tuple
+from typing import Any, Optional, List, Union, Callable, Tuple
 import jax.numpy as np
 import jax
 import logging
 import warnings
 from enum import Enum, auto
 
-from qml_essentials.gates import Gates, UnitaryGates, PulseGates, PulseInformation
+from qml_essentials.gates import Gates, PulseInformation
 
 jax.config.update("jax_enable_x64", True)
 log = logging.getLogger(__name__)

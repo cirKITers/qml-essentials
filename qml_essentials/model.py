@@ -7,7 +7,8 @@ import jax.numpy as jnp
 import numpy as np
 from jax import random
 
-from qml_essentials.ansaetze import Gates, Ansaetze, Circuit, Encoding
+from qml_essentials.ansaetze import Ansaetze, Circuit, Encoding
+from qml_essentials.gates import Gates
 from qml_essentials.ansaetze import PulseInformation as pinfo
 from qml_essentials.utils import QuanTikz, safe_random_split
 
