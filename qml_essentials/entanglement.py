@@ -274,11 +274,14 @@ class Entanglement:
 
         rhos, log_rhos = Entanglement._compute_log_density(model, **kwargs)
 
-        normalised_entropies = jnp.zeros((n_sigmas, model.params.shape[-1]))
+        rel_entropies = jnp.zeros((n_sigmas, model.params.shape[-1]))
 
-        rel_entropies = Entanglement._compute_rel_entropies(
-            rhos, log_rhos, log_sigmas, model.use_multithreading
-        )
+        for i, log_sigma in enumerate(log_sigmas):
+            rel_entropies = rel_entropies.at[i].set(
+                Entanglement._compute_rel_entropies(
+                    rhos, log_rhos, log_sigma, model.use_multithreading
+                )
+            )
 
         # Entropy of GHZ states should be maximal
         ghz_model = Model(model.n_qubits, 1, "GHZ", data_reupload=False)
@@ -286,15 +289,14 @@ class Entanglement:
         ghz_entropies = Entanglement._compute_rel_entropies(
             rho_ghz, log_rho_ghz, log_sigmas, use_multithreading=False
         )
-        ghz_min_dist = jnp.min(ghz_entropies)
 
-        normalised_entropies = rel_entropies / ghz_min_dist
+        normalised_entropies = rel_entropies / ghz_entropies
 
         # Average all iterated states
-        entangling_capability = normalised_entropies.min(axis=1).mean()
-        log.debug(f"Variance of measure: {normalised_entropies.var()}")
+        entangling_capability = normalised_entropies.T.min(axis=1)
+        log.debug(f"Variance of measure: {entangling_capability.var()}")
 
-        return entangling_capability
+        return entangling_capability.mean()
 
     @staticmethod
     def _compute_log_density(model: Model, **kwargs) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -333,17 +335,22 @@ class Entanglement:
             log_rhos (jnp.ndarray): Corresponding logarithm of the density
                 matrix, has shape (R, 2^n, 2^n).
             log_sigmas (jnp.ndarray): Density matrix of next separable state,
-                has shape (S, 2^n, 2^n), with the batch size S (number of
-                sigmas).
+                has shape (2^n, 2^n) if it's a single sigma or (S, 2^n, 2^n),
+                with the batch size S (number of sigmas).
 
         Returns:
             jnp.ndarray: Relative Entropy for each sample
         """
         n_rhos = rhos.shape[0]
-        n_sigmas = log_sigmas.shape[0]
-        rhos = jnp.tile(rhos, (n_sigmas, 1, 1))
-        log_rhos = jnp.tile(log_rhos, (n_sigmas, 1, 1))
-        log_sigmas = log_sigmas.repeat(n_rhos, axis=0)
+        if len(log_sigmas.shape) == 3:
+            n_sigmas = log_sigmas.shape[0]
+            rhos = jnp.tile(rhos, (n_sigmas, 1, 1))
+            log_rhos = jnp.tile(log_rhos, (n_sigmas, 1, 1))
+            einsum_subscript = "ij,jk->ik" if use_multithreading else "sij,sjk->sik"
+        else:
+            n_sigmas = 1
+            log_sigmas = log_sigmas[jnp.newaxis, ...].repeat(n_rhos, axis=0)
+
         einsum_subscript = "ij,jk->ik" if use_multithreading else "sij,sjk->sik"
 
         def _f(rhos, log_rhos, log_sigmas):
@@ -356,7 +363,8 @@ class Entanglement:
         else:
             rel_entropies = _f(rhos, log_rhos, log_sigmas)
 
-        rel_entropies = rel_entropies.reshape(n_sigmas, n_rhos).T
+        if n_sigmas > 1:
+            rel_entropies = rel_entropies.reshape(n_sigmas, n_rhos)
         return rel_entropies
 
     @staticmethod
