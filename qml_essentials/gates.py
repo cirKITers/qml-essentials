@@ -1318,10 +1318,10 @@ class Gates(metaclass=GatesMeta):
             for enc in gates:
                 # if list, check if str or callable
                 if isinstance(enc, str):
-                    parsed_Gates.append(getattr(set_of_gates, f"{enc}"))
+                    parsed_gates.append(getattr(set_of_gates, f"{enc}"))
                 # check if callable
                 elif callable(enc):
-                    parsed_Gates.append(enc)
+                    parsed_gates.append(enc)
                 else:
                     raise ValueError(
                         f"Operation {enc} is not a valid gate or callable.\

@@ -4,9 +4,9 @@ import jax.numpy as np
 import jax
 import logging
 import warnings
-from enum import Enum, auto
 
 from qml_essentials.gates import Gates, PulseInformation
+from qml_essentials.topologies import Topology
 
 jax.config.update("jax_enable_x64", True)
 log = logging.getLogger(__name__)
@@ -164,8 +164,6 @@ class DeclarativeCircuit(Circuit):
     `get_control_indices`, and `build` are derived automatically.
     """
 
-    structure: Tuple[Any, ...] = ()
-
     @staticmethod
     def structure() -> Tuple[Any, ...]:
         """Override in subclass to return the structure tuple."""
@@ -254,104 +252,6 @@ class Ansaetze:
             Ansaetze.GHZ,
         ]
 
-    class Topology(Enum):
-        LINEAR = auto()
-        LINEAR_REVERSED = auto()
-        CIRCULAR = auto()
-        CIRCULAR_REVERSED = auto()
-        BRICK_LAYER = auto()
-        BRICK_LAYER_WRAP = auto()
-        BRICK_LAYER_REVERSED = auto()
-        ALL_TO_ALL = auto()
-        STRONGLY_ENT_1 = auto()
-        STRONGLY_ENT_2 = auto()
-        RING_CZ = auto()
-        RING_CZ_WRAP = auto()
-
-    @staticmethod
-    def get_wiring(topology: Topology, n_qubits: int) -> List[List[int]]:
-        """
-        Returns a list of [control, target] wire pairs for the given Ansaetze.Topology.
-        #FIXME: this is not very beautiful yet.. Ideally we would have some sort of tree
-        # like architecture with decisions.
-        # Maybe checkout https://github.com/matt-lourens/hierarqcal/
-
-        Parameters
-        ----------
-        topology : Topology
-            The wiring Ansaetze.Topology.
-        n_qubits : int
-            Number of qubits.
-
-        Returns
-        -------
-        List[List[int]]
-            List of [control, target] pairs.
-        """
-        if n_qubits < 2:
-            raise ValueError("Number of qubits must be at least 2")
-
-        if topology == Ansaetze.Topology.LINEAR:
-            return [[n_qubits - q - 1, n_qubits - q - 2] for q in range(n_qubits - 1)]
-        elif topology == Ansaetze.Topology.LINEAR_REVERSED:
-            return [[q, q + 1] for q in range(n_qubits - 1)]
-        elif topology == Ansaetze.Topology.CIRCULAR:
-            return [
-                [n_qubits - q - 1, (n_qubits - q) % n_qubits] for q in range(n_qubits)
-            ]
-        elif topology == Ansaetze.Topology.CIRCULAR_REVERSED:
-            return [[(q - 1) % n_qubits, (q - 2) % n_qubits] for q in range(n_qubits)]
-        elif topology == Ansaetze.Topology.BRICK_LAYER:
-            pairs = []
-            for q in range(n_qubits // 2):
-                pairs.append([2 * q, 2 * q + 1])
-            for q in range((n_qubits - 1) // 2):
-                pairs.append([2 * q + 1, 2 * q + 2])
-            return pairs
-        elif topology == Ansaetze.Topology.BRICK_LAYER_WRAP:
-            pairs = Ansaetze.get_wiring(Ansaetze.Topology.BRICK_LAYER, n_qubits)
-            if n_qubits > 2:
-                pairs.append([n_qubits - 1, 0])
-            return pairs
-        elif topology == Ansaetze.Topology.BRICK_LAYER_REVERSED:
-            # For Circuit_16/17: [1,0], [3,2], ... then [2,1], [4,3], ...
-            pairs = []
-            for q in range(n_qubits // 2):
-                pairs.append([2 * q + 1, 2 * q])
-            for q in range((n_qubits - 1) // 2):
-                pairs.append([2 * q + 2, 2 * q + 1])
-            return pairs
-        elif topology == Ansaetze.Topology.ALL_TO_ALL:
-            pairs = []
-            for ql in range(n_qubits):
-                for q in range(n_qubits):
-                    if q != ql:
-                        pairs.append(
-                            [
-                                n_qubits - ql - 1,
-                                (n_qubits - q - 1) % n_qubits,
-                            ]
-                        )
-            return pairs
-        elif topology == Ansaetze.Topology.STRONGLY_ENT_1:
-            return [[q, (q + 1) % n_qubits] for q in range(n_qubits)]
-        elif topology == Ansaetze.Topology.STRONGLY_ENT_2:
-            return [[q, (q + n_qubits // 2) % n_qubits] for q in range(n_qubits)]
-        elif topology == Ansaetze.Topology.RING_CZ:
-            # CZ: q[n-2]->q[n-1], q[n-3]->q[n-2], ... then optionally wrap
-            pairs = [
-                [(n_qubits - q - 2) % n_qubits, (n_qubits - q - 1) % n_qubits]
-                for q in range(n_qubits - 1)
-            ]
-            return pairs
-        elif topology == Ansaetze.Topology.RING_CZ_WRAP:
-            pairs = Ansaetze.get_wiring(Ansaetze.Topology.RING_CZ, n_qubits)
-            if n_qubits > 2:
-                pairs.append([n_qubits - 1, 0])
-            return pairs
-        else:
-            raise ValueError(f"Unknown topology: {topology}")
-
     # ──────────────────────────────────────────────────────────────────────
     # Block descriptors — the "atoms" of an ansatz description
     # ──────────────────────────────────────────────────────────────────────
@@ -391,7 +291,7 @@ class Ansaetze:
                 return w_idx
 
             iterator = (
-                Ansaetze.get_wiring(self.topology, n_qubits)
+                self.topology(n_qubits)
                 if Gates.is_entangling(self.gate)
                 else range(n_qubits)
             )
@@ -422,9 +322,7 @@ class Ansaetze:
         def structure():
             return (
                 Ansaetze.Block(gate=Gates.H),
-                Ansaetze.Block(
-                    gate=Gates.CX, topology=Ansaetze.Topology.LINEAR_REVERSED
-                ),
+                Ansaetze.Block(gate=Gates.CX, topology=Topology.linear_reversed),
             )
 
         # GHZ is special: H only on qubit 0, not all qubits
@@ -456,7 +354,7 @@ class Ansaetze:
             return (
                 Ansaetze.Block(gate=Gates.RX),
                 Ansaetze.Block(gate=Gates.RZ),
-                Ansaetze.Block(gate=Gates.CX, topology=Ansaetze.Topology.LINEAR),
+                Ansaetze.Block(gate=Gates.CX, topology=Topology.linear),
             )
 
     # ── Circuit_3: [RX, RZ] per qubit + linear CRZ ────────────────
@@ -466,7 +364,7 @@ class Ansaetze:
             return (
                 Ansaetze.Block(gate=Gates.RX),
                 Ansaetze.Block(gate=Gates.RZ),
-                Ansaetze.Block(gate=Gates.CRZ, topology=Ansaetze.Topology.LINEAR),
+                Ansaetze.Block(gate=Gates.CRZ, topology=Topology.linear),
             )
 
     # ── Circuit_4: [RX, RZ] per qubit + linear CRX ────────────────
@@ -476,7 +374,7 @@ class Ansaetze:
             return (
                 Ansaetze.Block(gate=Gates.RX),
                 Ansaetze.Block(gate=Gates.RZ),
-                Ansaetze.Block(gate=Gates.CRX, topology=Ansaetze.Topology.LINEAR),
+                Ansaetze.Block(gate=Gates.CRX, topology=Topology.linear),
             )
 
     # ── Circuit_6: [RX,RZ] + all-to-all CRX + [RX,RZ] ────────────
@@ -487,7 +385,7 @@ class Ansaetze:
             return (
                 Ansaetze.Block(gate=Gates.RX),
                 Ansaetze.Block(gate=Gates.RZ),
-                Ansaetze.Block(gate=Gates.CRX, topology=Ansaetze.Topology.ALL_TO_ALL),
+                Ansaetze.Block(gate=Gates.CRX, topology=Topology.all_to_all),
                 Ansaetze.Block(gate=Gates.RX),
                 Ansaetze.Block(gate=Gates.RZ),
             )
@@ -498,7 +396,7 @@ class Ansaetze:
         def structure():
             return (
                 Ansaetze.Block(gate=Gates.H),
-                Ansaetze.Block(gate="CZ", topology=Ansaetze.Topology.RING_CZ),
+                Ansaetze.Block(gate="CZ", topology=Topology.ring_cz),
                 Ansaetze.Block(gate=Gates.RX),
             )
 
@@ -508,7 +406,7 @@ class Ansaetze:
         def structure():
             return (
                 Ansaetze.Block(gate=Gates.RY),
-                Ansaetze.Block(gate="CZ", topology=Ansaetze.Topology.RING_CZ_WRAP),
+                Ansaetze.Block(gate="CZ", topology=Topology.ring_cz_wrap),
                 Ansaetze.Block(gate=Gates.RY),
             )
 
@@ -519,11 +417,11 @@ class Ansaetze:
         def structure():
             return (
                 Ansaetze.Block(gate=Gates.RY),
-                Ansaetze.Block(gate=Gates.CX, topology=Ansaetze.Topology.CIRCULAR),
+                Ansaetze.Block(gate=Gates.CX, topology=Topology.circular),
                 Ansaetze.Block(gate=Gates.RY),
                 Ansaetze.Block(
                     gate=Gates.CX,
-                    topology=Ansaetze.Topology.CIRCULAR_REVERSED,
+                    topology=Topology.circular_reversed,
                 ),
             )
 
@@ -536,7 +434,7 @@ class Ansaetze:
                 Ansaetze.Block(gate=Gates.RZ),
                 Ansaetze.Block(
                     gate=Gates.CRZ,
-                    topology=Ansaetze.Topology.BRICK_LAYER_REVERSED,
+                    topology=Topology.brick_layer_reversed,
                 ),
             )
 
@@ -549,7 +447,7 @@ class Ansaetze:
                 Ansaetze.Block(gate=Gates.RZ),
                 Ansaetze.Block(
                     gate=Gates.CRX,
-                    topology=Ansaetze.Topology.BRICK_LAYER_REVERSED,
+                    topology=Topology.brick_layer_reversed,
                 ),
             )
 
@@ -561,7 +459,7 @@ class Ansaetze:
             return (
                 Ansaetze.Block(gate=Gates.RX),
                 Ansaetze.Block(gate=Gates.RZ),
-                Ansaetze.Block(gate=Gates.CRZ, topology=Ansaetze.Topology.CIRCULAR),
+                Ansaetze.Block(gate=Gates.CRZ, topology=Topology.circular),
             )
 
     # ── Circuit_19: [RX, RZ] + circular CRX ───────────────────────
@@ -572,7 +470,7 @@ class Ansaetze:
             return (
                 Ansaetze.Block(gate=Gates.RX),
                 Ansaetze.Block(gate=Gates.RZ),
-                Ansaetze.Block(gate=Gates.CRX, topology=Ansaetze.Topology.CIRCULAR),
+                Ansaetze.Block(gate=Gates.CRX, topology=Topology.circular),
             )
 
     # ── No_Entangling: Rot per qubit ──────────────────────────────
@@ -590,9 +488,7 @@ class Ansaetze:
                 Ansaetze.Block(gate=Gates.RY),
                 Ansaetze.Block(gate=Gates.RZ),
                 Ansaetze.Block(gate=Gates.RY),
-                Ansaetze.Block(
-                    gate=Gates.CX, topology=Ansaetze.Topology.BRICK_LAYER_WRAP
-                ),
+                Ansaetze.Block(gate=Gates.CX, topology=Topology.brick_layer_wrap),
             )
 
     # ── Strongly_Entangling: Rot + SE1 CX + Rot + SE2 CX ────────
@@ -603,11 +499,13 @@ class Ansaetze:
             return (
                 Ansaetze.Block(gate=Gates.Rot),
                 Ansaetze.Block(
-                    gate=Gates.CX, topology=Ansaetze.Topology.STRONGLY_ENT_1
+                    gate=Gates.CX,
+                    topology=lambda n: Topology.strongly_ent(n, stride=1),
                 ),
                 Ansaetze.Block(gate=Gates.Rot),
                 Ansaetze.Block(
-                    gate=Gates.CX, topology=Ansaetze.Topology.STRONGLY_ENT_2
+                    gate=Gates.CX,
+                    topology=lambda n: Topology.strongly_ent(n, stride=n // 2),
                 ),
             )
 
