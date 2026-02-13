@@ -1612,7 +1612,6 @@ class Ansaetze:
         is_controlled_param: bool = False
         min_qubits: int = 1
 
-    @dataclass(frozen=True)
     class RotationBlock(Block):
         """
         Apply a sequence of single-qubit parametric gates to every qubit.
@@ -1655,7 +1654,6 @@ class Ansaetze:
                         w_idx += 1
             return w_idx
 
-    @dataclass(frozen=True)
     class FixedGateBlock(Block):
         """
         Apply a non-parametric single-qubit gate to every qubit.
@@ -1678,7 +1676,6 @@ class Ansaetze:
                 gate_fn(wires=q, **kwargs)
             return w_idx
 
-    @dataclass(frozen=True)
     class EntanglingBlock(Block):
         """
         Apply a non-parametric two-qubit gate according to a Ansaetze.Topology.
@@ -1716,7 +1713,6 @@ class Ansaetze:
                 gate_fn(wires=wires, **kwargs)
             return w_idx
 
-    @dataclass(frozen=True)
     class ControlledRotationBlock(Block):
         """
         Apply a parametric two-qubit gate (controlled rotation) according to a Ansaetze.Topology.
@@ -1768,15 +1764,12 @@ class Ansaetze:
         A circuit defined entirely by a sequence of Block descriptors.
 
         Subclasses only need to set the class attribute `structure` — a tuple of
-        Block objects — and optionally `_min_qubits_for_entangling` for the
-        warning message.
 
         All of `n_params_per_layer`, `n_pulse_params_per_layer`,
         `get_control_indices`, and `build` are derived automatically.
         """
 
         structure: Tuple[Any, ...] = ()
-        _min_qubits_warning: bool = False  # set True to warn when n_qubits < 2
 
         @staticmethod
         def structure() -> Tuple[Any, ...]:
@@ -1785,8 +1778,6 @@ class Ansaetze:
 
         @classmethod
         def n_params_per_layer(cls, n_qubits: int) -> int:
-            if cls._min_qubits_warning and n_qubits < 2:
-                warnings.warn("Number of Qubits < 2, no entanglement available")
             structure = cls.structure()
             n_params = 0
             for block in structure:
@@ -1921,7 +1912,6 @@ class Ansaetze:
 
     # ── Circuit_6: [RX,RZ] + all-to-all CRX + [RX,RZ] ────────────
     class Circuit_6(DeclarativeCircuit):
-        _min_qubits_warning = True
 
         @staticmethod
         def structure():
@@ -1967,7 +1957,6 @@ class Ansaetze:
 
     # ── Circuit_15: RY + circular CX + RY + circular_reversed CX ──
     class Circuit_15(DeclarativeCircuit):
-        _min_qubits_warning = True
 
         @staticmethod
         def structure():
@@ -2013,7 +2002,6 @@ class Ansaetze:
 
     # ── Circuit_18: [RX, RZ] + circular CRZ ───────────────────────
     class Circuit_18(DeclarativeCircuit):
-        _min_qubits_warning = True
 
         @staticmethod
         def structure():
@@ -2051,7 +2039,6 @@ class Ansaetze:
 
     # ── Hardware_Efficient: [RY, RZ, RY] + brick-layer-wrap CX ───
     class Hardware_Efficient(DeclarativeCircuit):
-        _min_qubits_warning = True
 
         @staticmethod
         def structure():
@@ -2064,7 +2051,6 @@ class Ansaetze:
 
     # ── Strongly_Entangling: Rot + SE1 CX + Rot + SE2 CX ────────
     class Strongly_Entangling(DeclarativeCircuit):
-        _min_qubits_warning = True
 
         @staticmethod
         def structure():
