@@ -310,6 +310,16 @@ def test_ansaetze() -> None:
         )
 
 
+@pytest.mark.unittest
+def test_min_qubit_warning() -> None:
+    with pytest.warns(UserWarning):
+        model = Model(
+            n_qubits=1,
+            n_layers=1,
+            circuit_type="Circuit_19",
+        )
+
+
 @pytest.mark.expensive
 @pytest.mark.smoketest
 def test_pulse_params_ansaetze() -> None:
