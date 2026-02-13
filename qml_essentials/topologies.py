@@ -20,8 +20,9 @@ class Topology:
         If ``n_qubits < 2`` is passed to any topology method.
     """
 
-    @staticmethod
+    @classmethod
     def _chain(
+        cls,
         n_qubits: int,
         wrap: bool = False,
         reverse: bool = False,
@@ -50,8 +51,9 @@ class Topology:
             return [[(q - 1) % n_qubits, (q - 2) % n_qubits] for q in range(count)]
         return [[n_qubits - q - 1, (n_qubits - q) % n_qubits] for q in range(count)]
 
-    @staticmethod
+    @classmethod
     def _brick(
+        cls,
         n_qubits: int,
         wrap: bool = False,
         reverse_pairs: bool = False,
@@ -85,8 +87,9 @@ class Topology:
             pairs.append([n_qubits - 1, 0])
         return pairs
 
-    @staticmethod
+    @classmethod
     def _ring(
+        cls,
         n_qubits: int,
         wrap: bool = False,
     ) -> List[List[int]]:
@@ -118,43 +121,43 @@ class Topology:
 
     # ── public topology methods ────────────────────────────────
 
-    @staticmethod
-    def linear(n_qubits: int) -> List[List[int]]:
+    @classmethod
+    def linear(cls, n_qubits: int) -> List[List[int]]:
         """Chain running high→low: ``[n-1→n-2, …, 1→0]``."""
-        return Ansaetze.Topology._chain(n_qubits)
+        return cls._chain(n_qubits)
 
-    @staticmethod
-    def linear_reversed(n_qubits: int) -> List[List[int]]:
+    @classmethod
+    def linear_reversed(cls, n_qubits: int) -> List[List[int]]:
         """Chain running low→high: ``[0→1, 1→2, …]``."""
         return [[q, q + 1] for q in range(n_qubits - 1)]
 
-    @staticmethod
-    def circular(n_qubits: int) -> List[List[int]]:
+    @classmethod
+    def circular(cls, n_qubits: int) -> List[List[int]]:
         """Wrapping chain high→low (every qubit is control once)."""
-        return Ansaetze.Topology._chain(n_qubits, wrap=True)
+        return cls._chain(n_qubits, wrap=True)
 
-    @staticmethod
-    def circular_reversed(n_qubits: int) -> List[List[int]]:
+    @classmethod
+    def circular_reversed(cls, n_qubits: int) -> List[List[int]]:
         """Wrapping chain low→high."""
-        return Ansaetze.Topology._chain(n_qubits, wrap=True, reverse=True)
+        return cls._chain(n_qubits, wrap=True, reverse=True)
 
-    @staticmethod
-    def brick_layer(n_qubits: int) -> List[List[int]]:
+    @classmethod
+    def brick_layer(cls, n_qubits: int) -> List[List[int]]:
         """Even pairs then odd pairs: ``[0,1],[2,3],…,[1,2],[3,4],…``."""
-        return Ansaetze.Topology._brick(n_qubits)
+        return cls._brick(n_qubits)
 
-    @staticmethod
-    def brick_layer_wrap(n_qubits: int) -> List[List[int]]:
+    @classmethod
+    def brick_layer_wrap(cls, n_qubits: int) -> List[List[int]]:
         """Brick-layer with an extra ``[n-1, 0]`` wrapping pair."""
-        return Ansaetze.Topology._brick(n_qubits, wrap=True)
+        return cls._brick(n_qubits, wrap=True)
 
-    @staticmethod
-    def brick_layer_reversed(n_qubits: int) -> List[List[int]]:
+    @classmethod
+    def brick_layer_reversed(cls, n_qubits: int) -> List[List[int]]:
         """Brick-layer with swapped control/target inside each pair."""
-        return Ansaetze.Topology._brick(n_qubits, reverse_pairs=True)
+        return cls._brick(n_qubits, reverse_pairs=True)
 
-    @staticmethod
-    def all_to_all(n_qubits: int) -> List[List[int]]:
+    @classmethod
+    def all_to_all(cls, n_qubits: int) -> List[List[int]]:
         """Every ordered pair ``(i, j)`` with ``i ≠ j``."""
         pairs: List[List[int]] = []
         for ql in range(n_qubits):
@@ -168,8 +171,8 @@ class Topology:
                     )
         return pairs
 
-    @staticmethod
-    def strongly_ent(n_qubits: int, stride: int = 1) -> List[List[int]]:
+    @classmethod
+    def strongly_ent(cls, n_qubits: int, stride: int = 1) -> List[List[int]]:
         """
         Circular stride-*k* pairing: ``q → (q + stride) % n``.
 
@@ -182,12 +185,12 @@ class Topology:
         """
         return [[q, (q + stride) % n_qubits] for q in range(n_qubits)]
 
-    @staticmethod
-    def ring_cz(n_qubits: int) -> List[List[int]]:
+    @classmethod
+    def ring_cz(cls, n_qubits: int) -> List[List[int]]:
         """Descending consecutive pairs without wrapping."""
-        return Ansaetze.Topology._ring(n_qubits)
+        return cls._ring(n_qubits)
 
-    @staticmethod
-    def ring_cz_wrap(n_qubits: int) -> List[List[int]]:
+    @classmethod
+    def ring_cz_wrap(cls, n_qubits: int) -> List[List[int]]:
         """Descending consecutive pairs with wrapping ``[n-1, 0]``."""
-        return Ansaetze.Topology._ring(n_qubits, wrap=True)
+        return cls._ring(n_qubits, wrap=True)

@@ -174,13 +174,16 @@ class DeclarativeCircuit(Circuit):
         structure = cls.structure()
         n_params = 0
         for block in structure:
-            if block.n_params(n_qubits) > block.min_qubits:
-                n_params += block.n_params(n_qubits)
-            else:
+            # we can rely on n_params only returning a valid number
+            _n_params = block.n_params(n_qubits)
+
+            if _n_params == 0:
                 warnings.warn(
                     f"Skipping {block} with n_qubits={n_qubits} "
-                    f"since it requires {block.min_qubits} qubits."
+                    f"as there are not enough qubits for this topology"
                 )
+
+            n_params += _n_params
 
         return n_params
 
@@ -204,9 +207,11 @@ class DeclarativeCircuit(Circuit):
         offset = 0
         for block in structure:
             n = block.n_params(n_qubits)
-            if isinstance(block, Ansaetze.Block):
+            if block.is_controlled_rotation:
                 controlled_indices.extend(range(offset, offset + n))
             offset += n
+
+        # FIXME: this last part should be reworked
 
         if not controlled_indices:
             return None
@@ -275,10 +280,27 @@ class Ansaetze:
 
         @property
         def min_qubits(self):
-            return 2 if Gates.is_entangling(self.gate) else 1
+            return 2 if self.is_entangling else 1
+
+        @property
+        def is_entangling(self):
+            return Gates.is_entangling(self.gate)
+
+        @property
+        def is_rotational(self):
+            return Gates.is_rotational(self.gate)
+
+        @property
+        def is_controlled_rotation(self):
+            return self.is_entangling and self.is_rotational
 
         def n_params(self, n_qubits: int) -> int:
-            if Gates.is_rotational(self.gate) and n_qubits > self.min_qubits:
+            assert n_qubits > 0, "Number of qubits must be positive"
+
+            if Gates.is_entangling(self.gate):
+                return len(self.topology(n_qubits))
+
+            if Gates.is_rotational(self.gate):
                 return n_qubits if self.gate.__name__ != "Rot" else 3 * n_qubits
 
             return 0
@@ -287,8 +309,7 @@ class Ansaetze:
             return PulseInformation.num_params(self.gate) * n_qubits
 
         def apply(self, w: np.ndarray, w_idx: int, n_qubits: int, **kwargs) -> int:
-            if n_qubits < self.min_qubits:
-                return w_idx
+            assert n_qubits > 0, "Number of qubits must be positive"
 
             iterator = (
                 self.topology(n_qubits)
