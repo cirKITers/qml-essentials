@@ -1610,6 +1610,9 @@ class Ansaetze:
     def get_wiring(topology: Topology, n_qubits: int) -> List[List[int]]:
         """
         Returns a list of [control, target] wire pairs for the given Ansaetze.Topology.
+        #FIXME: this is not very beautiful yet.. Ideally we would have some sort of tree
+        # like architecture with decisions.
+        # Maybe checkout https://github.com/matt-lourens/hierarqcal/
 
         Parameters
         ----------
