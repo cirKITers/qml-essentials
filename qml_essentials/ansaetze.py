@@ -52,7 +52,7 @@ class Circuit(ABC):
         -------
         Optional[np.ndarray]
             List of all controlled indices, or None if the circuit does not
-            contain controlled rotation gates.
+            contain controlled rotation Gates.
         """
         raise NotImplementedError("get_control_indices method is not implemented")
 
@@ -72,7 +72,7 @@ class Circuit(ABC):
         -------
         Optional[np.ndarray]
             List of all controlled parameters, or None if the circuit does not
-            contain controlled rotation gates.
+            contain controlled rotation Gates.
         """
         indices = self.get_control_indices(n_qubits)
         if indices is None:
@@ -854,7 +854,7 @@ class PulseParams:
 
 class PulseInformation:
     """
-    Stores pulse parameter counts and optimized pulse parameters for quantum gates.
+    Stores pulse parameter counts and optimized pulse parameters for quantum Gates.
     """
 
     RX = PulseParams(
@@ -872,7 +872,7 @@ class PulseInformation:
         pulse_obj=[RZ, RY],
     )
 
-    # Rot = PulseParams(name="Rot", pulse_obj=[RZ, RY, RZ])
+    # Rot = PulseParams(name=Gates.Rot, pulse_obj=[RZ, RY, RZ])
     CX = PulseParams(name="CX", pulse_obj=[H, CZ, H])
     CY = PulseParams(name="CY", pulse_obj=[RZ, CX, RZ])
 
@@ -890,12 +890,15 @@ class PulseInformation:
     ]
 
     @staticmethod
-    def gate_by_name(gate_name):
-        return getattr(PulseInformation, gate_name, None)
+    def gate_by_name(gate):
+        if isinstance(gate, str):
+            return getattr(PulseInformation, gate, None)
+        else:
+            return getattr(PulseInformation, gate.__name__, None)
 
     @staticmethod
-    def num_params(gate_name):
-        return len(getattr(PulseInformation, gate_name, []))
+    def num_params(gate):
+        return len(PulseInformation.gate_by_name(gate))
 
     @staticmethod
     def update_params(path=f"{os.getcwd()}/qml_essentials/qoc_results.csv"):
@@ -993,7 +996,7 @@ class PulseGates:
         wires : List[int]
             The wire(s) to apply the rotation to.
         pulse_params : np.ndarray, optional
-            Pulse parameters for the composing gates. Defaults
+            Pulse parameters for the composing Gates. Defaults
             to optimized parameters if None.
         """
         params_RZ_1, params_RY, params_RZ_2 = PulseInformation.Rot.split_params(
@@ -1092,7 +1095,7 @@ class PulseGates:
         wires : Union[int, List[int]]
             The wire(s) to apply the Hadamard gate to.
         pulse_params : np.ndarray, optional
-            Pulse parameters for the composing gates. Defaults
+            Pulse parameters for the composing Gates. Defaults
             to optimized parameters and time.
         """
         pulse_params_RZ, pulse_params_RY = PulseInformation.H.split_params(pulse_params)
@@ -1123,7 +1126,7 @@ class PulseGates:
         wires : List[int]
             The control and target wires for the CNOT gate.
         pulse_params : np.ndarray, optional
-            Pulse parameters for the composing gates. Defaults
+            Pulse parameters for the composing Gates. Defaults
             to optimized parameters if None.
         """
         params_H_1, params_CZ, params_H_2 = PulseInformation.CX.split_params(
@@ -1149,7 +1152,7 @@ class PulseGates:
         wires : List[int]
             The control and target wires.
         pulse_params : np.ndarray
-            Pulse parameters for the composing gates. Defaults
+            Pulse parameters for the composing Gates. Defaults
             to optimized parameters if None.
         """
         params_RZ_1, params_CX, params_RZ_2 = PulseInformation.CY.split_params(
@@ -1210,7 +1213,7 @@ class PulseGates:
         wires : List[int]
             The control and target wires.
         pulse_params : np.ndarray
-            Pulse parameters for the composing gates. Defaults
+            Pulse parameters for the composing Gates. Defaults
             to optimized parameters if None.
         """
         params_RZ_1, params_RY, params_CX_1, params_RY_2, params_CX_2, params_RZ_2 = (
@@ -1242,7 +1245,7 @@ class PulseGates:
         wires : List[int]
             The control and target wires.
         pulse_params : np.ndarray
-            Pulse parameters for the composing gates. Defaults
+            Pulse parameters for the composing Gates. Defaults
             to optimized parameters if None.
         """
         params_RY_1, params_CX_1, params_RY_2, params_CX_2 = (
@@ -1272,7 +1275,7 @@ class PulseGates:
         wires : List[int]
             The control and target wires.
         pulse_params : np.ndarray
-            Pulse parameters for the composing gates. Defaults
+            Pulse parameters for the composing Gates. Defaults
             to optimized parameters if None.
         """
         params_RZ_1, params_CX_1, params_RZ_2, params_CX_2 = (
@@ -1293,12 +1296,14 @@ class GatesMeta(type):
         def handler(*args, **kwargs):
             return Gates._inner_getattr(gate_name, *args, **kwargs)
 
+        # Dirty way to preserve information about the gate name
+        handler.__name__ = gate_name
         return handler
 
 
 class Gates(metaclass=GatesMeta):
     """
-    Dynamic accessor for quantum gates.
+    Dynamic accessor for quantum Gates.
 
     Routes calls like `Gates.RX(...)` to either `UnitaryGates` or `PulseGates`
     depending on the `gate_mode` keyword (defaults to 'unitary').
@@ -1435,10 +1440,10 @@ class Gates(metaclass=GatesMeta):
             for enc in gates:
                 # if list, check if str or callable
                 if isinstance(enc, str):
-                    parsed_gates.append(getattr(set_of_gates, f"{enc}"))
+                    parsed_Gates.append(getattr(set_of_gates, f"{enc}"))
                 # check if callable
                 elif callable(enc):
-                    parsed_gates.append(enc)
+                    parsed_Gates.append(enc)
                 else:
                     raise ValueError(
                         f"Operation {enc} is not a valid gate or callable.\
@@ -1454,6 +1459,22 @@ class Gates(metaclass=GatesMeta):
                 f"Operation {gates} is not a valid gate or callable or list of both."
             )
         return parsed_gates
+
+    @staticmethod
+    def is_rotational(gate):
+        return gate.__name__ in [
+            "RX",
+            "RY",
+            "RZ",
+            "Rot",
+            "CRX",
+            "CRY",
+            "CRZ",
+        ]
+
+    @staticmethod
+    def is_entangling(gate):
+        return gate.__name__ in ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"]
 
 
 class PulseParamManager:
@@ -1511,9 +1532,8 @@ class DeclarativeCircuit(Circuit):
     @classmethod
     def get_control_indices(cls, n_qubits: int) -> Optional[List]:
         """
-        Computes parameter indices for controlled rotation gates.
+        Computes parameter indices for controlled rotation Gates.
         Scans the structure for ControlledRotationBlock with
-        is_controlled_param=True and returns a slice descriptor
         [start, stop, step] into the flat parameter vector, or None.
         """
         structure = cls.structure()
@@ -1524,10 +1544,7 @@ class DeclarativeCircuit(Circuit):
         offset = 0
         for block in structure:
             n = block.n_params(n_qubits)
-            if (
-                isinstance(block, Ansaetze.ControlledRotationBlock)
-                and block.is_controlled_param
-            ):
+            if isinstance(block, Ansaetze.ControlledRotationBlock):
                 controlled_indices.extend(range(offset, offset + n))
             offset += n
 
@@ -1675,137 +1692,68 @@ class Ansaetze:
     # ──────────────────────────────────────────────────────────────────────
     @dataclass(frozen=True)
     class Block:
-        def __init__(self, gates: Tuple[str, ...], topology: Any = None):
-            gates: Tuple[str, ...]
-            topology: Any = None
-            is_controlled_param: bool = False
-            min_qubits: int = 1
+        def __init__(
+            self,
+            gate: str,
+            topology: Any = None,
+        ):
+            if isinstance(gate, str):
+                self.gate = getattr(Gates, gate)
+            else:
+                self.gate = gate
+            self.topology = topology
+
+        @property
+        def min_qubits(self):
+            return Gates.is_entangling(self.gate)
 
     class RotationBlock(Block):
         """
-        Apply a sequence of single-qubit parametric gates to every qubit.
-
-        Each gate in `gates` consumes one parameter per qubit, except `Rot`
-        which consumes 3 per qubit.
-
-        Attributes
-        ----------
-        gates : Tuple[str, ...]
-            Gate names, e.g. ("RX", "RZ") or ("Rot",).
+        Apply a sequence of single-qubit parametric gate to every qubit.
         """
 
         def n_params(self, n_qubits: int) -> int:
-            total = 0
-            for g in self.gates:
-                if g == "Rot":
-                    total += 3 * n_qubits
-                else:
-                    total += n_qubits
-            return total
+            # FIXME: maybe we can find a nicer way
+            # i.e. having the number of params as a property of a gate
+            # together with the name
+            if self.gate.__name__ == "Rot":
+                return 3 * n_qubits
+            else:
+                return n_qubits
 
         def n_pulse_params(self, n_qubits: int) -> int:
-            total = 0
-            for g in self.gates:
-                total += PulseInformation.num_params(g) * n_qubits
-            return total
+            return PulseInformation.num_params(self.gate) * n_qubits
 
         def apply(self, w: np.ndarray, w_idx: int, n_qubits: int, **kwargs) -> int:
             for q in range(n_qubits):
-                for g in self.gates:
-                    if g == "Rot":
-                        Gates.Rot(
+                if Gates.is_rotational(self.gate):
+                    if self.gate.__name__ == "Rot":
+                        self.gate(
                             w[w_idx], w[w_idx + 1], w[w_idx + 2], wires=q, **kwargs
                         )
                         w_idx += 3
                     else:
-                        gate_fn = getattr(Gates, g)
-                        gate_fn(w[w_idx], wires=q, **kwargs)
+                        self.gate(w[w_idx], wires=q, **kwargs)
                         w_idx += 1
-            return w_idx
-
-    class FixedGateBlock(Block):
-        """
-        Apply a non-parametric single-qubit gate to every qubit.
-
-        Attributes
-        ----------
-        gate : str
-            Gate name, e.g. "H".
-        """
-
-        def n_params(self, n_qubits: int) -> int:
-            return 0
-
-        def n_pulse_params(self, n_qubits: int) -> int:
-            return PulseInformation.num_params(self.gates[0]) * n_qubits
-
-        def apply(self, w: np.ndarray, w_idx: int, n_qubits: int, **kwargs) -> int:
-            gate_fn = getattr(Gates, self.gates[0])
-            for q in range(n_qubits):
-                gate_fn(wires=q, **kwargs)
-            return w_idx
-
-    class EntanglingBlock(Block):
-        """
-        Apply a non-parametric two-qubit gate according to a Ansaetze.Topology.
-
-        Attributes
-        ----------
-        gate : str
-            Gate name, e.g. "CX", "CZ".
-        topology : Topology
-            Wiring Ansaetze.Topology.
-        min_qubits : int
-            Minimum number of qubits required (gates are skipped if n_qubits < min_qubits).
-        """
-
-        min_qubits: int = 2
-
-        def n_params(self, n_qubits: int) -> int:
-            return 0
-
-        def n_wire_pairs(self, n_qubits: int) -> int:
-            if n_qubits < self.min_qubits:
-                return 0
-            return len(Ansaetze.get_wiring(self.topology, n_qubits))
-
-        def n_pulse_params(self, n_qubits: int) -> int:
-            return self.n_wire_pairs(n_qubits) * PulseInformation.num_params(
-                self.gates[0]
-            )
-
-        def apply(self, w: np.ndarray, w_idx: int, n_qubits: int, **kwargs) -> int:
-            if n_qubits < self.min_qubits:
-                return w_idx
-            gate_fn = getattr(Gates, self.gates[0])
-            for wires in Ansaetze.get_wiring(self.topology, n_qubits):
-                gate_fn(wires=wires, **kwargs)
+                else:
+                    self.gate(wires=q, **kwargs)
             return w_idx
 
     class ControlledRotationBlock(Block):
         """
         Apply a parametric two-qubit gate (controlled rotation) according to a Ansaetze.Topology.
-        Each wire pair consumes one parameter.
-
-        Attributes
-        ----------
-        gate : str
-            Gate name, e.g. "CRX", "CRZ".
-        topology : Topology
-            Wiring Ansaetze.Topology.
-        is_controlled_param : bool
-            Whether the parameters of this block should be reported as
-            "controlled" parameters (used for initialization strategies).
-        min_qubits : int
-            Minimum number of qubits required.
         """
 
-        is_controlled_param: bool = True
-        min_qubits: int = 2
+        def __init__(self, gate, topology=None):
+            super().__init__(
+                gate,
+                topology,
+            )
 
         def n_params(self, n_qubits: int) -> int:
             if n_qubits < self.min_qubits:
                 return 0
+
             return len(Ansaetze.get_wiring(self.topology, n_qubits))
 
         def n_pulse_params(self, n_qubits: int) -> int:
@@ -1813,15 +1761,17 @@ class Ansaetze:
                 return 0
             return len(
                 Ansaetze.get_wiring(self.topology, n_qubits)
-            ) * PulseInformation.num_params(self.gates[0])
+            ) * PulseInformation.num_params(self.gate)
 
         def apply(self, w: np.ndarray, w_idx: int, n_qubits: int, **kwargs) -> int:
             if n_qubits < self.min_qubits:
                 return w_idx
-            gate_fn = getattr(Gates, self.gates[0])
             for wires in Ansaetze.get_wiring(self.topology, n_qubits):
-                gate_fn(w[w_idx], wires=wires, **kwargs)
-                w_idx += 1
+                if Gates.is_rotational(self.gate):
+                    self.gate(w[w_idx], wires=wires, **kwargs)
+                    w_idx += 1
+                else:
+                    self.gate(wires=wires, **kwargs)
             return w_idx
 
     # ── No_Ansatz ──────────────────────────────────────────────────
@@ -1835,11 +1785,9 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.FixedGateBlock(
-                    gates=("H",)
-                ),  # H on qubit 0 only — see override
-                Ansaetze.EntanglingBlock(
-                    gates=("CX",), topology=Ansaetze.Topology.LINEAR_REVERSED
+                Ansaetze.RotationBlock(gate=Gates.H),
+                Ansaetze.ControlledRotationBlock(
+                    gate=Gates.CX, topology=Ansaetze.Topology.LINEAR_REVERSED
                 ),
             )
 
@@ -1853,23 +1801,27 @@ class Ansaetze:
         @staticmethod
         def n_pulse_params_per_layer(n_qubits: int) -> int:
             n_params = PulseInformation.num_params("H")  # only 1 H
-            n_params += (n_qubits - 1) * PulseInformation.num_params("CX")
+            n_params += (n_qubits - 1) * PulseInformation.num_params(Gates.CX)
             return n_params
 
     # ── Circuit_1: [RX, RZ] per qubit, no entangling ──────────────
     class Circuit_1(DeclarativeCircuit):
         @staticmethod
         def structure():
-            return (Ansaetze.RotationBlock(gates=("RX", "RZ")),)
+            return (
+                Ansaetze.RotationBlock(gate=Gates.RX),
+                Ansaetze.RotationBlock(gate=Gates.RZ),
+            )
 
     # ── Circuit_2: [RX, RZ] per qubit + linear CX ─────────────────
     class Circuit_2(DeclarativeCircuit):
         @staticmethod
         def structure():
             return (
-                Ansaetze.RotationBlock(gates=("RX", "RZ")),
-                Ansaetze.EntanglingBlock(
-                    gates=("CX",), topology=Ansaetze.Topology.LINEAR
+                Ansaetze.RotationBlock(gate=Gates.RX),
+                Ansaetze.RotationBlock(gate=Gates.RZ),
+                Ansaetze.ControlledRotationBlock(
+                    gate=Gates.CX, topology=Ansaetze.Topology.LINEAR
                 ),
             )
 
@@ -1878,9 +1830,10 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.RotationBlock(gates=("RX", "RZ")),
+                Ansaetze.RotationBlock(gate=Gates.RX),
+                Ansaetze.RotationBlock(gate=Gates.RZ),
                 Ansaetze.ControlledRotationBlock(
-                    gates=("CRZ",), topology=Ansaetze.Topology.LINEAR
+                    gate=Gates.CRZ, topology=Ansaetze.Topology.LINEAR
                 ),
             )
 
@@ -1889,9 +1842,10 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.RotationBlock(gates=("RX", "RZ")),
+                Ansaetze.RotationBlock(gate=Gates.RX),
+                Ansaetze.RotationBlock(gate=Gates.RZ),
                 Ansaetze.ControlledRotationBlock(
-                    gates=("CRX",), topology=Ansaetze.Topology.LINEAR
+                    gate=Gates.CRX, topology=Ansaetze.Topology.LINEAR
                 ),
             )
 
@@ -1901,31 +1855,25 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.RotationBlock(gates=("RX", "RZ")),
+                Ansaetze.RotationBlock(gate=Gates.RX),
+                Ansaetze.RotationBlock(gate=Gates.RZ),
                 Ansaetze.ControlledRotationBlock(
-                    gates=("CRX",), topology=Ansaetze.Topology.ALL_TO_ALL
+                    gate=Gates.CRX, topology=Ansaetze.Topology.ALL_TO_ALL
                 ),
-                Ansaetze.RotationBlock(gates=("RX", "RZ")),
+                Ansaetze.RotationBlock(gate=Gates.RX),
+                Ansaetze.RotationBlock(gate=Gates.RZ),
             )
-
-        # n_params special case for 1 qubit
-        @classmethod
-        def n_params_per_layer(cls, n_qubits: int) -> int:
-            if n_qubits < 2:
-                warnings.warn("Number of Qubits < 2, no entanglement available")
-                return 4  # 2 rotations * 2 blocks
-            return super().n_params_per_layer(n_qubits)
 
     # ── Circuit_9: H + linear CZ + RX ─────────────────────────────
     class Circuit_9(DeclarativeCircuit):
         @staticmethod
         def structure():
             return (
-                Ansaetze.FixedGateBlock(gates=("H")),
-                Ansaetze.EntanglingBlock(
-                    gates=("CZ",), topology=Ansaetze.Topology.RING_CZ
+                Ansaetze.RotationBlock(gate=Gates.H),
+                Ansaetze.ControlledRotationBlock(
+                    gate="CZ", topology=Ansaetze.Topology.RING_CZ
                 ),
-                Ansaetze.RotationBlock(gates=("RX",)),
+                Ansaetze.RotationBlock(gate=Gates.RX),
             )
 
     # ── Circuit_10: RY + ring CZ (+ wrap) + RY ────────────────────
@@ -1933,11 +1881,11 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.RotationBlock(gates=("RY",)),
-                Ansaetze.EntanglingBlock(
-                    gates=("CZ",), topology=Ansaetze.Topology.RING_CZ_WRAP
+                Ansaetze.RotationBlock(gate=Gates.RY),
+                Ansaetze.ControlledRotationBlock(
+                    gate="CZ", topology=Ansaetze.Topology.RING_CZ_WRAP
                 ),
-                Ansaetze.RotationBlock(gates=("RY",)),
+                Ansaetze.RotationBlock(gate=Gates.RY),
             )
 
     # ── Circuit_15: RY + circular CX + RY + circular_reversed CX ──
@@ -1946,32 +1894,26 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.RotationBlock(gates=("RY",)),
-                Ansaetze.EntanglingBlock(
-                    gates=("CX",), topology=Ansaetze.Topology.CIRCULAR
+                Ansaetze.RotationBlock(gate=Gates.RY),
+                Ansaetze.ControlledRotationBlock(
+                    gate=Gates.CX, topology=Ansaetze.Topology.CIRCULAR
                 ),
-                Ansaetze.RotationBlock(gates=("RY",)),
-                Ansaetze.EntanglingBlock(
-                    gates=("CX",),
+                Ansaetze.RotationBlock(gate=Gates.RY),
+                Ansaetze.ControlledRotationBlock(
+                    gate=Gates.CX,
                     topology=Ansaetze.Topology.CIRCULAR_REVERSED,
                 ),
             )
-
-        @classmethod
-        def n_params_per_layer(cls, n_qubits: int) -> int:
-            if n_qubits < 2:
-                warnings.warn("Number of Qubits < 2, no entanglement available")
-                return 2
-            return super().n_params_per_layer(n_qubits)
 
     # ── Circuit_16: [RX, RZ] + brick-layer-reversed CRZ ───────────
     class Circuit_16(DeclarativeCircuit):
         @staticmethod
         def structure():
             return (
-                Ansaetze.RotationBlock(gates=("RX", "RZ")),
+                Ansaetze.RotationBlock(gate=Gates.RX),
+                Ansaetze.RotationBlock(gate=Gates.RZ),
                 Ansaetze.ControlledRotationBlock(
-                    gates=("CRZ",),
+                    gate=Gates.CRZ,
                     topology=Ansaetze.Topology.BRICK_LAYER_REVERSED,
                 ),
             )
@@ -1981,9 +1923,10 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.RotationBlock(gates=("RX", "RZ")),
+                Ansaetze.RotationBlock(gate=Gates.RX),
+                Ansaetze.RotationBlock(gate=Gates.RZ),
                 Ansaetze.ControlledRotationBlock(
-                    gates=("CRX",),
+                    gate=Gates.CRX,
                     topology=Ansaetze.Topology.BRICK_LAYER_REVERSED,
                 ),
             )
@@ -1994,18 +1937,12 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.RotationBlock(gates=("RX", "RZ")),
+                Ansaetze.RotationBlock(gate=Gates.RX),
+                Ansaetze.RotationBlock(gate=Gates.RZ),
                 Ansaetze.ControlledRotationBlock(
-                    gates=("CRZ",), topology=Ansaetze.Topology.CIRCULAR
+                    gate=Gates.CRZ, topology=Ansaetze.Topology.CIRCULAR
                 ),
             )
-
-        @classmethod
-        def n_params_per_layer(cls, n_qubits: int) -> int:
-            if n_qubits < 2:
-                warnings.warn("Number of Qubits < 2, no entanglement available")
-                return 2
-            return super().n_params_per_layer(n_qubits)
 
     # ── Circuit_19: [RX, RZ] + circular CRX ───────────────────────
     class Circuit_19(DeclarativeCircuit):
@@ -2013,9 +1950,10 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.RotationBlock(gates=("RX", "RZ")),
+                Ansaetze.RotationBlock(gate=Gates.RX),
+                Ansaetze.RotationBlock(gate=Gates.RZ),
                 Ansaetze.ControlledRotationBlock(
-                    gates=("CRX",), topology=Ansaetze.Topology.CIRCULAR
+                    gate=Gates.CRX, topology=Ansaetze.Topology.CIRCULAR
                 ),
             )
 
@@ -2023,7 +1961,7 @@ class Ansaetze:
     class No_Entangling(DeclarativeCircuit):
         @staticmethod
         def structure():
-            return (Ansaetze.RotationBlock(gates=("Rot",)),)
+            return (Ansaetze.RotationBlock(gate=Gates.Rot),)
 
     # ── Hardware_Efficient: [RY, RZ, RY] + brick-layer-wrap CX ───
     class Hardware_Efficient(DeclarativeCircuit):
@@ -2031,9 +1969,11 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.RotationBlock(gates=("RY", "RZ", "RY")),
-                Ansaetze.EntanglingBlock(
-                    gates=("CX",), topology=Ansaetze.Topology.BRICK_LAYER_WRAP
+                Ansaetze.RotationBlock(gate=Gates.RY),
+                Ansaetze.RotationBlock(gate=Gates.RZ),
+                Ansaetze.RotationBlock(gate=Gates.RY),
+                Ansaetze.ControlledRotationBlock(
+                    gate=Gates.CX, topology=Ansaetze.Topology.BRICK_LAYER_WRAP
                 ),
             )
 
@@ -2043,13 +1983,13 @@ class Ansaetze:
         @staticmethod
         def structure():
             return (
-                Ansaetze.RotationBlock(gates=("Rot",)),
-                Ansaetze.EntanglingBlock(
-                    gates=("CX",), topology=Ansaetze.Topology.STRONGLY_ENT_1
+                Ansaetze.RotationBlock(gate=Gates.Rot),
+                Ansaetze.ControlledRotationBlock(
+                    gate=Gates.CX, topology=Ansaetze.Topology.STRONGLY_ENT_1
                 ),
-                Ansaetze.RotationBlock(gates=("Rot",)),
-                Ansaetze.EntanglingBlock(
-                    gates=("CX",), topology=Ansaetze.Topology.STRONGLY_ENT_2
+                Ansaetze.RotationBlock(gate=Gates.Rot),
+                Ansaetze.ControlledRotationBlock(
+                    gate=Gates.CX, topology=Ansaetze.Topology.STRONGLY_ENT_2
                 ),
             )
 
@@ -2081,7 +2021,7 @@ class Encoding:
         ValueError
             If the encoding strategy is not implemented.
         ValueError
-            If there is an error parsing the gates.
+            If there is an error parsing the Gates.
         """
         if strategy not in ["hamming", "binary", "ternary"]:
             raise ValueError(
