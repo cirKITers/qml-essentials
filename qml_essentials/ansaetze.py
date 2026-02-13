@@ -1605,9 +1605,15 @@ class Ansaetze:
     # ──────────────────────────────────────────────────────────────────────
     # 2. Block descriptors — the "atoms" of an ansatz description
     # ──────────────────────────────────────────────────────────────────────
+    @dataclass(frozen=True)
+    class Block:
+        gates: Tuple[str, ...]
+        topology: Any = None
+        is_controlled_param: bool = False
+        min_qubits: int = 1
 
     @dataclass(frozen=True)
-    class RotationBlock:
+    class RotationBlock(Block):
         """
         Apply a sequence of single-qubit parametric gates to every qubit.
 
@@ -1619,8 +1625,6 @@ class Ansaetze:
         gates : Tuple[str, ...]
             Gate names, e.g. ("RX", "RZ") or ("Rot",).
         """
-
-        gates: Tuple[str, ...]
 
         def n_params(self, n_qubits: int) -> int:
             total = 0
@@ -1652,7 +1656,7 @@ class Ansaetze:
             return w_idx
 
     @dataclass(frozen=True)
-    class FixedGateBlock:
+    class FixedGateBlock(Block):
         """
         Apply a non-parametric single-qubit gate to every qubit.
 
@@ -1662,22 +1666,20 @@ class Ansaetze:
             Gate name, e.g. "H".
         """
 
-        gate: str
-
         def n_params(self, n_qubits: int) -> int:
             return 0
 
         def n_pulse_params(self, n_qubits: int) -> int:
-            return PulseInformation.num_params(self.gate) * n_qubits
+            return PulseInformation.num_params(self.gates[0]) * n_qubits
 
         def apply(self, w: np.ndarray, w_idx: int, n_qubits: int, **kwargs) -> int:
-            gate_fn = getattr(Gates, self.gate)
+            gate_fn = getattr(Gates, self.gates[0])
             for q in range(n_qubits):
                 gate_fn(wires=q, **kwargs)
             return w_idx
 
     @dataclass(frozen=True)
-    class EntanglingBlock:
+    class EntanglingBlock(Block):
         """
         Apply a non-parametric two-qubit gate according to a Ansaetze.Topology.
 
@@ -1691,8 +1693,6 @@ class Ansaetze:
             Minimum number of qubits required (gates are skipped if n_qubits < min_qubits).
         """
 
-        gate: str
-        topology: Any  # FIXME typing
         min_qubits: int = 2
 
         def n_params(self, n_qubits: int) -> int:
@@ -1704,18 +1704,20 @@ class Ansaetze:
             return len(Ansaetze.get_wiring(self.topology, n_qubits))
 
         def n_pulse_params(self, n_qubits: int) -> int:
-            return self.n_wire_pairs(n_qubits) * PulseInformation.num_params(self.gate)
+            return self.n_wire_pairs(n_qubits) * PulseInformation.num_params(
+                self.gates[0]
+            )
 
         def apply(self, w: np.ndarray, w_idx: int, n_qubits: int, **kwargs) -> int:
             if n_qubits < self.min_qubits:
                 return w_idx
-            gate_fn = getattr(Gates, self.gate)
+            gate_fn = getattr(Gates, self.gates[0])
             for wires in Ansaetze.get_wiring(self.topology, n_qubits):
                 gate_fn(wires=wires, **kwargs)
             return w_idx
 
     @dataclass(frozen=True)
-    class ControlledRotationBlock:
+    class ControlledRotationBlock(Block):
         """
         Apply a parametric two-qubit gate (controlled rotation) according to a Ansaetze.Topology.
         Each wire pair consumes one parameter.
@@ -1733,8 +1735,6 @@ class Ansaetze:
             Minimum number of qubits required.
         """
 
-        gate: str
-        topology: Any  # FIXME typing
         is_controlled_param: bool = True
         min_qubits: int = 2
 
@@ -1748,21 +1748,16 @@ class Ansaetze:
                 return 0
             return len(
                 Ansaetze.get_wiring(self.topology, n_qubits)
-            ) * PulseInformation.num_params(self.gate)
+            ) * PulseInformation.num_params(self.gates[0])
 
         def apply(self, w: np.ndarray, w_idx: int, n_qubits: int, **kwargs) -> int:
             if n_qubits < self.min_qubits:
                 return w_idx
-            gate_fn = getattr(Gates, self.gate)
+            gate_fn = getattr(Gates, self.gates[0])
             for wires in Ansaetze.get_wiring(self.topology, n_qubits):
                 gate_fn(w[w_idx], wires=wires, **kwargs)
                 w_idx += 1
             return w_idx
-
-    # Union type for all blocks
-    Block = Union[
-        RotationBlock, FixedGateBlock, EntanglingBlock, ControlledRotationBlock
-    ]
 
     # ──────────────────────────────────────────────────────────────────────
     # 3. Declarative Circuit base class
@@ -1784,7 +1779,7 @@ class Ansaetze:
         _min_qubits_warning: bool = False  # set True to warn when n_qubits < 2
 
         @staticmethod
-        def _get_structure() -> Tuple[Any, ...]:
+        def structure() -> Tuple[Any, ...]:
             """Override in subclass to return the structure tuple."""
             raise NotImplementedError
 
@@ -1792,12 +1787,22 @@ class Ansaetze:
         def n_params_per_layer(cls, n_qubits: int) -> int:
             if cls._min_qubits_warning and n_qubits < 2:
                 warnings.warn("Number of Qubits < 2, no entanglement available")
-            structure = cls._get_structure()
-            return sum(block.n_params(n_qubits) for block in structure)
+            structure = cls.structure()
+            n_params = 0
+            for block in structure:
+                if block.n_params(n_qubits) > block.min_qubits:
+                    n_params += block.n_params(n_qubits)
+                else:
+                    warnings.warn(
+                        f"Skipping {block} with n_qubits={n_qubits} "
+                        f"since it requires {block.min_qubits} qubits."
+                    )
+
+            return n_params
 
         @classmethod
         def n_pulse_params_per_layer(cls, n_qubits: int) -> int:
-            structure = cls._get_structure()
+            structure = cls.structure()
             return sum(block.n_pulse_params(n_qubits) for block in structure)
 
         @classmethod
@@ -1808,7 +1813,7 @@ class Ansaetze:
             is_controlled_param=True and returns a slice descriptor
             [start, stop, step] into the flat parameter vector, or None.
             """
-            structure = cls._get_structure()
+            structure = cls.structure()
             total_params = sum(block.n_params(n_qubits) for block in structure)
 
             # Collect which parameter indices correspond to controlled rotations
@@ -1817,7 +1822,7 @@ class Ansaetze:
             for block in structure:
                 n = block.n_params(n_qubits)
                 if (
-                    isinstance(block, Ansaetze.ControlledRotationBlock)
+                    isinstance(block, topology=Ansaetze.ControlledRotationBlock)
                     and block.is_controlled_param
                 ):
                     controlled_indices.extend(range(offset, offset + n))
@@ -1838,7 +1843,7 @@ class Ansaetze:
 
         @classmethod
         def build(cls, w: np.ndarray, n_qubits: int, **kwargs) -> None:
-            structure = cls._get_structure()
+            structure = cls.structure()
             w_idx = 0
             for block in structure:
                 w_idx = block.apply(w, w_idx, n_qubits, **kwargs)
@@ -1846,16 +1851,20 @@ class Ansaetze:
     # ── No_Ansatz ──────────────────────────────────────────────────
     class No_Ansatz(DeclarativeCircuit):
         @staticmethod
-        def _get_structure():
+        def structure():
             return ()
 
     # ── GHZ ────────────────────────────────────────────────────────
     class GHZ(DeclarativeCircuit):
         @staticmethod
-        def _get_structure():
+        def structure():
             return (
-                Ansaetze.FixedGateBlock(gate="H"),  # H on qubit 0 only — see override
-                Ansaetze.EntanglingBlock("CX", Ansaetze.Topology.LINEAR_REVERSED),
+                Ansaetze.FixedGateBlock(
+                    gates=("H",)
+                ),  # H on qubit 0 only — see override
+                Ansaetze.EntanglingBlock(
+                    gates=("CX",), topology=Ansaetze.Topology.LINEAR_REVERSED
+                ),
             )
 
         # GHZ is special: H only on qubit 0, not all qubits
@@ -1874,34 +1883,40 @@ class Ansaetze:
     # ── Circuit_1: [RX, RZ] per qubit, no entangling ──────────────
     class Circuit_1(DeclarativeCircuit):
         @staticmethod
-        def _get_structure():
+        def structure():
             return (Ansaetze.RotationBlock(gates=("RX", "RZ")),)
 
     # ── Circuit_2: [RX, RZ] per qubit + linear CX ─────────────────
     class Circuit_2(DeclarativeCircuit):
         @staticmethod
-        def _get_structure():
+        def structure():
             return (
                 Ansaetze.RotationBlock(gates=("RX", "RZ")),
-                Ansaetze.EntanglingBlock("CX", Ansaetze.Topology.LINEAR),
+                Ansaetze.EntanglingBlock(
+                    gates=("CX",), topology=Ansaetze.Topology.LINEAR
+                ),
             )
 
     # ── Circuit_3: [RX, RZ] per qubit + linear CRZ ────────────────
     class Circuit_3(DeclarativeCircuit):
         @staticmethod
-        def _get_structure():
+        def structure():
             return (
                 Ansaetze.RotationBlock(gates=("RX", "RZ")),
-                Ansaetze.ControlledRotationBlock("CRZ", Ansaetze.Topology.LINEAR),
+                Ansaetze.ControlledRotationBlock(
+                    gates=("CRZ",), topology=Ansaetze.Topology.LINEAR
+                ),
             )
 
     # ── Circuit_4: [RX, RZ] per qubit + linear CRX ────────────────
     class Circuit_4(DeclarativeCircuit):
         @staticmethod
-        def _get_structure():
+        def structure():
             return (
                 Ansaetze.RotationBlock(gates=("RX", "RZ")),
-                Ansaetze.ControlledRotationBlock("CRX", Ansaetze.Topology.LINEAR),
+                Ansaetze.ControlledRotationBlock(
+                    gates=("CRX",), topology=Ansaetze.Topology.LINEAR
+                ),
             )
 
     # ── Circuit_6: [RX,RZ] + all-to-all CRX + [RX,RZ] ────────────
@@ -1909,10 +1924,12 @@ class Ansaetze:
         _min_qubits_warning = True
 
         @staticmethod
-        def _get_structure():
+        def structure():
             return (
                 Ansaetze.RotationBlock(gates=("RX", "RZ")),
-                Ansaetze.ControlledRotationBlock("CRX", Ansaetze.Topology.ALL_TO_ALL),
+                Ansaetze.ControlledRotationBlock(
+                    gates=("CRX",), topology=Ansaetze.Topology.ALL_TO_ALL
+                ),
                 Ansaetze.RotationBlock(gates=("RX", "RZ")),
             )
 
@@ -1927,20 +1944,24 @@ class Ansaetze:
     # ── Circuit_9: H + linear CZ + RX ─────────────────────────────
     class Circuit_9(DeclarativeCircuit):
         @staticmethod
-        def _get_structure():
+        def structure():
             return (
-                Ansaetze.FixedGateBlock(gate="H"),
-                Ansaetze.EntanglingBlock("CZ", Ansaetze.Topology.RING_CZ),
+                Ansaetze.FixedGateBlock(gates=("H")),
+                Ansaetze.EntanglingBlock(
+                    gates=("CZ",), topology=Ansaetze.Topology.RING_CZ
+                ),
                 Ansaetze.RotationBlock(gates=("RX",)),
             )
 
     # ── Circuit_10: RY + ring CZ (+ wrap) + RY ────────────────────
     class Circuit_10(DeclarativeCircuit):
         @staticmethod
-        def _get_structure():
+        def structure():
             return (
                 Ansaetze.RotationBlock(gates=("RY",)),
-                Ansaetze.EntanglingBlock("CZ", Ansaetze.Topology.RING_CZ_WRAP),
+                Ansaetze.EntanglingBlock(
+                    gates=("CZ",), topology=Ansaetze.Topology.RING_CZ_WRAP
+                ),
                 Ansaetze.RotationBlock(gates=("RY",)),
             )
 
@@ -1949,12 +1970,16 @@ class Ansaetze:
         _min_qubits_warning = True
 
         @staticmethod
-        def _get_structure():
+        def structure():
             return (
                 Ansaetze.RotationBlock(gates=("RY",)),
-                Ansaetze.EntanglingBlock("CX", Ansaetze.Topology.CIRCULAR),
+                Ansaetze.EntanglingBlock(
+                    gates=("CX",), topology=Ansaetze.Topology.CIRCULAR
+                ),
                 Ansaetze.RotationBlock(gates=("RY",)),
-                Ansaetze.EntanglingBlock("CX", Ansaetze.Topology.CIRCULAR_REVERSED),
+                Ansaetze.EntanglingBlock(
+                    gates=("CX",), topology=Ansaetze.Topology.CIRCULAR_REVERSED
+                ),
             )
 
         @classmethod
@@ -1967,22 +1992,22 @@ class Ansaetze:
     # ── Circuit_16: [RX, RZ] + brick-layer-reversed CRZ ───────────
     class Circuit_16(DeclarativeCircuit):
         @staticmethod
-        def _get_structure():
+        def structure():
             return (
                 Ansaetze.RotationBlock(gates=("RX", "RZ")),
                 Ansaetze.ControlledRotationBlock(
-                    "CRZ", Ansaetze.Topology.BRICK_LAYER_REVERSED
+                    gates=("CRZ",), topology=Ansaetze.Topology.BRICK_LAYER_REVERSED
                 ),
             )
 
     # ── Circuit_17: [RX, RZ] + brick-layer-reversed CRX ───────────
     class Circuit_17(DeclarativeCircuit):
         @staticmethod
-        def _get_structure():
+        def structure():
             return (
                 Ansaetze.RotationBlock(gates=("RX", "RZ")),
                 Ansaetze.ControlledRotationBlock(
-                    "CRX", Ansaetze.Topology.BRICK_LAYER_REVERSED
+                    gates=("CRX",), topology=Ansaetze.Topology.BRICK_LAYER_REVERSED
                 ),
             )
 
@@ -1991,10 +2016,12 @@ class Ansaetze:
         _min_qubits_warning = True
 
         @staticmethod
-        def _get_structure():
+        def structure():
             return (
                 Ansaetze.RotationBlock(gates=("RX", "RZ")),
-                Ansaetze.ControlledRotationBlock("CRZ", Ansaetze.Topology.CIRCULAR),
+                Ansaetze.ControlledRotationBlock(
+                    gates=("CRZ",), topology=Ansaetze.Topology.CIRCULAR
+                ),
             )
 
         @classmethod
@@ -2006,26 +2033,20 @@ class Ansaetze:
 
     # ── Circuit_19: [RX, RZ] + circular CRX ───────────────────────
     class Circuit_19(DeclarativeCircuit):
-        _min_qubits_warning = True
 
         @staticmethod
-        def _get_structure():
+        def structure():
             return (
                 Ansaetze.RotationBlock(gates=("RX", "RZ")),
-                Ansaetze.ControlledRotationBlock("CRX", Ansaetze.Topology.CIRCULAR),
+                Ansaetze.ControlledRotationBlock(
+                    gates=("CRX",), topology=Ansaetze.Topology.CIRCULAR
+                ),
             )
-
-        @classmethod
-        def n_params_per_layer(cls, n_qubits: int) -> int:
-            if n_qubits < 2:
-                warnings.warn("Number of Qubits < 2, no entanglement available")
-                return 2
-            return super().n_params_per_layer(n_qubits)
 
     # ── No_Entangling: Rot per qubit ──────────────────────────────
     class No_Entangling(DeclarativeCircuit):
         @staticmethod
-        def _get_structure():
+        def structure():
             return (Ansaetze.RotationBlock(gates=("Rot",)),)
 
     # ── Hardware_Efficient: [RY, RZ, RY] + brick-layer-wrap CX ───
@@ -2033,10 +2054,12 @@ class Ansaetze:
         _min_qubits_warning = True
 
         @staticmethod
-        def _get_structure():
+        def structure():
             return (
                 Ansaetze.RotationBlock(gates=("RY", "RZ", "RY")),
-                Ansaetze.EntanglingBlock("CX", Ansaetze.Topology.BRICK_LAYER_WRAP),
+                Ansaetze.EntanglingBlock(
+                    gates=("CX",), topology=Ansaetze.Topology.BRICK_LAYER_WRAP
+                ),
             )
 
     # ── Strongly_Entangling: Rot + SE1 CX + Rot + SE2 CX ────────
@@ -2044,12 +2067,16 @@ class Ansaetze:
         _min_qubits_warning = True
 
         @staticmethod
-        def _get_structure():
+        def structure():
             return (
                 Ansaetze.RotationBlock(gates=("Rot",)),
-                Ansaetze.EntanglingBlock("CX", Ansaetze.Topology.STRONGLY_ENT_1),
+                Ansaetze.EntanglingBlock(
+                    gates=("CX",), topology=Ansaetze.Topology.STRONGLY_ENT_1
+                ),
                 Ansaetze.RotationBlock(gates=("Rot",)),
-                Ansaetze.EntanglingBlock("CX", Ansaetze.Topology.STRONGLY_ENT_2),
+                Ansaetze.EntanglingBlock(
+                    gates=("CX",), topology=Ansaetze.Topology.STRONGLY_ENT_2
+                ),
             )
 
 
