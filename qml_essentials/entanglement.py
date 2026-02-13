@@ -2,7 +2,6 @@ from typing import Optional, Any, List, Tuple
 import pennylane as qml
 import jax.numpy as jnp
 import numpy as np
-from jax import random, jax.vmap
 
 from qml_essentials.utils import logm_v
 from qml_essentials.model import Model
@@ -560,7 +559,10 @@ class Entanglement:
 
 
 def sample_random_separable_states(
-    n_qubits: int, n_samples: int, random_key: jax.random.PRNGKey, take_log: bool = False
+    n_qubits: int,
+    n_samples: int,
+    random_key: jax.random.PRNGKey,
+    take_log: bool = False,
 ) -> jnp.ndarray:
     """
     Sample random separable states (density matrix).
