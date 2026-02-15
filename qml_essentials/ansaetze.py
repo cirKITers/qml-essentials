@@ -345,7 +345,7 @@ class Ansaetze:
         def structure():
             return (
                 Block(gate=Gates.H),
-                Block(gate=Gates.CX, topology=Topology.linear_reversed),
+                Block(gate=Gates.CX, topology=Topology.ring_reversed),
             )
 
         # GHZ is special: H only on qubit 0, not all qubits
@@ -377,7 +377,7 @@ class Ansaetze:
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
-                Block(gate=Gates.CX, topology=Topology.linear),
+                Block(gate=Gates.CX, topology=Topology.ring),
             )
 
     # ── Circuit_3: [RX, RZ] per qubit + linear CRZ ────────────────
@@ -387,7 +387,7 @@ class Ansaetze:
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
-                Block(gate=Gates.CRZ, topology=Topology.linear),
+                Block(gate=Gates.CRZ, topology=Topology.ring),
             )
 
     # ── Circuit_4: [RX, RZ] per qubit + linear CRX ────────────────
@@ -397,7 +397,7 @@ class Ansaetze:
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
-                Block(gate=Gates.CRX, topology=Topology.linear),
+                Block(gate=Gates.CRX, topology=Topology.ring),
             )
 
     # ── Circuit_6: [RX,RZ] + all-to-all CRX + [RX,RZ] ────────────
@@ -419,7 +419,7 @@ class Ansaetze:
         def structure():
             return (
                 Block(gate=Gates.H),
-                Block(gate="CZ", topology=Topology.ring_cz),
+                Block(gate="CZ", topology=Topology.ring),
                 Block(gate=Gates.RX),
             )
 
@@ -429,7 +429,7 @@ class Ansaetze:
         def structure():
             return (
                 Block(gate=Gates.RY),
-                Block(gate="CZ", topology=Topology.ring_cz_wrap),
+                Block(gate="CZ", topology=Topology.ring_wrap),
                 Block(gate=Gates.RY),
             )
 
