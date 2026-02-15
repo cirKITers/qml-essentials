@@ -6,8 +6,7 @@ import jax
 from jax import numpy as jnp
 import optax
 import pennylane as qml
-from qml_essentials.ansaetze import Gates, PulseInformation
-import matplotlib.pyplot as plt
+from qml_essentials.gates import Gates, PulseInformation
 import argparse
 from functools import partial
 from typing import List, Callable, Union

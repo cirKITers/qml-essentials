@@ -364,3 +364,624 @@ Oh and in case you need a refresh on the rotational axes and their corresponding
 ### GHZ
 ![GHZ](figures/GHZ_light.png#circuit#only-light)
 ![GHZ](figures/GHZ_dark.png#circuit#only-dark)
+
+### No Ansatz
+![No Ansatz](figures/No_Ansatz_light.png#circuit#only-light)
+![No Ansatz](figures/No_Ansatz_dark.png#circuit#only-dark)
+
+### Circuit 1
+![Circuit 1](figures/Circuit_1_light.png#circuit#only-light)
+![Circuit 1](figures/Circuit_1_dark.png#circuit#only-dark)
+
+### Circuit 2
+![Circuit 2](figures/Circuit_2_light.png#circuit#only-light)
+![Circuit 2](figures/Circuit_2_dark.png#circuit#only-dark)
+
+### Circuit 3
+![Circuit 3](figures/Circuit_3_light.png#circuit#only-light)
+![Circuit 3](figures/Circuit_3_dark.png#circuit#only-dark)
+
+### Circuit 4
+![Circuit 4](figures/Circuit_4_light.png#circuit#only-light)
+![Circuit 4](figures/Circuit_4_dark.png#circuit#only-dark)
+
+### Circuit 6
+![Circuit 6](figures/Circuit_6_light.png#circuit#only-light)
+![Circuit 6](figures/Circuit_6_dark.png#circuit#only-dark)
+
+### Circuit 9
+![Circuit 9](figures/Circuit_9_light.png#circuit#only-light)
+![Circuit 9](figures/Circuit_9_dark.png#circuit#only-dark)
+
+### Circuit 10
+![Circuit 10](figures/Circuit_10_light.png#circuit#only-light)
+![Circuit 10](figures/Circuit_10_dark.png#circuit#only-dark)
+
+### Circuit 15
+![Circuit 15](figures/Circuit_15_light.png#circuit#only-light)
+![Circuit 15](figures/Circuit_15_dark.png#circuit#only-dark)
+
+### Circuit 16
+![Circuit 16](figures/Circuit_16_light.png#circuit#only-light)
+![Circuit 16](figures/Circuit_16_dark.png#circuit#only-dark)
+
+### Circuit 17
+![Circuit 17](figures/Circuit_17_light.png#circuit#only-light)
+![Circuit 17](figures/Circuit_17_dark.png#circuit#only-dark)
+
+### Circuit 18
+![Circuit 18](figures/Circuit_18_light.png#circuit#only-light)
+![Circuit 18](figures/Circuit_18_dark.png#circuit#only-dark)
+
+### Circuit 19
+![Circuit 19](figures/Circuit_19_light.png#circuit#only-light)
+![Circuit 19](figures/Circuit_19_dark.png#circuit#only-dark)
+
+### No Entangling
+![No Entangling](figures/No_Entangling_light.png#circuit#only-light)
+![No Entangling](figures/No_Entangling_dark.png#circuit#only-dark)
+
+### Strongly Entangling
+![Strongly Entangling](figures/Strongly_Entangling_light.png#circuit#only-light)
+![Strongly Entangling](figures/Strongly_Entangling_dark.png#circuit#only-dark)
+
+### Hardware Efficient
+![Hardware Efficient](figures/Hardware_Efficient_light.png#circuit#only-light)
+![Hardware Efficient](figures/Hardware_Efficient_dark.png#circuit#only-dark)
+
+### GHZ
+![GHZ](figures/GHZ_light.png#circuit#only-light)
+![GHZ](figures/GHZ_dark.png#circuit#only-dark)
+
+
+### No Ansatz
+![No Ansatz](figures/No_Ansatz_light.png#circuit#only-light)
+![No Ansatz](figures/No_Ansatz_dark.png#circuit#only-dark)
+
+### Circuit 1
+![Circuit 1](figures/Circuit_1_light.png#circuit#only-light)
+![Circuit 1](figures/Circuit_1_dark.png#circuit#only-dark)
+
+### Circuit 2
+![Circuit 2](figures/Circuit_2_light.png#circuit#only-light)
+![Circuit 2](figures/Circuit_2_dark.png#circuit#only-dark)
+
+### Circuit 3
+![Circuit 3](figures/Circuit_3_light.png#circuit#only-light)
+![Circuit 3](figures/Circuit_3_dark.png#circuit#only-dark)
+
+### Circuit 4
+![Circuit 4](figures/Circuit_4_light.png#circuit#only-light)
+![Circuit 4](figures/Circuit_4_dark.png#circuit#only-dark)
+
+### Circuit 6
+![Circuit 6](figures/Circuit_6_light.png#circuit#only-light)
+![Circuit 6](figures/Circuit_6_dark.png#circuit#only-dark)
+
+### Circuit 9
+![Circuit 9](figures/Circuit_9_light.png#circuit#only-light)
+![Circuit 9](figures/Circuit_9_dark.png#circuit#only-dark)
+
+### Circuit 10
+![Circuit 10](figures/Circuit_10_light.png#circuit#only-light)
+![Circuit 10](figures/Circuit_10_dark.png#circuit#only-dark)
+
+### Circuit 15
+![Circuit 15](figures/Circuit_15_light.png#circuit#only-light)
+![Circuit 15](figures/Circuit_15_dark.png#circuit#only-dark)
+
+### Circuit 16
+![Circuit 16](figures/Circuit_16_light.png#circuit#only-light)
+![Circuit 16](figures/Circuit_16_dark.png#circuit#only-dark)
+
+### Circuit 17
+![Circuit 17](figures/Circuit_17_light.png#circuit#only-light)
+![Circuit 17](figures/Circuit_17_dark.png#circuit#only-dark)
+
+### Circuit 18
+![Circuit 18](figures/Circuit_18_light.png#circuit#only-light)
+![Circuit 18](figures/Circuit_18_dark.png#circuit#only-dark)
+
+### Circuit 19
+![Circuit 19](figures/Circuit_19_light.png#circuit#only-light)
+![Circuit 19](figures/Circuit_19_dark.png#circuit#only-dark)
+
+### No Entangling
+![No Entangling](figures/No_Entangling_light.png#circuit#only-light)
+![No Entangling](figures/No_Entangling_dark.png#circuit#only-dark)
+
+### Strongly Entangling
+![Strongly Entangling](figures/Strongly_Entangling_light.png#circuit#only-light)
+![Strongly Entangling](figures/Strongly_Entangling_dark.png#circuit#only-dark)
+
+### Hardware Efficient
+![Hardware Efficient](figures/Hardware_Efficient_light.png#circuit#only-light)
+![Hardware Efficient](figures/Hardware_Efficient_dark.png#circuit#only-dark)
+
+### GHZ
+![GHZ](figures/GHZ_light.png#circuit#only-light)
+![GHZ](figures/GHZ_dark.png#circuit#only-dark)
+
+
+### No Ansatz
+![No Ansatz](figures/No_Ansatz_light.png#circuit#only-light)
+![No Ansatz](figures/No_Ansatz_dark.png#circuit#only-dark)
+
+### Circuit 1
+![Circuit 1](figures/Circuit_1_light.png#circuit#only-light)
+![Circuit 1](figures/Circuit_1_dark.png#circuit#only-dark)
+
+### Circuit 2
+![Circuit 2](figures/Circuit_2_light.png#circuit#only-light)
+![Circuit 2](figures/Circuit_2_dark.png#circuit#only-dark)
+
+### Circuit 3
+![Circuit 3](figures/Circuit_3_light.png#circuit#only-light)
+![Circuit 3](figures/Circuit_3_dark.png#circuit#only-dark)
+
+### Circuit 4
+![Circuit 4](figures/Circuit_4_light.png#circuit#only-light)
+![Circuit 4](figures/Circuit_4_dark.png#circuit#only-dark)
+
+### Circuit 6
+![Circuit 6](figures/Circuit_6_light.png#circuit#only-light)
+![Circuit 6](figures/Circuit_6_dark.png#circuit#only-dark)
+
+### Circuit 9
+![Circuit 9](figures/Circuit_9_light.png#circuit#only-light)
+![Circuit 9](figures/Circuit_9_dark.png#circuit#only-dark)
+
+### Circuit 10
+![Circuit 10](figures/Circuit_10_light.png#circuit#only-light)
+![Circuit 10](figures/Circuit_10_dark.png#circuit#only-dark)
+
+### Circuit 15
+![Circuit 15](figures/Circuit_15_light.png#circuit#only-light)
+![Circuit 15](figures/Circuit_15_dark.png#circuit#only-dark)
+
+### Circuit 16
+![Circuit 16](figures/Circuit_16_light.png#circuit#only-light)
+![Circuit 16](figures/Circuit_16_dark.png#circuit#only-dark)
+
+### Circuit 17
+![Circuit 17](figures/Circuit_17_light.png#circuit#only-light)
+![Circuit 17](figures/Circuit_17_dark.png#circuit#only-dark)
+
+### Circuit 18
+![Circuit 18](figures/Circuit_18_light.png#circuit#only-light)
+![Circuit 18](figures/Circuit_18_dark.png#circuit#only-dark)
+
+### Circuit 19
+![Circuit 19](figures/Circuit_19_light.png#circuit#only-light)
+![Circuit 19](figures/Circuit_19_dark.png#circuit#only-dark)
+
+### No Entangling
+![No Entangling](figures/No_Entangling_light.png#circuit#only-light)
+![No Entangling](figures/No_Entangling_dark.png#circuit#only-dark)
+
+### Strongly Entangling
+![Strongly Entangling](figures/Strongly_Entangling_light.png#circuit#only-light)
+![Strongly Entangling](figures/Strongly_Entangling_dark.png#circuit#only-dark)
+
+### Hardware Efficient
+![Hardware Efficient](figures/Hardware_Efficient_light.png#circuit#only-light)
+![Hardware Efficient](figures/Hardware_Efficient_dark.png#circuit#only-dark)
+
+### GHZ
+![GHZ](figures/GHZ_light.png#circuit#only-light)
+![GHZ](figures/GHZ_dark.png#circuit#only-dark)
+
+
+### No Ansatz
+![No Ansatz](figures/No_Ansatz_light.png#circuit#only-light)
+![No Ansatz](figures/No_Ansatz_dark.png#circuit#only-dark)
+
+### Circuit 1
+![Circuit 1](figures/Circuit_1_light.png#circuit#only-light)
+![Circuit 1](figures/Circuit_1_dark.png#circuit#only-dark)
+
+### Circuit 2
+![Circuit 2](figures/Circuit_2_light.png#circuit#only-light)
+![Circuit 2](figures/Circuit_2_dark.png#circuit#only-dark)
+
+### Circuit 3
+![Circuit 3](figures/Circuit_3_light.png#circuit#only-light)
+![Circuit 3](figures/Circuit_3_dark.png#circuit#only-dark)
+
+### Circuit 4
+![Circuit 4](figures/Circuit_4_light.png#circuit#only-light)
+![Circuit 4](figures/Circuit_4_dark.png#circuit#only-dark)
+
+### Circuit 6
+![Circuit 6](figures/Circuit_6_light.png#circuit#only-light)
+![Circuit 6](figures/Circuit_6_dark.png#circuit#only-dark)
+
+### Circuit 9
+![Circuit 9](figures/Circuit_9_light.png#circuit#only-light)
+![Circuit 9](figures/Circuit_9_dark.png#circuit#only-dark)
+
+### Circuit 10
+![Circuit 10](figures/Circuit_10_light.png#circuit#only-light)
+![Circuit 10](figures/Circuit_10_dark.png#circuit#only-dark)
+
+### Circuit 15
+![Circuit 15](figures/Circuit_15_light.png#circuit#only-light)
+![Circuit 15](figures/Circuit_15_dark.png#circuit#only-dark)
+
+### Circuit 16
+![Circuit 16](figures/Circuit_16_light.png#circuit#only-light)
+![Circuit 16](figures/Circuit_16_dark.png#circuit#only-dark)
+
+### Circuit 17
+![Circuit 17](figures/Circuit_17_light.png#circuit#only-light)
+![Circuit 17](figures/Circuit_17_dark.png#circuit#only-dark)
+
+### Circuit 18
+![Circuit 18](figures/Circuit_18_light.png#circuit#only-light)
+![Circuit 18](figures/Circuit_18_dark.png#circuit#only-dark)
+
+### Circuit 19
+![Circuit 19](figures/Circuit_19_light.png#circuit#only-light)
+![Circuit 19](figures/Circuit_19_dark.png#circuit#only-dark)
+
+### No Entangling
+![No Entangling](figures/No_Entangling_light.png#circuit#only-light)
+![No Entangling](figures/No_Entangling_dark.png#circuit#only-dark)
+
+### Strongly Entangling
+![Strongly Entangling](figures/Strongly_Entangling_light.png#circuit#only-light)
+![Strongly Entangling](figures/Strongly_Entangling_dark.png#circuit#only-dark)
+
+### Hardware Efficient
+![Hardware Efficient](figures/Hardware_Efficient_light.png#circuit#only-light)
+![Hardware Efficient](figures/Hardware_Efficient_dark.png#circuit#only-dark)
+
+### GHZ
+![GHZ](figures/GHZ_light.png#circuit#only-light)
+![GHZ](figures/GHZ_dark.png#circuit#only-dark)
+
+
+### No Ansatz
+![No Ansatz](figures/No_Ansatz_light.png#circuit#only-light)
+![No Ansatz](figures/No_Ansatz_dark.png#circuit#only-dark)
+
+### Circuit 1
+![Circuit 1](figures/Circuit_1_light.png#circuit#only-light)
+![Circuit 1](figures/Circuit_1_dark.png#circuit#only-dark)
+
+### Circuit 2
+![Circuit 2](figures/Circuit_2_light.png#circuit#only-light)
+![Circuit 2](figures/Circuit_2_dark.png#circuit#only-dark)
+
+### Circuit 3
+![Circuit 3](figures/Circuit_3_light.png#circuit#only-light)
+![Circuit 3](figures/Circuit_3_dark.png#circuit#only-dark)
+
+### Circuit 4
+![Circuit 4](figures/Circuit_4_light.png#circuit#only-light)
+![Circuit 4](figures/Circuit_4_dark.png#circuit#only-dark)
+
+### Circuit 6
+![Circuit 6](figures/Circuit_6_light.png#circuit#only-light)
+![Circuit 6](figures/Circuit_6_dark.png#circuit#only-dark)
+
+### Circuit 9
+![Circuit 9](figures/Circuit_9_light.png#circuit#only-light)
+![Circuit 9](figures/Circuit_9_dark.png#circuit#only-dark)
+
+### Circuit 10
+![Circuit 10](figures/Circuit_10_light.png#circuit#only-light)
+![Circuit 10](figures/Circuit_10_dark.png#circuit#only-dark)
+
+### Circuit 15
+![Circuit 15](figures/Circuit_15_light.png#circuit#only-light)
+![Circuit 15](figures/Circuit_15_dark.png#circuit#only-dark)
+
+### Circuit 16
+![Circuit 16](figures/Circuit_16_light.png#circuit#only-light)
+![Circuit 16](figures/Circuit_16_dark.png#circuit#only-dark)
+
+### Circuit 17
+![Circuit 17](figures/Circuit_17_light.png#circuit#only-light)
+![Circuit 17](figures/Circuit_17_dark.png#circuit#only-dark)
+
+### Circuit 18
+![Circuit 18](figures/Circuit_18_light.png#circuit#only-light)
+![Circuit 18](figures/Circuit_18_dark.png#circuit#only-dark)
+
+### Circuit 19
+![Circuit 19](figures/Circuit_19_light.png#circuit#only-light)
+![Circuit 19](figures/Circuit_19_dark.png#circuit#only-dark)
+
+### No Entangling
+![No Entangling](figures/No_Entangling_light.png#circuit#only-light)
+![No Entangling](figures/No_Entangling_dark.png#circuit#only-dark)
+
+### Strongly Entangling
+![Strongly Entangling](figures/Strongly_Entangling_light.png#circuit#only-light)
+![Strongly Entangling](figures/Strongly_Entangling_dark.png#circuit#only-dark)
+
+### Hardware Efficient
+![Hardware Efficient](figures/Hardware_Efficient_light.png#circuit#only-light)
+![Hardware Efficient](figures/Hardware_Efficient_dark.png#circuit#only-dark)
+
+### GHZ
+![GHZ](figures/GHZ_light.png#circuit#only-light)
+![GHZ](figures/GHZ_dark.png#circuit#only-dark)
+
+
+### No Ansatz
+![No Ansatz](figures/No_Ansatz_light.png#circuit#only-light)
+![No Ansatz](figures/No_Ansatz_dark.png#circuit#only-dark)
+
+### Circuit 1
+![Circuit 1](figures/Circuit_1_light.png#circuit#only-light)
+![Circuit 1](figures/Circuit_1_dark.png#circuit#only-dark)
+
+### Circuit 2
+![Circuit 2](figures/Circuit_2_light.png#circuit#only-light)
+![Circuit 2](figures/Circuit_2_dark.png#circuit#only-dark)
+
+### Circuit 3
+![Circuit 3](figures/Circuit_3_light.png#circuit#only-light)
+![Circuit 3](figures/Circuit_3_dark.png#circuit#only-dark)
+
+### Circuit 4
+![Circuit 4](figures/Circuit_4_light.png#circuit#only-light)
+![Circuit 4](figures/Circuit_4_dark.png#circuit#only-dark)
+
+### Circuit 6
+![Circuit 6](figures/Circuit_6_light.png#circuit#only-light)
+![Circuit 6](figures/Circuit_6_dark.png#circuit#only-dark)
+
+### Circuit 9
+![Circuit 9](figures/Circuit_9_light.png#circuit#only-light)
+![Circuit 9](figures/Circuit_9_dark.png#circuit#only-dark)
+
+### Circuit 10
+![Circuit 10](figures/Circuit_10_light.png#circuit#only-light)
+![Circuit 10](figures/Circuit_10_dark.png#circuit#only-dark)
+
+### Circuit 15
+![Circuit 15](figures/Circuit_15_light.png#circuit#only-light)
+![Circuit 15](figures/Circuit_15_dark.png#circuit#only-dark)
+
+### Circuit 16
+![Circuit 16](figures/Circuit_16_light.png#circuit#only-light)
+![Circuit 16](figures/Circuit_16_dark.png#circuit#only-dark)
+
+### Circuit 17
+![Circuit 17](figures/Circuit_17_light.png#circuit#only-light)
+![Circuit 17](figures/Circuit_17_dark.png#circuit#only-dark)
+
+### Circuit 18
+![Circuit 18](figures/Circuit_18_light.png#circuit#only-light)
+![Circuit 18](figures/Circuit_18_dark.png#circuit#only-dark)
+
+### Circuit 19
+![Circuit 19](figures/Circuit_19_light.png#circuit#only-light)
+![Circuit 19](figures/Circuit_19_dark.png#circuit#only-dark)
+
+### No Entangling
+![No Entangling](figures/No_Entangling_light.png#circuit#only-light)
+![No Entangling](figures/No_Entangling_dark.png#circuit#only-dark)
+
+### Strongly Entangling
+![Strongly Entangling](figures/Strongly_Entangling_light.png#circuit#only-light)
+![Strongly Entangling](figures/Strongly_Entangling_dark.png#circuit#only-dark)
+
+### Hardware Efficient
+![Hardware Efficient](figures/Hardware_Efficient_light.png#circuit#only-light)
+![Hardware Efficient](figures/Hardware_Efficient_dark.png#circuit#only-dark)
+
+### GHZ
+![GHZ](figures/GHZ_light.png#circuit#only-light)
+![GHZ](figures/GHZ_dark.png#circuit#only-dark)
+
+
+### No Ansatz
+![No Ansatz](figures/No_Ansatz_light.png#circuit#only-light)
+![No Ansatz](figures/No_Ansatz_dark.png#circuit#only-dark)
+
+### Circuit 1
+![Circuit 1](figures/Circuit_1_light.png#circuit#only-light)
+![Circuit 1](figures/Circuit_1_dark.png#circuit#only-dark)
+
+### Circuit 2
+![Circuit 2](figures/Circuit_2_light.png#circuit#only-light)
+![Circuit 2](figures/Circuit_2_dark.png#circuit#only-dark)
+
+### Circuit 3
+![Circuit 3](figures/Circuit_3_light.png#circuit#only-light)
+![Circuit 3](figures/Circuit_3_dark.png#circuit#only-dark)
+
+### Circuit 4
+![Circuit 4](figures/Circuit_4_light.png#circuit#only-light)
+![Circuit 4](figures/Circuit_4_dark.png#circuit#only-dark)
+
+### Circuit 6
+![Circuit 6](figures/Circuit_6_light.png#circuit#only-light)
+![Circuit 6](figures/Circuit_6_dark.png#circuit#only-dark)
+
+### Circuit 9
+![Circuit 9](figures/Circuit_9_light.png#circuit#only-light)
+![Circuit 9](figures/Circuit_9_dark.png#circuit#only-dark)
+
+### Circuit 10
+![Circuit 10](figures/Circuit_10_light.png#circuit#only-light)
+![Circuit 10](figures/Circuit_10_dark.png#circuit#only-dark)
+
+### Circuit 15
+![Circuit 15](figures/Circuit_15_light.png#circuit#only-light)
+![Circuit 15](figures/Circuit_15_dark.png#circuit#only-dark)
+
+### Circuit 16
+![Circuit 16](figures/Circuit_16_light.png#circuit#only-light)
+![Circuit 16](figures/Circuit_16_dark.png#circuit#only-dark)
+
+### Circuit 17
+![Circuit 17](figures/Circuit_17_light.png#circuit#only-light)
+![Circuit 17](figures/Circuit_17_dark.png#circuit#only-dark)
+
+### Circuit 18
+![Circuit 18](figures/Circuit_18_light.png#circuit#only-light)
+![Circuit 18](figures/Circuit_18_dark.png#circuit#only-dark)
+
+### Circuit 19
+![Circuit 19](figures/Circuit_19_light.png#circuit#only-light)
+![Circuit 19](figures/Circuit_19_dark.png#circuit#only-dark)
+
+### No Entangling
+![No Entangling](figures/No_Entangling_light.png#circuit#only-light)
+![No Entangling](figures/No_Entangling_dark.png#circuit#only-dark)
+
+### Strongly Entangling
+![Strongly Entangling](figures/Strongly_Entangling_light.png#circuit#only-light)
+![Strongly Entangling](figures/Strongly_Entangling_dark.png#circuit#only-dark)
+
+### Hardware Efficient
+![Hardware Efficient](figures/Hardware_Efficient_light.png#circuit#only-light)
+![Hardware Efficient](figures/Hardware_Efficient_dark.png#circuit#only-dark)
+
+### GHZ
+![GHZ](figures/GHZ_light.png#circuit#only-light)
+![GHZ](figures/GHZ_dark.png#circuit#only-dark)
+
+
+### No Ansatz
+![No Ansatz](figures/No_Ansatz_light.png#circuit#only-light)
+![No Ansatz](figures/No_Ansatz_dark.png#circuit#only-dark)
+
+### Circuit 1
+![Circuit 1](figures/Circuit_1_light.png#circuit#only-light)
+![Circuit 1](figures/Circuit_1_dark.png#circuit#only-dark)
+
+### Circuit 2
+![Circuit 2](figures/Circuit_2_light.png#circuit#only-light)
+![Circuit 2](figures/Circuit_2_dark.png#circuit#only-dark)
+
+### Circuit 3
+![Circuit 3](figures/Circuit_3_light.png#circuit#only-light)
+![Circuit 3](figures/Circuit_3_dark.png#circuit#only-dark)
+
+### Circuit 4
+![Circuit 4](figures/Circuit_4_light.png#circuit#only-light)
+![Circuit 4](figures/Circuit_4_dark.png#circuit#only-dark)
+
+### Circuit 6
+![Circuit 6](figures/Circuit_6_light.png#circuit#only-light)
+![Circuit 6](figures/Circuit_6_dark.png#circuit#only-dark)
+
+### Circuit 9
+![Circuit 9](figures/Circuit_9_light.png#circuit#only-light)
+![Circuit 9](figures/Circuit_9_dark.png#circuit#only-dark)
+
+### Circuit 10
+![Circuit 10](figures/Circuit_10_light.png#circuit#only-light)
+![Circuit 10](figures/Circuit_10_dark.png#circuit#only-dark)
+
+### Circuit 15
+![Circuit 15](figures/Circuit_15_light.png#circuit#only-light)
+![Circuit 15](figures/Circuit_15_dark.png#circuit#only-dark)
+
+### Circuit 16
+![Circuit 16](figures/Circuit_16_light.png#circuit#only-light)
+![Circuit 16](figures/Circuit_16_dark.png#circuit#only-dark)
+
+### Circuit 17
+![Circuit 17](figures/Circuit_17_light.png#circuit#only-light)
+![Circuit 17](figures/Circuit_17_dark.png#circuit#only-dark)
+
+### Circuit 18
+![Circuit 18](figures/Circuit_18_light.png#circuit#only-light)
+![Circuit 18](figures/Circuit_18_dark.png#circuit#only-dark)
+
+### Circuit 19
+![Circuit 19](figures/Circuit_19_light.png#circuit#only-light)
+![Circuit 19](figures/Circuit_19_dark.png#circuit#only-dark)
+
+### No Entangling
+![No Entangling](figures/No_Entangling_light.png#circuit#only-light)
+![No Entangling](figures/No_Entangling_dark.png#circuit#only-dark)
+
+### Strongly Entangling
+![Strongly Entangling](figures/Strongly_Entangling_light.png#circuit#only-light)
+![Strongly Entangling](figures/Strongly_Entangling_dark.png#circuit#only-dark)
+
+### Hardware Efficient
+![Hardware Efficient](figures/Hardware_Efficient_light.png#circuit#only-light)
+![Hardware Efficient](figures/Hardware_Efficient_dark.png#circuit#only-dark)
+
+### GHZ
+![GHZ](figures/GHZ_light.png#circuit#only-light)
+![GHZ](figures/GHZ_dark.png#circuit#only-dark)
+
+
+### No Ansatz
+![No Ansatz](figures/No_Ansatz_light.png#circuit#only-light)
+![No Ansatz](figures/No_Ansatz_dark.png#circuit#only-dark)
+
+### Circuit 1
+![Circuit 1](figures/Circuit_1_light.png#circuit#only-light)
+![Circuit 1](figures/Circuit_1_dark.png#circuit#only-dark)
+
+### Circuit 2
+![Circuit 2](figures/Circuit_2_light.png#circuit#only-light)
+![Circuit 2](figures/Circuit_2_dark.png#circuit#only-dark)
+
+### Circuit 3
+![Circuit 3](figures/Circuit_3_light.png#circuit#only-light)
+![Circuit 3](figures/Circuit_3_dark.png#circuit#only-dark)
+
+### Circuit 4
+![Circuit 4](figures/Circuit_4_light.png#circuit#only-light)
+![Circuit 4](figures/Circuit_4_dark.png#circuit#only-dark)
+
+### Circuit 6
+![Circuit 6](figures/Circuit_6_light.png#circuit#only-light)
+![Circuit 6](figures/Circuit_6_dark.png#circuit#only-dark)
+
+### Circuit 9
+![Circuit 9](figures/Circuit_9_light.png#circuit#only-light)
+![Circuit 9](figures/Circuit_9_dark.png#circuit#only-dark)
+
+### Circuit 10
+![Circuit 10](figures/Circuit_10_light.png#circuit#only-light)
+![Circuit 10](figures/Circuit_10_dark.png#circuit#only-dark)
+
+### Circuit 15
+![Circuit 15](figures/Circuit_15_light.png#circuit#only-light)
+![Circuit 15](figures/Circuit_15_dark.png#circuit#only-dark)
+
+### Circuit 16
+![Circuit 16](figures/Circuit_16_light.png#circuit#only-light)
+![Circuit 16](figures/Circuit_16_dark.png#circuit#only-dark)
+
+### Circuit 17
+![Circuit 17](figures/Circuit_17_light.png#circuit#only-light)
+![Circuit 17](figures/Circuit_17_dark.png#circuit#only-dark)
+
+### Circuit 18
+![Circuit 18](figures/Circuit_18_light.png#circuit#only-light)
+![Circuit 18](figures/Circuit_18_dark.png#circuit#only-dark)
+
+### Circuit 19
+![Circuit 19](figures/Circuit_19_light.png#circuit#only-light)
+![Circuit 19](figures/Circuit_19_dark.png#circuit#only-dark)
+
+### No Entangling
+![No Entangling](figures/No_Entangling_light.png#circuit#only-light)
+![No Entangling](figures/No_Entangling_dark.png#circuit#only-dark)
+
+### Strongly Entangling
+![Strongly Entangling](figures/Strongly_Entangling_light.png#circuit#only-light)
+![Strongly Entangling](figures/Strongly_Entangling_dark.png#circuit#only-dark)
+
+### Hardware Efficient
+![Hardware Efficient](figures/Hardware_Efficient_light.png#circuit#only-light)
+![Hardware Efficient](figures/Hardware_Efficient_dark.png#circuit#only-dark)
+
+### GHZ
+![GHZ](figures/GHZ_light.png#circuit#only-light)
+![GHZ](figures/GHZ_dark.png#circuit#only-dark)
+

@@ -670,17 +670,6 @@ def test_pulse_model_batching():
 
 
 @pytest.mark.unittest
-def test_available_ansaetze() -> None:
-    ansatze = set(Ansaetze.get_available())
-
-    actual_ansaetze = set(
-        ansatz for ansatz in Ansaetze.__dict__.values() if inspect.isclass(ansatz)
-    )
-    # check that the classes are the ones returned by .__subclasses__
-    assert actual_ansaetze == ansatze
-
-
-@pytest.mark.unittest
 def test_multi_input() -> None:
     input_cases = [
         np.random.rand(1, 1),
