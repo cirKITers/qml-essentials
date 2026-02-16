@@ -342,7 +342,7 @@ class Ansaetze:
         def structure():
             return (
                 Block(gate=Gates.H),
-                Block(gate=Gates.CX, topology=Topology.ring_reversed),
+                Block(gate=Gates.CX, topology=Topology.downstairs),
             )
 
         @staticmethod
@@ -371,7 +371,7 @@ class Ansaetze:
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
-                Block(gate=Gates.CX, topology=Topology.ring),
+                Block(gate=Gates.CX, topology=Topology.upstairs),
             )
 
     class Circuit_3(DeclarativeCircuit):
@@ -380,7 +380,7 @@ class Ansaetze:
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
-                Block(gate=Gates.CRZ, topology=Topology.ring),
+                Block(gate=Gates.CRZ, topology=Topology.upstairs),
             )
 
     class Circuit_4(DeclarativeCircuit):
@@ -389,7 +389,7 @@ class Ansaetze:
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
-                Block(gate=Gates.CRX, topology=Topology.ring),
+                Block(gate=Gates.CRX, topology=Topology.upstairs),
             )
 
     class Circuit_6(DeclarativeCircuit):
@@ -408,7 +408,7 @@ class Ansaetze:
         def structure():
             return (
                 Block(gate=Gates.H),
-                Block(gate="CZ", topology=Topology.ring),
+                Block(gate="CZ", topology=Topology.upstairs),
                 Block(gate=Gates.RX),
             )
 
@@ -417,7 +417,7 @@ class Ansaetze:
         def structure():
             return (
                 Block(gate=Gates.RY),
-                Block(gate="CZ", topology=Topology.ring_wrap),
+                Block(gate="CZ", topology=Topology.upstairs_wraped),
                 Block(gate=Gates.RY),
             )
 
@@ -426,11 +426,11 @@ class Ansaetze:
         def structure():
             return (
                 Block(gate=Gates.RY),
-                Block(gate=Gates.CX, topology=Topology.circular),
+                Block(gate=Gates.CX, topology=Topology.wraped_upstairs),
                 Block(gate=Gates.RY),
                 Block(
                     gate=Gates.CX,
-                    topology=Topology.circular_reversed,
+                    topology=Topology.wraped_downstairs,
                 ),
             )
 
@@ -442,7 +442,7 @@ class Ansaetze:
                 Block(gate=Gates.RZ),
                 Block(
                     gate=Gates.CRZ,
-                    topology=Topology.brick_layer_reversed,
+                    topology=Topology.brick_wraped_mirrored,
                 ),
             )
 
@@ -454,7 +454,7 @@ class Ansaetze:
                 Block(gate=Gates.RZ),
                 Block(
                     gate=Gates.CRX,
-                    topology=Topology.brick_layer_reversed,
+                    topology=Topology.brick_wraped_mirrored,
                 ),
             )
 
@@ -464,7 +464,7 @@ class Ansaetze:
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
-                Block(gate=Gates.CRZ, topology=Topology.circular),
+                Block(gate=Gates.CRZ, topology=Topology.wraped_upstairs),
             )
 
     class Circuit_19(DeclarativeCircuit):
@@ -473,7 +473,7 @@ class Ansaetze:
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
-                Block(gate=Gates.CRX, topology=Topology.circular),
+                Block(gate=Gates.CRX, topology=Topology.wraped_upstairs),
             )
 
     class No_Entangling(DeclarativeCircuit):
@@ -488,7 +488,7 @@ class Ansaetze:
                 Block(gate=Gates.RY),
                 Block(gate=Gates.RZ),
                 Block(gate=Gates.RY),
-                Block(gate=Gates.CX, topology=Topology.brick_layer_wrap),
+                Block(gate=Gates.CX, topology=Topology.brick_wraped),
             )
 
     class Strongly_Entangling(DeclarativeCircuit):

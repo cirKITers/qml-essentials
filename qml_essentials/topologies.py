@@ -21,35 +21,72 @@ class Topology:
     """
 
     @classmethod
-    def _chain(
+    def _consecutive(
         cls,
         n_qubits: int,
         wrap: bool = False,
         reverse: bool = False,
+        target_forward: bool = False,
+        stride: int = 1,
     ) -> List[List[int]]:
         """
-        Nearest-neighbour chain.
+        Unified generator for nearest-neighbour and strided pair topologies.
+        Produces ``[control, target]`` pairs of qubits.
 
         Parameters
         ----------
         n_qubits : int
             Number of qubits.
         wrap : bool
-            If True the chain wraps around (circular), adding one
-            extra pair so every qubit appears as both control and
-            target.
+            If *target_forward* is True the wrap extends the
+            iteration count so that every qubit appears as control
+            once (chain / circular behaviour).
+            If *target_forward* is False an extra ``[n-1, 0]`` (or
+            ``[0, n-1]`` when reversed) pair is appended when
+            ``n_qubits > 2`` (ring behaviour).
         reverse : bool
-            If False pairs run high→low ``[n-1→n-2, …, 1→0]``;
-            if True pairs run low→high ``[0→1, 1→2, …]``.
+            Reverses both the iteration direction and the
+            control→target offset.
+        target_forward : bool
+            If True the target qubit is ``(control + stride) % n``
+            (chain-like); if False it is ``(control - stride) % n``
+            (ring-like).  The sign is flipped when *reverse* is
+            True.
+        stride : int
+            Offset between control and target qubit. Defaults to 1
+            (nearest-neighbour). For example ``stride=2`` pairs each
+            qubit with the one two positions away.
 
         Returns
         -------
         List[List[int]]
         """
-        count = n_qubits if wrap else n_qubits - 1
+        n = n_qubits
+        # XOR: forward offset when exactly one of the flags is set
+        delta = stride if (target_forward != reverse) else -stride
+
+        # Number of pairs produced by the main loop
+        if target_forward:
+            count = n if wrap else n - 1
+        else:
+            count = n - 1
+
+        # Control-qubit sequence
         if reverse:
-            return [[(q - 1) % n_qubits, (q - 2) % n_qubits] for q in range(count)]
-        return [[n_qubits - q - 1, (n_qubits - q) % n_qubits] for q in range(count)]
+            if target_forward:
+                ctrls = [(q - 1) % n for q in range(count)]
+            else:
+                ctrls = [(q + 1) % n for q in range(count)]
+        else:
+            ctrls = [n - q - 1 for q in range(count)]
+
+        pairs = [[c, (c + delta) % n] for c in ctrls]
+
+        # Ring-style wrap: append one extra closing pair
+        if not target_forward and wrap and n > 2:
+            pairs.append([0, n - 1] if reverse else [n - 1, 0])
+
+        return pairs
 
     @classmethod
     def _brick(
@@ -87,71 +124,44 @@ class Topology:
             pairs.append([n_qubits - 1, 0])
         return pairs
 
-    @classmethod
-    def _ring(
-        cls,
-        n_qubits: int,
-        wrap: bool = False,
-        reverse: bool = False,
-    ) -> List[List[int]]:
-        """
-        Ring pairing (used by CZ topologies).
-
-        Pairs run ``[n-2→n-1, n-3→n-2, …, 0→1]``, i.e. each
-        consecutive pair in descending control-qubit order.
-
-        Parameters
-        ----------
-        n_qubits : int
-            Number of qubits.
-        wrap : bool
-            If True an extra ``[n-1, 0]`` pair is appended when
-            ``n_qubits > 2``.
-
-        Returns
-        -------
-        List[List[int]]
-        """
-        if reverse:
-            pairs = [
-                [(q + 1) % n_qubits, (q + 2) % n_qubits] for q in range(n_qubits - 1)
-            ]
-            if wrap and n_qubits > 2:
-                pairs.append([0, n_qubits - 1])
-            return pairs
-        else:
-            pairs = [
-                [(n_qubits - q - 1) % n_qubits, (n_qubits - q - 2) % n_qubits]
-                for q in range(n_qubits - 1)
-            ]
-            if wrap and n_qubits > 2:
-                pairs.append([n_qubits - 1, 0])
-            return pairs
-
     # ── public topology methods ────────────────────────────────
+    @classmethod
+    def downstairs(cls, n_qubits: int) -> List[List[int]]:
+        """Descending consecutive pairs without wrapping."""
+        return cls._consecutive(n_qubits, reverse=True)
 
     @classmethod
-    def circular(cls, n_qubits: int) -> List[List[int]]:
+    def upstairs(cls, n_qubits: int) -> List[List[int]]:
+        """Descending consecutive pairs without wrapping."""
+        return cls._consecutive(n_qubits)
+
+    @classmethod
+    def upstairs_wraped(cls, n_qubits: int) -> List[List[int]]:
+        """Descending consecutive pairs with wrapping ``[n-1, 0]``."""
+        return cls._consecutive(n_qubits, wrap=True)
+
+    @classmethod
+    def wraped_upstairs(cls, n_qubits: int) -> List[List[int]]:
         """Wrapping chain high→low (every qubit is control once)."""
-        return cls._chain(n_qubits, wrap=True)
+        return cls._consecutive(n_qubits, wrap=True, target_forward=True)
 
     @classmethod
-    def circular_reversed(cls, n_qubits: int) -> List[List[int]]:
+    def wraped_downstairs(cls, n_qubits: int) -> List[List[int]]:
         """Wrapping chain low→high."""
-        return cls._chain(n_qubits, wrap=True, reverse=True)
+        return cls._consecutive(n_qubits, wrap=True, reverse=True, target_forward=True)
 
     @classmethod
-    def brick_layer(cls, n_qubits: int) -> List[List[int]]:
+    def brick(cls, n_qubits: int) -> List[List[int]]:
         """Even pairs then odd pairs: ``[0,1],[2,3],…,[1,2],[3,4],…``."""
         return cls._brick(n_qubits)
 
     @classmethod
-    def brick_layer_wrap(cls, n_qubits: int) -> List[List[int]]:
+    def brick_wraped(cls, n_qubits: int) -> List[List[int]]:
         """Brick-layer with an extra ``[n-1, 0]`` wrapping pair."""
         return cls._brick(n_qubits, wrap=True)
 
     @classmethod
-    def brick_layer_reversed(cls, n_qubits: int) -> List[List[int]]:
+    def brick_wraped_mirrored(cls, n_qubits: int) -> List[List[int]]:
         """Brick-layer with swapped control/target inside each pair."""
         return cls._brick(n_qubits, reverse_pairs=True)
 
@@ -182,19 +192,4 @@ class Topology:
         stride : int
             Offset between control and target qubit.
         """
-        return [[q, (q + stride) % n_qubits] for q in range(n_qubits)]
-
-    @classmethod
-    def ring(cls, n_qubits: int) -> List[List[int]]:
-        """Descending consecutive pairs without wrapping."""
-        return cls._ring(n_qubits)
-
-    @classmethod
-    def ring_reversed(cls, n_qubits: int) -> List[List[int]]:
-        """Descending consecutive pairs without wrapping."""
-        return cls._ring(n_qubits, reverse=True)
-
-    @classmethod
-    def ring_wrap(cls, n_qubits: int) -> List[List[int]]:
-        """Descending consecutive pairs with wrapping ``[n-1, 0]``."""
-        return cls._ring(n_qubits, wrap=True)
+        return cls._consecutive(n_qubits, wrap=True, target_forward=True, stride=stride)
