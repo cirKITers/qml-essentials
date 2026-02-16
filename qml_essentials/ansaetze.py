@@ -177,12 +177,6 @@ class DeclarativeCircuit(Circuit):
             # we can rely on n_params only returning a valid number
             _n_params = block.n_params(n_qubits)
 
-            if _n_params == 0:
-                warnings.warn(
-                    f"Skipping {block} with n_qubits={n_qubits} "
-                    f"as there are not enough qubits for this topology"
-                )
-
             n_params += _n_params
 
         return n_params
@@ -239,6 +233,7 @@ class Block:
         self,
         gate: str,
         topology: Any = None,
+        **kwargs,
     ):
         """
         Initialize a Block object; the atoms of Ansatzes.
@@ -247,6 +242,7 @@ class Block:
             gate (str): Name of the Gate class to use.
             topology (Any, optional): Topology of the gate for entangling gates.
                 Defaults to None.
+            kwargs: Additional keyword arguments passed to the topology function.
         """
         if isinstance(gate, str):
             self.gate = getattr(Gates, gate)
@@ -259,6 +255,7 @@ class Block:
             ), "Topology must be specified for entangling gates"
 
         self.topology = topology
+        self.kwargs = kwargs
 
     @property
     def is_entangling(self):
@@ -277,7 +274,14 @@ class Block:
 
         if Gates.is_rotational(self.gate):
             if Gates.is_entangling(self.gate):
-                return len(self.topology(n_qubits)) if n_qubits > 1 else 0
+                if n_qubits > 1:
+                    return len(self.topology(n_qubits=n_qubits, **self.kwargs))
+                else:
+                    warnings.warn(
+                        f"Skipping {self.topology.__name__} with n_qubits={n_qubits} "
+                        f"as there are not enough qubits for this topology"
+                    )
+                    return 0
             else:
                 return n_qubits if self.gate.__name__ != "Rot" else 3 * n_qubits
 
@@ -290,7 +294,7 @@ class Block:
         assert n_qubits > 0, "Number of qubits must be positive"
 
         iterator = (
-            self.topology(n_qubits)
+            self.topology(n_qubits=n_qubits, **self.kwargs)
             if Gates.is_entangling(self.gate)
             else range(n_qubits)
         )
@@ -342,7 +346,7 @@ class Ansaetze:
         def structure():
             return (
                 Block(gate=Gates.H),
-                Block(gate=Gates.CX, topology=Topology.downstairs),
+                Block(gate=Gates.CX, topology=Topology.stairs, reverse=True),
             )
 
         @staticmethod
@@ -371,7 +375,10 @@ class Ansaetze:
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
-                Block(gate=Gates.CX, topology=Topology.upstairs),
+                Block(
+                    gate=Gates.CX,
+                    topology=Topology.stairs,
+                ),
             )
 
     class Circuit_3(DeclarativeCircuit):
@@ -380,7 +387,7 @@ class Ansaetze:
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
-                Block(gate=Gates.CRZ, topology=Topology.upstairs),
+                Block(gate=Gates.CRZ, topology=Topology.stairs),
             )
 
     class Circuit_4(DeclarativeCircuit):
@@ -389,7 +396,7 @@ class Ansaetze:
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
-                Block(gate=Gates.CRX, topology=Topology.upstairs),
+                Block(gate=Gates.CRX, topology=Topology.stairs),
             )
 
     class Circuit_6(DeclarativeCircuit):
@@ -408,7 +415,7 @@ class Ansaetze:
         def structure():
             return (
                 Block(gate=Gates.H),
-                Block(gate="CZ", topology=Topology.upstairs),
+                Block(gate="CZ", topology=Topology.stairs),
                 Block(gate=Gates.RX),
             )
 
@@ -417,7 +424,7 @@ class Ansaetze:
         def structure():
             return (
                 Block(gate=Gates.RY),
-                Block(gate="CZ", topology=Topology.upstairs_wraped),
+                Block(gate="CZ", topology=Topology.stairs, wrap=True, offset=1),
                 Block(gate=Gates.RY),
             )
 
@@ -426,11 +433,20 @@ class Ansaetze:
         def structure():
             return (
                 Block(gate=Gates.RY),
-                Block(gate=Gates.CX, topology=Topology.wraped_upstairs),
+                Block(
+                    gate=Gates.CX,
+                    topology=Topology.stairs,
+                    wrap=True,
+                    reverse=True,
+                    mirror=False,
+                ),
                 Block(gate=Gates.RY),
                 Block(
                     gate=Gates.CX,
-                    topology=Topology.wraped_downstairs,
+                    topology=Topology.stairs,
+                    reverse=False,
+                    offset=lambda n: n // 2,
+                    wrap=True,
                 ),
             )
 
@@ -442,7 +458,17 @@ class Ansaetze:
                 Block(gate=Gates.RZ),
                 Block(
                     gate=Gates.CRZ,
-                    topology=Topology.brick_wraped_mirrored,
+                    topology=Topology.stairs,
+                    stride=2,
+                ),
+                Block(
+                    gate=Gates.CRZ,
+                    topology=Topology.stairs,
+                    stride=2,
+                    reverse=False,
+                    mirror=True,
+                    offset=1,
+                    modulo=False,
                 ),
             )
 
@@ -454,7 +480,17 @@ class Ansaetze:
                 Block(gate=Gates.RZ),
                 Block(
                     gate=Gates.CRX,
-                    topology=Topology.brick_wraped_mirrored,
+                    topology=Topology.stairs,
+                    stride=2,
+                ),
+                Block(
+                    gate=Gates.CRX,
+                    topology=Topology.stairs,
+                    stride=2,
+                    reverse=False,
+                    mirror=True,
+                    offset=1,
+                    modulo=False,
                 ),
             )
 
@@ -464,7 +500,12 @@ class Ansaetze:
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
-                Block(gate=Gates.CRZ, topology=Topology.wraped_upstairs),
+                Block(
+                    gate=Gates.CRZ,
+                    topology=Topology.stairs,
+                    wrap=True,
+                    mirror=False,
+                ),
             )
 
     class Circuit_19(DeclarativeCircuit):
@@ -473,7 +514,12 @@ class Ansaetze:
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
-                Block(gate=Gates.CRX, topology=Topology.wraped_upstairs),
+                Block(
+                    gate=Gates.CRX,
+                    topology=Topology.stairs,
+                    wrap=True,
+                    mirror=False,
+                ),
             )
 
     class No_Entangling(DeclarativeCircuit):
@@ -488,7 +534,19 @@ class Ansaetze:
                 Block(gate=Gates.RY),
                 Block(gate=Gates.RZ),
                 Block(gate=Gates.RY),
-                Block(gate=Gates.CX, topology=Topology.brick_wraped),
+                Block(
+                    gate=Gates.CX,
+                    topology=Topology.stairs,
+                    stride=2,
+                    mirror=False,
+                ),
+                Block(
+                    gate=Gates.CX,
+                    topology=Topology.stairs,
+                    stride=2,
+                    offset=1,
+                    mirror=False,
+                ),
             )
 
     class Strongly_Entangling(DeclarativeCircuit):
@@ -498,12 +556,19 @@ class Ansaetze:
                 Block(gate=Gates.Rot),
                 Block(
                     gate=Gates.CX,
-                    topology=lambda n: Topology.strongly_ent(n, stride=1),
+                    topology=Topology.stairs,
+                    wrap=True,
+                    reverse=False,
+                    mirror=False,
                 ),
                 Block(gate=Gates.Rot),
                 Block(
                     gate=Gates.CX,
-                    topology=lambda n: Topology.strongly_ent(n, stride=n // 2),
+                    topology=Topology.stairs,
+                    reverse=False,
+                    span=2,
+                    wrap=True,
+                    mirror=False,
                 ),
             )
 
