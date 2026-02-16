@@ -28,7 +28,7 @@ class Topology:
         wrap=False,
         reverse: bool = True,
         mirror: bool = True,
-        span: int = 1,
+        span: Union[int, Callable] = 1,
         stride: int = 1,
         modulo: bool = True,
     ) -> List[List[int]]:
@@ -70,16 +70,21 @@ class Topology:
 
         n_gates = n_qubits if wrap else n_qubits - 1
         _offset = offset(n_qubits) if callable(offset) else offset
+        _span = span if callable(span) else lambda q: span
 
         for q in range(0, n_gates, stride):
-            _target = q - _offset + span
+            _target = q - _offset + _span(q)
             if _target >= n_qubits and not modulo:
                 continue
             _control = q - _offset
             if _control < 0 and not modulo:
                 continue
-            targets += [(q - _offset + span) % n_qubits]
-            ctrls += [(q - _offset) % n_qubits]
+
+            if _target == _control:
+                continue
+
+            targets += [_target % n_qubits]
+            ctrls += [_control % n_qubits]
 
         if reverse:
             ctrls = reversed(ctrls)
