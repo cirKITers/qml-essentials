@@ -16,13 +16,43 @@ See the [*Overview*](#overview) at the end of this document for more details.
 However, usually you just want reference to them (by name) when instantiating a model.
 To get an overview of all the available Ansaetze, checkout the [references](https://cirkiters.github.io/qml-essentials/references/).
 
+
 ## Custom Ansatz
 
-If you want to implement your own ansatz, you can do so by inheriting from the `Circuit` class:
+For building the different Ansatzes, we use topology patterns defined in `qml_essentials.topologies`.
+You can find a list of all the available topologies in the [references](https://cirkiters.github.io/qml-essentials/references/) as well.
+
+To start implementing your own ansatz, you can inheriting from the `Circuit` class:
 ```python
-import pennylane as qml
-import pennylane.numpy as np
 from qml_essentials.ansaetze import Circuit
+from qml_essentials.gates import Gates
+from qml_essentials.topologies import Topology, Block
+
+class MyHardwareEfficient(Circuit):
+    @staticmethod
+    def structure():
+        return (
+            Block(gate=Gates.RY),
+            Block(gate=Gates.RZ),
+            Block(gate=Gates.RY),
+            Block(gate=Gates.CX, topology=Topology.brick_layer_wrap),
+        )
+
+```
+and then pass it to the model:
+```python
+from qml_essentials.model import Model
+
+model = Model(
+    n_qubits=2,
+    n_layers=1,
+    circuit_type=MyHardwareEfficient,
+)
+```
+
+If you don't want to use the provided blocks and topologies, you can build your own Ansatz from scratch but have to implement all the required methods shown in the example below:
+```python
+import pennylane.numpy as np
 from qml_essentials.gates import PulseInformation as pinfo
 from typing import Optional
 
@@ -50,26 +80,16 @@ class MyHardwareEfficient(Circuit):
     def build(w: np.ndarray, n_qubits: int, **kwargs):
         w_idx = 0
         for q in range(n_qubits):
-            qml.RY(w[w_idx], wires=q, **kwargs)
+            Gates.RY(w[w_idx], wires=q, **kwargs)
             w_idx += 1
-            qml.RZ(w[w_idx], wires=q, **kwargs)
+            Gates.RZ(w[w_idx], wires=q, **kwargs)
             w_idx += 1
 
         if n_qubits > 1:
             for q in range(n_qubits - 1):
-                qml.CZ(wires=[q, q + 1], **kwargs)
+                Gates.CZ(wires=[q, q + 1], **kwargs)
 ```
 
-and then pass it to the model:
-```python
-from qml_essentials.model import Model
-
-model = Model(
-    n_qubits=2,
-    n_layers=1,
-    circuit_type=MyHardwareEfficient,
-)
-```
 The `**kwargs` allow both [noise simulation](#noise) and [pulse simulation](#pulse-simulation).
 A custom `Circuit` should define `n_pulse_params_per_layer` if it will use pulse simulation at some point, but may be omitted otherwise.
 
