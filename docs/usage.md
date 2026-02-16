@@ -231,7 +231,7 @@ model(params, inputs, gate_mode="pulse")
 Pulse-level gates can also be instantiated directly:
 
 ```python
-from qml_essentials.ansaetze import Gates
+from qml_essentials.gates import Gates
 
 # RX gate represented by its microwave pulse
 Gates.RX(w, wires=0, gate_mode="pulse")

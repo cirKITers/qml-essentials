@@ -3,7 +3,7 @@ from qml_essentials.qoc import QOC
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Circuit
 from qml_essentials.gates import Gates, UnitaryGates
-from qml_essentials.ansaetze import PulseInformation as pinfo
+from qml_essentials.gates import PulseInformation as pinfo
 import pennylane as qml
 import pennylane.numpy as np
 import jax

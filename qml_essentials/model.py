@@ -9,7 +9,7 @@ from jax import random
 
 from qml_essentials.ansaetze import Ansaetze, Circuit, Encoding
 from qml_essentials.gates import Gates
-from qml_essentials.ansaetze import PulseInformation as pinfo
+from qml_essentials.gates import PulseInformation as pinfo
 from qml_essentials.utils import QuanTikz, safe_random_split
 
 import logging
