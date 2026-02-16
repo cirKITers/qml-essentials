@@ -275,11 +275,11 @@ class Block:
     def n_params(self, n_qubits: int) -> int:
         assert n_qubits > 0, "Number of qubits must be positive"
 
-        if Gates.is_entangling(self.gate):
-            return len(self.topology(n_qubits)) if n_qubits > 1 else 0
-
         if Gates.is_rotational(self.gate):
-            return n_qubits if self.gate.__name__ != "Rot" else 3 * n_qubits
+            if Gates.is_entangling(self.gate):
+                return len(self.topology(n_qubits)) if n_qubits > 1 else 0
+            else:
+                return n_qubits if self.gate.__name__ != "Rot" else 3 * n_qubits
 
         return 0
 

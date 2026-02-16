@@ -1341,14 +1341,11 @@ class Model:
                 random_keys,
             )
         else:
-            result = f(
-                params=params,
-                pulse_params=pulse_params,
-                inputs=inputs,
-                enc_params=enc_params,
-                noise_params=noise_params,
-                random_key=random_key,
-                gate_mode=gate_mode,
+            result = _f(
+                _params=params,
+                _pulse_params=pulse_params,
+                _inputs=inputs,
+                _random_key=random_key,
             )
 
         return self._postprocess_res(result)
