@@ -35,7 +35,19 @@ class MyHardwareEfficient(Circuit):
             Block(gate=Gates.RY),
             Block(gate=Gates.RZ),
             Block(gate=Gates.RY),
-            Block(gate=Gates.CX, topology=Topology.brick_layer_wrap),
+            Block(
+                gate=Gates.CX,
+                topology=Topology.stairs,
+                stride=2,
+                mirror=False,
+            ),
+            Block(
+                gate=Gates.CX,
+                topology=Topology.stairs,
+                stride=2,
+                offset=1,
+                mirror=False,
+            ),
         )
 
 ```
