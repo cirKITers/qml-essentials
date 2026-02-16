@@ -120,8 +120,7 @@ class Model:
             sp_name = sp.__name__ if hasattr(sp, "__name__") else str(sp)
 
             if pinfo.gate_by_name(sp_name) is not None:
-                params = jnp.array(pinfo.gate_by_name(sp_name))
-                self.sp_pulse_params.append(params)
+                self.sp_pulse_params.append(pinfo.gate_by_name(sp_name).params)
             else:
                 # gate has no pulse parametrization
                 self.sp_pulse_params.append(None)

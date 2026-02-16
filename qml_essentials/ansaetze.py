@@ -311,7 +311,6 @@ class Block:
 
 
 class Ansaetze:
-
     def get_available():
         return [
             Ansaetze.No_Ansatz,
@@ -333,13 +332,11 @@ class Ansaetze:
             Ansaetze.GHZ,
         ]
 
-    # ── No_Ansatz ──────────────────────────────────────────────────
     class No_Ansatz(DeclarativeCircuit):
         @staticmethod
         def structure():
             return ()
 
-    # ── GHZ ────────────────────────────────────────────────────────
     class GHZ(DeclarativeCircuit):
         @staticmethod
         def structure():
@@ -348,7 +345,6 @@ class Ansaetze:
                 Block(gate=Gates.CX, topology=Topology.ring_reversed),
             )
 
-        # GHZ is special: H only on qubit 0, not all qubits
         @staticmethod
         def build(w: np.ndarray, n_qubits: int, **kwargs):
             Gates.H(wires=0, **kwargs)
@@ -361,7 +357,6 @@ class Ansaetze:
             n_params += (n_qubits - 1) * PulseInformation.num_params(Gates.CX)
             return n_params
 
-    # ── Circuit_1: [RX, RZ] per qubit, no entangling ──────────────
     class Circuit_1(DeclarativeCircuit):
         @staticmethod
         def structure():
@@ -370,7 +365,6 @@ class Ansaetze:
                 Block(gate=Gates.RZ),
             )
 
-    # ── Circuit_2: [RX, RZ] per qubit + linear CX ─────────────────
     class Circuit_2(DeclarativeCircuit):
         @staticmethod
         def structure():
@@ -380,7 +374,6 @@ class Ansaetze:
                 Block(gate=Gates.CX, topology=Topology.ring),
             )
 
-    # ── Circuit_3: [RX, RZ] per qubit + linear CRZ ────────────────
     class Circuit_3(DeclarativeCircuit):
         @staticmethod
         def structure():
@@ -390,7 +383,6 @@ class Ansaetze:
                 Block(gate=Gates.CRZ, topology=Topology.ring),
             )
 
-    # ── Circuit_4: [RX, RZ] per qubit + linear CRX ────────────────
     class Circuit_4(DeclarativeCircuit):
         @staticmethod
         def structure():
@@ -400,9 +392,7 @@ class Ansaetze:
                 Block(gate=Gates.CRX, topology=Topology.ring),
             )
 
-    # ── Circuit_6: [RX,RZ] + all-to-all CRX + [RX,RZ] ────────────
     class Circuit_6(DeclarativeCircuit):
-
         @staticmethod
         def structure():
             return (
@@ -413,7 +403,6 @@ class Ansaetze:
                 Block(gate=Gates.RZ),
             )
 
-    # ── Circuit_9: H + linear CZ + RX ─────────────────────────────
     class Circuit_9(DeclarativeCircuit):
         @staticmethod
         def structure():
@@ -423,7 +412,6 @@ class Ansaetze:
                 Block(gate=Gates.RX),
             )
 
-    # ── Circuit_10: RY + ring CZ (+ wrap) + RY ────────────────────
     class Circuit_10(DeclarativeCircuit):
         @staticmethod
         def structure():
@@ -433,9 +421,7 @@ class Ansaetze:
                 Block(gate=Gates.RY),
             )
 
-    # ── Circuit_15: RY + circular CX + RY + circular_reversed CX ──
     class Circuit_15(DeclarativeCircuit):
-
         @staticmethod
         def structure():
             return (
@@ -448,7 +434,6 @@ class Ansaetze:
                 ),
             )
 
-    # ── Circuit_16: [RX, RZ] + brick-layer-reversed CRZ ───────────
     class Circuit_16(DeclarativeCircuit):
         @staticmethod
         def structure():
@@ -461,7 +446,6 @@ class Ansaetze:
                 ),
             )
 
-    # ── Circuit_17: [RX, RZ] + brick-layer-reversed CRX ───────────
     class Circuit_17(DeclarativeCircuit):
         @staticmethod
         def structure():
@@ -474,9 +458,7 @@ class Ansaetze:
                 ),
             )
 
-    # ── Circuit_18: [RX, RZ] + circular CRZ ───────────────────────
     class Circuit_18(DeclarativeCircuit):
-
         @staticmethod
         def structure():
             return (
@@ -485,9 +467,7 @@ class Ansaetze:
                 Block(gate=Gates.CRZ, topology=Topology.circular),
             )
 
-    # ── Circuit_19: [RX, RZ] + circular CRX ───────────────────────
     class Circuit_19(DeclarativeCircuit):
-
         @staticmethod
         def structure():
             return (
@@ -496,15 +476,12 @@ class Ansaetze:
                 Block(gate=Gates.CRX, topology=Topology.circular),
             )
 
-    # ── No_Entangling: Rot per qubit ──────────────────────────────
     class No_Entangling(DeclarativeCircuit):
         @staticmethod
         def structure():
             return (Block(gate=Gates.Rot),)
 
-    # ── Hardware_Efficient: [RY, RZ, RY] + brick-layer-wrap CX ───
     class Hardware_Efficient(DeclarativeCircuit):
-
         @staticmethod
         def structure():
             return (
@@ -514,9 +491,7 @@ class Ansaetze:
                 Block(gate=Gates.CX, topology=Topology.brick_layer_wrap),
             )
 
-    # ── Strongly_Entangling: Rot + SE1 CX + Rot + SE2 CX ────────
     class Strongly_Entangling(DeclarativeCircuit):
-
         @staticmethod
         def structure():
             return (
