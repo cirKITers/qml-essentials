@@ -1,8 +1,8 @@
 from typing import Optional, Any, List, Tuple
 import pennylane as qml
+import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import random
 
 from qml_essentials.utils import logm_v
 from qml_essentials.model import Model
@@ -45,7 +45,7 @@ class Entanglement:
         if scale:
             n_samples = jnp.power(2, model.n_qubits) * n_samples
 
-        random_key = random.key(seed)
+        random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             random_key = model.initialize_params(random_key, repeat=n_samples)
@@ -60,32 +60,52 @@ class Entanglement:
             -1, 2**model.n_qubits, 2**model.n_qubits
         )
 
-        measure = jnp.zeros(len(rhos))
+        ent = Entanglement._compute_meyer_wallach_meas(
+            rhos, model.n_qubits, model.use_multithreading
+        )
 
-        for i, rho in enumerate(rhos):
-            ent = Entanglement._compute_meyer_wallach_meas(rho, model.n_qubits)
-            measure = measure.at[i].set(ent)
+        log.debug(f"Variance of measure: {ent.var()}")
 
-        # Average all iterated states
-        entangling_capability = min(max(measure.mean(), 0.0), 1.0)
-        log.debug(f"Variance of measure: {measure.var()}")
-
-        return entangling_capability
+        return ent.mean()
 
     @staticmethod
-    def _compute_meyer_wallach_meas(rho: jnp.ndarray, n_qubits: int):
-        qb = list(range(n_qubits))
-        entropy = 0
-        for j in range(n_qubits):
-            # Formula 6 in https://doi.org/10.48550/arXiv.quant-ph/0305094
-            density = qml.math.partial_trace(rho, qb[:j] + qb[j + 1 :])
-            # only real values, because imaginary part will be separate
-            # in all following calculations anyway
-            # entropy should be 1/2 <= entropy <= 1
-            entropy += jnp.trace((density @ density).real)
+    def _compute_meyer_wallach_meas(
+        rhos: jnp.ndarray, n_qubits: int, use_multithreading: bool = False
+    ) -> jnp.ndarray:
+        """
+        Computes the Meyer-Wallach entangling capability measure for a given
+        set of density matrices.
 
-        # inverse averaged entropy and scale to [0, 1]
-        return 2 * (1 - entropy / n_qubits)
+        Args:
+            rhos (jnp.ndarray): Density matrices of the sample quantum states.
+                The shape is (B_s, 2^n, 2^n), where B_s is the number of samples
+                (batch) and n the number of qubits
+            n_qubits (int): The number of qubits
+            use_multithreading (bool): Whether to use JAX vectorisation.
+
+        Returns:
+            jnp.ndarray: Entangling capability for each sample, array with
+                shape (B_s,)
+        """
+        qb = list(range(n_qubits))
+
+        def _f(rhos):
+            entropy = 0
+            for j in range(n_qubits):
+                # Formula 6 in https://doi.org/10.48550/arXiv.quant-ph/0305094
+                density = qml.math.partial_trace(rhos, qb[:j] + qb[j + 1 :])
+                # only real values, because imaginary part will be separate
+                # in all following calculations anyway
+                # entropy should be 1/2 <= entropy <= 1
+                entropy += jnp.trace((density @ density).real, axis1=-2, axis2=-1)
+
+            # inverse averaged entropy and scale to [0, 1]
+            return 2 * (1 - entropy / n_qubits)
+
+        if use_multithreading:
+            return jax.vmap(_f)(rhos)
+        else:
+            return _f(rhos)
 
     @staticmethod
     def bell_measurements(
@@ -115,11 +135,7 @@ class Entanglement:
             n_samples = jnp.power(2, model.n_qubits) * n_samples
 
         def _circuit(
-            params: jnp.ndarray,
-            inputs: jnp.ndarray,
-            pulse_params: Optional[jnp.ndarray] = None,
-            enc_params: Optional[jnp.ndarray] = None,
-            gate_mode: str = "unitary",
+            params: jnp.ndarray, inputs: jnp.ndarray, **kwargs
         ) -> List[jnp.ndarray]:
             """
             Compute the Bell measurement circuit.
@@ -133,7 +149,7 @@ class Entanglement:
             Returns:
                 List[jnp.ndarray]: The probabilities of the Bell measurement.
             """
-            model._variational(params, inputs, pulse_params, enc_params, gate_mode)
+            model._variational(params, inputs, **kwargs)
 
             qml.map_wires(
                 model._variational,
@@ -158,7 +174,7 @@ class Entanglement:
             ),
         )
 
-        random_key = random.key(seed)
+        random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             random_key = model.initialize_params(random_key, repeat=n_samples)
@@ -235,14 +251,14 @@ class Entanglement:
             n_samples = dim * n_samples
             n_sigmas = dim * n_sigmas
 
-        random_key = random.key(seed)
+        random_key = jax.random.key(seed)
 
         # Random separable states
         log_sigmas = sample_random_separable_states(
             model.n_qubits, n_samples=n_sigmas, random_key=random_key, take_log=True
         )
 
-        random_key, _ = random.split(random_key)
+        random_key, _ = jax.random.split(random_key)
 
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
@@ -256,28 +272,31 @@ class Entanglement:
             else:
                 log.info(f"Using sample size of model params: {model.params.shape[-1]}")
 
+        rhos, log_rhos = Entanglement._compute_log_density(model, **kwargs)
+
+        rel_entropies = jnp.zeros((n_sigmas, model.params.shape[-1]))
+
+        for i, log_sigma in enumerate(log_sigmas):
+            rel_entropies = rel_entropies.at[i].set(
+                Entanglement._compute_rel_entropies(
+                    rhos, log_rhos, log_sigma, model.use_multithreading
+                )
+            )
+
+        # Entropy of GHZ states should be maximal
         ghz_model = Model(model.n_qubits, 1, "GHZ", data_reupload=False)
         rho_ghz, log_rho_ghz = Entanglement._compute_log_density(ghz_model, **kwargs)
+        ghz_entropies = Entanglement._compute_rel_entropies(
+            rho_ghz, log_rho_ghz, log_sigmas, use_multithreading=False
+        )
 
-        normalised_entropies = jnp.zeros((n_sigmas, model.params.shape[-1]))
-        for j, log_sigma in enumerate(log_sigmas):
-            # Entropy of GHZ states should be maximal
-            ghz_entropy = Entanglement._compute_rel_entropies(
-                rho_ghz, log_rho_ghz, log_sigma
-            )
-
-            rho, log_rho = Entanglement._compute_log_density(model, **kwargs)
-            rel_entropy = Entanglement._compute_rel_entropies(rho, log_rho, log_sigma)
-
-            normalised_entropies = normalised_entropies.at[j].set(
-                rel_entropy / ghz_entropy
-            )
+        normalised_entropies = rel_entropies / ghz_entropies
 
         # Average all iterated states
-        entangling_capability = normalised_entropies.min(axis=0).mean()
-        log.debug(f"Variance of measure: {normalised_entropies.var()}")
+        entangling_capability = normalised_entropies.T.min(axis=1)
+        log.debug(f"Variance of measure: {entangling_capability.var()}")
 
-        return entangling_capability
+        return entangling_capability.mean()
 
     @staticmethod
     def _compute_log_density(model: Model, **kwargs) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -302,26 +321,50 @@ class Entanglement:
 
     @staticmethod
     def _compute_rel_entropies(
-        rho: jnp.ndarray,
-        log_rho: jnp.ndarray,
-        log_sigma: jnp.ndarray,
+        rhos: jnp.ndarray,
+        log_rhos: jnp.ndarray,
+        log_sigmas: jnp.ndarray,
+        use_multithreading: bool,
     ) -> jnp.ndarray:
         """
         Compute the relative entropy for a given model.
 
         Args:
-            log_rho (jnp.ndarray): Density matrix result of the circuit
-            log_rho (jnp.ndarray): Corresponding logarithm of the density
-                matrix
-            log_sigma (jnp.ndarray): Density matrix of next separable state
+            rhos (jnp.ndarray): Density matrix result of the circuit, has shape
+                (R, 2^n, 2^n), with the batch size R and number of qubits n
+            log_rhos (jnp.ndarray): Corresponding logarithm of the density
+                matrix, has shape (R, 2^n, 2^n).
+            log_sigmas (jnp.ndarray): Density matrix of next separable state,
+                has shape (2^n, 2^n) if it's a single sigma or (S, 2^n, 2^n),
+                with the batch size S (number of sigmas).
 
         Returns:
             jnp.ndarray: Relative Entropy for each sample
         """
-        rel_entropies = jnp.abs(
-            jnp.trace(rho @ (log_rho - log_sigma), axis1=1, axis2=2)
-        )
+        n_rhos = rhos.shape[0]
+        if len(log_sigmas.shape) == 3:
+            n_sigmas = log_sigmas.shape[0]
+            rhos = jnp.tile(rhos, (n_sigmas, 1, 1))
+            log_rhos = jnp.tile(log_rhos, (n_sigmas, 1, 1))
+            einsum_subscript = "ij,jk->ik" if use_multithreading else "sij,sjk->sik"
+        else:
+            n_sigmas = 1
+            log_sigmas = log_sigmas[jnp.newaxis, ...].repeat(n_rhos, axis=0)
 
+        einsum_subscript = "ij,jk->ik" if use_multithreading else "sij,sjk->sik"
+
+        def _f(rhos, log_rhos, log_sigmas):
+            prod = jnp.einsum(einsum_subscript, rhos, log_rhos - log_sigmas)
+            rel_entropies = jnp.abs(jnp.trace(prod, axis1=-2, axis2=-1))
+            return rel_entropies
+
+        if use_multithreading:
+            rel_entropies = jax.vmap(_f, in_axes=(0, 0, 0))(rhos, log_rhos, log_sigmas)
+        else:
+            rel_entropies = _f(rhos, log_rhos, log_sigmas)
+
+        if n_sigmas > 1:
+            rel_entropies = rel_entropies.reshape(n_sigmas, n_rhos)
         return rel_entropies
 
     @staticmethod
@@ -367,7 +410,7 @@ class Entanglement:
         if scale:
             n_samples = jnp.power(2, model.n_qubits) * n_samples
 
-        random_key = random.key(seed)
+        random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             model.initialize_params(random_key, repeat=n_samples)
@@ -384,40 +427,45 @@ class Entanglement:
         kwargs.setdefault("inputs", None)
         rhos = model(execution_type="density", **kwargs)
         rhos = rhos.reshape(-1, 2**model.n_qubits, 2**model.n_qubits)
-        entanglement = np.zeros(len(rhos))
-        for i, rho in enumerate(rhos):
-            entanglement[i] = Entanglement._compute_entanglement_of_formation(
-                rho, model.n_qubits, always_decompose
-            )
-        entangling_capability = min(max(entanglement.mean(), 0.0), 1.0)
-        return float(entangling_capability)
+        ent = Entanglement._compute_entanglement_of_formation(
+            rhos, model.n_qubits, always_decompose, model.use_multithreading
+        )
+        return ent.mean()
 
     @staticmethod
     def _compute_entanglement_of_formation(
-        rho: jnp.ndarray, n_qubits: int, always_decompose: bool
-    ) -> float:
+        rhos: jnp.ndarray,
+        n_qubits: int,
+        always_decompose: bool,
+        use_multithreading: bool,
+    ) -> jnp.ndarray:
         """
-        Computes the entanglement of formation for a given density matrix rho.
+        Computes the entanglement of formation for a given batch of density
+        matrices.
 
         Args:
-            rho (jnp.ndarray): The density matrix
+            rho (jnp.ndarray): The density matrices, has shape (B_s, 2^n, 2^n),
+                where B_s is the batch size and n the number of qubits.
             n_qubits (int): Number of qubits
             always_decompose (bool): Whether to explicitly compute the
                 entantlement of formation for the eigendecomposition of a pure
                 state.
+            use_multithreading (bool): Whether to use JAX vectorisation.
 
         Returns:
-            float: Entanglement for the provided state.
+            jnp.ndarray: Entanglement for the provided density matrices.
         """
-        eigenvalues, eigenvectors = jnp.linalg.eigh(rho)
-        if any(jnp.isclose(eigenvalues, 1.0)) and not always_decompose:  # Pure state
-            return Entanglement._compute_meyer_wallach_meas(rho, n_qubits)
-        ent = 0
-        for prob, ev in zip(eigenvalues, eigenvectors):
-            ev = ev.reshape(-1, 1)
-            rho = ev @ jnp.conjugate(ev).T
-            measure = Entanglement._compute_meyer_wallach_meas(rho, n_qubits)
-            ent += prob * measure
+        eigenvalues, eigenvectors = jnp.linalg.eigh(rhos)
+        if not always_decompose and jnp.isclose(eigenvalues, 1.0).any(axis=-1).all():
+            return Entanglement._compute_meyer_wallach_meas(
+                rhos, n_qubits, use_multithreading
+            )
+
+        rhos = np.einsum("sij,sik->sijk", eigenvectors, eigenvectors.conjugate())
+        measures = Entanglement._compute_meyer_wallach_meas(
+            rhos.reshape(-1, 2**n_qubits, 2**n_qubits), n_qubits, use_multithreading
+        )
+        ent = np.einsum("si,si->s", measures.reshape(-1, 2**n_qubits), eigenvalues)
         return ent
 
     @staticmethod
@@ -455,7 +503,9 @@ class Entanglement:
         )
 
         @qml.qnode(device=dev)
-        def _swap_test(rho: jnp.ndarray, n: int) -> jnp.ndarray:
+        def _swap_test(
+            params: jnp.ndarray, inputs: jnp.ndarray, **kwargs
+        ) -> jnp.ndarray:
             """
             Constructs a circuit to compute the concentratable entanglement using the
             swap test by creating two copies of a state given by a density matrix rho
@@ -469,8 +519,12 @@ class Entanglement:
                 List[jnp.ndarray]: Probabilities obtained from the swap test circuit.
             """
 
-            qml.QubitDensityMatrix(rho, wires=[i for i in range(n, 2 * n)])
-            qml.QubitDensityMatrix(rho, wires=[i for i in range(2 * n, 3 * n)])
+            qml.map_wires(model._variational, wire_map={o: o + n for o in range(n)})(
+                params, inputs, **kwargs
+            )
+            qml.map_wires(
+                model._variational, wire_map={o: o + 2 * n for o in range(n)}
+            )(params, inputs, **kwargs)
 
             # Perform swap test
             for i in range(n):
@@ -484,7 +538,7 @@ class Entanglement:
 
             return qml.probs(wires=[i for i in range(n)])
 
-        random_key = random.key(seed)
+        random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:
             assert seed is not None, "Seed must be provided when samples > 0"
             model.initialize_params(random_key, repeat=n_samples)
@@ -497,25 +551,27 @@ class Entanglement:
             else:
                 log.info(f"Using sample size of model params: {model.params.shape[-1]}")
 
-        kwargs.setdefault("inputs", None)
-        rhos = model(execution_type="density", **kwargs)
-        rhos = rhos.reshape(-1, N, N)
+        def _f(params):
+            probs = _swap_test(params, model._inputs_validation(None), **kwargs)
+            ent = 1 - probs[..., 0]
+            return ent
 
-        entanglement = np.zeros(len(rhos))
-
-        for i, rho in enumerate(rhos):
-            probs = _swap_test(rho, n)
-            entanglement[i] = 1 - probs[0]
+        if model.use_multithreading:
+            ent = jax.vmap(_f, in_axes=2)(model.params)
+        else:
+            ent = _f(model.params)
 
         # Catch floating point errors
-        entangling_capability = min(max(entanglement.mean(), 0.0), 1.0)
-        log.debug(f"Variance of measure: {entanglement.var()}")
+        log.debug(f"Variance of measure: {ent.var()}")
 
-        return float(entangling_capability)
+        return ent.mean()
 
 
 def sample_random_separable_states(
-    n_qubits: int, n_samples: int, random_key: random.PRNGKey, take_log: bool = False
+    n_qubits: int,
+    n_samples: int,
+    random_key: jax.random.PRNGKey,
+    take_log: bool = False,
 ) -> jnp.ndarray:
     """
     Sample random separable states (density matrix).

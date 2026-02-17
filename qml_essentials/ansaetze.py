@@ -1,74 +1,95 @@
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Optional, List, Union, Dict, Callable
+from typing import Any, Optional, List, Union, Dict, Callable, Tuple
 import numbers
 import csv
 import jax.numpy as np
 import pennylane as qml
 import jax
-from jax import random
 import itertools
 from contextlib import contextmanager
 import logging
+import warnings
+
+from qml_essentials.utils import safe_random_split
 
 jax.config.update("jax_enable_x64", True)
 log = logging.getLogger(__name__)
 
 
 class Circuit(ABC):
-    def __init__(self):
+    """Abstract base class for quantum circuit ansätze."""
+
+    def __init__(self) -> None:
+        """Initialize the circuit."""
         pass
 
     @abstractmethod
-    def n_params_per_layer(n_qubits: int) -> int:
+    def n_params_per_layer(self, n_qubits: int) -> int:
+        """
+        Get the number of parameters per circuit layer.
+
+        Args:
+            n_qubits (int): Number of qubits in the circuit.
+
+        Returns:
+            int: Number of parameters required per layer.
+
+        Raises:
+            NotImplementedError: Must be implemented by subclasses.
+        """
         raise NotImplementedError("n_params_per_layer method is not implemented")
 
-    def n_pulse_params_per_layer(n_qubits: int) -> int:
+    def n_pulse_params_per_layer(self, n_qubits: int) -> int:
         """
-        Return the number of pulse parameters per layer.
+        Get the number of pulse parameters per circuit layer.
 
-        Subclasses that do not use pulse-level simulation do not need to override this.
-        If called and not overridden, this will raise NotImplementedError.
+        Subclasses that do not use pulse-level simulation do not need to
+        override this method.
+
+        Args:
+            n_qubits (int): Number of qubits in the circuit.
+
+        Returns:
+            int: Number of pulse parameters required per layer.
+
+        Raises:
+            NotImplementedError: If called but not overridden by subclass.
         """
         raise NotImplementedError("n_pulse_params_per_layer method is not implemented")
 
     @abstractmethod
-    def get_control_indices(self, n_qubits: int) -> List[int]:
+    def get_control_indices(self, n_qubits: int) -> Optional[List[int]]:
         """
-        Returns the indices for the controlled rotation gates for one layer.
-        Indices should slice the list of all parameters for one layer as follows:
-        [indices[0]:indices[1]:indices[2]]
+        Get indices for controlled rotation gates in one layer.
 
-        Parameters
-        ----------
-        n_qubits : int
-            Number of qubits in the circuit
+        Returns slice indices [start:stop:step] for extracting controlled
+        gate parameters from a full parameter array for one layer.
 
-        Returns
-        -------
-        Optional[np.ndarray]
-            List of all controlled indices, or None if the circuit does not
-            contain controlled rotation gates.
+        Args:
+            n_qubits (int): Number of qubits in the circuit.
+
+        Returns:
+            Optional[List[int]]: List of three integers [start, stop, step]
+                for slicing, or None if the circuit contains no controlled
+                rotation gates.
+
+        Raises:
+            NotImplementedError: Must be implemented by subclasses.
         """
         raise NotImplementedError("get_control_indices method is not implemented")
 
     def get_control_angles(self, w: np.ndarray, n_qubits: int) -> Optional[np.ndarray]:
         """
-        Returns the angles for the controlled rotation gates from the list of
-        all parameters for one layer.
+        Extract angles for controlled rotation gates from parameter array.
 
-        Parameters
-        ----------
-        w : np.ndarray
-            List of parameters for one layer
-        n_qubits : int
-            Number of qubits in the circuit
+        Args:
+            w (np.ndarray): Parameter array for one layer.
+            n_qubits (int): Number of qubits in the circuit.
 
-        Returns
-        -------
-        Optional[np.ndarray]
-            List of all controlled parameters, or None if the circuit does not
-            contain controlled rotation gates.
+        Returns:
+            Optional[np.ndarray]: Array of controlled gate parameters,
+                or empty array if circuit contains no controlled gates.
         """
         indices = self.get_control_indices(n_qubits)
         if indices is None:
@@ -76,30 +97,27 @@ class Circuit(ABC):
 
         return w[indices[0] : indices[1] : indices[2]]
 
-    def _build(self, w: np.ndarray, n_qubits: int, **kwargs):
+    def _build(self, w: np.ndarray, n_qubits: int, **kwargs) -> Any:
         """
-        Builds one layer of the circuit using either unitary or pulse-level parameters.
+        Build one layer of the circuit using unitary or pulse-level parameters.
 
-        Parameters
-        ----------
-        w : np.ndarray
-            Array of parameters for the current layer.
-        n_qubits : int
-            Number of qubits in the circuit.
-        **kwargs
-            Additional keyword arguments. Supports:
-            - gate_mode : str, optional
-                "unitary" (default) or "pulse" to use pulse-level simulation.
-            - pulse_params : np.ndarray, optional
-                Array of pulse parameters to use if gate_mode="pulse".
-            - noise_params : dict, optional
-                Dictionary of noise parameters.
+        Internal method that handles pulse parameter validation and context
+        management before delegating to the build() method.
 
-        Raises
-        ------
-        ValueError
-            If the number of provided pulse parameters does not match the expected
-            number per layer.
+        Args:
+            w (np.ndarray): Parameter array for the current layer.
+            n_qubits (int): Number of qubits in the circuit.
+            **kwargs: Additional keyword arguments:
+                - gate_mode (str): "unitary" (default) or "pulse" for
+                  pulse-level simulation.
+                - pulse_params (np.ndarray): Pulse parameters if gate_mode="pulse".
+                - noise_params (Dict): Noise parameters dictionary.
+
+        Returns:
+            Any: Result from the build() method.
+
+        Raises:
+            ValueError: If pulse_params length doesn't match expected count.
         """
         gate_mode = kwargs.get("gate_mode", "unitary")
 
@@ -119,60 +137,53 @@ class Circuit(ABC):
             return self.build(w, n_qubits, **kwargs)
 
     @abstractmethod
-    def build(self, n_qubits: int, n_layers: int):
+    def build(self, w: np.ndarray, n_qubits: int, **kwargs) -> Any:
+        """
+        Build one layer of the quantum circuit.
+
+        Args:
+            w (np.ndarray): Parameter array for the current layer.
+            n_qubits (int): Number of qubits in the circuit.
+            **kwargs: Additional keyword arguments passed from _build.
+
+        Returns:
+            Any: Circuit construction result.
+
+        Raises:
+            NotImplementedError: Must be implemented by subclasses.
+        """
         raise NotImplementedError("build method is not implemented")
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
+        """Call the _build method with provided arguments."""
         self._build(*args, **kwds)
 
 
 class UnitaryGates:
-    random_key = random.key(0)
+    """Collection of unitary quantum gates with optional noise simulation."""
+
     batch_gate_error = True
 
     @staticmethod
-    def init_rng(seed: int):
+    def NQubitDepolarizingChannel(p: float, wires: List[int]) -> qml.QubitChannel:
         """
-        Initializes the random number generator with the given seed.
+        Generate Kraus operators for n-qubit depolarizing channel.
 
-        Parameters
-        ----------
-        seed : int
-            The seed for the random number generator.
-        """
-        UnitaryGates.random_key = random.key(seed)
+        The n-qubit depolarizing channel models uniform depolarizing noise
+        acting on n qubits simultaneously, useful for simulating realistic
+        multi-qubit noise affecting entangling gates.
 
-    @staticmethod
-    def NQubitDepolarizingChannel(p, wires):
-        """
-        Generates the Kraus operators for an n-qubit depolarizing channel.
+        Args:
+            p (float): Total probability of depolarizing error (0 ≤ p ≤ 1).
+            wires (List[int]): Qubit indices on which the channel acts.
+                Must contain at least 2 qubits.
 
-        The n-qubit depolarizing channel is defined as:
-            E(rho) = sqrt(1 - p * (4^n - 1) / 4^n) * rho
-                + sqrt(p / 4^n) * ∑_{P ≠ I^{⊗n}} P rho P†
-        where the sum is over all non-identity n-qubit Pauli operators
-        (i.e., tensor products of {I, X, Y, Z} excluding the identity operator I^{⊗n}).
-        Each Pauli error operator is weighted equally by p / 4^n.
+        Returns:
+            qml.QubitChannel: PennyLane QubitChannel with Kraus operators
+                representing the depolarizing noise channel.
 
-        This operator-sum (Kraus) representation models uniform depolarizing noise
-        acting on n qubits simultaneously. It is useful for simulating realistic
-        multi-qubit noise affecting entangling gates in noisy quantum circuits.
-
-        Parameters
-        ----------
-        p : float
-            The total probability of an n-qubit depolarizing error occurring.
-            Must satisfy 0 ≤ p ≤ 1.
-
-        wires : Sequence[int]
-            The list of qubit indices (wires) on which the channel acts.
-            Must contain at least 2 qubits.
-
-        Returns
-        -------
-        qml.QubitChannel
-            A PennyLane QubitChannel constructed from the Kraus operators representing
-            the n-qubit depolarizing noise channel acting on the specified wires.
+        Raises:
+            ValueError: If p is not in [0, 1] or if fewer than 2 qubits provided.
         """
 
         def n_qubit_depolarizing_kraus(p: float, n: int) -> List[np.ndarray]:
@@ -216,23 +227,25 @@ class UnitaryGates:
         wires: Union[int, List[int]], noise_params: Optional[Dict[str, float]] = None
     ) -> None:
         """
-        Applies noise to the given wires.
+        Apply noise channels to specified qubits.
 
-        Parameters
-        ----------
-        wires : Union[int, List[int]]
-            The wire(s) to apply the noise to.
-        noise_params : Optional[Dict[str, float]]
-            A dictionary of noise parameters. The following noise gates are
-            supported:
-            -BitFlip: Applies a bit flip error to the given wires.
-            -PhaseFlip: Applies a phase flip error to the given wires.
-            -Depolarizing: Applies a depolarizing channel error to the
-                given wires.
-            -MultiQubitDepolarizing: Applies a two-qubit depolarizing channel
-                error to the given wires.
+        Applies various single-qubit and multi-qubit noise channels based on
+        the provided noise parameters dictionary.
 
-            All parameters are optional and default to 0.0 if not provided.
+        Args:
+            wires (Union[int, List[int]]): Qubit index or list of qubit indices
+                to apply noise to.
+            noise_params (Optional[Dict[str, float]]): Dictionary of noise
+                parameters. Supported keys:
+                - "BitFlip" (float): Bit flip error probability
+                - "PhaseFlip" (float): Phase flip error probability
+                - "Depolarizing" (float): Single-qubit depolarizing probability
+                - "MultiQubitDepolarizing" (float): Multi-qubit depolarizing
+                  probability (applies if len(wires) > 1)
+                All parameters default to 0.0 if not provided.
+
+        Returns:
+            None: Noise channels are applied in-place to the circuit.
         """
         if noise_params is not None:
             if isinstance(wires, int):
@@ -260,319 +273,338 @@ class UnitaryGates:
 
     @staticmethod
     def GateError(
-        w: float, noise_params: Optional[Dict[str, float]] = None
-    ) -> np.ndarray:
+        w: Union[float, np.ndarray, List[float]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> Tuple[np.ndarray, jax.random.PRNGKey]:
         """
-        Applies a gate error to the given rotation angle(s).
+        Apply gate error noise to rotation angle(s).
 
-        Parameters
-        ----------
-        w : Union[float, np.ndarray, List[float]]
-            The rotation angle in radians.
-        noise_params : Optional[Dict[str, float]]
-            A dictionary of noise parameters. The following noise gates are
-            supported:
-           -GateError: Applies a normal distribution error to the rotation
-            angle. The standard deviation of the noise is specified by
-            the "GateError" key in the dictionary.
+        Adds Gaussian noise to gate rotation angles to simulate imperfect
+        gate implementations.
 
-            All parameters are optional and default to 0.0 if not provided.
+        Args:
+            w (Union[float, np.ndarray, List[float]]): Rotation angle(s) in radians.
+            noise_params (Optional[Dict[str, float]]): Dictionary with optional
+                "GateError" key specifying standard deviation of Gaussian noise.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for
+                stochastic noise generation.
 
-        Returns
-        -------
-        float
-            The modified rotation angle after applying the gate error.
+        Returns:
+            Tuple[np.ndarray, jax.random.PRNGKey]: Tuple containing:
+                - Modified rotation angle(s) with applied noise
+                - Updated JAX random key
+
+        Raises:
+            AssertionError: If noise_params contains "GateError" but random_key is None.
         """
         if noise_params is not None and noise_params.get("GateError", None) is not None:
-            w += noise_params["GateError"] * random.normal(
-                UnitaryGates.random_key,
+            assert (
+                random_key is not None
+            ), "A random_key must be provided when using GateError"
+
+            random_key, sub_key = safe_random_split(random_key)
+            w += noise_params["GateError"] * jax.random.normal(
+                sub_key,
                 (
                     w.shape
                     if isinstance(w, np.ndarray) and UnitaryGates.batch_gate_error
                     else (1,)
                 ),
             )
-            UnitaryGates.random_key, _ = random.split(UnitaryGates.random_key)
-        return w
+        return w, random_key
 
     @staticmethod
-    def Rot(phi, theta, omega, wires, noise_params=None):
+    def Rot(
+        phi: Union[float, np.ndarray, List[float]],
+        theta: Union[float, np.ndarray, List[float]],
+        omega: Union[float, np.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
         """
-        Applies a rotation gate to the given wires and adds `Noise`.
+        Apply general rotation gate with optional noise.
 
-        Parameters
-        ----------
-        phi : Union[float, np.ndarray, List[float]]
-            The first rotation angle in radians.
-        theta : Union[float, np.ndarray, List[float]]
-            The second rotation angle in radians.
-        omega : Union[float, np.ndarray, List[float]]
-            The third rotation angle in radians.
-        wires : Union[int, List[int]]
-            The wire(s) to apply the rotation gate to.
-        noise_params : Optional[Dict[str, float]]
-            A dictionary of noise parameters. The following noise gates are
-            supported:
-           -BitFlip: Applies a bit flip error to the given wires.
-           -PhaseFlip: Applies a phase flip error to the given wires.
-           -Depolarizing: Applies a depolarizing channel error to the
-              given wires.
+        Applies a three-angle rotation Rot(phi, theta, omega) with optional
+        gate errors and noise channels.
 
-            All parameters are optional and default to 0.0 if not provided.
+        Args:
+            phi (Union[float, np.ndarray, List[float]]): First rotation angle.
+            theta (Union[float, np.ndarray, List[float]]): Second rotation angle.
+            omega (Union[float, np.ndarray, List[float]]): Third rotation angle.
+            wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+                Supports BitFlip, PhaseFlip, Depolarizing, and GateError.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
+
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
         """
         if noise_params is not None and "GateError" in noise_params:
-            phi = UnitaryGates.GateError(phi, noise_params)
-            theta = UnitaryGates.GateError(theta, noise_params)
-            omega = UnitaryGates.GateError(omega, noise_params)
+            phi, random_key = UnitaryGates.GateError(phi, noise_params, random_key)
+            theta, random_key = UnitaryGates.GateError(theta, noise_params, random_key)
+            omega, random_key = UnitaryGates.GateError(omega, noise_params, random_key)
         qml.Rot(phi, theta, omega, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def RX(w, wires, noise_params=None):
+    def RX(
+        w: Union[float, np.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
         """
-        Applies a rotation around the X axis to the given wires and adds `Noise`
+        Apply X-axis rotation with optional noise.
 
-        Parameters
-        ----------
-        w : Union[float, np.ndarray, List[float]]
-            The rotation angle in radians.
-        wires : Union[int, List[int]]
-            The wire(s) to apply the rotation gate to.
-        noise_params : Optional[Dict[str, float]]
-            A dictionary of noise parameters. The following noise gates are
-            supported:
-           -BitFlip: Applies a bit flip error to the given wires.
-           -PhaseFlip: Applies a phase flip error to the given wires.
-           -Depolarizing: Applies a depolarizing channel error to the
-              given wires.
+        Args:
+            w (Union[float, np.ndarray, List[float]]): Rotation angle.
+            wires (Union[int, List[int]]): Qubit index or indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
 
-            All parameters are optional and default to 0.0 if not provided.
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
         """
-        w = UnitaryGates.GateError(w, noise_params)
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.RX(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def RY(w, wires, noise_params=None):
+    def RY(
+        w: Union[float, np.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
         """
-        Applies a rotation around the Y axis to the given wires and adds `Noise`
+        Apply Y-axis rotation with optional noise.
 
-        Parameters
-        ----------
-        w : Union[float, np.ndarray, List[float]]
-            The rotation angle in radians.
-        wires : Union[int, List[int]]
-            The wire(s) to apply the rotation gate to.
-        noise_params : Optional[Dict[str, float]]
-            A dictionary of noise parameters. The following noise gates are
-            supported:
-           -BitFlip: Applies a bit flip error to the given wires.
-           -PhaseFlip: Applies a phase flip error to the given wires.
-           -Depolarizing: Applies a depolarizing channel error to the
-            given wires.
+        Args:
+            w (Union[float, np.ndarray, List[float]]): Rotation angle.
+            wires (Union[int, List[int]]): Qubit index or indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
 
-            All parameters are optional and default to 0.0 if not provided.
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
         """
-        w = UnitaryGates.GateError(w, noise_params)
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.RY(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def RZ(w, wires, noise_params=None):
+    def RZ(
+        w: Union[float, np.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
         """
-        Applies a rotation around the Z axis to the given wires and adds `Noise`
+        Apply Z-axis rotation with optional noise.
 
-        Parameters
-        ----------
-        w : Union[float, np.ndarray, List[float]]
-            The rotation angle in radians.
-        wires : Union[int, List[int]]
-            The wire(s) to apply the rotation gate to.
-        noise_params : Optional[Dict[str, float]]
-            A dictionary of noise parameters. The following noise gates are
-            supported:
-           -BitFlip: Applies a bit flip error to the given wires.
-           -PhaseFlip: Applies a phase flip error to the given wires.
-           -Depolarizing: Applies a depolarizing channel error to the
-              given wires.
+        Args:
+            w (Union[float, np.ndarray, List[float]]): Rotation angle.
+            wires (Union[int, List[int]]): Qubit index or indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
 
-            All parameters are optional and default to 0.0 if not provided.
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
         """
-        w = UnitaryGates.GateError(w, noise_params)
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.RZ(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CRX(w, wires, noise_params=None):
+    def CRX(
+        w: Union[float, np.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
         """
-        Applies a controlled rotation around the X axis to the given wires
-        and adds `Noise`
+        Apply controlled X-rotation with optional noise.
 
-        Parameters
-        ----------
-        w : Union[float, np.ndarray, List[float]]
-            The rotation angle in radians.
-        wires : Union[int, List[int]]
-            The wire(s) to apply the controlled rotation gate to.
-        noise_params : Optional[Dict[str, float]]
-            A dictionary of noise parameters. The following noise gates are
-            supported:
-           -BitFlip: Applies a bit flip error to the given wires.
-           -PhaseFlip: Applies a phase flip error to the given wires.
-           -Depolarizing: Applies a depolarizing channel error to the
-              given wires.
+        Args:
+            w (Union[float, np.ndarray, List[float]]): Rotation angle.
+            wires (Union[int, List[int]]): Control and target qubit indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
 
-            All parameters are optional and default to 0.0 if not provided.
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
         """
-        w = UnitaryGates.GateError(w, noise_params)
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.CRX(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CRY(w, wires, noise_params=None):
+    def CRY(
+        w: Union[float, np.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
         """
-        Applies a controlled rotation around the Y axis to the given wires
-        and adds `Noise`
+        Apply controlled Y-rotation with optional noise.
 
-        Parameters
-        ----------
-        w : Union[float, np.ndarray, List[float]]
-            The rotation angle in radians.
-        wires : Union[int, List[int]]
-            The wire(s) to apply the controlled rotation gate to.
-        noise_params : Optional[Dict[str, float]]
-            A dictionary of noise parameters. The following noise gates are
-            supported:
-           -BitFlip: Applies a bit flip error to the given wires.
-           -PhaseFlip: Applies a phase flip error to the given wires.
-           -Depolarizing: Applies a depolarizing channel error to the
-              given wires.
+        Args:
+            w (Union[float, np.ndarray, List[float]]): Rotation angle.
+            wires (Union[int, List[int]]): Control and target qubit indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
 
-            All parameters are optional and default to 0.0 if not provided.
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
         """
-        w = UnitaryGates.GateError(w, noise_params)
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.CRY(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CRZ(w, wires, noise_params=None):
+    def CRZ(
+        w: Union[float, np.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
         """
-        Applies a controlled rotation around the Z axis to the given wires
-        and adds `Noise`
+        Apply controlled Z-rotation with optional noise.
 
-        Parameters
-        ----------
-        w : Union[float, np.ndarray, List[float]]
-            The rotation angle in radians.
-        wires : Union[int, List[int]]
-            The wire(s) to apply the controlled rotation gate to.
-        noise_params : Optional[Dict[str, float]]
-            A dictionary of noise parameters. The following noise gates are
-            supported:
-           -BitFlip: Applies a bit flip error to the given wires.
-           -PhaseFlip: Applies a phase flip error to the given wires.
-           -Depolarizing: Applies a depolarizing channel error to the
-            given wires.
+        Args:
+            w (Union[float, np.ndarray, List[float]]): Rotation angle.
+            wires (Union[int, List[int]]): Control and target qubit indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
 
-            All parameters are optional and default to 0.0 if not provided.
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
         """
-        w = UnitaryGates.GateError(w, noise_params)
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         qml.CRZ(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CX(wires, noise_params=None):
+    def CX(
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
         """
-        Applies a controlled NOT gate to the given wires and adds `Noise`
+        Apply controlled-NOT (CNOT) gate with optional noise.
 
-        Parameters
-        ----------
-        wires : Union[int, List[int]]
-            The wire(s) to apply the controlled NOT gate to.
-        noise_params : Optional[Dict[str, float]]
-            A dictionary of noise parameters. The following noise gates are
-            supported:
-           -BitFlip: Applies a bit flip error to the given wires.
-           -PhaseFlip: Applies a phase flip error to the given wires.
-           -Depolarizing: Applies a depolarizing channel error to the
-              given wires.
+        Args:
+            wires (Union[int, List[int]]): Control and target qubit indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
+                (not used in this gate).
 
-            All parameters are optional and default to 0.0 if not provided.
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
         """
         qml.CNOT(wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CY(wires, noise_params=None):
+    def CY(
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
         """
-        Applies a controlled Y gate to the given wires and adds `Noise`
+        Apply controlled-Y gate with optional noise.
 
-        Parameters
-        ----------
-        wires : Union[int, List[int]]
-            The wire(s) to apply the controlled Y gate to.
-        noise_params : Optional[Dict[str, float]]
-            A dictionary of noise parameters. The following noise gates are
-            supported:
-           -BitFlip: Applies a bit flip error to the given wires.
-           -PhaseFlip: Applies a phase flip error to the given wires.
-           -Depolarizing: Applies a depolarizing channel error to the
-              given wires.
+        Args:
+            wires (Union[int, List[int]]): Control and target qubit indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
+                (not used in this gate).
 
-            All parameters are optional and default to 0.0 if not provided.
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
         """
         qml.CY(wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CZ(wires, noise_params=None):
+    def CZ(
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
         """
-        Applies a controlled Z gate to the given wires and adds `Noise`
+        Apply controlled-Z gate with optional noise.
 
-        Parameters
-        ----------
-        wires : Union[int, List[int]]
-            The wire(s) to apply the controlled Z gate to.
-        noise_params : Optional[Dict[str, float]]
-            A dictionary of noise parameters. The following noise gates are
-            supported:
-           -BitFlip: Applies a bit flip error to the given wires.
-           -PhaseFlip: Applies a phase flip error to the given wires.
-           -Depolarizing: Applies a depolarizing channel error to the
-              given wires.
+        Args:
+            wires (Union[int, List[int]]): Control and target qubit indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
+                (not used in this gate).
 
-            All parameters are optional and default to 0.0 if not provided.
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
         """
         qml.CZ(wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def H(wires, noise_params=None):
+    def H(
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
         """
-        Applies a Hadamard gate to the given wires and adds `Noise`
+        Apply Hadamard gate with optional noise.
 
-        Parameters
-        ----------
-        wires : Union[int, List[int]]
-            The wire(s) to apply the Hadamard gate to.
-        noise_params : Optional[Dict[str, float]]
-            A dictionary of noise parameters. The following noise gates are
-            supported:
-           -BitFlip: Applies a bit flip error to the given wires.
-           -PhaseFlip: Applies a phase flip error to the given wires.
-           -Depolarizing: Applies a depolarizing channel error to the
-              given wires.
+        Args:
+            wires (Union[int, List[int]]): Qubit index or indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
+                (not used in this gate).
 
-            All parameters are optional and default to 0.0 if not provided.
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
         """
         qml.Hadamard(wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
 
 class PulseParams:
+    """
+    Container for hierarchical pulse parameters.
+
+    Manages pulse parameters for quantum gates, supporting both leaf nodes
+    (gates with direct parameters) and composite nodes (gates decomposed
+    into simpler gates). Enables hierarchical parameter access and
+    manipulation.
+
+    Attributes:
+        name (str): Name identifier for the gate.
+        _params (np.ndarray): Direct pulse parameters (leaf nodes only).
+        _pulse_obj (List): Child PulseParams objects (composite nodes only).
+    """
+
     def __init__(
-        self, name: str = "", params: np.ndarray = None, pulse_obj: List = None
-    ):
+        self,
+        name: str = "",
+        params: Optional[np.ndarray] = None,
+        pulse_obj: Optional[List] = None,
+    ) -> None:
+        """
+        Initialize pulse parameters container.
+
+        Args:
+            name (str): Name identifier for the gate. Defaults to empty string.
+            params (Optional[np.ndarray]): Direct pulse parameters for leaf gates.
+                Mutually exclusive with pulse_obj.
+            pulse_obj (Optional[List]): List of child PulseParams for composite
+                gates. Mutually exclusive with params.
+
+        Raises:
+            AssertionError: If both or neither of params and pulse_obj are provided.
+        """
         assert (params is None and pulse_obj is not None) or (
             params is not None and pulse_obj is None
         ), "Exactly one of `params` or `pulse_params` must be provided."
@@ -584,56 +616,63 @@ class PulseParams:
 
         self.name = name
 
-    def __len__(self):
+    def __len__(self) -> int:
         """
-        Returns the number of pulse parameters.
-        Note that if this gate consists of childs, the number of parameters
-        represents the accumulated number of parameters of the childs.
+        Get the total number of pulse parameters.
 
-        Returns
-        -------
-        int
-            The number of pulse parameters.
+        For composite gates, returns the accumulated count from all children.
+
+        Returns:
+            int: Total number of pulse parameters.
         """
         return len(self.params)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Union[float, np.ndarray]:
         """
-        Returns the pulse parameter at index `idx`.
-        If this gate consists of childs, the parameters of the child
-        at index `idx` are returned.
+        Access pulse parameter(s) by index.
 
-        Parameters
-        ----------
-        idx : int
-            The index of the pulse parameter to return.
+        For leaf gates, returns the parameter at the given index.
+        For composite gates, returns parameters of the child at the given index.
 
-        Returns
-        -------
-        float
-            The pulse parameter at index `idx`.
+        Args:
+            idx (int): Index to access.
+
+        Returns:
+            Union[float, np.ndarray]: Parameter value or child parameters.
         """
         if self.is_leaf:
             return self.params[idx]
         else:
             return self.childs[idx].params
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """Return string representation (gate name)."""
         return self.name
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """Return repr string (gate name)."""
         return self.name
 
     @property
-    def is_leaf(self):
+    def is_leaf(self) -> bool:
+        """Check if this is a leaf node (direct parameters, no children)."""
         return self._pulse_obj is None
 
     @property
-    def size(self):
+    def size(self) -> int:
+        """Get the total parameter count (alias for __len__)."""
         return len(self)
 
     @property
-    def leafs(self):
+    def leafs(self) -> List["PulseParams"]:
+        """
+        Get all leaf nodes in the hierarchy.
+
+        Recursively collects all leaf PulseParams objects in the tree.
+
+        Returns:
+            List[PulseParams]: List of unique leaf nodes.
+        """
         if self.is_leaf:
             return [self]
 
@@ -644,17 +683,13 @@ class PulseParams:
         return list(set(leafs))
 
     @property
-    def childs(self):
+    def childs(self) -> List["PulseParams"]:
         """
-        A list of PulseParams objects, which are the children
-        of this PulseParams object.
-        If this object has no children, an empty list is returned.
+        Get direct children of this node.
 
-        Returns
-        -------
-        list
-            A list of PulseParams objects, which are the children
-            of this PulseParams object.
+        Returns:
+            List[PulseParams]: List of child PulseParams objects, or empty list
+                if this is a leaf node.
         """
         if self.is_leaf:
             return []
@@ -662,20 +697,15 @@ class PulseParams:
         return self._pulse_obj
 
     @property
-    def shape(self):
+    def shape(self) -> List[int]:
         """
-        The shape of the pulse parameters.
+        Get the shape of pulse parameters.
 
-        If the PulseParams object has no children (i.e. self.is_leaf),
-        the shape is a list containing the number of pulse parameters.
+        For leaf nodes, returns list with parameter count.
+        For composite nodes, returns nested list of child shapes.
 
-        If the PulseParams object has children, the shape is a list containing
-        the shapes of the children.
-
-        Returns
-        -------
-        list
-            The shape of the pulse parameters.
+        Returns:
+            List[int]: Parameter shape specification.
         """
         if self.is_leaf:
             return [len(self.params)]
@@ -684,23 +714,18 @@ class PulseParams:
         for obj in self.childs:
             shape.append(*obj.shape())
 
-            return shape
+        return shape
 
     @property
-    def params(self):
+    def params(self) -> np.ndarray:
         """
-        The pulse parameters.
+        Get or compute pulse parameters.
 
-        If the PulseParams object has no children (i.e. self.is_leaf),
-        returns the internal pulse parameters.
+        For leaf nodes, returns internal pulse parameters.
+        For composite nodes, returns concatenated parameters from all children.
 
-        If the PulseParams object has children, returns the concatenated pulse
-        parameters of the children.
-
-        Returns
-        -------
-        np.ndarray
-            The pulse parameters.
+        Returns:
+            np.ndarray: Pulse parameters array.
         """
         if self.is_leaf:
             return self._params
@@ -710,29 +735,23 @@ class PulseParams:
         return np.concatenate(params)
 
     @params.setter
-    def params(self, value):
+    def params(self, value: np.ndarray) -> None:
         """
-        Sets the pulse parameters.
+        Set pulse parameters.
 
-        If the PulseParams object has no children (i.e. self.is_leaf),
-        sets the internal pulse parameters.
+        For leaf nodes, sets internal parameters directly.
+        For composite nodes, distributes values across children.
 
-        If the PulseParams object has children, sets the concatenated pulse
-        parameters of the children.
+        Args:
+            value (np.ndarray): Pulse parameters to set.
 
-        Parameters
-        ----------
-        value : np.ndarray
-            The pulse parameters to set.
-
-        Raises
-        -------
-        AssertionError
-            If the PulseParams object has no children and `value` is not a np.ndarray.
+        Raises:
+            AssertionError: If value is not np.ndarray for leaf nodes.
         """
         if self.is_leaf:
             assert isinstance(value, np.ndarray), "params must be a np.ndarray"
             self._params = value
+            return
 
         idx = 0
         for obj in self.childs:
@@ -741,7 +760,13 @@ class PulseParams:
             idx = nidx
 
     @property
-    def leaf_params(self):
+    def leaf_params(self) -> np.ndarray:
+        """
+        Get parameters from all leaf nodes.
+
+        Returns:
+            np.ndarray: Concatenated parameters from all leaf nodes.
+        """
         if self.is_leaf:
             return self._params
 
@@ -750,9 +775,16 @@ class PulseParams:
         return np.concatenate(params)
 
     @leaf_params.setter
-    def leaf_params(self, value):
+    def leaf_params(self, value: np.ndarray) -> None:
+        """
+        Set parameters for all leaf nodes.
+
+        Args:
+            value (np.ndarray): Parameters to distribute across leaf nodes.
+        """
         if self.is_leaf:
             self._params = value
+            return
 
         idx = 0
         for obj in self.leafs:
@@ -760,7 +792,23 @@ class PulseParams:
             obj.params = value[idx:nidx]
             idx = nidx
 
-    def split_params(self, params=None, leafs=False):
+    def split_params(
+        self,
+        params: Optional[np.ndarray] = None,
+        leafs: bool = False,
+    ) -> List[np.ndarray]:
+        """
+        Split parameters into sub-arrays for children or leaves.
+
+        Args:
+            params (Optional[np.ndarray]): Parameters to split. If None,
+                uses internal parameters.
+            leafs (bool): If True, splits across leaf nodes; if False,
+                splits across direct children. Defaults to False.
+
+        Returns:
+            List[np.ndarray]: List of parameter arrays for children or leaves.
+        """
         if params is None:
             if self.is_leaf:
                 return self._params
@@ -816,6 +864,13 @@ class PulseInformation:
 
     Rot = PulseParams(name="Rot", pulse_obj=[RZ, RY, RZ])
 
+    unique_gate_set = [
+        RX,
+        RY,
+        RZ,
+        CZ,
+    ]
+
     @staticmethod
     def gate_by_name(gate_name):
         return getattr(PulseInformation, gate_name, None)
@@ -843,25 +898,31 @@ class PulseInformation:
             log.error(f"No optimized pulses found at {path}")
 
     @staticmethod
-    def shuffle_params(seed=1000):
-        # TODO: use global random_key?
-        random_key = random.key(seed)
-        unique_gate_set = [
-            PulseInformation.RX,
-            PulseInformation.RY,
-            PulseInformation.RZ,
-            PulseInformation.CZ,
-        ]
-
+    def shuffle_params(random_key):
         log.info(
-            f"Shuffling optimized pulses with seed {seed} of gates {unique_gate_set}"
+            f"Shuffling optimized pulses with random key {random_key}\
+              of gates {PulseInformation.unique_gate_set}"
         )
-        for gate in unique_gate_set:
-            gate.params = random.uniform(random_key, (len(gate),))
-            random_key, _ = random.split(random_key)
+        for gate in PulseInformation.unique_gate_set:
+            random_key, sub_key = safe_random_split(random_key)
+            gate.params = jax.random.uniform(sub_key, (len(gate),))
 
 
 class PulseGates:
+    """
+    Pulse-level implementations of quantum gates.
+
+    Implements quantum gates using time-dependent Hamiltonians and pulse
+    sequences, following the approach from https://doi.org/10.5445/IR/1000184129.
+    Gates are decomposed using shaped Gaussian pulses with carrier modulation.
+
+    Attributes:
+        omega_q (float): Qubit frequency (10π).
+        omega_c (float): Carrier frequency (10π).
+        H_static (np.ndarray): Static Hamiltonian in qubit rotating frame.
+        Id, X, Y, Z (np.ndarray): Pauli matrices for gate construction.
+    """
+
     # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT/CX and H pulse level
     #   gates closely follow https://doi.org/10.5445/IR/1000184129
     # TODO: Mention deviations from the above?
@@ -876,30 +937,27 @@ class PulseGates:
     Z = np.array([[1, 0], [0, -1]])
 
     @staticmethod
-    def _S(p, t, phi_c):
+    def _S(
+        p: Union[List[float], np.ndarray],
+        t: Union[float, List[float], np.ndarray],
+        phi_c: float,
+    ) -> np.ndarray:
         """
-        Generates a shaped pulse envelope modulated by a carrier.
-        Note that this is no actual gate, that can be used in a circuit.
+        Generate shaped Gaussian pulse envelope with carrier modulation.
 
-        The pulse is a Gaussian envelope multiplied by a cosine carrier, commonly
-        used in implementing rotation gates (e.g., RX, RY).
+        Internal helper function for creating time-dependent pulse shapes
+        used in rotation gates. Not intended for direct circuit use.
 
-        Parameters
-        ----------
-        p : sequence of float
-            Pulse parameters `[A, sigma]`:
-            - A : float, amplitude of the Gaussian
-            - sigma : float, width of the Gaussian
-        t : float or sequence of float
-            Time or time interval over which the pulse is applied. If a sequence,
-            `t_c` is taken as the midpoint `(t[0] + t[1]) / 2`.
-        phi_c : float
-            Phase of the carrier cosine.
+        Args:
+            p (Union[List[float], np.ndarray]): Pulse parameters [A, sigma]:
+                - A (float): Amplitude of the Gaussian envelope
+                - sigma (float): Width (standard deviation) of the Gaussian
+            t (Union[float, List[float], np.ndarray]): Time or time interval
+                for pulse application. If sequence, center is computed as midpoint.
+            phi_c (float): Phase offset for the cosine carrier.
 
-        Returns
-        -------
-        np.ndarray
-            The shaped pulse at each time step `t`.
+        Returns:
+            np.ndarray: Shaped pulse amplitude at time(s) t.
         """
         A, sigma = p
         t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
@@ -910,26 +968,29 @@ class PulseGates:
         return f * x
 
     @staticmethod
-    def Rot(phi, theta, omega, wires, pulse_params=None):
+    def Rot(
+        phi: float,
+        theta: float,
+        omega: float,
+        wires: Union[int, List[int]],
+        pulse_params: Optional[np.ndarray] = None,
+    ) -> None:
         """
-        Applies a general single-qubit rotation using a decomposition.
+        Apply general single-qubit rotation using pulse decomposition.
 
-        Decomposition:
-            Rot(phi, theta, omega) = RZ(phi) · RY(theta) · RZ(omega)
+        Decomposes a general rotation into RZ(phi) · RY(theta) · RZ(omega)
+        and applies each component using pulse-level implementations.
 
-        Parameters
-        ----------
-        phi : float
-            The first rotation angle.
-        theta : float
-            The second rotation angle.
-        omega : float
-            The third rotation angle.
-        wires : List[int]
-            The wire(s) to apply the rotation to.
-        pulse_params : np.ndarray, optional
-            Pulse parameters for the composing gates. Defaults
-            to optimized parameters if None.
+        Args:
+            phi (float): First rotation angle.
+            theta (float): Second rotation angle.
+            omega (float): Third rotation angle.
+            wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
+            pulse_params (Optional[np.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+
+        Returns:
+            None: Gates are applied in-place to the circuit.
         """
         params_RZ_1, params_RY, params_RZ_2 = PulseInformation.Rot.split_params(
             pulse_params
@@ -940,19 +1001,26 @@ class PulseGates:
         PulseGates.RZ(omega, wires=wires, pulse_params=params_RZ_2)
 
     @staticmethod
-    def RX(w, wires, pulse_params=None):
+    def RX(
+        w: float,
+        wires: Union[int, List[int]],
+        pulse_params: Optional[np.ndarray] = None,
+    ) -> None:
         """
-        Applies a rotation around the X axis pulse to the given wires.
+        Apply X-axis rotation using pulse-level implementation.
 
-        Parameters
-        ----------
-        w : float
-            The rotation angle in radians.
-        wires : Union[int, List[int]]
-            The wire(s) to apply the rotation to.
-        pulse_params : np.ndarray, optional
-            Array containing pulse parameters `A`, `sigma` and time `t` for the
-            Gaussian envelope. Defaults to optimized parameters and time.
+        Implements RX rotation using a shaped Gaussian pulse with optimized
+        envelope parameters.
+
+        Args:
+            w (float): Rotation angle in radians.
+            wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
+            pulse_params (Optional[np.ndarray]): Array containing pulse parameters
+                [A, sigma, t] for the Gaussian envelope. If None, uses optimized
+                parameters.
+
+        Returns:
+            None: Gate is applied in-place to the circuit.
         """
         pulse_params = PulseInformation.RX.split_params(pulse_params)
 
@@ -966,19 +1034,26 @@ class PulseGates:
         qml.evolve(H_eff)([pulse_params[0:2]], pulse_params[2])
 
     @staticmethod
-    def RY(w, wires, pulse_params=None):
+    def RY(
+        w: float,
+        wires: Union[int, List[int]],
+        pulse_params: Optional[np.ndarray] = None,
+    ) -> None:
         """
-        Applies a rotation around the Y axis pulse to the given wires.
+        Apply Y-axis rotation using pulse-level implementation.
 
-        Parameters
-        ----------
-        w : float
-            The rotation angle in radians.
-        wires : Union[int, List[int]]
-            The wire(s) to apply the rotation to.
-        pulse_params : np.ndarray, optional
-            Array containing pulse parameters `A`, `sigma` and time `t` for the
-            Gaussian envelope. Defaults to optimized parameters and time.
+        Implements RY rotation using a shaped Gaussian pulse with optimized
+        envelope parameters.
+
+        Args:
+            w (float): Rotation angle in radians.
+            wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
+            pulse_params (Optional[np.ndarray]): Array containing pulse parameters
+                [A, sigma, t] for the Gaussian envelope. If None, uses optimized
+                parameters.
+
+        Returns:
+            None: Gate is applied in-place to the circuit.
         """
         pulse_params = PulseInformation.RY.split_params(pulse_params)
 
@@ -992,19 +1067,23 @@ class PulseGates:
         qml.evolve(H_eff)([pulse_params[0:2]], pulse_params[2])
 
     @staticmethod
-    def RZ(w, wires, pulse_params=None):
+    def RZ(
+        w: float, wires: Union[int, List[int]], pulse_params: Optional[float] = None
+    ) -> None:
         """
-        Applies a rotation around the Z axis to the given wires.
+        Apply Z-axis rotation using pulse-level implementation.
 
-        Parameters
-        ----------
-        w : float
-            The rotation angle in radians.
-        wires : Union[int, List[int]]
-            The wire(s) to apply the rotation to.
-        pulse_params : float, optional
-            Duration of the pulse. Rotation angle = w * 2 * t.
-            Defaults to 0.5 if None.
+        Implements RZ rotation using virtual Z rotations (phase tracking)
+        without physical pulse application.
+
+        Args:
+            w (float): Rotation angle in radians.
+            wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
+            pulse_params (Optional[float]): Duration parameter for the pulse.
+                Rotation angle = w * 2 * pulse_params. Defaults to 0.5 if None.
+
+        Returns:
+            None: Gate is applied in-place to the circuit.
         """
         pulse_params = PulseInformation.RZ.split_params(pulse_params)
 
@@ -1018,17 +1097,22 @@ class PulseGates:
         qml.evolve(H_eff)([pulse_params], 1)
 
     @staticmethod
-    def H(wires, pulse_params=None):
+    def H(
+        wires: Union[int, List[int]], pulse_params: Optional[np.ndarray] = None
+    ) -> None:
         """
-        Applies Hadamard gate to the given wires.
+        Apply Hadamard gate using pulse decomposition.
 
-        Parameters
-        ----------
-        wires : Union[int, List[int]]
-            The wire(s) to apply the Hadamard gate to.
-        pulse_params : np.ndarray, optional
-            Pulse parameters for the composing gates. Defaults
-            to optimized parameters and time.
+        Implements Hadamard as RZ(π) · RY(π/2) with a correction phase,
+        using pulse-level implementations for each component.
+
+        Args:
+            wires (Union[int, List[int]]): Qubit index or indices to apply gate to.
+            pulse_params (Optional[np.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+
+        Returns:
+            None: Gate is applied in-place to the circuit.
         """
         pulse_params_RZ, pulse_params_RY = PulseInformation.H.split_params(pulse_params)
 
@@ -1046,20 +1130,20 @@ class PulseGates:
         qml.evolve(H_corr)([0], 1)
 
     @staticmethod
-    def CX(wires, pulse_params=None):
+    def CX(wires: List[int], pulse_params: Optional[np.ndarray] = None) -> None:
         """
-        Applies a CNOT gate using a decomposition.
+        Apply CNOT gate using pulse decomposition.
 
-        Decomposition:
-            CNOT = H_t · CZ · H_t
+        Implements CNOT as H_target · CZ · H_target, where H and CZ are
+        applied using their respective pulse-level implementations.
 
-        Parameters
-        ----------
-        wires : List[int]
-            The control and target wires for the CNOT gate.
-        pulse_params : np.ndarray, optional
-            Pulse parameters for the composing gates. Defaults
-            to optimized parameters if None.
+        Args:
+            wires (List[int]): Control and target qubit indices [control, target].
+            pulse_params (Optional[np.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+
+        Returns:
+            None: Gate is applied in-place to the circuit.
         """
         params_H_1, params_CZ, params_H_2 = PulseInformation.CX.split_params(
             pulse_params
@@ -1072,20 +1156,20 @@ class PulseGates:
         PulseGates.H(wires=target, pulse_params=params_H_2)
 
     @staticmethod
-    def CY(wires, pulse_params=None):
+    def CY(wires: List[int], pulse_params: Optional[np.ndarray] = None) -> None:
         """
-        Applies a controlled-Y gate using a decomposition.
+        Apply controlled-Y gate using pulse decomposition.
 
-        Decomposition:
-            CY = RZ(-π/2)_t · CX · RZ(π/2)_t
+        Implements CY as RZ(-π/2)_target · CX · RZ(π/2)_target using
+        pulse-level implementations.
 
-        Parameters
-        ----------
-        wires : List[int]
-            The control and target wires.
-        pulse_params : np.ndarray
-            Pulse parameters for the composing gates. Defaults
-            to optimized parameters if None.
+        Args:
+            wires (List[int]): Control and target qubit indices [control, target].
+            pulse_params (Optional[np.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+
+        Returns:
+            None: Gate is applied in-place to the circuit.
         """
         params_RZ_1, params_CX, params_RZ_2 = PulseInformation.CY.split_params(
             pulse_params
@@ -1098,17 +1182,20 @@ class PulseGates:
         PulseGates.RZ(np.pi / 2, wires=target, pulse_params=params_RZ_2)
 
     @staticmethod
-    def CZ(wires, pulse_params=None):
+    def CZ(wires: List[int], pulse_params: Optional[float] = None) -> None:
         """
-        Applies a controlled Z gate to the given wires.
+        Apply controlled-Z gate using pulse-level implementation.
 
-        Parameters
-        ----------
-        wires : List[int]
-            The wire(s) to apply the controlled Z gate to.
-        pulse_params : float, optional
-            Time or time interval for the evolution.
-            Defaults to optimized time if None.
+        Implements CZ using a two-qubit interaction Hamiltonian based on
+        ZZ coupling.
+
+        Args:
+            wires (List[int]): Control and target qubit indices.
+            pulse_params (Optional[float]): Time or duration parameter for
+                the pulse evolution. If None, uses optimized value.
+
+        Returns:
+            None: Gate is applied in-place to the circuit.
         """
         if pulse_params is None:
             pulse_params = PulseInformation.CZ.params
@@ -1130,23 +1217,23 @@ class PulseGates:
         qml.evolve(H_eff)([pulse_params], 1)
 
     @staticmethod
-    def CRX(w, wires, pulse_params=None):
+    def CRX(
+        w: float, wires: List[int], pulse_params: Optional[np.ndarray] = None
+    ) -> None:
         """
-        Applies a controlled-RX(w) gate using a decomposition.
-        Decomposition based on https://doi.org/10.48550/arXiv.2408.01036
+        Apply controlled-RX gate using pulse decomposition.
 
-        Decomposition:
-            CRX(w) = RZ(-pi/2) · RY(w/2) · CX · RY(-w/2) · CX · RZ(pi/2)
+        Implements CRX(w) as RZ(π/2) · RY(w/2) · CX · RY(-w/2) · CX · RZ(-π/2)
+        applied to the target qubit, following arXiv:2408.01036.
 
-        Parameters
-        ----------
-        w : float
-            Rotation angle.
-        wires : List[int]
-            The control and target wires.
-        pulse_params : np.ndarray
-            Pulse parameters for the composing gates. Defaults
-            to optimized parameters if None.
+        Args:
+            w (float): Rotation angle in radians.
+            wires (List[int]): Control and target qubit indices [control, target].
+            pulse_params (Optional[np.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+
+        Returns:
+            None: Gate is applied in-place to the circuit.
         """
         params_RZ_1, params_RY, params_CX_1, params_RY_2, params_CX_2, params_RZ_2 = (
             PulseInformation.CRX.split_params(pulse_params)
@@ -1162,23 +1249,23 @@ class PulseGates:
         PulseGates.RZ(-np.pi / 2, wires=target, pulse_params=params_RZ_2)
 
     @staticmethod
-    def CRY(w, wires, pulse_params=None):
+    def CRY(
+        w: float, wires: List[int], pulse_params: Optional[np.ndarray] = None
+    ) -> None:
         """
-        Applies a controlled-RY(w) gate using a decomposition.
-        Decomposition based on https://doi.org/10.48550/arXiv.2408.01036
+        Apply controlled-RY gate using pulse decomposition.
 
-        Decomposition:
-            CRY(w) = RY(w/2) · CX · RX(-w/2) · CX
+        Implements CRY(w) as RY(w/2) · CX · RY(-w/2) · CX applied to the
+        target qubit, following arXiv:2408.01036.
 
-        Parameters
-        ----------
-        w : float
-            Rotation angle.
-        wires : List[int]
-            The control and target wires.
-        pulse_params : np.ndarray
-            Pulse parameters for the composing gates. Defaults
-            to optimized parameters if None.
+        Args:
+            w (float): Rotation angle in radians.
+            wires (List[int]): Control and target qubit indices [control, target].
+            pulse_params (Optional[np.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+
+        Returns:
+            None: Gate is applied in-place to the circuit.
         """
         params_RY_1, params_CX_1, params_RY_2, params_CX_2 = (
             PulseInformation.CRY.split_params(pulse_params)
@@ -1192,23 +1279,23 @@ class PulseGates:
         PulseGates.CX(wires=wires, pulse_params=params_CX_2)
 
     @staticmethod
-    def CRZ(w, wires, pulse_params=None):
+    def CRZ(
+        w: float, wires: List[int], pulse_params: Optional[np.ndarray] = None
+    ) -> None:
         """
-        Applies a controlled-RZ(w) gate using a decomposition.
-        Decomposition based on https://doi.org/10.48550/arXiv.2408.01036
+        Apply controlled-RZ gate using pulse decomposition.
 
-        Decomposition:
-            CRZ(w) = RZ(-w/2)_t · CX · RZ(w/2)_t · CX
+        Implements CRZ(w) as RZ(w/2) · CX · RZ(-w/2) · CX applied to the
+        target qubit, following arXiv:2408.01036.
 
-        Parameters
-        ----------
-        w : float
-            Rotation angle.
-        wires : List[int]
-            The control and target wires.
-        pulse_params : np.ndarray
-            Pulse parameters for the composing gates. Defaults
-            to optimized parameters if None.
+        Args:
+            w (float): Rotation angle in radians.
+            wires (List[int]): Control and target qubit indices [control, target].
+            pulse_params (Optional[np.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+
+        Returns:
+            None: Gate is applied in-place to the circuit.
         """
         params_RZ_1, params_CX_1, params_RZ_2, params_CX_2 = (
             PulseInformation.CRZ.split_params(pulse_params)
@@ -1271,13 +1358,19 @@ class Gates(metaclass=GatesMeta):
         allowed_args = ["w", "wires", "phi", "theta", "omega"]
         if gate_mode == "unitary":
             gate_backend = UnitaryGates
-            allowed_args += ["noise_params"]
+            allowed_args += ["noise_params", "random_key"]
         elif gate_mode == "pulse":
             gate_backend = PulseGates
             allowed_args += ["pulse_params"]
         else:
             raise ValueError(
                 f"Unknown gate mode: {gate_mode}. Use 'unitary' or 'pulse'."
+            )
+
+        if len(kwargs.keys() - allowed_args) > 0:
+            # TODO: pulse params are always provided?
+            log.debug(
+                f"Unsupported keyword arguments: {list(kwargs.keys() - allowed_args)}"
             )
 
         kwargs = {k: v for k, v in kwargs.items() if k in allowed_args}
@@ -1506,7 +1599,7 @@ class Ansaetze:
                 Number of parameters required for one layer of the circuit.
             """
             if n_qubits < 2:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
             return n_qubits * 3
 
         @staticmethod
@@ -1613,7 +1706,7 @@ class Ansaetze:
             if n_qubits > 1:
                 return n_qubits * 3
             else:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
                 return 2
 
         @staticmethod
@@ -1723,7 +1816,7 @@ class Ansaetze:
             if n_qubits > 1:
                 return n_qubits * 3
             else:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
                 return 2
 
         @staticmethod
@@ -1830,7 +1923,7 @@ class Ansaetze:
             if n_qubits > 1:
                 return n_qubits * 2
             else:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
                 return 2
 
         @staticmethod
@@ -2037,7 +2130,7 @@ class Ansaetze:
             if n_qubits > 1:
                 return n_qubits * 3 + n_qubits**2
             else:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
                 return 4
 
         @staticmethod
@@ -2847,7 +2940,7 @@ class Ansaetze:
                 Number of parameters per layer
             """
             if n_qubits < 2:
-                log.warning("Number of Qubits < 2, no entanglement available")
+                warnings.warn("Number of Qubits < 2, no entanglement available")
             return n_qubits * 6
 
         @staticmethod
