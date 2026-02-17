@@ -351,9 +351,21 @@ Oh and in case you need a refresh on the rotational axes and their corresponding
 ![Circuit 4](figures/circuits_4q/Circuit_4_light.png#circuit#only-light)
 ![Circuit 4](figures/circuits_4q/Circuit_4_dark.png#circuit#only-dark)
 
+#### Circuit 5
+![Circuit 5](figures/circuits_4q/Circuit_5_light.png#circuit#only-light)
+![Circuit 5](figures/circuits_4q/Circuit_5_dark.png#circuit#only-dark)
+
 #### Circuit 6
 ![Circuit 6](figures/circuits_4q/Circuit_6_light.png#circuit#only-light)
 ![Circuit 6](figures/circuits_4q/Circuit_6_dark.png#circuit#only-dark)
+
+#### Circuit 7
+![Circuit 7](figures/circuits_4q/Circuit_7_light.png#circuit#only-light)
+![Circuit 7](figures/circuits_4q/Circuit_7_dark.png#circuit#only-dark)
+
+#### Circuit 8
+![Circuit 8](figures/circuits_4q/Circuit_8_light.png#circuit#only-light)
+![Circuit 8](figures/circuits_4q/Circuit_8_dark.png#circuit#only-dark)
 
 #### Circuit 9
 ![Circuit 9](figures/circuits_4q/Circuit_9_light.png#circuit#only-light)
@@ -362,6 +374,14 @@ Oh and in case you need a refresh on the rotational axes and their corresponding
 #### Circuit 10
 ![Circuit 10](figures/circuits_4q/Circuit_10_light.png#circuit#only-light)
 ![Circuit 10](figures/circuits_4q/Circuit_10_dark.png#circuit#only-dark)
+
+#### Circuit 13
+![Circuit 13](figures/circuits_4q/Circuit_13_light.png#circuit#only-light)
+![Circuit 13](figures/circuits_4q/Circuit_13_dark.png#circuit#only-dark)
+
+#### Circuit 14
+![Circuit 14](figures/circuits_4q/Circuit_14_light.png#circuit#only-light)
+![Circuit 14](figures/circuits_4q/Circuit_14_dark.png#circuit#only-dark)
 
 #### Circuit 15
 ![Circuit 15](figures/circuits_4q/Circuit_15_light.png#circuit#only-light)
@@ -421,9 +441,21 @@ Oh and in case you need a refresh on the rotational axes and their corresponding
 ![Circuit 4](figures/circuits_5q/Circuit_4_light.png#circuit#only-light)
 ![Circuit 4](figures/circuits_5q/Circuit_4_dark.png#circuit#only-dark)
 
+#### Circuit 5
+![Circuit 5](figures/circuits_5q/Circuit_5_light.png#circuit#only-light)
+![Circuit 5](figures/circuits_5q/Circuit_5_dark.png#circuit#only-dark)
+
 #### Circuit 6
 ![Circuit 6](figures/circuits_5q/Circuit_6_light.png#circuit#only-light)
 ![Circuit 6](figures/circuits_5q/Circuit_6_dark.png#circuit#only-dark)
+
+#### Circuit 7
+![Circuit 7](figures/circuits_5q/Circuit_7_light.png#circuit#only-light)
+![Circuit 7](figures/circuits_5q/Circuit_7_dark.png#circuit#only-dark)
+
+#### Circuit 8
+![Circuit 8](figures/circuits_5q/Circuit_8_light.png#circuit#only-light)
+![Circuit 8](figures/circuits_5q/Circuit_8_dark.png#circuit#only-dark)
 
 #### Circuit 9
 ![Circuit 9](figures/circuits_5q/Circuit_9_light.png#circuit#only-light)
@@ -432,6 +464,14 @@ Oh and in case you need a refresh on the rotational axes and their corresponding
 #### Circuit 10
 ![Circuit 10](figures/circuits_5q/Circuit_10_light.png#circuit#only-light)
 ![Circuit 10](figures/circuits_5q/Circuit_10_dark.png#circuit#only-dark)
+
+#### Circuit 13
+![Circuit 13](figures/circuits_5q/Circuit_13_light.png#circuit#only-light)
+![Circuit 13](figures/circuits_5q/Circuit_13_dark.png#circuit#only-dark)
+
+#### Circuit 14
+![Circuit 14](figures/circuits_5q/Circuit_14_light.png#circuit#only-light)
+![Circuit 14](figures/circuits_5q/Circuit_14_dark.png#circuit#only-dark)
 
 #### Circuit 15
 ![Circuit 15](figures/circuits_5q/Circuit_15_light.png#circuit#only-light)
@@ -491,9 +531,21 @@ Oh and in case you need a refresh on the rotational axes and their corresponding
 ![Circuit 4](figures/circuits_6q/Circuit_4_light.png#circuit#only-light)
 ![Circuit 4](figures/circuits_6q/Circuit_4_dark.png#circuit#only-dark)
 
+#### Circuit 5
+![Circuit 5](figures/circuits_6q/Circuit_5_light.png#circuit#only-light)
+![Circuit 5](figures/circuits_6q/Circuit_5_dark.png#circuit#only-dark)
+
 #### Circuit 6
 ![Circuit 6](figures/circuits_6q/Circuit_6_light.png#circuit#only-light)
 ![Circuit 6](figures/circuits_6q/Circuit_6_dark.png#circuit#only-dark)
+
+#### Circuit 7
+![Circuit 7](figures/circuits_6q/Circuit_7_light.png#circuit#only-light)
+![Circuit 7](figures/circuits_6q/Circuit_7_dark.png#circuit#only-dark)
+
+#### Circuit 8
+![Circuit 8](figures/circuits_6q/Circuit_8_light.png#circuit#only-light)
+![Circuit 8](figures/circuits_6q/Circuit_8_dark.png#circuit#only-dark)
 
 #### Circuit 9
 ![Circuit 9](figures/circuits_6q/Circuit_9_light.png#circuit#only-light)
@@ -502,6 +554,14 @@ Oh and in case you need a refresh on the rotational axes and their corresponding
 #### Circuit 10
 ![Circuit 10](figures/circuits_6q/Circuit_10_light.png#circuit#only-light)
 ![Circuit 10](figures/circuits_6q/Circuit_10_dark.png#circuit#only-dark)
+
+#### Circuit 13
+![Circuit 13](figures/circuits_6q/Circuit_13_light.png#circuit#only-light)
+![Circuit 13](figures/circuits_6q/Circuit_13_dark.png#circuit#only-dark)
+
+#### Circuit 14
+![Circuit 14](figures/circuits_6q/Circuit_14_light.png#circuit#only-light)
+![Circuit 14](figures/circuits_6q/Circuit_14_dark.png#circuit#only-dark)
 
 #### Circuit 15
 ![Circuit 15](figures/circuits_6q/Circuit_15_light.png#circuit#only-light)
