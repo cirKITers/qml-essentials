@@ -513,13 +513,15 @@ class Model:
     def batch_shape(self) -> Tuple[int, ...]:
         """
         Get the batch shape (B_I, B_P, B_R).
+        If the model was not called before,
+        it returns (1, 1, 1).
 
         Returns:
             Tuple[int, ...]: Tuple of (input_batch, param_batch, pulse_batch).
                 Returns (1, 1, 1) if model has not been called yet.
         """
         if self._batch_shape is None:
-            log.warning("Model was not called yet. Returning (1,1,1) as batch shape.")
+            log.debug("Model was not called yet. Returning (1,1,1) as batch shape.")
             return (1, 1, 1)
         return self._batch_shape
 
