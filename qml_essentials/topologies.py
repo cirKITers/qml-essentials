@@ -70,13 +70,13 @@ class Topology:
 
         n_gates = n_qubits if wrap else n_qubits - 1
         _offset = offset(n_qubits) if callable(offset) else offset
-        _span = span if callable(span) else lambda q: span
+        _span = span(n_qubits) if callable(span) else span
 
         for q in range(0, n_gates, stride):
-            _target = q - _offset + _span(q)
+            _target = q + _offset + _span(q)
             if _target >= n_qubits and not modulo:
                 continue
-            _control = q - _offset
+            _control = q + _offset
             if _control < 0 and not modulo:
                 continue
 
