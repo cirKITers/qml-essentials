@@ -102,7 +102,7 @@ def test_divergence() -> None:
 
 @pytest.mark.unittest
 @pytest.mark.expensive
-def test_expressibility_1l(caplog) -> None:
+def test_expressibility_1l() -> None:
     circuits, results, _, skip_indices = get_test_cases()
 
     test_cases = []
@@ -118,7 +118,7 @@ def test_expressibility_1l(caplog) -> None:
             }
         )
 
-    tolerance = 0.35  # FIXME: reduce when reason for discrepancy is found
+    tolerance = 0.15  # FIXME: reduce when reason for discrepancy is found
     kl_distances: list[tuple[int, float]] = []
     for test_case in test_cases:
         print(f"--- Running Expressibility test for {test_case['circuit_type']} ---")
@@ -126,7 +126,7 @@ def test_expressibility_1l(caplog) -> None:
             n_qubits=test_case["n_qubits"],
             n_layers=test_case["n_layers"],
             circuit_type=test_case["circuit_type"],
-            initialization_domain=[0, 2 * jnp.pi],
+            initialization_domain=[0, 4 * jnp.pi],
             data_reupload=False,
             use_multithreading=True,
         )
@@ -161,13 +161,13 @@ def test_expressibility_1l(caplog) -> None:
         print(
             f"KL Divergence: {kl_dist},\t"
             + f"Expected Result: {test_case['result']},\t"
-            + f"Error: {error}"
+            + f"Error: {(error*100):.1f}%"
         )
         assert (
             error < tolerance
         ), f"Expressibility of circuit {test_case['circuit_type']} is not\
             {test_case['result']} but {kl_dist} instead.\
-            Deviation {(error*100):.1f}>{tolerance*100}%"
+            Deviation {(error*100):.1f}% > {tolerance*100}%"
 
     references = sorted(
         [
@@ -207,7 +207,7 @@ def test_expressibility_3l() -> None:
             }
         )
 
-    tolerance = 0.35  # FIXME: reduce when reason for discrepancy is found
+    tolerance = 0.20  # We allow 20% deviation
     kl_distances: list[tuple[int, float]] = []
     for test_case in test_cases:
         print(f"--- Running Expressibility test for {test_case['circuit_type']} ---")
@@ -215,7 +215,7 @@ def test_expressibility_3l() -> None:
             n_qubits=test_case["n_qubits"],
             n_layers=test_case["n_layers"],
             circuit_type=test_case["circuit_type"],
-            initialization_domain=[0, 2 * jnp.pi],
+            initialization_domain=[0, 4 * jnp.pi],
             data_reupload=False,
             use_multithreading=True,
         )
@@ -250,13 +250,13 @@ def test_expressibility_3l() -> None:
         print(
             f"KL Divergence: {kl_dist},\t"
             + f"Expected Result: {test_case['result']},\t"
-            + f"Error: {error}"
+            + f"Error: {(error*100):.1f}%"
         )
         assert (
             error < tolerance
         ), f"Expressibility of circuit {test_case['circuit_type']} is not\
             {test_case['result']} but {kl_dist} instead.\
-            Deviation {(error*100):.1f}>{tolerance*100}%"
+            Deviation {(error*100):.1f}% > {tolerance*100}%"
 
     references = sorted(
         [
@@ -275,6 +275,9 @@ def test_expressibility_3l() -> None:
     assert [circuit for circuit, _ in references] == [
         circuit for circuit, _ in actuals
     ], f"Order of circuits does not match: {actuals} != {references}"
+
+
+test_expressibility_1l()
 
 
 @pytest.mark.unittest
