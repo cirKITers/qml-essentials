@@ -483,12 +483,12 @@ class Ansaetze:
                     stride=2,
                 ),
                 Block(
-                    gate=Gates.CRX,
+                    gate=Gates.CRZ,
                     topology=Topology.stairs,
                     stride=2,
-                    # reverse=False,
-                    # mirror=True,
+                    reverse=False,
                     offset=1,
+                    modulo=False,
                 ),
             )
 
