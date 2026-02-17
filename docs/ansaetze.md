@@ -330,71 +330,260 @@ Oh and in case you need a refresh on the rotational axes and their corresponding
 ![Bloch Sphere](figures/bloch-sphere.svg#center)
 
 
-### No Ansatz
-![No Ansatz](figures/No_Ansatz_light.png#circuit#only-light)
-![No Ansatz](figures/No_Ansatz_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### No Ansatz
+![No Ansatz](figures/circuits_4q/No_Ansatz_light.png#circuit#only-light)
+![No Ansatz](figures/circuits_4q/No_Ansatz_dark.png#circuit#only-dark)
 
-### Circuit 1
-![Circuit 1](figures/Circuit_1_light.png#circuit#only-light)
-![Circuit 1](figures/Circuit_1_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### Circuit 1
+![Circuit 1](figures/circuits_4q/Circuit_1_light.png#circuit#only-light)
+![Circuit 1](figures/circuits_4q/Circuit_1_dark.png#circuit#only-dark)
 
-### Circuit 2
-![Circuit 2](figures/Circuit_2_light.png#circuit#only-light)
-![Circuit 2](figures/Circuit_2_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### Circuit 2
+![Circuit 2](figures/circuits_4q/Circuit_2_light.png#circuit#only-light)
+![Circuit 2](figures/circuits_4q/Circuit_2_dark.png#circuit#only-dark)
 
-### Circuit 3
-![Circuit 3](figures/Circuit_3_light.png#circuit#only-light)
-![Circuit 3](figures/Circuit_3_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### Circuit 3
+![Circuit 3](figures/circuits_4q/Circuit_3_light.png#circuit#only-light)
+![Circuit 3](figures/circuits_4q/Circuit_3_dark.png#circuit#only-dark)
 
-### Circuit 4
-![Circuit 4](figures/Circuit_4_light.png#circuit#only-light)
-![Circuit 4](figures/Circuit_4_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### Circuit 4
+![Circuit 4](figures/circuits_4q/Circuit_4_light.png#circuit#only-light)
+![Circuit 4](figures/circuits_4q/Circuit_4_dark.png#circuit#only-dark)
 
-### Circuit 6
-![Circuit 6](figures/Circuit_6_light.png#circuit#only-light)
-![Circuit 6](figures/Circuit_6_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### Circuit 6
+![Circuit 6](figures/circuits_4q/Circuit_6_light.png#circuit#only-light)
+![Circuit 6](figures/circuits_4q/Circuit_6_dark.png#circuit#only-dark)
 
-### Circuit 9
-![Circuit 9](figures/Circuit_9_light.png#circuit#only-light)
-![Circuit 9](figures/Circuit_9_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### Circuit 9
+![Circuit 9](figures/circuits_4q/Circuit_9_light.png#circuit#only-light)
+![Circuit 9](figures/circuits_4q/Circuit_9_dark.png#circuit#only-dark)
 
-### Circuit 10
-![Circuit 10](figures/Circuit_10_light.png#circuit#only-light)
-![Circuit 10](figures/Circuit_10_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### Circuit 10
+![Circuit 10](figures/circuits_4q/Circuit_10_light.png#circuit#only-light)
+![Circuit 10](figures/circuits_4q/Circuit_10_dark.png#circuit#only-dark)
 
-### Circuit 15
-![Circuit 15](figures/Circuit_15_light.png#circuit#only-light)
-![Circuit 15](figures/Circuit_15_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### Circuit 15
+![Circuit 15](figures/circuits_4q/Circuit_15_light.png#circuit#only-light)
+![Circuit 15](figures/circuits_4q/Circuit_15_dark.png#circuit#only-dark)
 
-### Circuit 16
-![Circuit 16](figures/Circuit_16_light.png#circuit#only-light)
-![Circuit 16](figures/Circuit_16_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### Circuit 16
+![Circuit 16](figures/circuits_4q/Circuit_16_light.png#circuit#only-light)
+![Circuit 16](figures/circuits_4q/Circuit_16_dark.png#circuit#only-dark)
 
-### Circuit 17
-![Circuit 17](figures/Circuit_17_light.png#circuit#only-light)
-![Circuit 17](figures/Circuit_17_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### Circuit 17
+![Circuit 17](figures/circuits_4q/Circuit_17_light.png#circuit#only-light)
+![Circuit 17](figures/circuits_4q/Circuit_17_dark.png#circuit#only-dark)
 
-### Circuit 18
-![Circuit 18](figures/Circuit_18_light.png#circuit#only-light)
-![Circuit 18](figures/Circuit_18_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### Circuit 18
+![Circuit 18](figures/circuits_4q/Circuit_18_light.png#circuit#only-light)
+![Circuit 18](figures/circuits_4q/Circuit_18_dark.png#circuit#only-dark)
 
-### Circuit 19
-![Circuit 19](figures/Circuit_19_light.png#circuit#only-light)
-![Circuit 19](figures/Circuit_19_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### Circuit 19
+![Circuit 19](figures/circuits_4q/Circuit_19_light.png#circuit#only-light)
+![Circuit 19](figures/circuits_4q/Circuit_19_dark.png#circuit#only-dark)
 
-### No Entangling
-![No Entangling](figures/No_Entangling_light.png#circuit#only-light)
-![No Entangling](figures/No_Entangling_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### No Entangling
+![No Entangling](figures/circuits_4q/No_Entangling_light.png#circuit#only-light)
+![No Entangling](figures/circuits_4q/No_Entangling_dark.png#circuit#only-dark)
 
-### Strongly Entangling
-![Strongly Entangling](figures/Strongly_Entangling_light.png#circuit#only-light)
-![Strongly Entangling](figures/Strongly_Entangling_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### Strongly Entangling
+![Strongly Entangling](figures/circuits_4q/Strongly_Entangling_light.png#circuit#only-light)
+![Strongly Entangling](figures/circuits_4q/Strongly_Entangling_dark.png#circuit#only-dark)
 
-### Hardware Efficient
-![Hardware Efficient](figures/Hardware_Efficient_light.png#circuit#only-light)
-![Hardware Efficient](figures/Hardware_Efficient_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### Hardware Efficient
+![Hardware Efficient](figures/circuits_4q/Hardware_Efficient_light.png#circuit#only-light)
+![Hardware Efficient](figures/circuits_4q/Hardware_Efficient_dark.png#circuit#only-dark)
 
-### GHZ
-![GHZ](figures/GHZ_light.png#circuit#only-light)
-![GHZ](figures/GHZ_dark.png#circuit#only-dark)
+### 4 Qubit Circuits
+#### GHZ
+![GHZ](figures/circuits_4q/GHZ_light.png#circuit#only-light)
+![GHZ](figures/circuits_4q/GHZ_dark.png#circuit#only-dark)
+
+
+### 5 Qubit Circuits
+#### No Ansatz
+![No Ansatz](figures/circuits_5q/No_Ansatz_light.png#circuit#only-light)
+![No Ansatz](figures/circuits_5q/No_Ansatz_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### Circuit 1
+![Circuit 1](figures/circuits_5q/Circuit_1_light.png#circuit#only-light)
+![Circuit 1](figures/circuits_5q/Circuit_1_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### Circuit 2
+![Circuit 2](figures/circuits_5q/Circuit_2_light.png#circuit#only-light)
+![Circuit 2](figures/circuits_5q/Circuit_2_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### Circuit 3
+![Circuit 3](figures/circuits_5q/Circuit_3_light.png#circuit#only-light)
+![Circuit 3](figures/circuits_5q/Circuit_3_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### Circuit 4
+![Circuit 4](figures/circuits_5q/Circuit_4_light.png#circuit#only-light)
+![Circuit 4](figures/circuits_5q/Circuit_4_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### Circuit 6
+![Circuit 6](figures/circuits_5q/Circuit_6_light.png#circuit#only-light)
+![Circuit 6](figures/circuits_5q/Circuit_6_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### Circuit 9
+![Circuit 9](figures/circuits_5q/Circuit_9_light.png#circuit#only-light)
+![Circuit 9](figures/circuits_5q/Circuit_9_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### Circuit 10
+![Circuit 10](figures/circuits_5q/Circuit_10_light.png#circuit#only-light)
+![Circuit 10](figures/circuits_5q/Circuit_10_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### Circuit 15
+![Circuit 15](figures/circuits_5q/Circuit_15_light.png#circuit#only-light)
+![Circuit 15](figures/circuits_5q/Circuit_15_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### Circuit 16
+![Circuit 16](figures/circuits_5q/Circuit_16_light.png#circuit#only-light)
+![Circuit 16](figures/circuits_5q/Circuit_16_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### Circuit 17
+![Circuit 17](figures/circuits_5q/Circuit_17_light.png#circuit#only-light)
+![Circuit 17](figures/circuits_5q/Circuit_17_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### Circuit 18
+![Circuit 18](figures/circuits_5q/Circuit_18_light.png#circuit#only-light)
+![Circuit 18](figures/circuits_5q/Circuit_18_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### Circuit 19
+![Circuit 19](figures/circuits_5q/Circuit_19_light.png#circuit#only-light)
+![Circuit 19](figures/circuits_5q/Circuit_19_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### No Entangling
+![No Entangling](figures/circuits_5q/No_Entangling_light.png#circuit#only-light)
+![No Entangling](figures/circuits_5q/No_Entangling_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### Strongly Entangling
+![Strongly Entangling](figures/circuits_5q/Strongly_Entangling_light.png#circuit#only-light)
+![Strongly Entangling](figures/circuits_5q/Strongly_Entangling_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### Hardware Efficient
+![Hardware Efficient](figures/circuits_5q/Hardware_Efficient_light.png#circuit#only-light)
+![Hardware Efficient](figures/circuits_5q/Hardware_Efficient_dark.png#circuit#only-dark)
+
+### 5 Qubit Circuits
+#### GHZ
+![GHZ](figures/circuits_5q/GHZ_light.png#circuit#only-light)
+![GHZ](figures/circuits_5q/GHZ_dark.png#circuit#only-dark)
+
+
+### 6 Qubit Circuits
+#### No Ansatz
+![No Ansatz](figures/circuits_6q/No_Ansatz_light.png#circuit#only-light)
+![No Ansatz](figures/circuits_6q/No_Ansatz_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### Circuit 1
+![Circuit 1](figures/circuits_6q/Circuit_1_light.png#circuit#only-light)
+![Circuit 1](figures/circuits_6q/Circuit_1_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### Circuit 2
+![Circuit 2](figures/circuits_6q/Circuit_2_light.png#circuit#only-light)
+![Circuit 2](figures/circuits_6q/Circuit_2_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### Circuit 3
+![Circuit 3](figures/circuits_6q/Circuit_3_light.png#circuit#only-light)
+![Circuit 3](figures/circuits_6q/Circuit_3_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### Circuit 4
+![Circuit 4](figures/circuits_6q/Circuit_4_light.png#circuit#only-light)
+![Circuit 4](figures/circuits_6q/Circuit_4_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### Circuit 6
+![Circuit 6](figures/circuits_6q/Circuit_6_light.png#circuit#only-light)
+![Circuit 6](figures/circuits_6q/Circuit_6_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### Circuit 9
+![Circuit 9](figures/circuits_6q/Circuit_9_light.png#circuit#only-light)
+![Circuit 9](figures/circuits_6q/Circuit_9_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### Circuit 10
+![Circuit 10](figures/circuits_6q/Circuit_10_light.png#circuit#only-light)
+![Circuit 10](figures/circuits_6q/Circuit_10_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### Circuit 15
+![Circuit 15](figures/circuits_6q/Circuit_15_light.png#circuit#only-light)
+![Circuit 15](figures/circuits_6q/Circuit_15_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### Circuit 16
+![Circuit 16](figures/circuits_6q/Circuit_16_light.png#circuit#only-light)
+![Circuit 16](figures/circuits_6q/Circuit_16_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### Circuit 17
+![Circuit 17](figures/circuits_6q/Circuit_17_light.png#circuit#only-light)
+![Circuit 17](figures/circuits_6q/Circuit_17_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### Circuit 18
+![Circuit 18](figures/circuits_6q/Circuit_18_light.png#circuit#only-light)
+![Circuit 18](figures/circuits_6q/Circuit_18_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### Circuit 19
+![Circuit 19](figures/circuits_6q/Circuit_19_light.png#circuit#only-light)
+![Circuit 19](figures/circuits_6q/Circuit_19_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### No Entangling
+![No Entangling](figures/circuits_6q/No_Entangling_light.png#circuit#only-light)
+![No Entangling](figures/circuits_6q/No_Entangling_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### Strongly Entangling
+![Strongly Entangling](figures/circuits_6q/Strongly_Entangling_light.png#circuit#only-light)
+![Strongly Entangling](figures/circuits_6q/Strongly_Entangling_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### Hardware Efficient
+![Hardware Efficient](figures/circuits_6q/Hardware_Efficient_light.png#circuit#only-light)
+![Hardware Efficient](figures/circuits_6q/Hardware_Efficient_dark.png#circuit#only-dark)
+
+### 6 Qubit Circuits
+#### GHZ
+![GHZ](figures/circuits_6q/GHZ_light.png#circuit#only-light)
+![GHZ](figures/circuits_6q/GHZ_dark.png#circuit#only-dark)
 

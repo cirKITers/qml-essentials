@@ -5,31 +5,33 @@ from qml_essentials.ansaetze import Ansaetze
 
 ansaetze = Ansaetze.get_available()
 
-overview_txt = "\n"
-for ansatz in ansaetze:
-    model = Model(
-        n_qubits=4,
-        n_layers=1,
-        circuit_type=ansatz.__name__,
-        output_qubit=-1,
-        remove_zero_encoding=True,
-        data_reupload=False,
-    )
+for q in [4, 5, 6]:
+    overview_txt = "\n"
+    for ansatz in ansaetze:
+        model = Model(
+            n_qubits=q,
+            n_layers=1,
+            circuit_type=ansatz.__name__,
+            output_qubit=-1,
+            remove_zero_encoding=True,
+            data_reupload=False,
+        )
 
-    fig, _ = model.draw(figure="mpl")
+        fig, _ = model.draw(figure="mpl")
 
-    cwd = os.path.dirname(__file__)
-    fig.savefig(
-        f"{cwd}/figures/{ansatz.__name__}_light.png",
-        dpi=100,
-        transparent=True,
-        bbox_inches="tight",
-    )
+        cwd = os.path.dirname(__file__)
+        fig.savefig(
+            f"{cwd}/figures/circuits_{q}q/{ansatz.__name__}_light.png",
+            dpi=100,
+            transparent=True,
+            bbox_inches="tight",
+        )
 
-    overview_txt += f"### {ansatz.__name__.replace('_', ' ')}\n"
-    overview_txt += f"![{ansatz.__name__.replace('_', ' ')}](figures/{ansatz.__name__}_light.png#circuit#only-light)\n"  # noqa
-    overview_txt += f"![{ansatz.__name__.replace('_', ' ')}](figures/{ansatz.__name__}_dark.png#circuit#only-dark)\n"  # noqa
-    overview_txt += "\n"
+        overview_txt += f"### {q} Qubit Circuits\n"
+        overview_txt += f"#### {ansatz.__name__.replace('_', ' ')}\n"
+        overview_txt += f"![{ansatz.__name__.replace('_', ' ')}](figures/circuits_{q}q/{ansatz.__name__}_light.png#circuit#only-light)\n"  # noqa
+        overview_txt += f"![{ansatz.__name__.replace('_', ' ')}](figures/circuits_{q}q/{ansatz.__name__}_dark.png#circuit#only-dark)\n"  # noqa
+        overview_txt += "\n"
 
-with open(f"{cwd}/ansaetze.md", "a") as f:
-    f.write(overview_txt)
+    with open(f"{cwd}/ansaetze.md", "a") as f:
+        f.write(overview_txt)
