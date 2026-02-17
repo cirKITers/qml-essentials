@@ -10,18 +10,16 @@ jobs:
     if: ${{ (github.actor != 'dependabot[bot]') }}
     steps:
       - uses: actions/checkout@v6
-      - name: Install uv
-        run: pipx install uv
-      - name: Set up Python 3.12
+      - name: Set up Python 3.13
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.13"
           # cache: "uv"
       - name: Install dependencies
-        run: uv sync --group dev
+        run: pipx run uv sync --group dev
       - name: Lint with flake8
         run: |
-          uv run flake8 qml_essentials
-          uv run flake8 tests
+          pipx run uv run flake8 qml_essentials
+          pipx run uv run flake8 tests
       - name: Running license check
-        run: uv run licensecheck --zero --license mit
+        run: pipx run uv run licensecheck --zero --license mit
