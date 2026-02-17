@@ -11,11 +11,13 @@ find . -type f -name '*_light.png' -print0 | while IFS= read -r -d '' file; do
   if [ -f "$out" ]; then
     # compare existing and new; if identical, discard temp
     if diff -q "$out" "$tmp" >/dev/null 2>&1; then
+      echo "$file -> $out (identical)"
       rm -f "$tmp"
       continue
     fi
   fi
 
+  echo "$file -> $out"
   # move new file into place (overwriting only when different or not present)
   mv -f "$tmp" "$out"
 done
