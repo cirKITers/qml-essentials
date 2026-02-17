@@ -101,7 +101,6 @@ class Topology:
     def bricks(cls, n_qubits: int, **kwargs) -> List[List[int]]:
         kwargs.setdefault("stride", 2)
         kwargs.setdefault("modulo", False)
-        kwargs.setdefault("reverse", False)
         return cls.stairs(n_qubits=n_qubits, **kwargs)
 
     @classmethod

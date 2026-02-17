@@ -646,6 +646,7 @@ class Ansaetze:
                     gate=Gates.CX,
                     topology=Topology.bricks,
                     offset=-1,
+                    modulo=True,
                     wrap=True,
                     mirror=False,
                 ),
