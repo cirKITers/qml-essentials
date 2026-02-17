@@ -3,10 +3,13 @@ import os
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze
 
+edit_ansaetze_file = False
 ansaetze = Ansaetze.get_available()
 
 for q in [4, 5, 6]:
     overview_txt = "\n"
+    overview_txt += f"### {q} Qubit Circuits\n"
+
     for ansatz in ansaetze:
         model = Model(
             n_qubits=q,
@@ -27,11 +30,11 @@ for q in [4, 5, 6]:
             bbox_inches="tight",
         )
 
-        overview_txt += f"### {q} Qubit Circuits\n"
         overview_txt += f"#### {ansatz.__name__.replace('_', ' ')}\n"
         overview_txt += f"![{ansatz.__name__.replace('_', ' ')}](figures/circuits_{q}q/{ansatz.__name__}_light.png#circuit#only-light)\n"  # noqa
         overview_txt += f"![{ansatz.__name__.replace('_', ' ')}](figures/circuits_{q}q/{ansatz.__name__}_dark.png#circuit#only-dark)\n"  # noqa
         overview_txt += "\n"
 
-    with open(f"{cwd}/ansaetze.md", "a") as f:
-        f.write(overview_txt)
+    if edit_ansaetze_file:
+        with open(f"{cwd}/ansaetze.md", "a") as f:
+            f.write(overview_txt)
