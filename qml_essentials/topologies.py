@@ -73,7 +73,7 @@ class Topology:
         _span = span(n_qubits) if callable(span) else span
 
         for q in range(0, n_gates, stride):
-            _target = q + _offset + _span(q)
+            _target = q + _offset + _span
             if _target >= n_qubits and not modulo:
                 continue
             _control = q + _offset
