@@ -516,7 +516,9 @@ class Ansaetze:
                     gate=Gates.CRZ,
                     topology=Topology.stairs,
                     reverse=False,
-                    offset=lambda n: n // 2,
+                    mirror=False,
+                    offset=lambda n: n - 1,
+                    span=3,
                     wrap=True,
                 ),
             )
@@ -538,7 +540,9 @@ class Ansaetze:
                     gate=Gates.CRX,
                     topology=Topology.stairs,
                     reverse=False,
-                    offset=lambda n: n // 2,
+                    mirror=False,
+                    offset=lambda n: n - 1,
+                    span=3,
                     wrap=True,
                 ),
             )
@@ -560,7 +564,9 @@ class Ansaetze:
                     gate=Gates.CX,
                     topology=Topology.stairs,
                     reverse=False,
-                    offset=lambda n: n // 2,
+                    mirror=False,
+                    offset=lambda n: n - 1,
+                    span=3,
                     wrap=True,
                 ),
             )
