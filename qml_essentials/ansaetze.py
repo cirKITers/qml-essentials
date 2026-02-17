@@ -424,7 +424,7 @@ class Ansaetze:
         def structure():
             return (
                 Block(gate=Gates.RY),
-                Block(gate="CZ", topology=Topology.stairs, wrap=True, offset=1),
+                Block(gate="CZ", topology=Topology.stairs, offset=-1, wrap=True),
                 Block(gate=Gates.RY),
             )
 
@@ -542,7 +542,6 @@ class Ansaetze:
                     gate=Gates.CX,
                     topology=Topology.stairs,
                     stride=2,
-                    # reverse=False,
                     offset=-1,
                     wrap=True,
                     mirror=False,
