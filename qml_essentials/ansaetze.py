@@ -257,6 +257,9 @@ class Block:
         self.topology = topology
         self.kwargs = kwargs
 
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.gate.__name__})"
+
     @property
     def is_entangling(self):
         return Gates.is_entangling(self.gate)
