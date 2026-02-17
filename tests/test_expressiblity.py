@@ -63,7 +63,7 @@ def get_test_cases():
 
     # Circuit 10 excluded because implementation with current setup not possible
     skip_indices = [5, 7, 8, 11, 12, 13, 14, 10]
-    skip_indices += [16, 2, 3]  # exclude these for now as order is failing
+    skip_indices += [2, 3]  # exclude these for now as order is failing
 
     return circuits, results_n_layers_1, results_n_layers_3, skip_indices
 
@@ -277,9 +277,6 @@ def test_expressibility_3l() -> None:
     ], f"Order of circuits does not match: {actuals} != {references}"
 
 
-test_expressibility_1l()
-
-
 @pytest.mark.unittest
 @pytest.mark.expensive
 def test_scaling() -> None:
@@ -295,7 +292,7 @@ def test_scaling() -> None:
         n_bins=4,
         n_samples=10,
         n_input_samples=0,
-        input_domain=[0, 2 * jnp.pi],
+        input_domain=[0, 4 * jnp.pi],
         model=model,
         scale=True,
     )
