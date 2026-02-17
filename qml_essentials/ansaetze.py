@@ -249,7 +249,7 @@ class Block:
         else:
             self.gate = gate
 
-        if Gates.is_entangling(self.gate):
+        if self.is_entangling:
             assert (
                 topology is not None
             ), "Topology must be specified for entangling gates"
@@ -278,19 +278,27 @@ class Block:
     def is_controlled_rotation(self):
         return self.is_entangling and self.is_rotational
 
+    @property
+    def min_qubits(self):
+        if self.is_entangling:
+            return 1 + self.kwargs.get("span", 1)
+        else:
+            return 1
+
     def n_params(self, n_qubits: int) -> int:
         assert n_qubits > 0, "Number of qubits must be positive"
 
-        if Gates.is_rotational(self.gate):
-            if Gates.is_entangling(self.gate):
-                if n_qubits > 1:
-                    return len(self.topology(n_qubits=n_qubits, **self.kwargs))
-                else:
+        if self.is_rotational:
+            if self.is_entangling:
+                if n_qubits < self.min_qubits:
                     warnings.warn(
                         f"Skipping {self.topology.__name__} with n_qubits={n_qubits} "
-                        f"as there are not enough qubits for this topology"
+                        f"as there are not enough qubits (>={self.min_qubits})"
+                        f"for this topology."
                     )
                     return 0
+                else:
+                    return len(self.topology(n_qubits=n_qubits, **self.kwargs))
             else:
                 return n_qubits if self.gate.__name__ != "Rot" else 3 * n_qubits
 
@@ -304,12 +312,20 @@ class Block:
 
         iterator = (
             self.topology(n_qubits=n_qubits, **self.kwargs)
-            if Gates.is_entangling(self.gate)
+            if self.is_entangling
             else range(n_qubits)
         )
 
         for wires in iterator:
-            if Gates.is_rotational(self.gate):
+            if self.is_entangling and n_qubits < self.min_qubits:
+                warnings.warn(
+                    f"Skipping {self.topology.__name__} with n_qubits={n_qubits} "
+                    f"as there are not enough qubits (>={self.min_qubits})"
+                    f"for this topology."
+                )
+                continue
+
+            if self.is_rotational:
                 if self.gate.__name__ == "Rot":
                     self.gate(
                         w[w_idx], w[w_idx + 1], w[w_idx + 2], wires=wires, **kwargs

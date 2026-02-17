@@ -581,7 +581,7 @@ def test_fourier_fingerprint() -> None:
 
     for test_case in test_cases:
         model = Model(
-            n_qubits=3,
+            n_qubits=4,
             n_layers=1,
             circuit_type=test_case["circuit_type"],
             output_qubit=-1,

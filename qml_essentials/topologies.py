@@ -80,11 +80,15 @@ class Topology:
             if _control < 0 and not modulo:
                 continue
 
+            _target = _target % n_qubits
+            _control = _control % n_qubits
+
             if _target == _control:
+                log.warning("Skipping gate where control == target")
                 continue
 
-            targets += [_target % n_qubits]
-            ctrls += [_control % n_qubits]
+            targets += [_target]
+            ctrls += [_control]
 
         if reverse:
             ctrls = reversed(ctrls)
