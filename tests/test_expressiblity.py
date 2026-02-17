@@ -40,7 +40,7 @@ def get_test_cases(layers):
             0.0043,
         ]
         # exclude the following as well for now as order is failing
-        skip_indices += [2, 3, 13]
+        skip_indices += [2, 3]
 
         tolerance = 0.30
     elif layers == 3:
@@ -66,7 +66,7 @@ def get_test_cases(layers):
             0.0039,
         ]
         # exclude the following as well for now as order is failing
-        skip_indices += [2, 3, 4, 5, 6, 7, 13]
+        skip_indices += [2, 3, 4, 5, 6, 7]
 
         tolerance = 0.30
 
