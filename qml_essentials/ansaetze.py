@@ -443,18 +443,14 @@ class Ansaetze:
                 Block(gate=Gates.RZ),
                 Block(
                     gate=Gates.CRZ,
-                    topology=Topology.stairs,
-                    stride=2,
+                    topology=Topology.bricks,
                 ),
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
                 Block(
                     gate=Gates.CRZ,
-                    topology=Topology.stairs,
-                    stride=2,
-                    reverse=False,
+                    topology=Topology.bricks,
                     offset=1,
-                    modulo=False,
                 ),
             )
 
@@ -466,18 +462,14 @@ class Ansaetze:
                 Block(gate=Gates.RZ),
                 Block(
                     gate=Gates.CRX,
-                    topology=Topology.stairs,
-                    stride=2,
+                    topology=Topology.bricks,
                 ),
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
                 Block(
                     gate=Gates.CRX,
-                    topology=Topology.stairs,
-                    stride=2,
-                    reverse=False,
+                    topology=Topology.bricks,
                     offset=1,
-                    modulo=False,
                 ),
             )
 
@@ -579,16 +571,12 @@ class Ansaetze:
                 Block(gate=Gates.RZ),
                 Block(
                     gate=Gates.CRZ,
-                    topology=Topology.stairs,
-                    stride=2,
+                    topology=Topology.bricks,
                 ),
                 Block(
                     gate=Gates.CRZ,
-                    topology=Topology.stairs,
-                    stride=2,
-                    reverse=False,
+                    topology=Topology.bricks,
                     offset=1,
-                    modulo=False,
                 ),
             )
 
@@ -600,16 +588,12 @@ class Ansaetze:
                 Block(gate=Gates.RZ),
                 Block(
                     gate=Gates.CRX,
-                    topology=Topology.stairs,
-                    stride=2,
+                    topology=Topology.bricks,
                 ),
                 Block(
                     gate=Gates.CRX,
-                    topology=Topology.stairs,
-                    stride=2,
-                    reverse=False,
+                    topology=Topology.bricks,
                     offset=1,
-                    modulo=False,
                 ),
             )
 
@@ -655,14 +639,12 @@ class Ansaetze:
                 Block(gate=Gates.RY),
                 Block(
                     gate=Gates.CX,
-                    topology=Topology.stairs,
-                    stride=2,
+                    topology=Topology.bricks,
                     mirror=False,
                 ),
                 Block(
                     gate=Gates.CX,
-                    topology=Topology.stairs,
-                    stride=2,
+                    topology=Topology.bricks,
                     offset=-1,
                     wrap=True,
                     mirror=False,

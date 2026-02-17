@@ -98,6 +98,13 @@ class Topology:
         return pairs
 
     @classmethod
+    def bricks(cls, n_qubits: int, **kwargs) -> List[List[int]]:
+        kwargs.setdefault("stride", 2)
+        kwargs.setdefault("modulo", False)
+        kwargs.setdefault("reverse", False)
+        return cls.stairs(n_qubits=n_qubits, **kwargs)
+
+    @classmethod
     def all_to_all(cls, n_qubits: int) -> List[List[int]]:
         """Every ordered pair ``(i, j)`` with ``i ≠ j``."""
         pairs: List[List[int]] = []
