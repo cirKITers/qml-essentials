@@ -486,7 +486,7 @@ class Ansaetze:
                     stride=2,
                 ),
                 Block(
-                    gate=Gates.CRZ,
+                    gate=Gates.CRX,
                     topology=Topology.stairs,
                     stride=2,
                     reverse=False,
