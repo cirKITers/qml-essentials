@@ -258,7 +258,10 @@ class Block:
         self.kwargs = kwargs
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.gate.__name__})"
+        if self.topology is None:
+            return f"{self.__class__.__name__}({self.gate.__name__})"
+        else:
+            return f"{self.__class__.__name__}({self.topology.__name__}[{self.gate.__name__}])"
 
     @property
     def is_entangling(self):
