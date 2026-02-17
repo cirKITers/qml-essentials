@@ -280,11 +280,13 @@ class Block:
 
     def enough_qubits(self, n_qubits):
         if self.is_entangling:
+            # NOTE This must be adjusted if default values
+            # in Topology change
             span = self.kwargs.get("span", 1)
-            if isinstance(span, Callable):
-                return n_qubits >= 1 + span(n_qubits)
-            else:
-                return n_qubits >= 1 + span
+            if callable(span):
+                span = span(n_qubits)
+
+            return (n_qubits >= 2) and (n_qubits > span)
 
         return n_qubits >= 1
 
@@ -293,11 +295,11 @@ class Block:
 
         if self.is_rotational:
             if self.is_entangling:
-                if self.enough_qubits(n_qubits):
+                if not self.enough_qubits(n_qubits):
                     warnings.warn(
                         f"Skipping {self.topology.__name__} with n_qubits={n_qubits} "
                         f"as there are not enough qubits"
-                        f"(>={self.enough_qubits(n_qubits)}) for this topology."
+                        f"for this topology."
                     )
                     return 0
                 else:
@@ -320,11 +322,11 @@ class Block:
         )
 
         for wires in iterator:
-            if self.is_entangling and self.enough_qubits(n_qubits):
+            if self.is_entangling and not self.enough_qubits(n_qubits):
                 warnings.warn(
                     f"Skipping {self.topology.__name__} with n_qubits={n_qubits} "
                     f"as there are not enough qubits"
-                    f"(>={self.enough_qubits(n_qubits)}) for this topology."
+                    f"for this topology."
                 )
                 continue
 
