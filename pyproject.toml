@@ -6,7 +6,7 @@ authors = [
     { name = "Melvin Strobl", email = "melvin.strobl@kit.edu" },
     { name = "Maja Franz", email = "maja.franz@oth-regensburg.de" },
 ]
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.13"
 readme = "README.md"
 license = "MIT"
 maintainers = [{ name = "Melvin Strobl", email = "melvin.strobl@kit.edu" }]
