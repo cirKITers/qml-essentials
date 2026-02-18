@@ -19,7 +19,6 @@ dependencies = [
     "pennylane",
     "jax<=0.7.1",
     "jaxlib<=0.7.1",
-    "dill>=0.4.0",
     "optax<=0.2.5",
 ]
 classifiers = [
