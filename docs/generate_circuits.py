@@ -4,7 +4,7 @@ import matplotlib as plt
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze
 
-edit_ansaetze_file = True
+edit_ansaetze_file = False
 ansaetze = Ansaetze.get_available()
 cwd = os.path.dirname(__file__)
 
