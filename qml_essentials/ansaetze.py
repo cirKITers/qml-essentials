@@ -90,7 +90,10 @@ class Circuit(ABC):
         if indices is None:
             return np.array([])
 
-        return w[indices[0] : indices[1] : indices[2]]
+        if len(indices) == 3 and None in indices:
+            return w[indices[0] : indices[1] : indices[2]]
+        else:
+            return w.take(np.array(indices))
 
     def _build(self, w: np.ndarray, n_qubits: int, **kwargs) -> Any:
         """
