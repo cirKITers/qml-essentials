@@ -584,7 +584,7 @@ class Ansaetze:
                 ),
             )
 
-    class Circuit_15_Fix(DeclarativeCircuit):
+    class Circuit_20(DeclarativeCircuit):
         @staticmethod
         def structure():
             return (
