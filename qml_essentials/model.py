@@ -7,8 +7,9 @@ import jax.numpy as jnp
 import numpy as np
 from jax import random
 
-from qml_essentials.ansaetze import Gates, Ansaetze, Circuit, Encoding
-from qml_essentials.ansaetze import PulseInformation as pinfo
+from qml_essentials.ansaetze import Ansaetze, Circuit, Encoding
+from qml_essentials.gates import Gates
+from qml_essentials.gates import PulseInformation as pinfo
 from qml_essentials.utils import QuanTikz, safe_random_split
 
 import logging
@@ -119,8 +120,7 @@ class Model:
             sp_name = sp.__name__ if hasattr(sp, "__name__") else str(sp)
 
             if pinfo.gate_by_name(sp_name) is not None:
-                params = jnp.array(pinfo.gate_by_name(sp_name))
-                self.sp_pulse_params.append(params)
+                self.sp_pulse_params.append(pinfo.gate_by_name(sp_name).params)
             else:
                 # gate has no pulse parametrization
                 self.sp_pulse_params.append(None)
@@ -513,13 +513,15 @@ class Model:
     def batch_shape(self) -> Tuple[int, ...]:
         """
         Get the batch shape (B_I, B_P, B_R).
+        If the model was not called before,
+        it returns (1, 1, 1).
 
         Returns:
             Tuple[int, ...]: Tuple of (input_batch, param_batch, pulse_batch).
                 Returns (1, 1, 1) if model has not been called yet.
         """
         if self._batch_shape is None:
-            log.warning("Model was not called yet. Returning (1,1,1) as batch shape.")
+            log.debug("Model was not called yet. Returning (1,1,1) as batch shape.")
             return (1, 1, 1)
         return self._batch_shape
 
@@ -1341,14 +1343,11 @@ class Model:
                 random_keys,
             )
         else:
-            result = f(
-                params=params,
-                pulse_params=pulse_params,
-                inputs=inputs,
-                enc_params=enc_params,
-                noise_params=noise_params,
-                random_key=random_key,
-                gate_mode=gate_mode,
+            result = _f(
+                _params=params,
+                _pulse_params=pulse_params,
+                _inputs=inputs,
+                _random_key=random_key,
             )
 
         return self._postprocess_res(result)

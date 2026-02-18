@@ -19,8 +19,8 @@ You can take a look at your model, by simply calling
 model.draw(figure="mpl")
 ```
 
-![Hardware Efficient Ansatz](figures/hae_light.png#center#only-light)
-![Hardware Efficient Ansatz](figures/hae_dark.png#center#only-dark)
+![Hardware Efficient Ansatz](figures/circuits_4q/Hardware_Efficient_light.png#center#only-light)
+![Hardware Efficient Ansatz](figures/circuits_4q/Hardware_Efficient_dark.png#center#only-dark)
 
 Looks good to you? :eyes: Head over to the [*Training*](training.md) page for **getting started** with an easy example, where we also show how to implement **trainable frequencies** :rocket:
 If you want to learn more about, why we get the above results, checkout the [*Data-Reuploading*](#data-reuploading) section.
@@ -231,7 +231,7 @@ model(params, inputs, gate_mode="pulse")
 Pulse-level gates can also be instantiated directly:
 
 ```python
-from qml_essentials.ansaetze import Gates
+from qml_essentials.gates import Gates
 
 # RX gate represented by its microwave pulse
 Gates.RX(w, wires=0, gate_mode="pulse")
