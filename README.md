@@ -39,34 +39,35 @@ The following diagram provides an overview on how the different components withi
 
 ```mermaid
 flowchart LR
-    qmless[QML Essentials]
-    qmless --> qmless.ansaetze[Ansaetze]
-    qmless.ansaetze[Ansaetze] --> qmless.blocks[Blocks]
-    qmless.blocks[Blocks] --> qmless.gates[Gates]
-    qmless.blocks[Blocks] --> qmless.topo[Topologies]
-    qmless.gates[Gates] --> qmless.unitary[UnitaryGates]
-    qmless.gates[Gates] --> qmless.pulse[PulseGates]
-    qmless --> qmless.coefficients[Coefficients]
-    qmless.coefficients[Coefficients] --> qmless.analytical[Analytical]
-    qmless.coefficients[Coefficients] --> qmless.numerical[Numerical]
-    qmless.numerical[Numerical] --> qmless.fcc[Fourier Coefficient Correlation]
-    qmless.numerical[Numerical] --> qmless.fingerprint[Fourier Fingerprints]
-    qmless --> qmless.models[Models]
-    qmless --> qmless.expr[Expressibility]
-    qmless --> qmless.ent[Entanglement]
-    qmless.ent[Entanglement] --> qmless.mw[Meyer Wallach]
-    qmless.ent[Entanglement] --> qmless.ef[Entanglement of Formation]
-    qmless.ent[Entanglement] --> qmless.re[Relative Entropy]
-    qmless.ent[Entanglement] --> qmless.ce[Concentratable Entanglement]
+    qmless([QML Essentials])
+    qmless --> qmless.ansaetze([Ansaetze])
+    qmless.ansaetze --> qmless.blocks([Blocks])
+    qmless.blocks --> qmless.gates([Gates])
+    qmless.blocks --> qmless.topo([Topologies])
+    qmless.gates --> qmless.unitary([UnitaryGates])
+    qmless.gates --> qmless.pulse([PulseGates])
+    qmless --> qmless.coefficients([Coefficients])
+    qmless.coefficients --> qmless.analytical([Analytical])
+    qmless.coefficients --> qmless.numerical([Numerical])
+    qmless.numerical --> qmless.fcc([Fourier Coefficient Correlation])
+    qmless.numerical --> qmless.fingerprint([Fourier Fingerprints])
+    qmless --> qmless.models([Models])
+    qmless --> qmless.expr([Expressibility])
+    qmless --> qmless.ent([Entanglement])
+    qmless.ent --> qmless.mw([Meyer Wallach])
+    qmless.ent --> qmless.re([Relative Entropy])
+    qmless.ent --> qmless.bell([Bell Measurement])
+    qmless.ent --> qmless.ef([Entanglement of Formation])
+    qmless.ent --> qmless.ce([Concentratable Entanglement])
 
-    classDef l1 fill:#1f8f5a,stroke:#1f8f5a,color:#d4f7e8,rx:10,ry:10
-    classDef l2 fill:#2fb170,stroke:#2fb170,color:#d4f7e8,rx:10,ry:10
-    classDef l3 fill:#58e3a6,stroke:#58e3a6,color:#272a35,rx:10,ry:10
-    classDef l4 fill:#a8f0d1,stroke:#a8f0d1,color:#272a35,rx:10,ry:10
+    classDef l1 fill:#1f8f5a,stroke:#1f8f5a,color:#d4f7e8
+    classDef l2 fill:#2fb170,stroke:#2fb170,color:#d4f7e8
+    classDef l3 fill:#58e3a6,stroke:#58e3a6,color:#272a35
+    classDef l4 fill:#a8f0d1,stroke:#a8f0d1,color:#272a35
 
     class qmless l1
     class qmless.ansaetze,qmless.coefficients,qmless.models,qmless.expr,qmless.ent l2
-    class qmless.blocks,qmless.gates,qmless.numerical,qmless.analytical,qmless.mw,qmless.ef,qmless.re,qmless.ce l3
+    class qmless.blocks,qmless.gates,qmless.numerical,qmless.analytical,qmless.mw,qmless.bell,qmless.ef,qmless.re,qmless.ce l3
     class qmless.unitary,qmless.pulse,qmless.topo,qmless.fcc,qmless.fingerprint l4
 ```
 
