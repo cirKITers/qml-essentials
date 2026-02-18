@@ -6,7 +6,7 @@ authors = [
     { name = "Melvin Strobl", email = "melvin.strobl@kit.edu" },
     { name = "Maja Franz", email = "maja.franz@oth-regensburg.de" },
 ]
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.11,<3.13"
 readme = "README.md"
 license = "MIT"
 maintainers = [{ name = "Melvin Strobl", email = "melvin.strobl@kit.edu" }]
@@ -16,11 +16,22 @@ keywords = [
     "qml",
 ]   
 dependencies = [
-    "pennylane>=0.40.0,<0.41.0",
-    "dill>=0.4.0,<0.5",
-    "jax<=0.4.28",
-    "jaxlib<=0.4.28",
+    "pennylane",
+    "jax==0.7.1",
+    "jaxlib==0.7.1",
     "optax<=0.2.5",
+]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Physics",
 ]
 
 [project.urls]
@@ -30,23 +41,23 @@ Documentation = "https://cirkiters.github.io/qml-essentials/"
 
 [dependency-groups]
 dev = [
-    "black>=25.1.0,<26",
-    "pytest>=8.3.5,<9",
-    "flake8>=7.2.0,<8",
-    "pre-commit>=4.2.0,<5",
-    "pytest-cov>=6.0.0,<7",
-    "licensecheck>=2025.1.0,<2026",
-    "matplotlib>=3.10.3,<4",
-    "pytest-xdist>=3.6.1,<4",
-    "coverage>=7.8.0,<8",
+    "black>=25.12.0",
+    "coverage>=7.13.1",
+    "flake8>=7.3.0",
+    "licensecheck>=2025.1.0",
+    "matplotlib>=3.10.8",
+    "pre-commit>=4.5.1",
+    "pytest>=8.4.2",
+    "pytest-cov>=6.3.0",
+    "pytest-xdist>=3.8.0",
 ]
 docs = [
-    "mkdocs>=1.6.1,<2",
-    "mkdocs-material>=9.6.14,<10",
-    "mkdocs-glightbox>=0.4.0,<0.5",
-    "mkdocstrings-python>=1.16.10,<2",
-    "markdown-include>=0.8.1,<0.9",
-    "ipykernel>=6.29.5,<7",
+    "ipykernel>=6.31.0",
+    "markdown-include>=0.8.1",
+    "mkdocs>=1.6.1",
+    "mkdocs-glightbox>=0.4.0",
+    "mkdocs-material>=9.7.1",
+    "mkdocstrings-python>=1.19.0",
 ]
 
 [build-system]
@@ -62,3 +73,6 @@ markers = [
     "unittest: Tests with an assertion to check the output of a particular unit",
     "smoketest: Tests that just run a method and check if it not fails",
 ]
+
+[tool.uv.sources]
+pennylane = { git = "https://github.com/PennyLaneAI/pennylane", rev = "master" }

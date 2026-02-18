@@ -348,9 +348,9 @@ class Block:
 
 
 class Ansaetze:
-    def get_available():
-        return [
-            Ansaetze.No_Ansatz,
+    def get_available(parameterized_only=False):
+        # list of parameterized ansaetze
+        ansaetze = [
             Ansaetze.Circuit_1,
             Ansaetze.Circuit_2,
             Ansaetze.Circuit_3,
@@ -372,8 +372,16 @@ class Ansaetze:
             Ansaetze.No_Entangling,
             Ansaetze.Strongly_Entangling,
             Ansaetze.Hardware_Efficient,
-            Ansaetze.GHZ,
         ]
+
+        # extend by the non-parameterized ones
+        if not parameterized_only:
+            ansaetze += [
+                Ansaetze.No_Ansatz,
+                Ansaetze.GHZ,
+            ]
+
+        return ansaetze
 
     class No_Ansatz(DeclarativeCircuit):
         @staticmethod

@@ -3,6 +3,7 @@ on:
   pull_request:
     types: [review_requested]
   workflow_call:
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
