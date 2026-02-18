@@ -2,22 +2,23 @@ find . -type f -name '*_light.png' -print0 | while IFS= read -r -d '' file; do
   out="${file%_light.png}_dark.png"
   tmp="${out}.tmp.$$"
 
-  # create converted image in a temporary file
+  # create the inverted image in a temporary file
   magick "$file" -transparent white -channel RGB -negate "$tmp" || {
     rm -f "$tmp"
     continue
   }
 
   if [ -f "$out" ]; then
-    # compare existing and new; if identical, discard temp
-    if diff -q "$out" "$tmp" >/dev/null 2>&1; then
-      echo "$file -> $out (identical)"
+    # compare raw pixel data only (strip all metadata via -strip + RGBA stream)
+    hash_old=$(magick "$out" -strip RGBA:- 2>/dev/null | sha256sum | awk '{print $1}')
+    hash_new=$(magick "$tmp" -strip RGBA:- 2>/dev/null | sha256sum | awk '{print $1}')
+    if [ "$hash_old" = "$hash_new" ]; then
+      echo "$file -> $out (identical pixels, skipping)"
       rm -f "$tmp"
       continue
     fi
   fi
 
   echo "$file -> $out"
-  # move new file into place (overwriting only when different or not present)
   mv -f "$tmp" "$out"
 done
