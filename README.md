@@ -65,6 +65,8 @@ flowchart LR
     classDef l3 fill:#58e3a6,stroke:#58e3a6,color:#272a35
     classDef l4 fill:#a8f0d1,stroke:#a8f0d1,color:#272a35
 
+    linkStyle default stroke-width:2px
+
     class qmless l1
     class qmless.ansaetze,qmless.coefficients,qmless.models,qmless.expr,qmless.ent l2
     class qmless.blocks,qmless.gates,qmless.numerical,qmless.analytical,qmless.mw,qmless.bell,qmless.ef,qmless.re,qmless.ce l3
