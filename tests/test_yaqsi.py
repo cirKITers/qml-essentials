@@ -481,3 +481,176 @@ def test_noise_density_is_valid() -> None:
     purity = jnp.real(jnp.trace(rho @ rho))
     assert purity <= 1.0 + 1e-10, f"purity {purity} > 1"
     assert purity < 1.0 - 1e-6, f"purity {purity} ≈ 1: channel had no effect?"
+
+
+# ---------------------------------------------------------------------------
+# Batched execution tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unittest
+def test_batched_expval_matches_sequential() -> None:
+    """
+    Batched execute (in_axes) must produce identical results to calling
+    execute sequentially for each sample.
+
+    This is the primary correctness check: jax.vmap must not introduce
+    any numerical difference vs. the single-sample path.
+    """
+    script = QuantumScript(f=parameterized_circuit)
+    thetas = jnp.array([0.1, 0.5, 1.0, 1.5, 2.0])
+
+    sequential = jnp.stack(
+        [script.execute(type="expval", obs=[PauliZ(0)], args=(t,)) for t in thetas]
+    )
+    batched = script.execute(
+        type="expval",
+        obs=[PauliZ(0)],
+        args=(thetas,),
+        in_axes=(0,),
+    )
+
+    assert (
+        batched.shape == sequential.shape
+    ), f"Shape mismatch: batched {batched.shape} vs sequential {sequential.shape}"
+    assert jnp.allclose(batched, sequential, atol=1e-6)
+
+
+@pytest.mark.unittest
+def test_batched_expval_values() -> None:
+    """
+    RX(θ)|0⟩ → ⟨Z⟩ = cos(θ) must hold element-wise across a batch.
+
+    Mirrors the B_P (parameter-batch) axis from model.py where params
+    has shape (n_layers, n_params, B_P) and in_axes=(2, ...).
+    """
+    script = QuantumScript(f=parameterized_circuit)
+    thetas = jnp.linspace(0.0, jnp.pi, 9)
+
+    results = script.execute(
+        type="expval",
+        obs=[PauliZ(0)],
+        args=(thetas,),
+        in_axes=(0,),
+    )
+
+    assert results.shape == (9, 1), f"Expected (9,1), got {results.shape}"
+    assert jnp.allclose(results[:, 0], jnp.cos(thetas), atol=1e-6)
+
+
+@pytest.mark.unittest
+def test_batched_probs() -> None:
+    """
+    Batch over two extreme angles: RX(0)|0⟩ = |0⟩ and RX(π)|0⟩ ≈ i|1⟩.
+    Probabilities must be [1,0] and [0,1] respectively.
+    """
+    script = QuantumScript(f=parameterized_circuit)
+    thetas = jnp.array([0.0, jnp.pi])
+
+    results = script.execute(type="probs", args=(thetas,), in_axes=(0,))
+
+    assert results.shape == (2, 2), f"Expected (2,2), got {results.shape}"
+    assert jnp.allclose(results[0], jnp.array([1.0, 0.0]), atol=1e-6)
+    assert jnp.allclose(results[1], jnp.array([0.0, 1.0]), atol=1e-6)
+
+
+@pytest.mark.unittest
+def test_batched_gradient() -> None:
+    """
+    jax.grad must compose correctly with jax.vmap through execute.
+
+    d/dθ_i mean_i(⟨Z⟩_i) = -sin(θ_i) / B, which validates that the
+    gradient flows through the batched path without breaking.
+    This is the core requirement for training with batched parameters.
+    """
+    script = QuantumScript(f=parameterized_circuit)
+    thetas = jnp.array([0.3, 0.7, 1.2])
+
+    def loss(thetas):
+        results = script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(thetas,),
+            in_axes=(0,),
+        )
+        return jnp.mean(results)
+
+    grad = jax.grad(loss)(thetas)
+    expected = -jnp.sin(thetas) / len(thetas)
+    assert jnp.allclose(grad, expected, atol=1e-6)
+
+
+@pytest.mark.unittest
+def test_batched_broadcast_none_axis() -> None:
+    """
+    in_axes=None for an argument means it is broadcast across the batch
+    (not sliced), matching jax.vmap convention.
+
+    We pass a fixed observable circuit with no args and a separately
+    batched scalar to confirm None is handled without error.
+    """
+
+    def two_arg_circuit(theta, phi):
+        RX(theta, wires=0)
+        RX(phi, wires=0)
+
+    script = QuantumScript(f=two_arg_circuit)
+    thetas = jnp.linspace(0.0, 1.0, 5)  # batched — axis 0
+    phi = jnp.array(0.5)  # broadcast — None
+
+    results = script.execute(
+        type="expval",
+        obs=[PauliZ(0)],
+        args=(thetas, phi),
+        in_axes=(0, None),
+    )
+
+    # Each result should equal cos(theta + phi) = cos(theta + 0.5)
+    expected = jnp.array(
+        [
+            script.execute(type="expval", obs=[PauliZ(0)], args=(t, phi))[0]
+            for t in thetas
+        ]
+    )
+    assert results.shape == (5, 1), f"Expected (5,1), got {results.shape}"
+    assert jnp.allclose(results[:, 0], expected, atol=1e-6)
+
+
+@pytest.mark.unittest
+def test_batched_in_axes_mismatch_raises() -> None:
+    """in_axes length != args length must raise a clear ValueError."""
+    script = QuantumScript(f=parameterized_circuit)
+    with pytest.raises(ValueError, match="in_axes has"):
+        script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(jnp.array([0.5]),),
+            in_axes=(0, None),  # 2 entries but only 1 arg
+        )
+
+
+@pytest.mark.unittest
+def test_batched_multi_qubit() -> None:
+    """
+    Batching works on multi-qubit circuits (GHZ family).
+
+    We batch a rotation angle applied before the Bell circuit and verify
+    the output probabilities change as expected.  When theta=0 we get the
+    standard Bell state; when theta=pi/2 the H·RX(π/2) combination
+    produces a different distribution — we just check the batch dimension
+    and that probabilities sum to 1.
+    """
+
+    def rotated_bell(theta):
+        RX(theta, wires=0)
+        H(wires=0)
+        CX(wires=[0, 1])
+
+    script = QuantumScript(f=rotated_bell)
+    thetas = jnp.linspace(0.0, jnp.pi, 4)
+
+    results = script.execute(type="probs", args=(thetas,), in_axes=(0,))
+
+    assert results.shape == (4, 4), f"Expected (4,4), got {results.shape}"
+    # Each probability vector must sum to 1
+    assert jnp.allclose(results.sum(axis=1), jnp.ones(4), atol=1e-8)
