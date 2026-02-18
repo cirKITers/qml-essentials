@@ -519,7 +519,7 @@ def test_fcc() -> None:
     """
     test_cases = [
         {
-            "circuit_type": "Circuit_15",
+            "circuit_type": "Circuit_20",
             "fcc": 0.004,
         },
         {

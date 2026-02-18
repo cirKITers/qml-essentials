@@ -365,6 +365,7 @@ class Ansaetze:
             Ansaetze.Circuit_17,
             Ansaetze.Circuit_18,
             Ansaetze.Circuit_19,
+            Ansaetze.Circuit_20,
             Ansaetze.No_Entangling,
             Ansaetze.Strongly_Entangling,
             Ansaetze.Hardware_Efficient,
