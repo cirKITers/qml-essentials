@@ -33,7 +33,7 @@ to install our package from [PyPI](https://pypi.org/project/qml-essentials/).
 
 You can find details on how to use it and further documentation on the corresponding [Github Page](https://cirkiters.github.io/qml-essentials/).
 
-## 📦 Structure
+## 📦 Package Structure
 
 The following diagram provides an overview on how the different components within this package depend on each other.
 
