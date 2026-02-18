@@ -16,40 +16,40 @@ As the structure of the different classes used to realize pulse and unitary gate
 ![Gate Structure](figures/pulses_structure_dark.png#center#only-dark)
 
 ```python
-from qml_essentials.ansaetze import Gates
+from qml_essentials.gates import Gates
 ```
 
-::: qml_essentials.ansaetze.Gates
+::: qml_essentials.gates.Gates
     options:
       heading_level: 3
 
 ```python
-from qml_essentials.ansaetze import UnitaryGates
+from qml_essentials.gates import UnitaryGates
 ```
 
 ### Unitary Gates
 
-::: qml_essentials.ansaetze.UnitaryGates
+::: qml_essentials.gates.UnitaryGates
     options:
       heading_level: 4
 
 ### Pulse Gates
 
 ```python
-from qml_essentials.ansaetze import PulseGates
+from qml_essentials.gates import PulseGates
 ```
 
-::: qml_essentials.ansaetze.PulseGates
+::: qml_essentials.gates.PulseGates
     options:
       heading_level: 4
 
 ### Pulse Structure
 
 ```python
-from qml_essentials.ansaetze import PulseParams
+from qml_essentials.gates import PulseParams
 ```
 
-::: qml_essentials.ansaetze.PulseParams
+::: qml_essentials.gates.PulseParams
     options:
       heading_level: 4
 
