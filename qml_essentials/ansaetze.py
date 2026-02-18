@@ -577,7 +577,7 @@ class Ansaetze:
                     gate=Gates.CX,
                     topology=Topology.stairs,
                     reverse=False,
-                    offset=lambda n: n - 1,
+                    offset=lambda n: n - 2,
                     span=1,
                     wrap=True,
                 ),
