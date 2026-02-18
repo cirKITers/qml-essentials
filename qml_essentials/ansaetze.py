@@ -383,7 +383,7 @@ class Ansaetze:
 
         return ansaetze
 
-    class No_Ansatz(Circuit):
+    class No_Ansatz(DeclarativeCircuit):
         @staticmethod
         def structure():
             return ()
