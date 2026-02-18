@@ -17,10 +17,22 @@ keywords = [
 ]   
 dependencies = [
     "pennylane",
-    "jax<=0.4.28",
-    "jaxlib<=0.4.28",
-    "optax<=0.2.5",
+    "jax<=0.7.1",
+    "jaxlib<=0.7.1",
     "dill>=0.4.0",
+    "optax<=0.2.5",
+]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Physics",
 ]
 
 [project.urls]
