@@ -255,3 +255,49 @@ class Expressibility:
             kl_divergence[idx] = jnp.sum(rel_entr(p, haar_dist))
 
         return kl_divergence
+
+    def kl_divergence_to_Haar(
+        model: Model,
+        seed: int,
+        n_samples: int,
+        n_bins: int,
+        n_input_samples: int = 0,
+        input_domain: List[float] = None,
+        scale: bool = False,
+        **kwargs: Any,
+    ) -> float:
+        """
+        Shortcut method to compute the KL-Divergence bewteen a model and the
+        Haar distribution. The basic steps are:
+            - Sample the state fidelities for randomly initialised parameters.
+            - Calculates the KL divergence between the sampled probability and
+              the Haar probability distribution.
+
+        Args:
+            model (Model): Function that models the quantum circuit.
+            seed (int): Random number generator seed.
+            n_samples (int): Number of parameter sets to generate.
+            n_bins (int): Number of histogram bins.
+            n_input_samples (int): Number of input samples.
+            input_domain (List[float]): Input domain.
+            scale (bool): Whether to scale the number of samples and bins.
+            kwargs (Any): Additional keyword arguments for the model function.
+
+        Returns:
+            Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]: Tuple containing the
+                input samples, bin edges, and histogram values.
+        """
+        _, _, fidelities = Expressibility.state_fidelities(
+            model=model,
+            seed=seed,
+            n_samples=n_samples,
+            n_bins=n_bins,
+            n_input_samples=n_input_samples,
+            input_domain=input_domain,
+            scale=scale,
+            **kwargs,
+        )
+        _, haar_probs = Expressibility.haar_integral(
+            model.n_qubits, n_bins=n_bins, scale=scale
+        )
+        return Expressibility.kullback_leibler_divergence(fidelities, haar_probs)
