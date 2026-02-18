@@ -566,7 +566,7 @@ def test_fourier_fingerprint() -> None:
     """
     test_cases = [
         {
-            "circuit_type": "Circuit_15",
+            "circuit_type": "Circuit_20",
         },
         {
             "circuit_type": "Circuit_19",
