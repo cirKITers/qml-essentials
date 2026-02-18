@@ -200,6 +200,9 @@ def test_control_angles():
 
     for ansatz in Ansaetze.get_available():
         ansatz = ansatz.__name__
+
+        if ansatz in ignore:
+            continue
         model = Model(n_qubits=4, n_layers=1, circuit_type=ansatz, data_reupload=False)
 
         # slice the first (only) layer of this model to get the params per layer
@@ -211,8 +214,6 @@ def test_control_angles():
             assert np.allclose(
                 ctrl_params, model.params[0, control_params[ansatz] :]
             ), f"Ctrl. params are not returned as expected for circuit {ansatz}."
-        elif ansatz in ignore:
-            continue
         else:
             assert (
                 ctrl_params.size == 0
