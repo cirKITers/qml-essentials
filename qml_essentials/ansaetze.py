@@ -578,29 +578,6 @@ class Ansaetze:
                     gate=Gates.CX,
                     topology=Topology.stairs,
                     reverse=False,
-                    offset=lambda n: n - 2,
-                    span=1,
-                    wrap=True,
-                ),
-            )
-
-    class Circuit_20(DeclarativeCircuit):
-        @staticmethod
-        def structure():
-            return (
-                Block(gate=Gates.RY),
-                Block(
-                    gate=Gates.CX,
-                    topology=Topology.stairs,
-                    wrap=True,
-                    reverse=True,
-                    mirror=False,
-                ),
-                Block(gate=Gates.RY),
-                Block(
-                    gate=Gates.CX,
-                    topology=Topology.stairs,
-                    reverse=False,
                     mirror=False,
                     offset=lambda n: n - 1,
                     span=3,
@@ -667,6 +644,29 @@ class Ansaetze:
                     topology=Topology.stairs,
                     wrap=True,
                     mirror=False,
+                ),
+            )
+
+    class Circuit_20(DeclarativeCircuit):
+        @staticmethod
+        def structure():
+            return (
+                Block(gate=Gates.RY),
+                Block(
+                    gate=Gates.CX,
+                    topology=Topology.stairs,
+                    wrap=True,
+                    reverse=True,
+                    mirror=False,
+                ),
+                Block(gate=Gates.RY),
+                Block(
+                    gate=Gates.CX,
+                    topology=Topology.stairs,
+                    reverse=False,
+                    offset=lambda n: n - 2,
+                    span=1,
+                    wrap=True,
                 ),
             )
 
