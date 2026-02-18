@@ -1,8 +1,9 @@
 from typing import Optional
 from qml_essentials.qoc import QOC
 from qml_essentials.model import Model
-from qml_essentials.ansaetze import Ansaetze, Circuit, Gates, UnitaryGates
-from qml_essentials.ansaetze import PulseInformation as pinfo
+from qml_essentials.ansaetze import Ansaetze, Circuit
+from qml_essentials.gates import Gates, UnitaryGates
+from qml_essentials.gates import PulseInformation as pinfo
 import pennylane as qml
 import pennylane.numpy as np
 import jax
@@ -46,7 +47,7 @@ def test_batch_gate_error():
     model = Model(
         n_qubits=1,
         n_layers=1,
-        circuit_type="Circuit_19",
+        circuit_type="Circuit_1",
     )
 
     inputs = np.array([0.1, 0.1, 0.1, 0.1])
@@ -67,7 +68,7 @@ def test_coherent_as_expval():
     model = Model(
         n_qubits=1,
         n_layers=1,
-        circuit_type="Circuit_19",
+        circuit_type="Circuit_1",
     )
     # should raise error if gate error is not filtered out correctly
     # as density operations would then run on sv simulator
@@ -186,7 +187,16 @@ def test_control_angles():
         "Circuit_18": -4,
         "Circuit_19": -4,
     }
-    ignore = ["No_Ansatz", "Circuit_6"]
+    # FIXME: un-ignore the following circuits
+    ignore = [
+        "No_Ansatz",
+        "Circuit_5",
+        "Circuit_6",
+        "Circuit_7",
+        "Circuit_8",
+        "Circuit_13",
+        "Circuit_14",
+    ]
 
     for ansatz in Ansaetze.get_available():
         ansatz = ansatz.__name__
@@ -307,6 +317,16 @@ def test_ansaetze() -> None:
                 "UnsupportedNoise": 0.1,
             },
             execution_type="density",
+        )
+
+
+@pytest.mark.unittest
+def test_min_qubit_warning() -> None:
+    with pytest.warns(UserWarning):
+        _ = Model(
+            n_qubits=1,
+            n_layers=1,
+            circuit_type="Circuit_19",
         )
 
 

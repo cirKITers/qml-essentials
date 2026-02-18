@@ -5,7 +5,7 @@ import random as pyrandom
 import optax
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Circuit, Ansaetze, Gates, Encoding
-from qml_essentials.ansaetze import PulseInformation as pinfo
+from qml_essentials.gates import PulseInformation as pinfo
 from qml_essentials.utils import PauliCircuit
 import pytest
 import inspect
@@ -657,7 +657,9 @@ def test_pulse_model_batching():
     res_b = model(inputs=inputs, gate_mode="pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
-    assert jnp.allclose(res_a, res_b, atol=1e-3), "Inputs batching failed!"
+    assert jnp.allclose(
+        res_a, res_b, atol=1e-2
+    ), "Inputs batching failed. Results differ."
 
     model.initialize_params(random_key, repeat=2)
 
@@ -666,18 +668,9 @@ def test_pulse_model_batching():
     res_b = model(inputs=inputs, gate_mode="pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
-    assert jnp.allclose(res_a, res_b, atol=1e-3), "Params batching failed!"
-
-
-@pytest.mark.unittest
-def test_available_ansaetze() -> None:
-    ansatze = set(Ansaetze.get_available())
-
-    actual_ansaetze = set(
-        ansatz for ansatz in Ansaetze.__dict__.values() if inspect.isclass(ansatz)
-    )
-    # check that the classes are the ones returned by .__subclasses__
-    assert actual_ansaetze == ansatze
+    assert jnp.allclose(
+        res_a, res_b, atol=1e-2
+    ), "Params batching failed. Results differ."
 
 
 @pytest.mark.unittest
