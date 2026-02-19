@@ -553,10 +553,7 @@ class QuantumScript:
             # Using elementwise multiply + sum avoids materializing O @ ρ.
             rho_T = rho.T
             return jnp.array(
-                [
-                    jnp.real(jnp.sum(ob.lifted_matrix(n_qubits) * rho_T))
-                    for ob in obs
-                ]
+                [jnp.real(jnp.sum(ob.lifted_matrix(n_qubits) * rho_T)) for ob in obs]
             )
 
         raise ValueError(
@@ -733,6 +730,22 @@ class QuantumScript:
             )
 
         # Step 3 — vmap over the requested axes.
+        #
+        # Note on JIT: we intentionally do NOT wrap this in jax.jit here.
+        # Circuit functions (e.g. Model._variational) commonly use
+        # Python-level control flow that depends on array values
+        # (``if data_reupload[q, idx]: ...``).  This is fine under vmap
+        # (which keeps concrete values), but jit turns all inputs into
+        # abstract tracers and raises TracerBoolConversionError.
+        #
+        # Users whose circuit functions are JIT-compatible can opt in by
+        # wrapping the execute call themselves::
+        #
+        #     jax.jit(lambda args: script.execute(..., args=args, in_axes=...))
+        #
+        # The vmap alone already produces a single fused XLA computation
+        # for the batch — the main remaining overhead is Python-level tape
+        # re-recording during tracing, which happens once per vmap call.
         return jax.vmap(_single_execute, in_axes=in_axes)(*args)
 
     # -- circuit drawing ------------------------------------------------

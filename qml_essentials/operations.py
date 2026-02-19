@@ -530,6 +530,39 @@ class CCX(Operation):
         super().__init__(wires=wires)
 
 
+class CSWAP(Operation):
+    """Controlled-SWAP (Fredkin) gate.
+
+    Swaps the two target qubits conditioned on the control qubit being |1⟩.
+
+    Args on construction:
+        wires: ``[control, target0, target1]``.
+    """
+
+    _matrix = jnp.array(
+        [
+            [1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1],
+        ],
+        dtype=jnp.complex128,
+    )
+    is_controlled = True
+
+    def __init__(self, wires: List[int] = [0, 1, 2]) -> None:
+        """Initialise a Controlled-SWAP (Fredkin) gate.
+
+        Args:
+            wires: Three-element list ``[control, target0, target1]``.
+        """
+        super().__init__(wires=wires)
+
+
 class CY(Operation):
     """Controlled-Y gate.
 
