@@ -16,10 +16,10 @@ keywords = [
     "qml",
 ]   
 dependencies = [
-    "pennylane",
-    "jax==0.7.1",
-    "jaxlib==0.7.1",
-    "optax<=0.2.5",
+    "diffrax>=0.7.2",
+    "jax>=0.9.0.1",
+    "jaxlib>=0.9.0.1",
+    "optax>=0.2.7",
 ]
 classifiers = [
     "Environment :: Console",
@@ -73,6 +73,3 @@ markers = [
     "unittest: Tests with an assertion to check the output of a particular unit",
     "smoketest: Tests that just run a method and check if it not fails",
 ]
-
-[tool.uv.sources]
-pennylane = { git = "https://github.com/PennyLaneAI/pennylane", rev = "master" }

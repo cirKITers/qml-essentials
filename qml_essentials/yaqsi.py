@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from fractions import Fraction
-from itertools import cycle
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -136,10 +134,21 @@ def build_parity_observable(
 
 
 # ===================================================================
+# EvolvedOp – reusable class for evolved unitaries
+# ===================================================================
+
+
+class EvolvedOp(Operation):
+    """Operation wrapping a unitary obtained from Hamiltonian evolution."""
+
+    pass
+
+
+# ===================================================================
 # evolve – Hamiltonian time evolution (static & time-dependent)
 # ===================================================================
 
-from jax.experimental.ode import odeint as _odeint
+import diffrax
 
 
 def evolve(hamiltonian, **odeint_kwargs):
@@ -160,8 +169,8 @@ def evolve(hamiltonian, **odeint_kwargs):
         gate([A, sigma], T)    # U via ODE: dU/dt = -i f(p,t) H · U
 
     The time-dependent case solves the Schrödinger equation numerically
-    using ``jax.experimental.ode.odeint`` (Dopri5 adaptive Runge-Kutta),
-    matching PennyLane's ``ParametrizedEvolution`` implementation.
+    using ``diffrax.diffeqsolve`` with a Dopri5 adaptive Runge-Kutta
+    solver, matching PennyLane's ``ParametrizedEvolution`` implementation.
 
     All computations are pure JAX and fully differentiable with
     ``jax.grad``.
@@ -169,8 +178,10 @@ def evolve(hamiltonian, **odeint_kwargs):
     Args:
         hamiltonian: Either a :class:`Hermitian` (static evolution) or a
             :class:`ParametrizedHamiltonian` (time-dependent evolution).
-        **odeint_kwargs: Extra keyword arguments forwarded to
-            ``jax.experimental.ode.odeint`` (e.g. ``atol``, ``rtol``).
+        **odeint_kwargs: Extra keyword arguments.  Recognised keys:
+
+            * ``atol``, ``rtol`` — absolute/relative tolerances for the
+              adaptive step-size controller (default ``1.4e-8``).
 
     Returns:
         A callable gate factory.  Signature depends on the mode:
@@ -199,7 +210,7 @@ def _evolve_static(hermitian: Hermitian) -> Callable:
 
     def _apply(t: float, wires: Union[int, List[int]] = 0) -> Operation:
         U = jax.scipy.linalg.expm(-1j * t * H_mat)
-        return type("EvolvedOp", (Operation,), {})(wires=wires, matrix=U)
+        return EvolvedOp(wires=wires, matrix=U)
 
     return _apply
 
@@ -208,22 +219,66 @@ def _evolve_parametrized(ph: ParametrizedHamiltonian, **odeint_kwargs) -> Callab
     """Gate factory for time-dependent Hamiltonian evolution.
 
     Solves the matrix ODE ``dU/dt = -i f(params, t) H · U`` with
-    ``U(0) = I`` using ``jax.experimental.ode.odeint`` (Dopri5
-    adaptive RK), matching PennyLane's ``ParametrizedEvolution``.
+    ``U(0) = I`` using ``diffrax.diffeqsolve`` (Dopri5 adaptive RK),
+    matching PennyLane's ``ParametrizedEvolution``.
+
+    Performance improvements over the previous ``jax.experimental.ode``
+    implementation:
+
+    * Uses **diffrax** — a modern, well-maintained JAX ODE library with
+      better XLA compilation, adjoint methods, and step-size control.
+    * The ODE solve is wrapped in ``jax.jit`` so repeated calls with
+      different parameters reuse the compiled XLA computation.
+    * Pre-computes ``-i·H`` once instead of multiplying at every RHS
+      evaluation.
+    * Avoids dynamic ``jnp.where`` branching for the time span.
 
     Args:
         ph: A :class:`ParametrizedHamiltonian` holding the coefficient
             function, the Hamiltonian matrix, and wire indices.
-        **odeint_kwargs: Forwarded to ``odeint`` (``atol``, ``rtol``, …).
+        **odeint_kwargs: ``atol`` and ``rtol`` for the step-size controller.
     """
     H_mat = ph.H_mat
     coeff_fn = ph.coeff_fn
     wires = ph.wires
     dim = H_mat.shape[0]
 
-    # Default tolerances matching PennyLane
-    odeint_kwargs.setdefault("atol", 1.4e-8)
-    odeint_kwargs.setdefault("rtol", 1.4e-8)
+    # Pre-compute -i·H once (avoids repeated multiplication in RHS)
+    neg_iH = -1j * H_mat
+
+    # Extract tolerances, default to PennyLane values
+    atol = odeint_kwargs.pop("atol", 1.4e-8)
+    rtol = odeint_kwargs.pop("rtol", 1.4e-8)
+
+    # Pre-build solver and step-size controller (stateless, reusable)
+    solver = diffrax.Dopri5()
+    stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
+
+    # JIT-compiled ODE solve kernel — the core performance win.
+    # This is traced once and reused for every call with different params/T.
+    @jax.jit
+    def _solve(params, t0, t1):
+        """Solve dU/dt = f(params,t) · (-iH) · U from t0 to t1."""
+
+        def rhs(t, y, args):
+            return coeff_fn(args, t) * (neg_iH @ y)
+
+        y0 = jnp.eye(dim, dtype=jnp.complex128)
+
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(rhs),
+            solver,
+            t0=t0,
+            t1=t1,
+            dt0=None,  # let the controller choose the initial step
+            y0=y0,
+            args=params,
+            stepsize_controller=stepsize_controller,
+            max_steps=4096,
+        )
+
+        # sol.ys has shape (1, dim, dim) for SaveAt(t1=True) (default)
+        return sol.ys[0]
 
     def _apply(coeff_args, T) -> Operation:
         """Evolve under the time-dependent Hamiltonian.
@@ -242,28 +297,18 @@ def _evolve_parametrized(ph: ParametrizedHamiltonian, **odeint_kwargs) -> Callab
         # one per term.  Single term → unpack the first.
         params = coeff_args[0] if isinstance(coeff_args, (list, tuple)) else coeff_args
 
-        # Build time span [0, T] (or [t0, t1] if T is a sequence)
+        # Build time span — resolve at Python level to avoid traced branching
         T_arr = jnp.asarray(T, dtype=jnp.float64)
-        t_span = jnp.where(
-            T_arr.ndim == 0,
-            jnp.stack([0.0, T_arr]),
-            T_arr,
-        )
+        if T_arr.ndim == 0:
+            t0 = jnp.float64(0.0)
+            t1 = T_arr
+        else:
+            t0 = T_arr[0]
+            t1 = T_arr[1]
 
-        # Initial condition: U(0) = I
-        y0 = jnp.eye(dim, dtype=jnp.complex128)
+        U = _solve(params, t0, t1)
 
-        # RHS: dU/dt = -i f(params, t) H · U
-        def rhs(y, t):
-            return -1j * coeff_fn(params, t) * (H_mat @ y)
-
-        # Solve the ODE
-        sol = _odeint(rhs, y0, t_span, **odeint_kwargs)
-
-        # sol has shape (len(t_span), dim, dim); take the final time slice
-        U = sol[-1]
-
-        return type("EvolvedOp", (Operation,), {})(wires=wires, matrix=U)
+        return EvolvedOp(wires=wires, matrix=U)
 
     return _apply
 

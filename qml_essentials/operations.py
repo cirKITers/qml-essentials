@@ -2,8 +2,6 @@ from typing import Callable, List, Optional, Union
 
 import jax
 import jax.numpy as jnp
-import jax.scipy.linalg
-import numpy as np
 
 from qml_essentials.tape import active_tape, recording  # noqa: F401 (re-export)
 
