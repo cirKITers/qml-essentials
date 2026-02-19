@@ -7,11 +7,11 @@ import jax.numpy as jnp
 import jax.scipy.linalg
 
 from qml_essentials.operations import (
-    _set_tape,
     Hermitian,
     Operation,
     KrausChannel,
 )
+from qml_essentials.tape import recording
 
 # Enable 64-bit precision (important for quantum simulation accuracy)
 jax.config.update("jax_enable_x64", True)
@@ -100,6 +100,11 @@ class QuantumScript:
     def _record(self, *args, **kwargs) -> List[Operation]:
         """Run the circuit function and collect the recorded operations.
 
+        Uses :func:`~qml_essentials.tape.recording` as a context manager so
+        that the tape is always cleaned up — even if the circuit function
+        raises — and nested recordings (e.g. from ``_execute_batched``) each
+        get their own independent tape.
+
         Args:
             *args: Positional arguments forwarded to the circuit function.
             **kwargs: Keyword arguments forwarded to the circuit function.
@@ -108,12 +113,8 @@ class QuantumScript:
             List of :class:`~qml_essentials.operations.Operation` instances in
             the order they were instantiated.
         """
-        tape: List[Operation] = []
-        _set_tape(tape)
-        try:
+        with recording() as tape:
             self.f(*args, **kwargs)
-        finally:
-            _set_tape(None)
         return tape
 
     # -- infer qubit count from the tape --------------------------------

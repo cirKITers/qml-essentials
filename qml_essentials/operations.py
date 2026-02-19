@@ -1,34 +1,12 @@
-import threading
 from typing import List, Optional, Union
 
 import jax
 import jax.numpy as jnp
 
+from qml_essentials.tape import active_tape, recording  # noqa: F401 (re-export)
+
 # Enable 64-bit precision (important for quantum simulation accuracy)
 jax.config.update("jax_enable_x64", True)
-
-# ---------------------------------------------------------------------------
-# Global tape (thread-local so that concurrent scripts don't interfere)
-# ---------------------------------------------------------------------------
-_tape_local = threading.local()
-
-
-def _active_tape() -> Optional[List["Operation"]]:
-    """Return the currently recording tape, or None.
-
-    Returns:
-        The active tape list if recording is in progress, otherwise ``None``.
-    """
-    return getattr(_tape_local, "tape", None)
-
-
-def _set_tape(tape: Optional[List["Operation"]]) -> None:
-    """Set (or clear) the thread-local recording tape.
-
-    Args:
-        tape: A list to record operations into, or ``None`` to stop recording.
-    """
-    _tape_local.tape = tape
 
 
 # ===================================================================
@@ -71,7 +49,7 @@ class Operation:
             self._matrix = matrix
 
         # If a tape is currently recording, append ourselves
-        tape = _active_tape()
+        tape = active_tape()
         if tape is not None:
             tape.append(self)
 
