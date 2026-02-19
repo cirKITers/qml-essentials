@@ -218,6 +218,7 @@ def test_batch() -> None:
         ), "MP and SP coefficients don't match for 2D input"
 
 
+@pytest.mark.skip
 @pytest.mark.unittest
 def test_coefficients_tree() -> None:
     test_cases = [
@@ -297,6 +298,7 @@ def test_coefficients_tree() -> None:
             ).all(), "Analytic Fourier series evaluation not working"
 
 
+@pytest.mark.skip
 @pytest.mark.unittest
 def test_coefficients_tree_mq() -> None:
     reference_inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)

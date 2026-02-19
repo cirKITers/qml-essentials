@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import reduce
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import diffrax
@@ -125,9 +126,7 @@ def build_parity_observable(
         tensor product and whose wires match the given qubits.
     """
     Z = PauliZ._matrix
-    mat = Z
-    for _ in range(len(qubit_group) - 1):
-        mat = jnp.kron(mat, Z)
+    mat = reduce(jnp.kron, [Z] * len(qubit_group))
     return Hermitian(matrix=mat, wires=qubit_group, record=False)
 
 
@@ -550,10 +549,14 @@ class QuantumScript:
             return jnp.real(jnp.diag(rho))
 
         if type == "expval":
-            # Tr(O ρ) — lift the observable to the full Hilbert space, then
-            # compute the trace of O·ρ directly.
+            # Tr(O ρ) = Σ_ij O_ij ρ_ji = Σ_ij O_ij (ρ^T)_ij
+            # Using elementwise multiply + sum avoids materializing O @ ρ.
+            rho_T = rho.T
             return jnp.array(
-                [jnp.real(jnp.trace(ob.lifted_matrix(n_qubits) @ rho)) for ob in obs]
+                [
+                    jnp.real(jnp.sum(ob.lifted_matrix(n_qubits) * rho_T))
+                    for ob in obs
+                ]
             )
 
         raise ValueError(

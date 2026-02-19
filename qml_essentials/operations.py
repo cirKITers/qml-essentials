@@ -1,4 +1,5 @@
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Tuple, Union
+from functools import lru_cache
 
 import jax
 import jax.numpy as jnp
@@ -9,6 +10,39 @@ from qml_essentials.tape import active_tape, recording  # noqa: F401 (re-export)
 # ===================================================================
 # Shared tensor-contraction helper
 # ===================================================================
+
+
+@lru_cache(maxsize=256)
+def _permutation_for_contraction(
+    total: int,
+    k: int,
+    target_axes: Tuple[int, ...],
+) -> Tuple[Tuple[int, ...], Tuple[int, ...]]:
+    """Pre-compute the contraction and permutation indices.
+
+    These are pure functions of ``(total, k, target_axes)`` and never change
+    for a given gate/wire combination.  Caching them avoids rebuilding
+    Python lists on every single gate application — a measurable overhead
+    when circuits have hundreds of gates.
+
+    Args:
+        total: Total rank of the tensor (``n`` for states, ``2n`` for density
+            matrices).
+        k: Number of qubits the gate acts on.
+        target_axes: The axes to contract against (as a tuple for hashability).
+
+    Returns:
+        ``(contract_axes, perm)`` — the axes to pass to ``jnp.tensordot`` and
+        the permutation to restore the original axis order.
+    """
+    contract_axes = tuple(range(k, 2 * k))
+    target_set = set(target_axes)
+    remaining = [ax for ax in range(total) if ax not in target_set]
+    dest = list(target_axes) + remaining
+    perm = [0] * total
+    for src_pos, dst_pos in enumerate(dest):
+        perm[dst_pos] = src_pos
+    return contract_axes, tuple(perm)
 
 
 def _contract_and_restore(
@@ -24,6 +58,10 @@ def _contract_and_restore(
     ``jnp.tensordot``, the output axes are permuted back so that the
     contracted axes appear in their original positions.
 
+    The permutation indices are cached via :func:`_permutation_for_contraction`
+    so that the Python-level list construction only happens once per unique
+    ``(total, k, target_axes)`` combination.
+
     Args:
         tensor: Rank-*N* tensor (e.g. ``(2,)*n`` for states or ``(2,)*2n``
             for density matrices).
@@ -35,13 +73,10 @@ def _contract_and_restore(
         Updated tensor with the same rank as *tensor*, with the
         contracted axes restored to their original positions.
     """
-    total = tensor.ndim
-    out = jnp.tensordot(gate, tensor, axes=(list(range(k, 2 * k)), target_axes))
-    remaining = [ax for ax in range(total) if ax not in target_axes]
-    dest = list(target_axes) + remaining
-    perm = [0] * total
-    for src_pos, dst_pos in enumerate(dest):
-        perm[dst_pos] = src_pos
+    contract_axes, perm = _permutation_for_contraction(
+        tensor.ndim, k, tuple(target_axes)
+    )
+    out = jnp.tensordot(gate, tensor, axes=(contract_axes, target_axes))
     return jnp.transpose(out, perm)
 
 
