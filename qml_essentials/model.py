@@ -942,12 +942,21 @@ class Model:
         Returns:
             int: The circuit depth (longest path of gates in the circuit).
         """
+        # Return cached value if available
+        if hasattr(self, "_cached_circuit_depth"):
+            return self._cached_circuit_depth
+
         from qml_essentials.tape import recording
         from qml_essentials.operations import KrausChannel
 
         inputs = self._inputs_validation(inputs)
 
-        # Record the tape without noise so that only unitary gates are counted
+        # Temporarily clear noise_params to prevent _variational from
+        # picking them up (which would call _apply_general_noise →
+        # _get_circuit_depth again, causing infinite recursion).
+        saved_noise = self._noise_params
+        self._noise_params = None
+
         with recording() as tape:
             self._variational(
                 self.params[:, :, 0] if self.params.ndim == 3 else self.params,
@@ -955,10 +964,13 @@ class Model:
                 noise_params=None,
             )
 
+        self._noise_params = saved_noise
+
         # Filter out noise channels — only count unitary gates
-        ops = [op for op in tape if not isinstance(op, KrausChannel)]
+        ops = [o for o in tape if not isinstance(o, KrausChannel)]
 
         if not ops:
+            self._cached_circuit_depth = 0
             return 0
 
         # Schedule each gate at the earliest time step where all its wires
@@ -973,6 +985,7 @@ class Model:
                 wire_busy[w] = end
             depth = max(depth, end)
 
+        self._cached_circuit_depth = depth
         return depth
 
     # TODO: Implement draw() for circuit visualisation without PennyLane.
