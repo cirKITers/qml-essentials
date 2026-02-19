@@ -131,17 +131,6 @@ def build_parity_observable(
 
 
 # ===================================================================
-# EvolvedOp – reusable class for evolved unitaries
-# ===================================================================
-
-
-class EvolvedOp(Operation):
-    """Operation wrapping a unitary obtained from Hamiltonian evolution."""
-
-    pass
-
-
-# ===================================================================
 # evolve – Hamiltonian time evolution (static & time-dependent)
 # ===================================================================
 
@@ -205,7 +194,7 @@ def _evolve_static(hermitian: Hermitian) -> Callable:
 
     def _apply(t: float, wires: Union[int, List[int]] = 0) -> Operation:
         U = jax.scipy.linalg.expm(-1j * t * H_mat)
-        return EvolvedOp(wires=wires, matrix=U)
+        return Operation(wires=wires, matrix=U)
 
     return _apply
 
@@ -303,7 +292,7 @@ def _evolve_parametrized(ph: ParametrizedHamiltonian, **odeint_kwargs) -> Callab
 
         U = _solve(params, t0, t1)
 
-        return EvolvedOp(wires=wires, matrix=U)
+        return Operation(wires=wires, matrix=U)
 
     return _apply
 
