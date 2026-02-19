@@ -1,7 +1,9 @@
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import jax
 import jax.numpy as jnp
+import jax.scipy.linalg
+import numpy as np
 
 from qml_essentials.tape import active_tape, recording  # noqa: F401 (re-export)
 
@@ -36,6 +38,7 @@ class Operation:
         self,
         wires: Union[int, List[int]] = 0,
         matrix: Optional[jnp.ndarray] = None,
+        record: bool = True,
     ) -> None:
         """Initialise the operation and optionally register it on the active tape.
 
@@ -43,15 +46,21 @@ class Operation:
             wires: Qubit index or list of qubit indices this operation acts on.
             matrix: Optional explicit gate matrix.  When provided it overrides
                 the class-level ``_matrix`` attribute.
+            record: If ``True`` (default) and a tape is currently recording,
+                append this operation to the tape.  Set to ``False`` for
+                auxiliary objects that should not appear in the circuit
+                (e.g. Hamiltonians used only to build time-dependent
+                evolutions).
         """
-        self.wires = wires if isinstance(wires, list) else [wires]
+        self.wires = list(wires) if isinstance(wires, (list, tuple)) else [wires]
         if matrix is not None:
             self._matrix = matrix
 
         # If a tape is currently recording, append ourselves
-        tape = active_tape()
-        if tape is not None:
-            tape.append(self)
+        if record:
+            tape = active_tape()
+            if tape is not None:
+                tape.append(self)
 
     @property
     def matrix(self) -> jnp.ndarray:
@@ -85,10 +94,10 @@ class Operation:
         Args:
             wires: A single qubit index or a list of qubit indices.
         """
-        if isinstance(wires, int):
-            self._wires = [wires]
+        if isinstance(wires, (list, tuple)):
+            self._wires = list(wires)
         else:
-            self._wires = wires
+            self._wires = [wires]
 
     def apply_to_state(self, state: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
         """Apply this gate to a statevector via tensor contraction.
@@ -203,14 +212,78 @@ class Hermitian(Operation):
         >>> obs = Hermitian(matrix=my_matrix, wires=0)
     """
 
-    def __init__(self, matrix: jnp.ndarray, wires: Union[int, List[int]] = 0) -> None:
+    def __init__(
+        self,
+        matrix: jnp.ndarray,
+        wires: Union[int, List[int]] = 0,
+        record: bool = True,
+    ) -> None:
         """Initialise a Hermitian operator.
 
         Args:
             matrix: The Hermitian matrix defining this operator.
             wires: Qubit index or list of qubit indices this operator acts on.
+            record: If ``True`` (default), record on the active tape.  Set to
+                ``False`` when using the Hermitian purely as a Hamiltonian
+                component (e.g. for time-dependent evolution).
         """
-        super().__init__(wires=wires, matrix=jnp.asarray(matrix, dtype=jnp.complex128))
+        super().__init__(
+            wires=wires,
+            matrix=jnp.asarray(matrix, dtype=jnp.complex128),
+            record=record,
+        )
+
+    def __rmul__(self, coeff_fn):
+        """Support ``coeff_fn * Hermitian`` → :class:`ParametrizedHamiltonian`.
+
+        Args:
+            coeff_fn: A callable ``(params, t) -> scalar`` giving the
+                time-dependent coefficient.
+
+        Returns:
+            A :class:`ParametrizedHamiltonian` pairing *coeff_fn* with this
+            operator's matrix and wires.
+
+        Raises:
+            TypeError: If *coeff_fn* is not callable.
+        """
+        if not callable(coeff_fn):
+            raise TypeError(
+                f"Left operand of `* Hermitian` must be callable, got {type(coeff_fn)}"
+            )
+        return ParametrizedHamiltonian(coeff_fn, self.matrix, self.wires)
+
+
+class ParametrizedHamiltonian:
+    """A time-dependent Hamiltonian ``H(t) = f(params, t) · H_mat``.
+
+    Created by multiplying a callable coefficient function with a
+    :class:`Hermitian` operator::
+
+        def coeff(p, t):
+            return p[0] * jnp.exp(-0.5 * ((t - t_c) / p[1]) ** 2)
+
+        H_td = coeff * Hermitian(matrix=sigma_x, wires=0)
+
+    The Hamiltonian is then used with :func:`evolve`::
+
+        evolve(H_td)(coeff_args=[A, sigma], T=1.0)
+
+    Attributes:
+        coeff_fn: Callable ``(params, t) -> scalar``.
+        H_mat: Static Hermitian matrix (JAX array).
+        wires: Qubit wire(s) this Hamiltonian acts on.
+    """
+
+    def __init__(
+        self,
+        coeff_fn: Callable,
+        H_mat: jnp.ndarray,
+        wires: Union[int, List[int]],
+    ) -> None:
+        self.coeff_fn = coeff_fn
+        self.H_mat = H_mat
+        self.wires = wires
 
 
 class I(Operation):
@@ -283,6 +356,10 @@ class H(Operation):
         super().__init__(wires=wires)
 
 
+#: Shorthand alias for :class:`H` (Hadamard).
+Hadamard = H
+
+
 class RX(Operation):
     """Rotation around the X axis: RX(θ) = exp(-i θ/2 X)."""
 
@@ -347,6 +424,10 @@ class CX(Operation):
             wires: Two-element list ``[control, target]``.
         """
         super().__init__(wires=wires)
+
+
+#: Shorthand alias for :class:`CX` (CNOT).
+CNOT = CX
 
 
 class CCX(Operation):
@@ -959,3 +1040,37 @@ class ThermalRelaxationError(KrausChannel):
                 mat = jnp.sqrt(jnp.abs(lam)) * vec.reshape(2, 2, order="F")  # type: ignore[call-overload]
                 kraus.append(mat.astype(jnp.complex128))
             return kraus
+
+
+class QubitChannel(KrausChannel):
+    """Generic Kraus channel from a user-supplied list of Kraus operators.
+
+    This replaces PennyLane's ``qml.QubitChannel`` and accepts an arbitrary set
+    of Kraus matrices satisfying Σ_k K_k†K_k = I.
+
+    Example::
+
+        kraus_ops = [jnp.sqrt(0.9) * jnp.eye(2), jnp.sqrt(0.1) * PauliX._matrix]
+        QubitChannel(kraus_ops, wires=0)
+    """
+
+    def __init__(
+        self, kraus_ops: List[jnp.ndarray], wires: Union[int, List[int]] = 0
+    ) -> None:
+        """Initialise a generic Kraus channel.
+
+        Args:
+            kraus_ops: List of Kraus matrices.  Each must be a square 2D array
+                of dimension ``2**k × 2**k`` where *k* = ``len(wires)``.
+            wires: Qubit index or list of qubit indices this channel acts on.
+        """
+        self._kraus_ops = [jnp.asarray(K, dtype=jnp.complex128) for K in kraus_ops]
+        super().__init__(wires=wires)
+
+    def kraus_matrices(self) -> List[jnp.ndarray]:
+        """Return the stored Kraus operators.
+
+        Returns:
+            List of Kraus operator matrices.
+        """
+        return self._kraus_ops

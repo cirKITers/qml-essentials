@@ -3,7 +3,10 @@ from typing import Optional, List, Union, Dict, Callable, Tuple
 import numbers
 import csv
 import jax.numpy as np
-import pennylane as qml
+
+# import pennylane as qml
+from qml_essentials import operations as op
+from qml_essentials import yaqsi as ys
 import jax
 import itertools
 from contextlib import contextmanager
@@ -21,7 +24,7 @@ class UnitaryGates:
     batch_gate_error = True
 
     @staticmethod
-    def NQubitDepolarizingChannel(p: float, wires: List[int]) -> qml.QubitChannel:
+    def NQubitDepolarizingChannel(p: float, wires: List[int]) -> op.QubitChannel:
         """
         Generate Kraus operators for n-qubit depolarizing channel.
 
@@ -35,7 +38,7 @@ class UnitaryGates:
                 Must contain at least 2 qubits.
 
         Returns:
-            qml.QubitChannel: PennyLane QubitChannel with Kraus operators
+            op.QubitChannel: QubitChannel with Kraus operators
                 representing the depolarizing noise channel.
 
         Raises:
@@ -49,9 +52,9 @@ class UnitaryGates:
                 raise ValueError(f"Number of qubits must be >= 2, got {n}")
 
             Id = np.eye(2)
-            X = qml.matrix(qml.PauliX(0))
-            Y = qml.matrix(qml.PauliY(0))
-            Z = qml.matrix(qml.PauliZ(0))
+            X = op.PauliX._matrix
+            Y = op.PauliY._matrix
+            Z = op.PauliZ._matrix
             paulis = [Id, X, Y, Z]
 
             dim = 2**n
@@ -76,7 +79,7 @@ class UnitaryGates:
 
             return [K0] + kraus_ops
 
-        return qml.QubitChannel(n_qubit_depolarizing_kraus(p, len(wires)), wires=wires)
+        return op.QubitChannel(n_qubit_depolarizing_kraus(p, len(wires)), wires=wires)
 
     @staticmethod
     def Noise(
@@ -111,15 +114,15 @@ class UnitaryGates:
             for wire in wires:
                 bf = noise_params.get("BitFlip", 0.0)
                 if bf > 0:
-                    qml.BitFlip(bf, wires=wire)
+                    op.BitFlip(bf, wires=wire)
 
                 pf = noise_params.get("PhaseFlip", 0.0)
                 if pf > 0:
-                    qml.PhaseFlip(pf, wires=wire)
+                    op.PhaseFlip(pf, wires=wire)
 
                 dp = noise_params.get("Depolarizing", 0.0)
                 if dp > 0:
-                    qml.DepolarizingChannel(dp, wires=wire)
+                    op.DepolarizingChannel(dp, wires=wire)
 
             # noise on two-qubits
             if len(wires) > 1:
@@ -201,7 +204,7 @@ class UnitaryGates:
             phi, random_key = UnitaryGates.GateError(phi, noise_params, random_key)
             theta, random_key = UnitaryGates.GateError(theta, noise_params, random_key)
             omega, random_key = UnitaryGates.GateError(omega, noise_params, random_key)
-        qml.Rot(phi, theta, omega, wires=wires)
+        op.Rot(phi, theta, omega, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -224,7 +227,7 @@ class UnitaryGates:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        qml.RX(w, wires=wires)
+        op.RX(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -247,7 +250,7 @@ class UnitaryGates:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        qml.RY(w, wires=wires)
+        op.RY(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -270,7 +273,7 @@ class UnitaryGates:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        qml.RZ(w, wires=wires)
+        op.RZ(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -293,7 +296,7 @@ class UnitaryGates:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        qml.CRX(w, wires=wires)
+        op.CRX(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -316,7 +319,7 @@ class UnitaryGates:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        qml.CRY(w, wires=wires)
+        op.CRY(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -339,7 +342,7 @@ class UnitaryGates:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        qml.CRZ(w, wires=wires)
+        op.CRZ(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -360,7 +363,7 @@ class UnitaryGates:
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
-        qml.CNOT(wires=wires)
+        op.CX(wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -381,7 +384,7 @@ class UnitaryGates:
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
-        qml.CY(wires=wires)
+        op.CY(wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -402,7 +405,7 @@ class UnitaryGates:
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
-        qml.CZ(wires=wires)
+        op.CZ(wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -423,7 +426,7 @@ class UnitaryGates:
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
-        qml.Hadamard(wires=wires)
+        op.Hadamard(wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
 
@@ -775,6 +778,12 @@ class PulseGates:
     sequences, following the approach from https://doi.org/10.5445/IR/1000184129.
     Gates are decomposed using shaped Gaussian pulses with carrier modulation.
 
+    .. warning::
+        PulseGates currently rely on PennyLane's time-dependent ``evolve`` API
+        (``qml.evolve``) which has not been migrated to the yaqsi simulator
+        yet. Pulse mode is **not functional** until a time-dependent
+        Hamiltonian solver is implemented in yaqsi.
+
     Attributes:
         omega_q (float): Qubit frequency (10π).
         omega_c (float): Carrier frequency (10π).
@@ -887,10 +896,10 @@ class PulseGates:
             return PulseGates._S(p, t, phi_c=np.pi) * w
 
         _H = PulseGates.H_static.conj().T @ PulseGates.X @ PulseGates.H_static
-        _H = qml.Hermitian(_H, wires=wires)
+        _H = op.Hermitian(_H, wires=wires, record=False)
         H_eff = Sx * _H
 
-        qml.evolve(H_eff)([pulse_params[0:2]], pulse_params[2])
+        ys.evolve(H_eff)([pulse_params[0:2]], pulse_params[2])
 
     @staticmethod
     def RY(
@@ -920,10 +929,10 @@ class PulseGates:
             return PulseGates._S(p, t, phi_c=-np.pi / 2) * w
 
         _H = PulseGates.H_static.conj().T @ PulseGates.Y @ PulseGates.H_static
-        _H = qml.Hermitian(_H, wires=wires)
+        _H = op.Hermitian(_H, wires=wires, record=False)
         H_eff = Sy * _H
 
-        qml.evolve(H_eff)([pulse_params[0:2]], pulse_params[2])
+        ys.evolve(H_eff)([pulse_params[0:2]], pulse_params[2])
 
     @staticmethod
     def RZ(
@@ -946,14 +955,14 @@ class PulseGates:
         """
         pulse_params = PulseInformation.RZ.split_params(pulse_params)
 
-        _H = qml.Hermitian(PulseGates.Z, wires=wires)
+        _H = op.Hermitian(PulseGates.Z, wires=wires, record=False)
 
         def Sz(p, t):
             return p * w
 
         H_eff = Sz * _H
 
-        qml.evolve(H_eff)([pulse_params], 1)
+        ys.evolve(H_eff)([pulse_params], 1)
 
     @staticmethod
     def H(
@@ -983,10 +992,10 @@ class PulseGates:
             return -1.0
 
         _H = np.pi / 2 * np.eye(2, dtype=np.complex64)
-        _H = qml.Hermitian(_H, wires=wires)
+        _H = op.Hermitian(_H, wires=wires, record=False)
         H_corr = Sc * _H
 
-        qml.evolve(H_corr)([0], 1)
+        ys.evolve(H_corr)([0], 1)
 
     @staticmethod
     def CX(wires: List[int], pulse_params: Optional[np.ndarray] = None) -> None:
@@ -1070,10 +1079,10 @@ class PulseGates:
             return p * np.pi
 
         _H = (np.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
-        _H = qml.Hermitian(_H, wires=wires)
+        _H = op.Hermitian(_H, wires=wires, record=False)
         H_eff = Scz * _H
 
-        qml.evolve(H_eff)([pulse_params], 1)
+        ys.evolve(H_eff)([pulse_params], 1)
 
     @staticmethod
     def CRX(

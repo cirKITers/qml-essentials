@@ -1,5 +1,7 @@
 from typing import Any, Dict, Optional, Tuple, Callable, Union, List
-import pennylane as qml
+
+from qml_essentials import operations as op
+from qml_essentials import yaqsi as ys
 import warnings
 from copy import deepcopy
 import jax
@@ -70,7 +72,7 @@ class Model:
                 for applying data re-uploading to the full circuit.
             encoding (Union[str, Callable, List[str], List[Callable]], optional):
                 The unitary to use for encoding the input data. Can be a string
-                (e.g. "RX") or a callable (e.g. qml.RX). Defaults to qml.RX.
+                (e.g. "RX") or a callable (e.g. op.RX). Defaults to op.RX.
                 If input is multidimensional it is assumed to be a list of
                 unitaries or a list of strings.
             trainable_frequencies (bool, optional):
@@ -241,31 +243,11 @@ class Model:
 
         log.info(f"Initialized pulse parameters with shape {self.pulse_params.shape}.")
 
-        # Initialize two circuits, one with the default device and
-        # one with the mixed device
-        # which allows us to later route depending on the state_vector flag
-        if self.n_qubits < self.lightning_threshold:
-            device = "default.qubit"
-        else:
-            device = "lightning.qubit"
-            self.use_multithreading = False
-        self.circuit: qml.QNode = qml.QNode(
-            self._circuit,
-            qml.device(
-                device,
-                shots=self.shots,
-                wires=self.n_qubits,
-            ),
-            interface="jax-jit",
-            diff_method="parameter-shift" if self.shots is not None else "best",
-        )
-
-        self.circuit_mixed: qml.QNode = qml.QNode(
-            self._circuit,
-            qml.device("default.mixed", shots=self.shots, wires=self.n_qubits),
-            interface="jax-jit",
-            diff_method="parameter-shift" if self.shots is not None else "best",
-        )
+        # Initialise the yaqsi QuantumScript that wraps _variational.
+        # No device selection needed — yaqsi auto-routes between statevector
+        # and density-matrix simulation based on whether noise channels are
+        # present on the tape.
+        self.script = ys.QuantumScript(f=self._variational, n_qubits=self.n_qubits)
 
     @property
     def noise_params(self) -> Optional[Dict[str, Union[float, Dict[str, float]]]]:
@@ -702,66 +684,15 @@ class Model:
                         random_key=sub_key,
                     )
 
-    def _circuit(
-        self,
-        params: jnp.ndarray,
-        inputs: jnp.ndarray,
-        pulse_params: Optional[jnp.ndarray] = None,
-        enc_params: Optional[jnp.ndarray] = None,
-        gate_mode: str = "unitary",
-        noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
-        random_key: Optional[random.PRNGKey] = None,
-    ) -> Union[float, jnp.ndarray]:
-        """
-        Build and execute the quantum circuit.
-
-        Constructs the full quantum circuit including variational layers and
-        encoding, then returns the measurement result based on the configured
-        execution type.
-
-        Args:
-            params (jnp.ndarray): Variational parameters of shape
-                (n_layers, n_params_per_layer).
-            inputs (jnp.ndarray): Input data of shape (n_input_feat,).
-            pulse_params (Optional[jnp.ndarray]): Pulse parameter scalers of shape
-                (n_layers, n_pulse_params_per_layer) for pulse-mode execution.
-                Defaults to None.
-            enc_params (Optional[jnp.ndarray]): Encoding parameters of shape
-                (n_qubits, n_input_feat). Defaults to None (uses model's enc_params).
-            gate_mode (str): Gate execution mode, either "unitary" or "pulse".
-                Defaults to "unitary".
-            noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
-                Noise parameters for simulation. Defaults to None.
-            random_key (Optional[random.PRNGKey]): JAX random key for stochastic
-                operations. Defaults to None.
-
-        Returns:
-            Union[float, jnp.ndarray]: Circuit output depending on execution_type:
-                - "expval": Expectation value(s) of the observable(s)
-                - "density": Density matrix of output qubits
-                - "probs": Measurement probabilities
-                - "state": Full quantum state vector
-        """
-        self._variational(
-            params=params,
-            inputs=inputs,
-            pulse_params=pulse_params,
-            enc_params=enc_params,
-            gate_mode=gate_mode,
-            noise_params=noise_params,
-            random_key=random_key,
-        )
-        return self._observable()
-
     def _variational(
         self,
         params: jnp.ndarray,
         inputs: jnp.ndarray,
         pulse_params: Optional[jnp.ndarray] = None,
+        random_key: Optional[random.PRNGKey] = None,
         enc_params: Optional[jnp.ndarray] = None,
         gate_mode: str = "unitary",
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
-        random_key: Optional[random.PRNGKey] = None,
     ) -> None:
         """
         Build the variational quantum circuit structure.
@@ -770,6 +701,11 @@ class Model:
         variational ansatz layers with input encoding layers, and optional
         noise channels.
 
+        The first four parameters (after ``self``) — ``params``, ``inputs``,
+        ``pulse_params``, ``random_key`` — are the batchable positional
+        arguments that ``_mp_executor`` passes via ``QuantumScript.execute``.
+        The remaining keyword arguments are broadcast across the batch.
+
         Args:
             params (jnp.ndarray): Variational parameters of shape
                 (n_layers, n_params_per_layer).
@@ -777,14 +713,14 @@ class Model:
             pulse_params (Optional[jnp.ndarray]): Pulse parameter scalers of shape
                 (n_layers, n_pulse_params_per_layer) for pulse-mode execution.
                 Defaults to None (uses model's pulse_params).
+            random_key (Optional[random.PRNGKey]): JAX random key for stochastic
+                operations. Defaults to None.
             enc_params (Optional[jnp.ndarray]): Encoding parameters of shape
                 (n_qubits, n_input_feat). Defaults to None (uses model's enc_params).
             gate_mode (str): Gate execution mode, either "unitary" or "pulse".
                 Defaults to "unitary".
             noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
                 Noise parameters for simulation. Defaults to None.
-            random_key (Optional[random.PRNGKey]): JAX random key for stochastic
-                operations. Defaults to None.
 
         Returns:
             None: Gates are applied in-place to the quantum circuit.
@@ -875,9 +811,7 @@ class Model:
                 random_key=sub_key,
             )
 
-            # visual barrier
-            if self.has_dru:
-                qml.Barrier(wires=list(range(self.n_qubits)), only_visual=True)
+            # visual barrier (no-op in yaqsi, purely cosmetic in PennyLane)
 
         # final ansatz layer
         if self.has_dru:  # same check as in init
@@ -895,73 +829,40 @@ class Model:
         if noise_params is not None:
             self._apply_general_noise(noise_params=noise_params)
 
-    def _observable(self) -> Union[jnp.ndarray, List[jnp.ndarray]]:
-        """
-        Define and return the measurement observable(s) for the circuit.
+    def _build_obs(self) -> Tuple[str, List[op.Operation]]:
+        """Build the yaqsi measurement type and observable list.
 
-        Constructs the appropriate PennyLane measurement based on the
-        configured execution_type and output_qubit settings.
+        Translates the model's ``execution_type`` and ``output_qubit``
+        settings into parameters suitable for
+        :meth:`~qml_essentials.yaqsi.QuantumScript.execute`.
 
         Returns:
-            Union[jnp.ndarray, List[jnp.ndarray]]: Measurement result(s):
-                - "density": qml.density_matrix for output qubits
-                - "state": Full quantum state via qml.state()
-                - "expval": Expectation value(s) of PauliZ observable(s)
-                - "probs": Measurement probabilities
-
-        Raises:
-            ValueError: If execution_type or output_qubit configuration is invalid.
+            Tuple ``(meas_type, obs)`` where *meas_type* is one of
+            ``"expval"``, ``"probs"``, ``"density"``, ``"state"`` and *obs*
+            is a (possibly empty) list of :class:`Operation` observables.
         """
-        # run mixed simulation and get density matrix
         if self.execution_type == "density":
-            return qml.density_matrix(wires=self.output_qubit)
-        elif self.execution_type == "state":
-            return qml.state()
-        # run default simulation and get expectation value
-        elif self.execution_type == "expval":
-            # n-local measurement
-            if self.all_qubit_measurement:
-                return [qml.expval(qml.PauliZ(q)) for q in self.output_qubit]
-            # parity or local measurement(s)
-            elif isinstance(self.output_qubit, list):
-                ret = []
-                # list of parity pairs
-                for pair in self.output_qubit:
-                    if isinstance(pair, int):
-                        ret.append(qml.expval(qml.PauliZ(pair)))
-                    else:
-                        obs = qml.PauliZ(pair[0])
-                        for q in pair[1:]:
-                            obs = obs @ qml.PauliZ(q)
-                        ret.append(qml.expval(obs))
-                return ret
-            else:
-                raise ValueError(
-                    f"Invalid parameter `output_qubit`: {self.output_qubit}.\
-                        Must be int, list or -1."
-                )
-        # run default simulation and get probs
-        elif self.execution_type == "probs":
-            # n-local measurement
-            if self.all_qubit_measurement:
-                return qml.probs(wires=self.output_qubit)
-            # parity or local measurement(s)
-            elif isinstance(self.output_qubit, list):
-                ret = []
-                # list of parity pairs
-                for pair in self.output_qubit:
-                    if isinstance(pair, int):
-                        ret.append(qml.probs(wires=[pair]))
-                    else:
-                        ret.append(qml.probs(wires=pair))
-                return ret
-            else:
-                raise ValueError(
-                    f"Invalid parameter `output_qubit`: {self.output_qubit}.\
-                        Must be int, list or -1."
-                )
-        else:
-            raise ValueError(f"Invalid execution_type: {self.execution_type}.")
+            return "density", []
+
+        if self.execution_type == "state":
+            return "state", []
+
+        if self.execution_type == "expval":
+            obs: List[op.Operation] = []
+            for qubit_spec in self.output_qubit:
+                if isinstance(qubit_spec, int):
+                    obs.append(op.PauliZ(wires=qubit_spec))
+                else:
+                    # parity: Z ⊗ Z ⊗ …
+                    obs.append(ys.build_parity_observable(list(qubit_spec)))
+            return "expval", obs
+
+        if self.execution_type == "probs":
+            # probs are computed on the full system; subsystem
+            # marginalisation is handled in _postprocess_res
+            return "probs", []
+
+        raise ValueError(f"Invalid execution_type: {self.execution_type}.")
 
     def _apply_state_prep_noise(
         self, noise_params: Dict[str, Union[float, Dict[str, float]]]
@@ -983,7 +884,7 @@ class Model:
         p = noise_params.get("StatePreparation", 0.0)
         if p > 0:
             for q in range(self.n_qubits):
-                qml.BitFlip(p, wires=q)
+                op.BitFlip(p, wires=q)
 
     def _apply_general_noise(
         self, noise_params: Dict[str, Union[float, Dict[str, float]]]
@@ -1016,114 +917,32 @@ class Model:
         meas = noise_params.get("Measurement", 0.0)
         for q in range(self.n_qubits):
             if amp_damp > 0:
-                qml.AmplitudeDamping(amp_damp, wires=q)
+                op.AmplitudeDamping(amp_damp, wires=q)
             if phase_damp > 0:
-                qml.PhaseDamping(phase_damp, wires=q)
+                op.PhaseDamping(phase_damp, wires=q)
             if meas > 0:
-                qml.BitFlip(meas, wires=q)
+                op.BitFlip(meas, wires=q)
             if isinstance(thermal_relax, dict):
                 t1 = thermal_relax["t1"]
                 t2 = thermal_relax["t2"]
                 t_factor = thermal_relax["t_factor"]
                 circuit_depth = self._get_circuit_depth()
                 tg = circuit_depth * t_factor
-                qml.ThermalRelaxationError(1.0, t1, t2, tg, q)
+                op.ThermalRelaxationError(1.0, t1, t2, tg, q)
 
-    def _get_circuit_depth(self, inputs: Optional[jnp.ndarray] = None) -> int:
-        """
-        Calculate the depth of the quantum circuit.
-
-        Creates a copy of the model without noise to accurately measure
-        the circuit depth using PennyLane's specs function.
-
-        Args:
-            inputs (Optional[jnp.ndarray]): Input data for circuit evaluation.
-                If None, default zero inputs are used.
-
-        Returns:
-            int: The circuit depth (longest path of gates in the circuit).
-        """
-        inputs = self._inputs_validation(inputs)
-        spec_model = deepcopy(self)
-        spec_model.noise_params = None  # remove noise
-        specs = qml.specs(spec_model.circuit)(self.params, inputs)
-
-        return specs["resources"].depth
-
-    def draw(
-        self,
-        inputs: Optional[jnp.ndarray] = None,
-        figure: str = "text",
-        *args: Any,
-        **kwargs: Any,
-    ) -> Union[str, Any]:
-        """
-        Visualize the quantum circuit.
-
-        Generates a visual representation of the circuit using the specified
-        rendering method.
-
-        Args:
-            inputs (Optional[jnp.ndarray]): Input data for the circuit. If None,
-                default zero inputs are used. Defaults to None.
-            figure (str): Visualization format. Options:
-                - "text": ASCII text representation
-                - "mpl": Matplotlib figure
-                - "tikz": TikZ/LaTeX code for publication-quality figures
-                Defaults to "text".
-            *args (Any): Additional positional arguments passed to the
-                visualization backend.
-            **kwargs (Any): Additional keyword arguments passed to the
-                visualization backend. May include pulse_params, gate_mode,
-                enc_params, or noise_params.
-
-        Returns:
-            Union[str, Any]: Visualization output:
-                - "text": String with ASCII circuit diagram
-                - "mpl": Matplotlib Figure and Axes objects
-                - "tikz": TikZ code string
-
-        Raises:
-            AssertionError: If figure is not one of "text", "mpl", or "tikz".
-        """
-
-        if not isinstance(self.circuit, qml.QNode):
-            # TODO: throws strange argument error if not catched
-            return ""
-
-        assert figure in [
-            "text",
-            "mpl",
-            "tikz",
-        ], f"Invalid figure: {figure}. Must be 'text', 'mpl' or 'tikz'."
-
-        inputs = self._inputs_validation(inputs)
-
-        if figure == "mpl":
-            return qml.draw_mpl(self.circuit)(
-                params=self.params,
-                inputs=inputs,
-                *args,
-                **kwargs,
-            )
-        elif figure == "tikz":
-            return QuanTikz.build(
-                self.circuit,
-                params=self.params,
-                inputs=inputs,
-                *args,
-                **kwargs,
-            )
-        else:
-            return qml.draw(self.circuit)(params=self.params, inputs=inputs)
+    # TODO: Implement _get_circuit_depth using tape-based gate counting.
+    # TODO: Implement draw() for circuit visualisation without PennyLane.
 
     def __repr__(self) -> str:
-        """Return text representation of the quantum circuit."""
-        return self.draw(figure="text")
+        """Return text representation of the quantum circuit model."""
+        return (
+            f"Model(n_qubits={self.n_qubits}, n_layers={self.n_layers}, "
+            f"execution_type={self.execution_type!r})"
+        )
 
     def __str__(self) -> str:
-        """Return string representation of the quantum circuit."""
-        return self.draw(figure="text")
+        """Return string representation of the quantum circuit model."""
+        return self.__repr__()
 
     def _params_validation(self, params: Optional[jnp.ndarray]) -> jnp.ndarray:
         """
@@ -1273,7 +1092,6 @@ class Model:
 
     def _mp_executor(
         self,
-        f: Callable,
         params: jnp.ndarray,
         pulse_params: jnp.ndarray,
         inputs: jnp.ndarray,
@@ -1281,16 +1099,17 @@ class Model:
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]],
         random_key: random.PRNGKey,
         gate_mode: str,
+        meas_type: str,
+        obs: List[op.Operation],
     ) -> jnp.ndarray:
         """
         Execute circuit function with optional parallelization over batches.
 
-        Uses JAX's vmap for vectorized execution when batching over inputs,
-        parameters, or pulse parameters. Falls back to sequential execution
-        for single samples or when multithreading is disabled.
+        Uses the yaqsi QuantumScript to execute the circuit.  When batching
+        is needed (B > 1), ``QuantumScript.execute`` is called with
+        ``in_axes`` so that ``jax.vmap`` is applied internally.
 
         Args:
-            f (Callable): Circuit function to execute (circuit or circuit_mixed).
             params (jnp.ndarray): Variational parameters of shape
                 (n_layers, n_params_per_layer, batch_size).
             pulse_params (jnp.ndarray): Pulse parameters of shape
@@ -1302,52 +1121,44 @@ class Model:
                 Noise configuration dictionary.
             random_key (random.PRNGKey): JAX random key for stochastic operations.
             gate_mode (str): Gate execution mode ("unitary" or "pulse").
+            meas_type (str): Measurement type for yaqsi execute.
+            obs (List[op.Operation]): Observable list for expval measurements.
 
         Returns:
             jnp.ndarray: Circuit execution results, post-processed for uniformity.
         """
-
-        def _f(
-            _params: jnp.ndarray,
-            _inputs: jnp.ndarray,
-            _pulse_params: jnp.ndarray,
-            _random_key: random.PRNGKey,
-        ) -> jnp.ndarray:
-            return f(
-                params=_params,
-                inputs=_inputs,
-                pulse_params=_pulse_params,
-                random_key=_random_key,
-                noise_params=noise_params,
-                enc_params=enc_params,
-                gate_mode=gate_mode,
-            )
-
         B = np.prod(self.eff_batch_shape)
-        if (gate_mode == "pulse" or self.use_multithreading) and B > 1:
+
+        # kwargs are broadcast (not vmapped over)
+        exec_kwargs = dict(
+            noise_params=noise_params,
+            enc_params=enc_params,
+            gate_mode=gate_mode,
+        )
+
+        if B > 1:
             random_keys = safe_random_split(random_key, num=B)
 
-            # wrapper to allow kwargs (not supported by jax)
-            result = jax.vmap(
-                _f,
-                in_axes=(
-                    2 if self.batch_shape[1] > 1 else None,  # params
-                    0 if self.batch_shape[0] > 1 else None,  # inputs
-                    2 if self.batch_shape[2] > 1 else None,  # pulse_params
-                    0,  # random_keys
-                ),
-            )(
-                params,
-                inputs,
-                pulse_params,
-                random_keys,
+            in_axes = (
+                2 if self.batch_shape[1] > 1 else None,  # params
+                0 if self.batch_shape[0] > 1 else None,  # inputs
+                2 if self.batch_shape[2] > 1 else None,  # pulse_params
+                0,  # random_keys
+            )
+
+            result = self.script.execute(
+                type=meas_type,
+                obs=obs,
+                args=(params, inputs, pulse_params, random_keys),
+                kwargs=exec_kwargs,
+                in_axes=in_axes,
             )
         else:
-            result = _f(
-                _params=params,
-                _pulse_params=pulse_params,
-                _inputs=inputs,
-                _random_key=random_key,
+            result = self.script.execute(
+                type=meas_type,
+                obs=obs,
+                args=(params, inputs, pulse_params, random_key),
+                kwargs=exec_kwargs,
             )
 
         return self._postprocess_res(result)
@@ -1610,38 +1421,43 @@ class Model:
             pulse_params,
         )
 
-        result: Optional[jnp.ndarray] = None
         self.random_key, subkey = safe_random_split(self.random_key)
 
-        # if density matrix requested or noise params used
-        if self._requires_density():
-            result = self._mp_executor(
-                f=self.circuit_mixed,
-                params=params,
-                pulse_params=pulse_params,
-                inputs=inputs,
-                enc_params=enc_params,
-                noise_params=self.noise_params,
-                random_key=subkey,
-                gate_mode=gate_mode,
-            )
-        else:
-            if not isinstance(self.circuit, qml.QNode):
-                result = self.circuit(
-                    inputs=inputs,
+        # Build measurement type & observables from execution_type / output_qubit
+        meas_type, obs = self._build_obs()
+
+        # Yaqsi auto-routes between statevector and density-matrix simulation
+        # based on whether noise channels appear on the tape, so a single
+        # _mp_executor call handles both branches.
+        result = self._mp_executor(
+            params=params,
+            pulse_params=pulse_params,
+            inputs=inputs,
+            enc_params=enc_params,
+            noise_params=self.noise_params,
+            random_key=subkey,
+            gate_mode=gate_mode,
+            meas_type=meas_type,
+            obs=obs,
+        )
+
+        # --- Post-processing for partial-qubit measurements ---------------
+        if self.execution_type == "density" and not self.all_qubit_measurement:
+            result = ys.partial_trace(result, self.n_qubits, self.output_qubit)
+
+        if self.execution_type == "probs" and not self.all_qubit_measurement:
+            if isinstance(self.output_qubit[0], (list, tuple)):
+                # list of qubit groups — marginalize each independently
+                result = jnp.stack(
+                    [
+                        ys.marginalize_probs(result, self.n_qubits, list(group))
+                        for group in self.output_qubit
+                    ]
                 )
             else:
-                result = self._mp_executor(
-                    f=self.circuit,
-                    params=params,
-                    pulse_params=pulse_params,
-                    inputs=inputs,
-                    enc_params=enc_params,
-                    noise_params=self.noise_params,
-                    random_key=subkey,
-                    gate_mode=gate_mode,
-                )
+                result = ys.marginalize_probs(result, self.n_qubits, self.output_qubit)
 
+        result = jnp.asarray(result)
         result = result.reshape((*self.eff_batch_shape, *self._result_shape)).squeeze()
 
         if (

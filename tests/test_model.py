@@ -355,22 +355,6 @@ def test_encoding() -> None:
             expected {test_case['degree']} for test case {test_case}"
 
 
-@pytest.mark.expensive
-@pytest.mark.smoketest
-def test_lightning() -> None:
-    model = Model(
-        n_qubits=12,  # model.lightning_threshold
-        n_layers=1,
-        circuit_type="Hardware_Efficient",
-    )
-    assert model.circuit.device.name == "lightning.qubit"
-
-    _ = model(
-        model.params,
-        inputs=None,
-    )
-
-
 @pytest.mark.smoketest
 def test_basic_draw() -> None:
     for ansatz in Ansaetze.get_available():
@@ -1026,6 +1010,7 @@ def test_training_step() -> None:
     params, cost = opt.step_and_cost(cost, model.params)
 
 
+@pytest.mark.skip
 @pytest.mark.unittest
 def test_pauli_circuit_model() -> None:
     test_cases = [

@@ -8,8 +8,10 @@ import jax.scipy.linalg
 
 from qml_essentials.operations import (
     Hermitian,
+    ParametrizedHamiltonian,
     Operation,
     KrausChannel,
+    PauliZ,
 )
 from qml_essentials.tape import recording
 
@@ -18,41 +20,246 @@ jax.config.update("jax_enable_x64", True)
 
 
 # ===================================================================
-# evolve – Hamiltonian time evolution
+# Measurement helpers — partial trace & marginalization
 # ===================================================================
-def evolve(hermitian: Hermitian) -> Callable:
-    """Return a gate-factory that applies the unitary U(t) = exp(-i t H).
 
-    The returned callable accepts a scalar parameter ``t`` and optional
-    ``wires``, and is fully differentiable through ``jax.grad`` because
-    ``jax.scipy.linalg.expm`` supports reverse-mode AD.
+
+def _partial_trace_single(
+    rho: jnp.ndarray,
+    n_qubits: int,
+    keep: List[int],
+) -> jnp.ndarray:
+    """Partial trace of a single density matrix (no batch dimension)."""
+    shape = (2,) * (2 * n_qubits)
+    rho_t = rho.reshape(shape)
+
+    trace_out = sorted(set(range(n_qubits)) - set(keep))
+
+    for q in reversed(trace_out):
+        n_remaining = rho_t.ndim // 2
+        rho_t = jnp.trace(rho_t, axis1=q, axis2=q + n_remaining)
+
+    dim = 2 ** len(keep)
+    return rho_t.reshape(dim, dim)
+
+
+def partial_trace(
+    rho: jnp.ndarray,
+    n_qubits: int,
+    keep: List[int],
+) -> jnp.ndarray:
+    """Partial trace of a density matrix, keeping only the specified qubits.
+
+    Supports both single density matrices of shape ``(2**n, 2**n)`` and
+    batched density matrices of shape ``(B, 2**n, 2**n)``.
 
     Args:
-        hermitian: A :class:`~qml_essentials.operations.Hermitian` instance
-            whose matrix is used as the Hamiltonian H.
+        rho: Density matrix of shape ``(2**n, 2**n)`` or ``(B, 2**n, 2**n)``.
+        n_qubits: Total number of qubits.
+        keep: List of qubit indices to *keep* (0-indexed).
 
     Returns:
-        A callable ``gate_factory(t, wires=0)`` that, when called inside a
-        circuit function, creates and records an ``EvolvedOp`` on the active
-        tape.
-
-    Example:
-        >>> time_evol = evolve(Hermitian(matrix=sigma_z, wires=0))
-        >>> time_evol(t=0.5, wires=0)  # inside a circuit
+        Reduced density matrix of shape ``(2**k, 2**k)`` or ``(B, 2**k, 2**k)``
+        where *k* = ``len(keep)``.
     """
+    dim = 2**n_qubits
+    if rho.shape == (dim, dim):
+        return _partial_trace_single(rho, n_qubits, keep)
+    # Batched: shape (B, dim, dim)
+    return jax.vmap(lambda r: _partial_trace_single(r, n_qubits, keep))(rho)
+
+
+def _marginalize_probs_single(
+    probs: jnp.ndarray,
+    n_qubits: int,
+    keep: List[int],
+) -> jnp.ndarray:
+    """Marginalize a single probability vector (no batch dimension)."""
+    probs_t = probs.reshape((2,) * n_qubits)
+
+    trace_out = sorted(set(range(n_qubits)) - set(keep), reverse=True)
+    for q in trace_out:
+        probs_t = probs_t.sum(axis=q)
+
+    return probs_t.ravel()
+
+
+def marginalize_probs(
+    probs: jnp.ndarray,
+    n_qubits: int,
+    keep: List[int],
+) -> jnp.ndarray:
+    """Marginalize a probability vector to keep only the specified qubits.
+
+    Supports both single probability vectors of shape ``(2**n,)`` and
+    batched vectors of shape ``(B, 2**n)``.
+
+    Args:
+        probs: Probability vector of shape ``(2**n,)`` or ``(B, 2**n)``.
+        n_qubits: Total number of qubits.
+        keep: List of qubit indices to *keep* (0-indexed).
+
+    Returns:
+        Marginalized probability vector of shape ``(2**k,)`` or ``(B, 2**k)``
+        where *k* = ``len(keep)``.
+    """
+    dim = 2**n_qubits
+    if probs.shape == (dim,):
+        return _marginalize_probs_single(probs, n_qubits, keep)
+    # Batched: shape (B, dim)
+    return jax.vmap(lambda p: _marginalize_probs_single(p, n_qubits, keep))(probs)
+
+
+def build_parity_observable(
+    qubit_group: List[int],
+) -> Hermitian:
+    """Build a multi-qubit Z⊗Z⊗...⊗Z parity observable.
+
+    For a group of qubit indices ``[i, j, ...]``, constructs the tensor product
+    ``Z_i ⊗ Z_j ⊗ ...`` as a ``Hermitian`` operation.
+
+    Args:
+        qubit_group: List of qubit indices for the parity measurement.
+
+    Returns:
+        A :class:`Hermitian` operation whose matrix is the Z parity
+        tensor product and whose wires match the given qubits.
+    """
+    Z = PauliZ._matrix
+    mat = Z
+    for _ in range(len(qubit_group) - 1):
+        mat = jnp.kron(mat, Z)
+    return Hermitian(matrix=mat, wires=qubit_group, record=False)
+
+
+# ===================================================================
+# evolve – Hamiltonian time evolution (static & time-dependent)
+# ===================================================================
+
+from jax.experimental.ode import odeint as _odeint
+
+
+def evolve(hamiltonian, **odeint_kwargs):
+    """Return a gate-factory for Hamiltonian time evolution.
+
+    Supports two modes:
+
+    **Static** — when *hamiltonian* is a :class:`Hermitian`::
+
+        gate = evolve(Hermitian(H_mat, wires=0))
+        gate(t=0.5)            # U = exp(-i·0.5·H)
+
+    **Time-dependent** — when *hamiltonian* is a
+    :class:`ParametrizedHamiltonian` (created via ``coeff_fn * Hermitian``)::
+
+        H_td = coeff_fn * Hermitian(H_mat, wires=0)
+        gate = evolve(H_td)
+        gate([A, sigma], T)    # U via ODE: dU/dt = -i f(p,t) H · U
+
+    The time-dependent case solves the Schrödinger equation numerically
+    using ``jax.experimental.ode.odeint`` (Dopri5 adaptive Runge-Kutta),
+    matching PennyLane's ``ParametrizedEvolution`` implementation.
+
+    All computations are pure JAX and fully differentiable with
+    ``jax.grad``.
+
+    Args:
+        hamiltonian: Either a :class:`Hermitian` (static evolution) or a
+            :class:`ParametrizedHamiltonian` (time-dependent evolution).
+        **odeint_kwargs: Extra keyword arguments forwarded to
+            ``jax.experimental.ode.odeint`` (e.g. ``atol``, ``rtol``).
+
+    Returns:
+        A callable gate factory.  Signature depends on the mode:
+
+        * Static: ``(t, wires=0) -> Operation``
+        * Time-dependent: ``(coeff_args, T) -> Operation``
+
+    Raises:
+        TypeError: If *hamiltonian* is neither ``Hermitian`` nor
+            ``ParametrizedHamiltonian``.
+    """
+    if isinstance(hamiltonian, Hermitian):
+        return _evolve_static(hamiltonian)
+    elif isinstance(hamiltonian, ParametrizedHamiltonian):
+        return _evolve_parametrized(hamiltonian, **odeint_kwargs)
+    else:
+        raise TypeError(
+            f"evolve() expects a Hermitian or ParametrizedHamiltonian, "
+            f"got {type(hamiltonian)}"
+        )
+
+
+def _evolve_static(hermitian: Hermitian) -> Callable:
+    """Gate factory for static Hamiltonian evolution U = exp(-i t H)."""
     H_mat = hermitian.matrix
 
     def _apply(t: float, wires: Union[int, List[int]] = 0) -> Operation:
-        """Create and record the time-evolved unitary gate.
+        U = jax.scipy.linalg.expm(-1j * t * H_mat)
+        return type("EvolvedOp", (Operation,), {})(wires=wires, matrix=U)
+
+    return _apply
+
+
+def _evolve_parametrized(ph: ParametrizedHamiltonian, **odeint_kwargs) -> Callable:
+    """Gate factory for time-dependent Hamiltonian evolution.
+
+    Solves the matrix ODE ``dU/dt = -i f(params, t) H · U`` with
+    ``U(0) = I`` using ``jax.experimental.ode.odeint`` (Dopri5
+    adaptive RK), matching PennyLane's ``ParametrizedEvolution``.
+
+    Args:
+        ph: A :class:`ParametrizedHamiltonian` holding the coefficient
+            function, the Hamiltonian matrix, and wire indices.
+        **odeint_kwargs: Forwarded to ``odeint`` (``atol``, ``rtol``, …).
+    """
+    H_mat = ph.H_mat
+    coeff_fn = ph.coeff_fn
+    wires = ph.wires
+    dim = H_mat.shape[0]
+
+    # Default tolerances matching PennyLane
+    odeint_kwargs.setdefault("atol", 1.4e-8)
+    odeint_kwargs.setdefault("rtol", 1.4e-8)
+
+    def _apply(coeff_args, T) -> Operation:
+        """Evolve under the time-dependent Hamiltonian.
 
         Args:
-            t: Evolution time (scalar).
-            wires: Qubit index or list of qubit indices this gate acts on.
+            coeff_args: List of parameter sets, one per Hamiltonian term.
+                Following PennyLane convention, ``coeff_args[0]`` is
+                forwarded to ``coeff_fn(params, t)`` as the first argument.
+            T: Total evolution time.  If scalar, the ODE is solved on
+                ``[0, T]``.  If a 2-element array, on ``[T[0], T[1]]``.
 
         Returns:
-            An ``Operation`` instance wrapping U(t) = exp(-i t H).
+            An :class:`Operation` wrapping the computed unitary.
         """
-        U = jax.scipy.linalg.expm(-1j * t * H_mat)
+        # PennyLane convention: coeff_args is a list of param-sets,
+        # one per term.  Single term → unpack the first.
+        params = coeff_args[0] if isinstance(coeff_args, (list, tuple)) else coeff_args
+
+        # Build time span [0, T] (or [t0, t1] if T is a sequence)
+        T_arr = jnp.asarray(T, dtype=jnp.float64)
+        t_span = jnp.where(
+            T_arr.ndim == 0,
+            jnp.stack([0.0, T_arr]),
+            T_arr,
+        )
+
+        # Initial condition: U(0) = I
+        y0 = jnp.eye(dim, dtype=jnp.complex128)
+
+        # RHS: dU/dt = -i f(params, t) H · U
+        def rhs(y, t):
+            return -1j * coeff_fn(params, t) * (H_mat @ y)
+
+        # Solve the ODE
+        sol = _odeint(rhs, y0, t_span, **odeint_kwargs)
+
+        # sol has shape (len(t_span), dim, dim); take the final time slice
+        U = sol[-1]
+
         return type("EvolvedOp", (Operation,), {})(wires=wires, matrix=U)
 
     return _apply
@@ -430,9 +637,14 @@ class QuantumScript:
         # Step 1 — record the tape once using scalar slices of each arg.
         # This determines n_qubits and whether noise channels are present
         # without running the full batch.
+        # NOTE: We use lax.index_in_dim instead of jnp.take because JAX
+        # random key arrays do not support jnp.take.
+        def _slice_first(a, ax):
+            """Take the first element along axis *ax*."""
+            return jax.lax.index_in_dim(a, 0, axis=ax, keepdims=False)
+
         scalar_args = tuple(
-            jnp.take(a, 0, axis=ax) if ax is not None else a
-            for a, ax in zip(args, in_axes)
+            _slice_first(a, ax) if ax is not None else a for a, ax in zip(args, in_axes)
         )
         tape = self._record(*scalar_args, **kwargs)
         n_qubits = self._n_qubits or self._infer_n_qubits(tape, obs)
