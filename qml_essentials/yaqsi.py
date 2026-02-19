@@ -20,26 +20,38 @@ jax.config.update("jax_enable_x64", True)
 # ===================================================================
 # evolve – Hamiltonian time evolution
 # ===================================================================
-def evolve(hermitian: Hermitian):
-    """
-    Returns a callable gate-factory that applies the unitary
+def evolve(hermitian: Hermitian) -> Callable:
+    """Return a gate-factory that applies the unitary U(t) = exp(-i t H).
 
-        U(t) = exp(-i t H)
-
-    for a given Hermitian operator *H*.  The returned callable accepts
-    a scalar parameter ``t`` and optional ``wires``.
-
-    This is fully differentiable through ``jax.grad`` because
+    The returned callable accepts a scalar parameter ``t`` and optional
+    ``wires``, and is fully differentiable through ``jax.grad`` because
     ``jax.scipy.linalg.expm`` supports reverse-mode AD.
 
-    Example::
+    Args:
+        hermitian: A :class:`~qml_essentials.operations.Hermitian` instance
+            whose matrix is used as the Hamiltonian H.
 
-        time_evol = evolve(Hermitian(matrix=sigma_z, wires=0))
-        time_evol(t=0.5, wires=0)           # inside a circuit
+    Returns:
+        A callable ``gate_factory(t, wires=0)`` that, when called inside a
+        circuit function, creates and records an ``EvolvedOp`` on the active
+        tape.
+
+    Example:
+        >>> time_evol = evolve(Hermitian(matrix=sigma_z, wires=0))
+        >>> time_evol(t=0.5, wires=0)  # inside a circuit
     """
     H_mat = hermitian.matrix
 
-    def _apply(t: float, wires: Union[int, List[int]] = 0):
+    def _apply(t: float, wires: Union[int, List[int]] = 0) -> Operation:
+        """Create and record the time-evolved unitary gate.
+
+        Args:
+            t: Evolution time (scalar).
+            wires: Qubit index or list of qubit indices this gate acts on.
+
+        Returns:
+            An ``Operation`` instance wrapping U(t) = exp(-i t H).
+        """
         U = jax.scipy.linalg.expm(-1j * t * H_mat)
         return type("EvolvedOp", (Operation,), {})(wires=wires, matrix=U)
 
@@ -50,28 +62,52 @@ def evolve(hermitian: Hermitian):
 # QuantumScript – circuit container & executor
 # ===================================================================
 class QuantumScript:
+    """Circuit container and executor backed by pure JAX kernels.
+
+    ``QuantumScript`` takes a callable *f* representing a quantum circuit.
+    Within *f*, :class:`~qml_essentials.operations.Operation` objects are
+    instantiated and automatically recorded onto a tape.  The tape is then
+    simulated using either a statevector or density-matrix kernel depending on
+    whether noise channels are present.
+
+    Attributes:
+        f: The circuit function whose body instantiates ``Operation`` objects.
+        _n_qubits: Optionally pre-declared number of qubits.  When ``None``
+            the qubit count is inferred from the operations recorded on the
+            tape.
+
+    Example:
+        >>> def circuit(theta):
+        ...     RX(theta, wires=0)
+        ...     PauliZ(wires=1)
+        >>> script = QuantumScript(circuit, n_qubits=2)
+        >>> result = script.execute(type="expval", obs=[PauliZ(0)])
     """
-    This forms the basis for any quantum circuit.
 
-    It takes a callable *f* which is the circuit to execute.
-    Within *f*, different operations are instantiated and automatically
-    recorded onto a tape.
+    def __init__(self, f: Callable, n_qubits: Optional[int] = None) -> None:
+        """Initialise a QuantumScript.
 
-    Parameters
-    ----------
-    f : callable
-        A function whose body instantiates Operation objects.
-        Signature:  ``f(*args, **kwargs) -> None``
-    n_qubits : int or None
-        Number of qubits. If *None*, inferred from the operations.
-    """
-
-    def __init__(self, f: Callable, n_qubits: Optional[int] = None):
+        Args:
+            f: A function whose body instantiates ``Operation`` objects.
+                Signature: ``f(*args, **kwargs) -> None``.
+            n_qubits: Number of qubits.  If ``None``, inferred from the
+                operations recorded on the tape.
+        """
         self.f = f
         self._n_qubits = n_qubits
 
     # -- internal: record the tape by running f -------------------------
     def _record(self, *args, **kwargs) -> List[Operation]:
+        """Run the circuit function and collect the recorded operations.
+
+        Args:
+            *args: Positional arguments forwarded to the circuit function.
+            **kwargs: Keyword arguments forwarded to the circuit function.
+
+        Returns:
+            List of :class:`~qml_essentials.operations.Operation` instances in
+            the order they were instantiated.
+        """
         tape: List[Operation] = []
         _set_tape(tape)
         try:
@@ -83,6 +119,16 @@ class QuantumScript:
     # -- infer qubit count from the tape --------------------------------
     @staticmethod
     def _infer_n_qubits(ops: List[Operation], obs: List[Operation]) -> int:
+        """Infer the number of qubits from a list of operations and observables.
+
+        Args:
+            ops: Gate operations recorded on the tape.
+            obs: Observable operations used for measurement.
+
+        Returns:
+            The smallest number of qubits that covers all wire indices, i.e.
+            ``max(all_wires) + 1`` (at least 1).
+        """
         all_wires: set[int] = set()
         for op in ops + obs:
             all_wires.update(op.wires)
@@ -99,14 +145,16 @@ class QuantumScript:
 
     @staticmethod
     def _simulate_pure(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
-        """
-        Statevector simulation kernel.
+        """Statevector simulation kernel.
 
-        Starts from |00…0⟩ and applies each gate via ``apply_to_state``.
+        Starts from |00…0⟩ and applies each gate in *tape* via
+        :meth:`~qml_essentials.operations.Operation.apply_to_state`.
 
-        Returns
-        -------
-        jnp.ndarray
+        Args:
+            tape: Ordered list of gate operations to apply.
+            n_qubits: Total number of qubits.
+
+        Returns:
             Statevector of shape ``(2**n_qubits,)``.
         """
         dim = 2**n_qubits
@@ -117,16 +165,18 @@ class QuantumScript:
 
     @staticmethod
     def _simulate_mixed(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
-        """
-        Density-matrix simulation kernel.
+        """Density-matrix simulation kernel.
 
-        Starts from ρ = |00…0⟩⟨00…0| and applies each gate via
-        ``apply_to_density`` (ρ → UρU† for unitaries, Σ_k K_k ρ K_k† for
-        Kraus channels).  Required for noisy circuits.
+        Starts from ρ = |00…0⟩⟨00…0| and applies each gate in *tape* via
+        :meth:`~qml_essentials.operations.Operation.apply_to_density`
+        (ρ → UρU† for unitaries, Σ_k K_k ρ K_k† for Kraus channels).
+        Required for noisy circuits.
 
-        Returns
-        -------
-        jnp.ndarray
+        Args:
+            tape: Ordered list of gate or channel operations to apply.
+            n_qubits: Total number of qubits.
+
+        Returns:
             Density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
         """
         dim = 2**n_qubits
@@ -144,7 +194,25 @@ class QuantumScript:
         type: str,
         obs: List[Operation],
     ) -> jnp.ndarray:
-        """Apply the requested measurement to a pure statevector."""
+        """Apply the requested measurement to a pure statevector.
+
+        Args:
+            state: Statevector of shape ``(2**n_qubits,)``.
+            n_qubits: Total number of qubits.
+            type: Measurement type — one of ``"state"``, ``"probs"``,
+                or ``"expval"``.
+            obs: Observables used when *type* is ``"expval"``.
+
+        Returns:
+            Measurement result whose shape depends on *type*:
+
+            * ``"state"``  → ``(2**n_qubits,)``
+            * ``"probs"``  → ``(2**n_qubits,)``
+            * ``"expval"`` → ``(len(obs),)``
+
+        Raises:
+            ValueError: If *type* is not a recognised measurement type.
+        """
         if type == "state":
             return state
 
@@ -169,7 +237,26 @@ class QuantumScript:
         type: str,
         obs: List[Operation],
     ) -> jnp.ndarray:
-        """Apply the requested measurement to a density matrix."""
+        """Apply the requested measurement to a density matrix.
+
+        Args:
+            rho: Density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
+            n_qubits: Total number of qubits.
+            type: Measurement type — one of ``"density"``, ``"probs"``,
+                or ``"expval"``.
+            obs: Observables used when *type* is ``"expval"``.
+
+        Returns:
+            Measurement result whose shape depends on *type*:
+
+            * ``"density"`` → ``(2**n_qubits, 2**n_qubits)``
+            * ``"probs"``   → ``(2**n_qubits,)``
+            * ``"expval"``  → ``(len(obs),)``
+
+        Raises:
+            ValueError: If *type* is ``"state"`` (not valid for mixed circuits)
+                or another unrecognised type.
+        """
         if type == "density":
             return rho
 
@@ -207,76 +294,64 @@ class QuantumScript:
         kwargs: dict = {},
         in_axes: Optional[Tuple] = None,
     ) -> jnp.ndarray:
-        """
-        Execute the circuit and return measurement results.
+        """Execute the circuit and return measurement results.
 
-        Parameters
-        ----------
-        type : str
-            ``"expval"``  – expectation value ⟨ψ|O|ψ⟩ / Tr(Oρ) for each
-                            observable.
-            ``"probs"``   – probability vector.
-            ``"state"``   – raw statevector ``(2**n,)``.
-            ``"density"`` – full density matrix ``(2**n, 2**n)``.
-        obs : list[Operation]
-            Observables (required for ``"expval"``).
-        args : tuple
-            Positional arguments forwarded to the circuit function *f*.
-        kwargs : dict
-            Keyword arguments forwarded to *f*.
-        in_axes : tuple or None
-            Batch axes for each element of *args*, following the same
-            convention as ``jax.vmap``:
+        Args:
+            type: Measurement type.  One of:
 
-            * An integer selects that axis of the corresponding array as
-              the batch dimension.
-            * ``None`` means the argument is broadcast (not batched).
+                * ``"expval"``  — expectation value ⟨ψ|O|ψ⟩ / Tr(Oρ) for
+                  each observable in *obs*.
+                * ``"probs"``   — probability vector of shape ``(2**n,)``.
+                * ``"state"``   — raw statevector of shape ``(2**n,)``.
+                * ``"density"`` — full density matrix of shape
+                  ``(2**n, 2**n)``.
 
-            When *in_axes* is provided, ``execute`` calls ``jax.vmap``
-            over the pure simulation kernel and returns results with a
-            leading batch dimension.
+            obs: Observables required when *type* is ``"expval"``.
+            args: Positional arguments forwarded to the circuit function *f*.
+            kwargs: Keyword arguments forwarded to *f*.
+            in_axes: Batch axes for each element of *args*, following the same
+                convention as ``jax.vmap``:
 
-            Example — batch over axis 0 of a parameter array::
+                * An integer selects that axis of the corresponding array as
+                  the batch dimension.
+                * ``None`` broadcasts the argument (no batching).
 
-                script.execute(
-                    type="expval",
-                    obs=[PauliZ(0)],
-                    args=(thetas,),
-                    in_axes=(0,),
-                )
+                When provided, :meth:`execute` calls ``jax.vmap`` over the
+                pure simulation kernel and returns results with a leading
+                batch dimension.
 
-            Example — batch over axis 2 of params, axis 0 of inputs
-            (after ``_assimilate_batch`` has broadcast them to the same B)::
+                Example — batch over axis 0 of a parameter array::
 
-                script.execute(
-                    type="expval",
-                    obs=[PauliZ(0)],
-                    args=(params, inputs),
-                    in_axes=(2, 0),
-                )
+                    script.execute(
+                        type="expval",
+                        obs=[PauliZ(0)],
+                        args=(thetas,),
+                        in_axes=(0,),
+                    )
 
-        Returns
-        -------
-        jnp.ndarray
-            Without *in_axes*: shape depends on *type*.
-            With *in_axes*: shape ``(B, ...)`` with a leading batch dim.
+                Example — batch over axis 2 of params, axis 0 of inputs::
 
-        Notes
-        -----
-        **Tape / kernel split** — the circuit function is run in Python
-        *once* to record the tape and determine ``n_qubits`` and whether
-        noise is present.  The pure JAX kernels (``_simulate_pure`` /
-        ``_simulate_mixed``) are then vmapped.  This means Python
-        overhead is O(circuit_depth), not O(B × circuit_depth).
+                    script.execute(
+                        type="expval",
+                        obs=[PauliZ(0)],
+                        args=(params, inputs),
+                        in_axes=(2, 0),
+                    )
 
-        **shard_map migration** — the ``jax.vmap`` call in
-        ``_execute_batched`` is the exact boundary to replace with
-        ``jax.experimental.shard_map`` for multi-device execution::
+        Returns:
+            Without *in_axes*: shape determined by *type*.
+            With *in_axes*: shape ``(B, ...)`` with a leading batch dimension.
 
-            # Future drop-in replacement:
-            from jax.experimental.shard_map import shard_map
-            shard_map(_single_execute, mesh=mesh,
-                      in_specs=..., out_specs=...)
+        Note:
+            **Tape / kernel split** — the circuit function is executed in
+            Python *once* to record the tape and determine ``n_qubits`` and
+            whether noise is present.  The pure JAX kernels
+            (``_simulate_pure`` / ``_simulate_mixed``) are then vmapped, so
+            Python overhead is O(circuit_depth), not O(B × circuit_depth).
+
+            **shard_map migration** — the ``jax.vmap`` call in
+            :meth:`_execute_batched` is the exact boundary to replace with
+            ``jax.experimental.shard_map`` for multi-device execution.
         """
         if obs is None:
             obs = []
@@ -310,19 +385,40 @@ class QuantumScript:
         kwargs: dict,
         in_axes: Tuple,
     ) -> jnp.ndarray:
-        """
-        Vectorise ``execute`` over a batch axis using ``jax.vmap``.
+        """Vectorise :meth:`execute` over a batch axis using ``jax.vmap``.
 
-        The circuit function is traced **once** in Python with scalar
-        slices to record the tape, determine ``n_qubits``, and detect
-        noise.  The resulting pure simulation kernel is then vmapped over
-        the requested axes.
+        The circuit function is traced **once** in Python with scalar slices to
+        record the tape, determine ``n_qubits``, and detect noise.  The
+        resulting pure simulation kernel is then vmapped over the requested
+        axes.
 
-        Parameters
-        ----------
-        in_axes : tuple
-            One entry per element of *args*.  Follows ``jax.vmap``
-            convention: an int gives the batch axis; ``None`` broadcasts.
+        Args:
+            type: Measurement type (see :meth:`execute`).
+            obs: Observables (see :meth:`execute`).
+            args: Positional arguments for the circuit function.
+            kwargs: Keyword arguments for the circuit function.
+            in_axes: One entry per element of *args*.  Follows ``jax.vmap``
+                convention: an int gives the batch axis; ``None`` broadcasts.
+
+        Returns:
+            Batched measurement results of shape ``(B, ...)`` where *B* is the
+            size of the batch dimension.
+
+        Raises:
+            ValueError: If ``len(in_axes) != len(args)``.
+
+        Note:
+            The ``jax.vmap`` call at the end of this method is the exact
+            boundary to replace with ``jax.experimental.shard_map`` for
+            multi-device execution::
+
+                from jax.experimental.shard_map import shard_map
+                from jax.sharding import PartitionSpec as P, Mesh
+                result = shard_map(
+                    _single_execute, mesh=mesh,
+                    in_specs=tuple(P(0) if ax is not None else P() for ax in in_axes),
+                    out_specs=P(0),
+                )(*args)
         """
         if len(in_axes) != len(args):
             raise ValueError(
@@ -357,17 +453,4 @@ class QuantumScript:
             return self._measure_state(state, n_qubits, type, obs)
 
         # Step 3 — vmap over the requested axes.
-        #
-        # NOTE: this is the shard_map boundary.  To distribute across
-        # multiple JAX devices in the future, replace the two lines below
-        # with:
-        #
-        #   from jax.experimental.shard_map import shard_map
-        #   from jax.sharding import PartitionSpec as P, Mesh
-        #   result = shard_map(
-        #       _single_execute, mesh=mesh,
-        #       in_specs=tuple(P(0) if ax is not None else P() for ax in in_axes),
-        #       out_specs=P(0),
-        #   )(*args)
-        #
         return jax.vmap(_single_execute, in_axes=in_axes)(*args)

@@ -14,11 +14,20 @@ _tape_local = threading.local()
 
 
 def _active_tape() -> Optional[List["Operation"]]:
-    """Return the currently recording tape, or None."""
+    """Return the currently recording tape, or None.
+
+    Returns:
+        The active tape list if recording is in progress, otherwise ``None``.
+    """
     return getattr(_tape_local, "tape", None)
 
 
-def _set_tape(tape: Optional[List["Operation"]]):
+def _set_tape(tape: Optional[List["Operation"]]) -> None:
+    """Set (or clear) the thread-local recording tape.
+
+    Args:
+        tape: A list to record operations into, or ``None`` to stop recording.
+    """
     _tape_local.tape = tape
 
 
@@ -40,16 +49,20 @@ CNOT = jnp.array(
 # Operation base class
 # ===================================================================
 class Operation:
-    """
-    This forms the basis for any quantum operation.
-    Further gates should inherit from this class to realize
-    more specific operations.
-    Generally, operations should be applied by instantiation
-    and appending to a QuantumScript.
-    This script should then be executed once the circuit is called.
+    """Base class for any quantum operation or observable.
 
-    An Operation can also serve as an *observable* (its matrix is used
-    to compute expectation values).
+    Further gates should inherit from this class to realise more specific
+    operations.  Generally, operations are created by instantiation inside a
+    circuit function passed to :class:`QuantumScript`; the instance is
+    automatically appended to the active tape.
+
+    An ``Operation`` can also serve as an *observable*: its matrix is used to
+    compute expectation values via ``apply_to_state`` / ``apply_to_density``.
+
+    Attributes:
+        _matrix: Class-level default gate matrix.  Subclasses set this to their
+            fixed unitary.  Instances may override it via the *matrix* argument
+            to ``__init__``.
     """
 
     # Subclasses should set this to the gate's unitary / matrix
@@ -59,7 +72,14 @@ class Operation:
         self,
         wires: Union[int, List[int]] = 0,
         matrix: Optional[jnp.ndarray] = None,
-    ):
+    ) -> None:
+        """Initialise the operation and optionally register it on the active tape.
+
+        Args:
+            wires: Qubit index or list of qubit indices this operation acts on.
+            matrix: Optional explicit gate matrix.  When provided it overrides
+                the class-level ``_matrix`` attribute.
+        """
         self.wires = wires if isinstance(wires, list) else [wires]
         if matrix is not None:
             self._matrix = matrix
@@ -71,7 +91,14 @@ class Operation:
 
     @property
     def matrix(self) -> jnp.ndarray:
-        """Return the base matrix of this operation (before lifting)."""
+        """Return the base matrix of this operation (before lifting).
+
+        Returns:
+            The gate matrix as a JAX array.
+
+        Raises:
+            NotImplementedError: If the subclass has not defined ``_matrix``.
+        """
         if self._matrix is None:
             raise NotImplementedError(
                 f"{self.__class__.__name__} does not define a matrix."
@@ -80,24 +107,41 @@ class Operation:
 
     @property
     def wires(self) -> List[int]:
+        """Qubit indices this operation acts on.
+
+        Returns:
+            List of integer qubit indices.
+        """
         return self._wires
 
     @wires.setter
-    def wires(self, wires: Union[int, List[int]]):
+    def wires(self, wires: Union[int, List[int]]) -> None:
+        """Set the qubit indices for this operation.
+
+        Args:
+            wires: A single qubit index or a list of qubit indices.
+        """
         if isinstance(wires, int):
             self._wires = [wires]
         else:
             self._wires = wires
 
     def apply_to_state(self, state: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
-        """
-        Apply this gate to a **statevector** via tensor contraction.
+        """Apply this gate to a statevector via tensor contraction.
 
         The statevector (shape ``(2**n,)``) is reshaped into a rank-*n* tensor
         of shape ``(2,)*n``.  The gate (shape ``(2**k, 2**k)``) is reshaped to
         ``(2,)*2k`` and contracted against the *k* target wire axes.
 
-        Memory:  O(2**n).  Supports arbitrary k.  Fully differentiable.
+        Memory footprint is O(2**n) and the operation supports arbitrary *k*.
+        The implementation is fully differentiable through JAX.
+
+        Args:
+            state: Statevector of shape ``(2**n_qubits,)``.
+            n_qubits: Total number of qubits in the circuit.
+
+        Returns:
+            Updated statevector of shape ``(2**n_qubits,)``.
         """
         k = len(self.wires)
         gate_tensor = self.matrix.reshape((2,) * 2 * k)
@@ -119,17 +163,24 @@ class Operation:
         return psi_out.reshape(2**n_qubits)
 
     def apply_to_density(self, rho: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
-        """
-        Apply this gate to a **density matrix** via ρ → UρU†.
+        """Apply this gate to a density matrix via ρ → UρU†.
 
         The density matrix (shape ``(2**n, 2**n)``) is treated as a rank-*2n*
         tensor with *n* "ket" axes (0..n-1) and *n* "bra" axes (n..2n-1).
         U acts on the ket half; U* acts on the bra half.  Both contractions
-        reuse the same axis-permutation logic as ``apply_to_state``, keeping
-        the operation allocation-free w.r.t. building full unitaries.
+        reuse the same axis-permutation logic as :meth:`apply_to_state`,
+        keeping the operation allocation-free with respect to building full
+        unitaries.
 
-        This is the correct building block for future noise channels, where a
-        mixed state cannot be represented as a pure statevector.
+        This is the correct building block for noise channels, where a mixed
+        state cannot be represented as a pure statevector.
+
+        Args:
+            rho: Density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
+            n_qubits: Total number of qubits in the circuit.
+
+        Returns:
+            Updated density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
         """
         k = len(self.wires)
         U = self.matrix.reshape((2,) * 2 * k)  # (out)*k + (in)*k
@@ -140,14 +191,21 @@ class Operation:
 
         # Helper: apply a (2,)*2k gate tensor to k chosen axes of rho_t,
         # then restore the correct axis order for a 2n-rank tensor.
-        def _contract_and_restore(tensor, gate, target_axes):
-            """
-            Contract gate (last k indices) against `target_axes` of `tensor`,
-            placing k new output axes at the *front* of the result, then
-            restore them to `target_axes` positions.
+        def _contract_and_restore(
+            tensor: jnp.ndarray,
+            gate: jnp.ndarray,
+            target_axes: List[int],
+        ) -> jnp.ndarray:
+            """Contract *gate* against *target_axes* of *tensor* and restore axis order.
 
-            tensor shape: (2,)*2n
-            target_axes:  k ints, each in [0, 2n)
+            Args:
+                tensor: Rank-``2*n_qubits`` tensor representing the density matrix.
+                gate: Reshaped gate tensor of shape ``(2,)*2k``.
+                target_axes: The *k* axes of *tensor* to contract against.
+
+            Returns:
+                Updated tensor with the same rank as *tensor*, with the
+                contracted axes restored to their original positions.
             """
             total = 2 * n_qubits
             out = jnp.tensordot(gate, tensor, axes=(list(range(k, 2 * k)), target_axes))
@@ -175,41 +233,61 @@ class Operation:
 # Concrete gates / observables
 # ===================================================================
 class Hermitian(Operation):
-    """
-    A generic Hermitian observable / gate defined by an arbitrary matrix.
+    """A generic Hermitian observable or gate defined by an arbitrary matrix.
 
-    Usage:
-        obs = Hermitian(matrix=my_matrix, wires=0)
+    Example:
+        >>> obs = Hermitian(matrix=my_matrix, wires=0)
     """
 
-    def __init__(self, matrix: jnp.ndarray, wires: Union[int, List[int]] = 0):
+    def __init__(self, matrix: jnp.ndarray, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise a Hermitian operator.
+
+        Args:
+            matrix: The Hermitian matrix defining this operator.
+            wires: Qubit index or list of qubit indices this operator acts on.
+        """
         super().__init__(wires=wires, matrix=jnp.asarray(matrix, dtype=jnp.complex128))
 
 
 class PauliX(Operation):
-    """Pauli-X gate / observable."""
+    """Pauli-X gate / observable (bit-flip, σ_x)."""
 
     _matrix = X
 
-    def __init__(self, wires: Union[int, List[int]] = 0):
+    def __init__(self, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise a Pauli-X gate.
+
+        Args:
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
         super().__init__(wires=wires)
 
 
 class PauliY(Operation):
-    """Pauli-Y gate / observable."""
+    """Pauli-Y gate / observable (σ_y)."""
 
     _matrix = Y
 
-    def __init__(self, wires: Union[int, List[int]] = 0):
+    def __init__(self, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise a Pauli-Y gate.
+
+        Args:
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
         super().__init__(wires=wires)
 
 
 class PauliZ(Operation):
-    """Pauli-Z gate / observable."""
+    """Pauli-Z gate / observable (phase-flip, σ_z)."""
 
     _matrix = Z
 
-    def __init__(self, wires: Union[int, List[int]] = 0):
+    def __init__(self, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise a Pauli-Z gate.
+
+        Args:
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
         super().__init__(wires=wires)
 
 
@@ -218,25 +296,40 @@ class H(Operation):
 
     _matrix = H
 
-    def __init__(self, wires: Union[int, List[int]] = 0):
+    def __init__(self, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise a Hadamard gate.
+
+        Args:
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
         super().__init__(wires=wires)
 
 
 class CX(Operation):
-    """Controlled-X (CNOT) gate.  wires=[control, target]."""
+    """Controlled-X (CNOT) gate.
+
+    Args on construction:
+        wires: ``[control, target]``.
+    """
 
     _matrix = CNOT
 
-    def __init__(self, wires: List[int] = [0, 1]):
+    def __init__(self, wires: List[int] = [0, 1]) -> None:
+        """Initialise a Controlled-X gate.
+
+        Args:
+            wires: Two-element list ``[control, target]``.
+        """
         super().__init__(wires=wires)
 
 
 class CCX(Operation):
-    """Toffoli (CCX) gate.  wires=[control0, control1, target].
+    """Toffoli (CCX) gate.
 
     The 3-qubit Toffoli gate exercises the arbitrary-k-qubit path in
-    ``apply_to_state`` and cannot be expressed as a pair of 2-qubit gates
-    without ancilla, making it a good stress-test for the simulator.
+    :meth:`~Operation.apply_to_state` and cannot be expressed as a pair of
+    2-qubit gates without ancilla, making it a good stress-test for the
+    simulator.
     """
 
     _matrix = jnp.array(
@@ -253,7 +346,12 @@ class CCX(Operation):
         dtype=jnp.complex128,
     )
 
-    def __init__(self, wires: List[int] = [0, 1, 2]):
+    def __init__(self, wires: List[int] = [0, 1, 2]) -> None:
+        """Initialise a Toffoli (CCX) gate.
+
+        Args:
+            wires: Three-element list ``[control0, control1, target]``.
+        """
         super().__init__(wires=wires)
 
 
@@ -261,38 +359,71 @@ class CCX(Operation):
 # Kraus channel base class
 # ===================================================================
 class KrausChannel(Operation):
-    """
-    Base class for noise channels defined by a set of Kraus operators.
+    """Base class for noise channels defined by a set of Kraus operators.
 
     A Kraus channel Φ(ρ) = Σ_k K_k ρ K_k† is the most general physical
-    operation on a quantum state. For pure unitary gates Σ_k K_k†K_k = I
-    with a single K_0 = U; for noisy channels there are multiple operators.
+    operation on a quantum state.  For a pure unitary gate there is a single
+    operator K_0 = U satisfying K_0†K_0 = I; for noisy channels there are
+    multiple operators.
 
-    Subclasses must implement ``kraus_matrices()`` returning a list of
-    JAX arrays.  ``apply_to_state`` is intentionally left unimplemented:
+    Subclasses must implement :meth:`kraus_matrices` and return a list of JAX
+    arrays.  :meth:`apply_to_state` is intentionally left unimplemented:
     Kraus channels require a density-matrix representation and cannot be
     applied to a pure statevector in general.
     """
 
     def kraus_matrices(self) -> List[jnp.ndarray]:
+        """Return the list of Kraus operators for this channel.
+
+        Returns:
+            List of 2-D JAX arrays, each of shape ``(2**k, 2**k)`` where *k*
+            is the number of target qubits.
+
+        Raises:
+            NotImplementedError: Subclasses must override this method.
+        """
         raise NotImplementedError
 
     @property
     def matrix(self) -> jnp.ndarray:
+        """Raises TypeError — noise channels have no single unitary matrix.
+
+        Raises:
+            TypeError: Always raised; use :meth:`apply_to_density` instead.
+        """
         raise TypeError(
             f"{self.__class__.__name__} is a noise channel and has no single "
             "unitary matrix. Use apply_to_density() instead."
         )
 
     def apply_to_state(self, state: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
+        """Raises TypeError — noise channels require density-matrix simulation.
+
+        Args:
+            state: Statevector (unused).
+            n_qubits: Number of qubits (unused).
+
+        Raises:
+            TypeError: Always raised; use ``execute(type='density')`` instead.
+        """
         raise TypeError(
             f"{self.__class__.__name__} is a noise channel and cannot be "
             "applied to a pure statevector. Use execute(type='density') instead."
         )
 
     def apply_to_density(self, rho: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
-        """Apply Φ(ρ) = Σ_k K_k ρ K_k† using the same tensor-contraction
-        engine as Operation.apply_to_density, but summing over all Kraus ops."""
+        """Apply Φ(ρ) = Σ_k K_k ρ K_k† using tensor-contraction.
+
+        Uses the same axis-permutation engine as
+        :meth:`Operation.apply_to_density`, but sums over all Kraus operators.
+
+        Args:
+            rho: Density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
+            n_qubits: Total number of qubits in the circuit.
+
+        Returns:
+            Updated density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
+        """
         k = len(self.wires)
         total = 2 * n_qubits
         rho_out = jnp.zeros_like(rho)
@@ -324,21 +455,35 @@ class KrausChannel(Operation):
 # Noise channels
 # ===================================================================
 class BitFlip(KrausChannel):
-    r"""
-    Single-qubit bit-flip (Pauli X) error channel.
+    r"""Single-qubit bit-flip (Pauli-X) error channel.
 
-        K₀ = √(1-p) I,   K₁ = √p X
+    .. math::
+        K_0 = \sqrt{1-p}\,I, \quad K_1 = \sqrt{p}\,X
 
-    where p ∈ [0, 1] is the probability of a bit flip.
+    where *p* ∈ [0, 1] is the probability of a bit flip.
     """
 
-    def __init__(self, p: float, wires: Union[int, List[int]] = 0):
+    def __init__(self, p: float, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise a bit-flip channel.
+
+        Args:
+            p: Bit-flip probability, must be in [0, 1].
+            wires: Qubit index or list of qubit indices this channel acts on.
+
+        Raises:
+            ValueError: If *p* is outside [0, 1].
+        """
         if not 0.0 <= p <= 1.0:
             raise ValueError("p must be in [0, 1].")
         self.p = p
         super().__init__(wires=wires)
 
     def kraus_matrices(self) -> List[jnp.ndarray]:
+        """Return the two Kraus operators for the bit-flip channel.
+
+        Returns:
+            List ``[K0, K1]`` where K0 = √(1-p)·I and K1 = √p·X.
+        """
         p = self.p
         K0 = jnp.sqrt(1 - p) * I.astype(jnp.complex128)
         K1 = jnp.sqrt(p) * X.astype(jnp.complex128)
@@ -346,21 +491,35 @@ class BitFlip(KrausChannel):
 
 
 class PhaseFlip(KrausChannel):
-    r"""
-    Single-qubit phase-flip (Pauli Z) error channel.
+    r"""Single-qubit phase-flip (Pauli-Z) error channel.
 
-        K₀ = √(1-p) I,   K₁ = √p Z
+    .. math::
+        K_0 = \sqrt{1-p}\,I, \quad K_1 = \sqrt{p}\,Z
 
-    where p ∈ [0, 1] is the probability of a phase flip.
+    where *p* ∈ [0, 1] is the probability of a phase flip.
     """
 
-    def __init__(self, p: float, wires: Union[int, List[int]] = 0):
+    def __init__(self, p: float, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise a phase-flip channel.
+
+        Args:
+            p: Phase-flip probability, must be in [0, 1].
+            wires: Qubit index or list of qubit indices this channel acts on.
+
+        Raises:
+            ValueError: If *p* is outside [0, 1].
+        """
         if not 0.0 <= p <= 1.0:
             raise ValueError("p must be in [0, 1].")
         self.p = p
         super().__init__(wires=wires)
 
     def kraus_matrices(self) -> List[jnp.ndarray]:
+        """Return the two Kraus operators for the phase-flip channel.
+
+        Returns:
+            List ``[K0, K1]`` where K0 = √(1-p)·I and K1 = √p·Z.
+        """
         p = self.p
         K0 = jnp.sqrt(1 - p) * I.astype(jnp.complex128)
         K1 = jnp.sqrt(p) * Z.astype(jnp.complex128)
@@ -368,22 +527,36 @@ class PhaseFlip(KrausChannel):
 
 
 class DepolarizingChannel(KrausChannel):
-    r"""
-    Single-qubit depolarizing channel.
+    r"""Single-qubit depolarizing channel.
 
-        K₀ = √(1-p) I,   K₁ = √(p/3) X,
-        K₂ = √(p/3) Y,   K₃ = √(p/3) Z
+    .. math::
+        K_0 = \sqrt{1-p}\,I,\quad K_1 = \sqrt{p/3}\,X,\quad
+        K_2 = \sqrt{p/3}\,Y,\quad K_3 = \sqrt{p/3}\,Z
 
-    where p ∈ [0, 1]. At p=3/4 the channel is fully depolarizing.
+    where *p* ∈ [0, 1].  At p = 3/4 the channel is fully depolarizing.
     """
 
-    def __init__(self, p: float, wires: Union[int, List[int]] = 0):
+    def __init__(self, p: float, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise a depolarizing channel.
+
+        Args:
+            p: Depolarization probability, must be in [0, 1].
+            wires: Qubit index or list of qubit indices this channel acts on.
+
+        Raises:
+            ValueError: If *p* is outside [0, 1].
+        """
         if not 0.0 <= p <= 1.0:
             raise ValueError("p must be in [0, 1].")
         self.p = p
         super().__init__(wires=wires)
 
     def kraus_matrices(self) -> List[jnp.ndarray]:
+        """Return the four Kraus operators for the depolarizing channel.
+
+        Returns:
+            List ``[K0, K1, K2, K3]`` corresponding to I, X, Y, Z components.
+        """
         p = self.p
         K0 = jnp.sqrt(1 - p) * I.astype(jnp.complex128)
         K1 = jnp.sqrt(p / 3) * X.astype(jnp.complex128)
@@ -393,22 +566,36 @@ class DepolarizingChannel(KrausChannel):
 
 
 class AmplitudeDamping(KrausChannel):
-    r"""
-    Single-qubit amplitude damping channel.
+    r"""Single-qubit amplitude damping channel.
 
-        K₀ = [[1,        0      ],      K₁ = [[0, √γ],
-              [0, √(1-γ)       ]]             [0,  0 ]]
+    .. math::
+        K_0 = \begin{pmatrix}1 & 0\\ 0 & \sqrt{1-\gamma}\end{pmatrix},\quad
+        K_1 = \begin{pmatrix}0 & \sqrt{\gamma}\\ 0 & 0\end{pmatrix}
 
-    where γ ∈ [0, 1] is the probability of energy loss (|1⟩→|0⟩).
+    where *γ* ∈ [0, 1] is the probability of energy loss (|1⟩ → |0⟩).
     """
 
-    def __init__(self, gamma: float, wires: Union[int, List[int]] = 0):
+    def __init__(self, gamma: float, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise an amplitude damping channel.
+
+        Args:
+            gamma: Energy-loss probability, must be in [0, 1].
+            wires: Qubit index or list of qubit indices this channel acts on.
+
+        Raises:
+            ValueError: If *gamma* is outside [0, 1].
+        """
         if not 0.0 <= gamma <= 1.0:
             raise ValueError("gamma must be in [0, 1].")
         self.gamma = gamma
         super().__init__(wires=wires)
 
     def kraus_matrices(self) -> List[jnp.ndarray]:
+        """Return the two Kraus operators for the amplitude damping channel.
+
+        Returns:
+            List ``[K0, K1]`` as defined in the class docstring.
+        """
         g = self.gamma
         K0 = jnp.array([[1.0, 0.0], [0.0, jnp.sqrt(1 - g)]], dtype=jnp.complex128)
         K1 = jnp.array([[0.0, jnp.sqrt(g)], [0.0, 0.0]], dtype=jnp.complex128)
@@ -416,22 +603,36 @@ class AmplitudeDamping(KrausChannel):
 
 
 class PhaseDamping(KrausChannel):
-    r"""
-    Single-qubit phase damping (dephasing) channel.
+    r"""Single-qubit phase damping (dephasing) channel.
 
-        K₀ = [[1,        0      ],      K₁ = [[0,      0     ],
-              [0, √(1-γ)       ]]             [0, √γ         ]]
+    .. math::
+        K_0 = \begin{pmatrix}1 & 0\\ 0 & \sqrt{1-\gamma}\end{pmatrix},\quad
+        K_1 = \begin{pmatrix}0 & 0\\ 0 & \sqrt{\gamma}\end{pmatrix}
 
-    where γ ∈ [0, 1] is the phase damping probability.
+    where *γ* ∈ [0, 1] is the phase damping probability.
     """
 
-    def __init__(self, gamma: float, wires: Union[int, List[int]] = 0):
+    def __init__(self, gamma: float, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise a phase damping channel.
+
+        Args:
+            gamma: Phase-damping probability, must be in [0, 1].
+            wires: Qubit index or list of qubit indices this channel acts on.
+
+        Raises:
+            ValueError: If *gamma* is outside [0, 1].
+        """
         if not 0.0 <= gamma <= 1.0:
             raise ValueError("gamma must be in [0, 1].")
         self.gamma = gamma
         super().__init__(wires=wires)
 
     def kraus_matrices(self) -> List[jnp.ndarray]:
+        """Return the two Kraus operators for the phase damping channel.
+
+        Returns:
+            List ``[K0, K1]`` as defined in the class docstring.
+        """
         g = self.gamma
         K0 = jnp.array([[1.0, 0.0], [0.0, jnp.sqrt(1 - g)]], dtype=jnp.complex128)
         K1 = jnp.array([[0.0, 0.0], [0.0, jnp.sqrt(g)]], dtype=jnp.complex128)
@@ -439,32 +640,24 @@ class PhaseDamping(KrausChannel):
 
 
 class ThermalRelaxationError(KrausChannel):
-    r"""
-    Single-qubit thermal relaxation error channel.
+    r"""Single-qubit thermal relaxation error channel.
 
-    Models simultaneous T₁ energy relaxation and T₂ dephasing.
-    Two regimes:
+    Models simultaneous T₁ energy relaxation and T₂ dephasing.  Two regimes
+    are handled:
 
     **T₂ ≤ T₁** (Markovian dephasing + reset):
-
-        Six Kraus operators built from p_z (phase-flip prob), p_r0 (reset-to-0
-        prob) and p_r1 (reset-to-1 prob).
+        Six Kraus operators built from p_z (phase-flip probability), p_r0
+        (reset-to-|0⟩ probability) and p_r1 (reset-to-|1⟩ probability).
 
     **T₂ > T₁** (non-Markovian; Choi matrix decomposition):
-
-        Choi matrix is built from the relaxation/dephasing rates, then
+        The Choi matrix is assembled from the relaxation/dephasing rates, then
         diagonalised; Kraus operators are K_i = √λ_i · mat(v_i).
 
-    Parameters
-    ----------
-    pe : float
-        Excited-state population (thermal population of |1⟩), ∈ [0, 1].
-    t1 : float
-        T₁ longitudinal relaxation time (> 0).
-    t2 : float
-        T₂ transverse dephasing time (> 0, ≤ 2 T₁).
-    tg : float
-        Gate duration (> 0).
+    Attributes:
+        pe: Excited-state population (thermal population of |1⟩).
+        t1: T₁ longitudinal relaxation time.
+        t2: T₂ transverse dephasing time.
+        tg: Gate duration.
     """
 
     def __init__(
@@ -474,7 +667,19 @@ class ThermalRelaxationError(KrausChannel):
         t2: float,
         tg: float,
         wires: Union[int, List[int]] = 0,
-    ):
+    ) -> None:
+        """Initialise a thermal relaxation error channel.
+
+        Args:
+            pe: Excited-state population (thermal population of |1⟩), in [0, 1].
+            t1: T₁ longitudinal relaxation time, must be > 0.
+            t2: T₂ transverse dephasing time, must be > 0 and ≤ 2·T₁.
+            tg: Gate duration, must be ≥ 0.
+            wires: Qubit index or list of qubit indices this channel acts on.
+
+        Raises:
+            ValueError: If any parameter violates the stated constraints.
+        """
         if not 0.0 <= pe <= 1.0:
             raise ValueError("pe must be in [0, 1].")
         if t1 <= 0:
@@ -492,6 +697,17 @@ class ThermalRelaxationError(KrausChannel):
         super().__init__(wires=wires)
 
     def kraus_matrices(self) -> List[jnp.ndarray]:
+        """Return the Kraus operators for the thermal relaxation channel.
+
+        The number of operators depends on the regime:
+
+        * **T₂ ≤ T₁**: six operators (identity, phase-flip, two reset-to-|0⟩,
+          two reset-to-|1⟩).
+        * **T₂ > T₁**: four operators derived from the Choi matrix eigendecomposition.
+
+        Returns:
+            List of 2×2 JAX arrays representing the Kraus operators.
+        """
         pe, t1, t2, tg = self.pe, self.t1, self.t2, self.tg
 
         eT1 = jnp.exp(-tg / t1)
@@ -538,27 +754,45 @@ class ThermalRelaxationError(KrausChannel):
 
 
 class RX(Operation):
-    """Rotation around X: RX(θ) = exp(-i θ/2 X)."""
+    """Rotation around the X axis: RX(θ) = exp(-i θ/2 X)."""
 
-    def __init__(self, theta: float, wires: Union[int, List[int]] = 0):
+    def __init__(self, theta: float, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise an RX rotation gate.
+
+        Args:
+            theta: Rotation angle in radians.
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
         self.theta = theta
         mat = jnp.cos(theta / 2) * I - 1j * jnp.sin(theta / 2) * X
         super().__init__(wires=wires, matrix=mat)
 
 
 class RY(Operation):
-    """Rotation around Y: RY(θ) = exp(-i θ/2 Y)."""
+    """Rotation around the Y axis: RY(θ) = exp(-i θ/2 Y)."""
 
-    def __init__(self, theta: float, wires: Union[int, List[int]] = 0):
+    def __init__(self, theta: float, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise an RY rotation gate.
+
+        Args:
+            theta: Rotation angle in radians.
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
         self.theta = theta
         mat = jnp.cos(theta / 2) * I - 1j * jnp.sin(theta / 2) * Y
         super().__init__(wires=wires, matrix=mat)
 
 
 class RZ(Operation):
-    """Rotation around Z: RZ(θ) = exp(-i θ/2 Z)."""
+    """Rotation around the Z axis: RZ(θ) = exp(-i θ/2 Z)."""
 
-    def __init__(self, theta: float, wires: Union[int, List[int]] = 0):
+    def __init__(self, theta: float, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise an RZ rotation gate.
+
+        Args:
+            theta: Rotation angle in radians.
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
         self.theta = theta
         mat = jnp.cos(theta / 2) * I - 1j * jnp.sin(theta / 2) * Z
         super().__init__(wires=wires, matrix=mat)
