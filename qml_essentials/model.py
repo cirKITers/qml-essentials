@@ -420,10 +420,7 @@ class Model:
             )
 
         if value == "density" and self.shots is not None:
-            warnings.warn(
-                "Setting execution_type to density with specified shots.",
-                UserWarning,
-            )
+            raise ValueError("Setting execution_type to density with shots not None.")
 
         self._execution_type = value
 
