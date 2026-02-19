@@ -31,28 +31,6 @@ def _set_tape(tape: Optional[List["Operation"]]) -> None:
     _tape_local.tape = tape
 
 
-# ---------------------------------------------------------------------------
-# Core gate matrices (constant, defined once)
-# ---------------------------------------------------------------------------
-I = jnp.eye(2, dtype=jnp.complex128)
-X = jnp.array([[0, 1], [1, 0]], dtype=jnp.complex128)
-Y = jnp.array([[0, -1j], [1j, 0]], dtype=jnp.complex128)
-Z = jnp.array([[1, 0], [0, -1]], dtype=jnp.complex128)
-H = jnp.array([[1, 1], [1, -1]], dtype=jnp.complex128) / jnp.sqrt(2)
-CX_MAT = jnp.array(
-    [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]],
-    dtype=jnp.complex128,
-)
-CY_MAT = jnp.array(
-    [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, -1j], [0, 0, 1j, 0]],
-    dtype=jnp.complex128,
-)
-CZ_MAT = jnp.array(
-    [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1]],
-    dtype=jnp.complex128,
-)
-
-
 # ===================================================================
 # Operation base class
 # ===================================================================
@@ -257,10 +235,24 @@ class Hermitian(Operation):
         super().__init__(wires=wires, matrix=jnp.asarray(matrix, dtype=jnp.complex128))
 
 
+class I(Operation):
+    """Identity gate."""
+
+    _matrix = jnp.eye(2, dtype=jnp.complex128)
+
+    def __init__(self, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise an identity gate.
+
+        Args:
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
+        super().__init__(wires=wires)
+
+
 class PauliX(Operation):
     """Pauli-X gate / observable (bit-flip, σ_x)."""
 
-    _matrix = X
+    _matrix = jnp.array([[0, 1], [1, 0]], dtype=jnp.complex128)
 
     def __init__(self, wires: Union[int, List[int]] = 0) -> None:
         """Initialise a Pauli-X gate.
@@ -274,7 +266,7 @@ class PauliX(Operation):
 class PauliY(Operation):
     """Pauli-Y gate / observable (σ_y)."""
 
-    _matrix = Y
+    _matrix = jnp.array([[0, -1j], [1j, 0]], dtype=jnp.complex128)
 
     def __init__(self, wires: Union[int, List[int]] = 0) -> None:
         """Initialise a Pauli-Y gate.
@@ -288,7 +280,7 @@ class PauliY(Operation):
 class PauliZ(Operation):
     """Pauli-Z gate / observable (phase-flip, σ_z)."""
 
-    _matrix = Z
+    _matrix = jnp.array([[1, 0], [0, -1]], dtype=jnp.complex128)
 
     def __init__(self, wires: Union[int, List[int]] = 0) -> None:
         """Initialise a Pauli-Z gate.
@@ -302,7 +294,7 @@ class PauliZ(Operation):
 class H(Operation):
     """Hadamard gate."""
 
-    _matrix = H
+    _matrix = jnp.array([[1, 1], [1, -1]], dtype=jnp.complex128) / jnp.sqrt(2)
 
     def __init__(self, wires: Union[int, List[int]] = 0) -> None:
         """Initialise a Hadamard gate.
@@ -324,7 +316,7 @@ class RX(Operation):
             wires: Qubit index or list of qubit indices this gate acts on.
         """
         self.theta = theta
-        mat = jnp.cos(theta / 2) * I - 1j * jnp.sin(theta / 2) * X
+        mat = jnp.cos(theta / 2) * I._matrix - 1j * jnp.sin(theta / 2) * PauliX._matrix
         super().__init__(wires=wires, matrix=mat)
 
 
@@ -339,7 +331,7 @@ class RY(Operation):
             wires: Qubit index or list of qubit indices this gate acts on.
         """
         self.theta = theta
-        mat = jnp.cos(theta / 2) * I - 1j * jnp.sin(theta / 2) * Y
+        mat = jnp.cos(theta / 2) * I._matrix - 1j * jnp.sin(theta / 2) * PauliY._matrix
         super().__init__(wires=wires, matrix=mat)
 
 
@@ -354,7 +346,7 @@ class RZ(Operation):
             wires: Qubit index or list of qubit indices this gate acts on.
         """
         self.theta = theta
-        mat = jnp.cos(theta / 2) * I - 1j * jnp.sin(theta / 2) * Z
+        mat = jnp.cos(theta / 2) * I._matrix - 1j * jnp.sin(theta / 2) * PauliZ._matrix
         super().__init__(wires=wires, matrix=mat)
 
 
@@ -365,7 +357,10 @@ class CX(Operation):
         wires: ``[control, target]``.
     """
 
-    _matrix = CX_MAT
+    _matrix = jnp.array(
+        [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]],
+        dtype=jnp.complex128,
+    )
 
     def __init__(self, wires: List[int] = [0, 1]) -> None:
         """Initialise a Controlled-X gate.
@@ -418,7 +413,10 @@ class CY(Operation):
         wires: ``[control, target]``.
     """
 
-    _matrix = CY_MAT
+    _matrix = jnp.array(
+        [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, -1j], [0, 0, 1j, 0]],
+        dtype=jnp.complex128,
+    )
 
     def __init__(self, wires: List[int] = [0, 1]) -> None:
         """Initialise a Controlled-Y gate.
@@ -439,7 +437,10 @@ class CZ(Operation):
         wires: ``[control, target]``.
     """
 
-    _matrix = CZ_MAT
+    _matrix = jnp.array(
+        [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1]],
+        dtype=jnp.complex128,
+    )
 
     def __init__(self, wires: List[int] = [0, 1]) -> None:
         """Initialise a Controlled-Z gate.
@@ -573,9 +574,13 @@ class Rot(Operation):
         self.theta = theta
         self.omega = omega
         # Rot(φ, θ, ω) = RZ(ω) @ RY(θ) @ RZ(φ)
-        rz_phi = jnp.cos(phi / 2) * I - 1j * jnp.sin(phi / 2) * Z
-        ry_theta = jnp.cos(theta / 2) * I - 1j * jnp.sin(theta / 2) * Y
-        rz_omega = jnp.cos(omega / 2) * I - 1j * jnp.sin(omega / 2) * Z
+        rz_phi = jnp.cos(phi / 2) * I._matrix - 1j * jnp.sin(phi / 2) * PauliZ._matrix
+        ry_theta = (
+            jnp.cos(theta / 2) * I._matrix - 1j * jnp.sin(theta / 2) * PauliY._matrix
+        )
+        rz_omega = (
+            jnp.cos(omega / 2) * I._matrix - 1j * jnp.sin(omega / 2) * PauliZ._matrix
+        )
         mat = rz_omega @ ry_theta @ rz_phi
         super().__init__(wires=wires, matrix=mat)
 
@@ -710,8 +715,8 @@ class BitFlip(KrausChannel):
             List ``[K0, K1]`` where K0 = √(1-p)·I and K1 = √p·X.
         """
         p = self.p
-        K0 = jnp.sqrt(1 - p) * I.astype(jnp.complex128)
-        K1 = jnp.sqrt(p) * X.astype(jnp.complex128)
+        K0 = jnp.sqrt(1 - p) * I._matrix
+        K1 = jnp.sqrt(p) * PauliX._matrix
         return [K0, K1]
 
 
@@ -746,8 +751,8 @@ class PhaseFlip(KrausChannel):
             List ``[K0, K1]`` where K0 = √(1-p)·I and K1 = √p·Z.
         """
         p = self.p
-        K0 = jnp.sqrt(1 - p) * I.astype(jnp.complex128)
-        K1 = jnp.sqrt(p) * Z.astype(jnp.complex128)
+        K0 = jnp.sqrt(1 - p) * I._matrix
+        K1 = jnp.sqrt(p) * PauliZ._matrix
         return [K0, K1]
 
 
@@ -783,10 +788,10 @@ class DepolarizingChannel(KrausChannel):
             List ``[K0, K1, K2, K3]`` corresponding to I, X, Y, Z components.
         """
         p = self.p
-        K0 = jnp.sqrt(1 - p) * I.astype(jnp.complex128)
-        K1 = jnp.sqrt(p / 3) * X.astype(jnp.complex128)
-        K2 = jnp.sqrt(p / 3) * Y
-        K3 = jnp.sqrt(p / 3) * Z.astype(jnp.complex128)
+        K0 = jnp.sqrt(1 - p) * I._matrix
+        K1 = jnp.sqrt(p / 3) * PauliX._matrix
+        K2 = jnp.sqrt(p / 3) * PauliY._matrix
+        K3 = jnp.sqrt(p / 3) * PauliZ._matrix
         return [K0, K1, K2, K3]
 
 

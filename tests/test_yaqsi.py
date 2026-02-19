@@ -24,7 +24,6 @@ from qml_essentials.operations import (
     PauliX,
     PauliZ,
     Hermitian,
-    Z,
     # noise channels
     BitFlip,
     PhaseFlip,
@@ -54,13 +53,13 @@ def parameterized_circuit(theta):
 
 
 def evol_circuit(t):
-    time_evol = evolve(Hermitian(matrix=Z, wires=0))
+    time_evol = evolve(Hermitian(matrix=PauliZ._matrix, wires=0))
     time_evol(t=t, wires=0)
 
 
 def evol_circuit_plus(t):
     H(wires=0)  # prepare |+⟩
-    time_evol = evolve(Hermitian(matrix=Z, wires=0))
+    time_evol = evolve(Hermitian(matrix=PauliZ._matrix, wires=0))
     time_evol(t=t, wires=0)
 
 
