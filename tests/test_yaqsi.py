@@ -7,6 +7,9 @@ import numpy as np
 from qml_essentials.yaqsi import (
     QuantumScript,
     evolve,
+    partial_trace,
+    marginalize_probs,
+    build_parity_observable,
 )
 from qml_essentials.operations import (
     H,
@@ -24,6 +27,7 @@ from qml_essentials.operations import (
     PauliX,
     PauliZ,
     Hermitian,
+    ParametrizedHamiltonian,
     # noise channels
     BitFlip,
     PhaseFlip,
@@ -838,3 +842,334 @@ def test_batched_multi_qubit() -> None:
     assert results.shape == (4, 4), f"Expected (4,4), got {results.shape}"
     # Each probability vector must sum to 1
     assert jnp.allclose(results.sum(axis=1), jnp.ones(4), atol=1e-8)
+
+
+# ---------------------------------------------------------------------------
+# partial_trace tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unittest
+def test_partial_trace_bell_keep_0() -> None:
+    """Tracing out qubit 1 of the Bell state gives the maximally mixed state."""
+    script = QuantumScript(f=bell_circuit)
+    rho = script.execute(type="density")
+    rho_0 = partial_trace(rho, n_qubits=2, keep=[0])
+    expected = 0.5 * jnp.eye(2, dtype=jnp.complex128)
+    assert jnp.allclose(rho_0, expected, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_partial_trace_bell_keep_1() -> None:
+    """Tracing out qubit 0 of the Bell state gives the maximally mixed state."""
+    script = QuantumScript(f=bell_circuit)
+    rho = script.execute(type="density")
+    rho_1 = partial_trace(rho, n_qubits=2, keep=[1])
+    expected = 0.5 * jnp.eye(2, dtype=jnp.complex128)
+    assert jnp.allclose(rho_1, expected, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_partial_trace_product_state() -> None:
+    """Tracing a product state |0⟩|+⟩ over qubit 0 yields |+⟩⟨+|."""
+
+    def circuit(*a, **kw):
+        H(wires=1)  # qubit 1 -> |+⟩, qubit 0 stays |0⟩
+
+    script = QuantumScript(f=circuit)
+    rho = script.execute(type="density")
+    rho_1 = partial_trace(rho, n_qubits=2, keep=[1])
+    # |+⟩⟨+| = 0.5 * [[1, 1], [1, 1]]
+    expected = 0.5 * jnp.ones((2, 2), dtype=jnp.complex128)
+    assert jnp.allclose(rho_1, expected, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_partial_trace_keep_all() -> None:
+    """Keeping all qubits returns the original density matrix."""
+    script = QuantumScript(f=bell_circuit)
+    rho = script.execute(type="density")
+    rho_all = partial_trace(rho, n_qubits=2, keep=[0, 1])
+    assert jnp.allclose(rho_all, rho, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_partial_trace_batched() -> None:
+    """partial_trace handles a batched (B, d, d) density matrix."""
+
+    def rx_circuit(theta):
+        RX(theta, wires=0)
+
+    script = QuantumScript(f=rx_circuit)
+    thetas = jnp.array([0.0, jnp.pi / 2, jnp.pi])
+
+    rho_batch = jnp.stack([script.execute(type="density", args=(t,)) for t in thetas])
+    assert rho_batch.shape == (3, 2, 2)
+
+    # For a 1-qubit system, keeping qubit 0 = identity operation
+    rho_traced = partial_trace(rho_batch, n_qubits=1, keep=[0])
+    assert jnp.allclose(rho_traced, rho_batch, atol=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# marginalize_probs tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unittest
+def test_marginalize_probs_bell_keep_0() -> None:
+    """Marginalizing qubit 1 of the Bell state gives [0.5, 0.5]."""
+    script = QuantumScript(f=bell_circuit)
+    probs = script.execute(type="probs")
+    marginal = marginalize_probs(probs, n_qubits=2, keep=[0])
+    assert jnp.allclose(marginal, jnp.array([0.5, 0.5]), atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_marginalize_probs_keep_all() -> None:
+    """Keeping all qubits returns the original probabilities."""
+    script = QuantumScript(f=bell_circuit)
+    probs = script.execute(type="probs")
+    full = marginalize_probs(probs, n_qubits=2, keep=[0, 1])
+    assert jnp.allclose(full, probs, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_marginalize_probs_batched() -> None:
+    """marginalize_probs handles batched (B, 2**n) probability vectors."""
+
+    def rx_circuit(theta):
+        RX(theta, wires=0)
+        H(wires=1)
+
+    script = QuantumScript(f=rx_circuit)
+    thetas = jnp.array([0.0, jnp.pi / 2])
+
+    probs_batch = jnp.stack([script.execute(type="probs", args=(t,)) for t in thetas])
+    assert probs_batch.shape == (2, 4)
+
+    marginal = marginalize_probs(probs_batch, n_qubits=2, keep=[0])
+    assert marginal.shape == (2, 2)
+    # Each row must sum to 1
+    assert jnp.allclose(marginal.sum(axis=1), jnp.ones(2), atol=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# build_parity_observable tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unittest
+def test_parity_observable_single_qubit() -> None:
+    """Single-qubit parity observable is just Z."""
+    obs = build_parity_observable([0])
+    assert obs.matrix.shape == (2, 2)
+    assert jnp.allclose(obs.matrix, PauliZ._matrix, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_parity_observable_two_qubit() -> None:
+    """Two-qubit parity observable is Z⊗Z."""
+    obs = build_parity_observable([0, 1])
+    expected = jnp.kron(PauliZ._matrix, PauliZ._matrix)
+    assert obs.matrix.shape == (4, 4)
+    assert jnp.allclose(obs.matrix, expected, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_parity_observable_not_on_tape() -> None:
+    """build_parity_observable must not add operations to the tape."""
+    from qml_essentials.tape import recording
+
+    with recording() as tape:
+        _ = build_parity_observable([0, 1])
+    assert len(tape) == 0, "Parity observable should not record on the tape"
+
+
+# ---------------------------------------------------------------------------
+# Hermitian record=False tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unittest
+def test_hermitian_record_false_not_on_tape() -> None:
+    """Hermitian(record=False) must not appear on the tape."""
+    from qml_essentials.tape import recording
+
+    with recording() as tape:
+        _ = Hermitian(matrix=PauliZ._matrix, wires=0, record=False)
+    assert len(tape) == 0
+
+
+@pytest.mark.unittest
+def test_hermitian_record_true_on_tape() -> None:
+    """Hermitian(record=True) (default) does appear on the tape."""
+    from qml_essentials.tape import recording
+
+    with recording() as tape:
+        _ = Hermitian(matrix=PauliZ._matrix, wires=0)
+    assert len(tape) == 1
+
+
+# ---------------------------------------------------------------------------
+# ParametrizedHamiltonian tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unittest
+def test_parametrized_hamiltonian_creation() -> None:
+    """coeff_fn * Hermitian produces a ParametrizedHamiltonian."""
+
+    def coeff(p, t):
+        return p * t
+
+    herm = Hermitian(matrix=PauliZ._matrix, wires=0, record=False)
+    ph = coeff * herm
+
+    assert isinstance(ph, ParametrizedHamiltonian)
+    assert ph.coeff_fn is coeff
+    assert jnp.allclose(ph.H_mat, PauliZ._matrix)
+    assert ph.wires == [0]
+
+
+@pytest.mark.unittest
+def test_parametrized_hamiltonian_non_callable_raises() -> None:
+    """Multiplying a non-callable with Hermitian raises TypeError."""
+    herm = Hermitian(matrix=PauliZ._matrix, wires=0, record=False)
+    with pytest.raises(TypeError, match="callable"):
+        _ = 3.14 * herm
+
+
+# ---------------------------------------------------------------------------
+# Time-dependent evolve tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unittest
+def test_evolve_parametrized_constant_matches_static() -> None:
+    """
+    A constant coefficient f(p, t) = 1 reduces to the static case:
+    U = exp(-i T H).  The ODE result must match the matrix expm result.
+    """
+    Z = PauliZ._matrix
+    T_val = 0.7
+
+    # Static evolve
+    def static_circuit(t):
+        gate = evolve(Hermitian(matrix=Z, wires=0, record=False))
+        gate(t=t, wires=0)
+
+    script_s = QuantumScript(f=static_circuit)
+    state_static = script_s.execute(type="state", args=(T_val,))
+
+    # Parametrized evolve with f(p, t) = 1
+    def const_coeff(p, t):
+        return 1.0
+
+    def param_circuit(T):
+        ph = const_coeff * Hermitian(matrix=Z, wires=0, record=False)
+        evolve(ph)([0.0], T)  # coeff_args=[0.0] unused
+
+    script_p = QuantumScript(f=param_circuit)
+    state_param = script_p.execute(type="state", args=(T_val,))
+
+    assert jnp.allclose(
+        state_static, state_param, atol=1e-6
+    ), f"Static: {state_static}, Param: {state_param}"
+
+
+@pytest.mark.unittest
+def test_evolve_parametrized_unitarity() -> None:
+    """The unitary from time-dependent evolve satisfies U†U = I."""
+
+    def coeff(p, t):
+        return p[0] * jnp.cos(p[1] * t)
+
+    Z = PauliZ._matrix
+    ph = coeff * Hermitian(matrix=Z, wires=0, record=False)
+
+    gate_factory = evolve(ph)
+    op = gate_factory([jnp.array([2.0, 3.0])], 1.5)
+    U = op.matrix
+    assert jnp.allclose(U.conj().T @ U, jnp.eye(2), atol=1e-8), "U is not unitary"
+
+
+@pytest.mark.unittest
+def test_evolve_parametrized_differentiable() -> None:
+    """
+    jax.grad can differentiate through the ODE-based evolve.
+    For H = Z and f(p, t) = p, the unitary is exp(-i p T Z) giving
+    ⟨Z⟩ = 1 (independent of p for |0⟩), so d⟨Z⟩/dp = 0.
+    For ⟨X⟩ = 0 starting from |0⟩ (Z eigenstate), also zero.
+    Test with |+⟩ state for non-trivial gradient.
+    """
+
+    def coeff(p, t):
+        return p
+
+    Z = PauliZ._matrix
+
+    def cost(p):
+        def circuit(p_val):
+            H(wires=0)  # prepare |+⟩
+            ph = coeff * Hermitian(matrix=Z, wires=0, record=False)
+            evolve(ph)([p_val], 1.0)
+
+        script = QuantumScript(f=circuit)
+        return script.execute(type="expval", obs=[PauliX(0)], args=(p,))[0]
+
+    p_val = jnp.array(0.5)
+    # ⟨X⟩ = cos(2p) for H exp(-ipZ)|0⟩, so d⟨X⟩/dp = -2 sin(2p)
+    grad = jax.grad(cost)(p_val)
+    expected_grad = -2.0 * jnp.sin(2.0 * p_val)
+    assert jnp.allclose(
+        grad, expected_grad, atol=1e-4
+    ), f"Grad: {grad}, expected: {expected_grad}"
+
+
+@pytest.mark.unittest
+def test_evolve_parametrized_on_tape() -> None:
+    """The EvolvedOp from time-dependent evolve is recorded on the tape."""
+    from qml_essentials.tape import recording
+
+    def coeff(p, t):
+        return 1.0
+
+    ph = coeff * Hermitian(matrix=PauliZ._matrix, wires=0, record=False)
+
+    with recording() as tape:
+        evolve(ph)([0.0], 1.0)
+
+    assert len(tape) == 1, f"Expected 1 op on tape, got {len(tape)}"
+    assert tape[0].wires == [0]
+
+
+@pytest.mark.unittest
+def test_evolve_parametrized_hermitian_not_on_tape() -> None:
+    """
+    When building a ParametrizedHamiltonian inside a recording context,
+    the Hermitian used for construction must NOT appear on the tape —
+    only the EvolvedOp should.
+    """
+    from qml_essentials.tape import recording
+
+    def coeff(p, t):
+        return 1.0
+
+    with recording() as tape:
+        herm = Hermitian(matrix=PauliZ._matrix, wires=0, record=False)
+        ph = coeff * herm
+        evolve(ph)([0.0], 1.0)
+
+    # Only the EvolvedOp should be on the tape
+    assert len(tape) == 1, (
+        f"Expected 1 op (EvolvedOp), got {len(tape)}: "
+        f"{[type(o).__name__ for o in tape]}"
+    )
+
+
+@pytest.mark.unittest
+def test_evolve_type_error() -> None:
+    """evolve() with an unsupported type raises TypeError."""
+    with pytest.raises(TypeError, match="evolve"):
+        evolve("not a hamiltonian")
