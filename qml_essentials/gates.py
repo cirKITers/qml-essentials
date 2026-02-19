@@ -2,9 +2,8 @@ import os
 from typing import Optional, List, Union, Dict, Callable, Tuple
 import numbers
 import csv
-import jax.numpy as np
+import jax.numpy as jnp
 
-# import pennylane as qml
 from qml_essentials import operations as op
 from qml_essentials import yaqsi as ys
 import jax
@@ -45,13 +44,13 @@ class UnitaryGates:
             ValueError: If p is not in [0, 1] or if fewer than 2 qubits provided.
         """
 
-        def n_qubit_depolarizing_kraus(p: float, n: int) -> List[np.ndarray]:
+        def n_qubit_depolarizing_kraus(p: float, n: int) -> List[jnp.ndarray]:
             if not (0.0 <= p <= 1.0):
                 raise ValueError(f"Probability p must be between 0 and 1, got {p}")
             if n < 2:
                 raise ValueError(f"Number of qubits must be >= 2, got {n}")
 
-            Id = np.eye(2)
+            Id = jnp.eye(2)
             X = op.PauliX._matrix
             Y = op.PauliY._matrix
             Z = op.PauliZ._matrix
@@ -62,20 +61,20 @@ class UnitaryGates:
 
             # Generate all n-qubit Pauli tensor products:
             for indices in itertools.product(range(4), repeat=n):
-                P = np.eye(1)
+                P = jnp.eye(1)
                 for idx in indices:
-                    P = np.kron(P, paulis[idx])
+                    P = jnp.kron(P, paulis[idx])
                 all_ops.append(P)
 
             # Identity operator corresponds to all zeros indices (Id^n)
-            K0 = np.sqrt(1 - p * (4**n - 1) / (4**n)) * np.eye(dim)
+            K0 = jnp.sqrt(1 - p * (4**n - 1) / (4**n)) * jnp.eye(dim)
 
             kraus_ops = []
             for i, P in enumerate(all_ops):
                 if i == 0:
                     # Skip the identity, already handled as K0
                     continue
-                kraus_ops.append(np.sqrt(p / (4**n)) * P)
+                kraus_ops.append(jnp.sqrt(p / (4**n)) * P)
 
             return [K0] + kraus_ops
 
@@ -132,10 +131,10 @@ class UnitaryGates:
 
     @staticmethod
     def GateError(
-        w: Union[float, np.ndarray, List[float]],
+        w: Union[float, jnp.ndarray, List[float]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
-    ) -> Tuple[np.ndarray, jax.random.PRNGKey]:
+    ) -> Tuple[jnp.ndarray, jax.random.PRNGKey]:
         """
         Apply gate error noise to rotation angle(s).
 
@@ -143,14 +142,14 @@ class UnitaryGates:
         gate implementations.
 
         Args:
-            w (Union[float, np.ndarray, List[float]]): Rotation angle(s) in radians.
+            w (Union[float, jnp.ndarray, List[float]]): Rotation angle(s) in radians.
             noise_params (Optional[Dict[str, float]]): Dictionary with optional
                 "GateError" key specifying standard deviation of Gaussian noise.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for
                 stochastic noise generation.
 
         Returns:
-            Tuple[np.ndarray, jax.random.PRNGKey]: Tuple containing:
+            Tuple[jnp.ndarray, jax.random.PRNGKey]: Tuple containing:
                 - Modified rotation angle(s) with applied noise
                 - Updated JAX random key
 
@@ -167,7 +166,7 @@ class UnitaryGates:
                 sub_key,
                 (
                     w.shape
-                    if isinstance(w, np.ndarray) and UnitaryGates.batch_gate_error
+                    if isinstance(w, jnp.ndarray) and UnitaryGates.batch_gate_error
                     else (1,)
                 ),
             )
@@ -175,9 +174,9 @@ class UnitaryGates:
 
     @staticmethod
     def Rot(
-        phi: Union[float, np.ndarray, List[float]],
-        theta: Union[float, np.ndarray, List[float]],
-        omega: Union[float, np.ndarray, List[float]],
+        phi: Union[float, jnp.ndarray, List[float]],
+        theta: Union[float, jnp.ndarray, List[float]],
+        omega: Union[float, jnp.ndarray, List[float]],
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
@@ -189,9 +188,9 @@ class UnitaryGates:
         gate errors and noise channels.
 
         Args:
-            phi (Union[float, np.ndarray, List[float]]): First rotation angle.
-            theta (Union[float, np.ndarray, List[float]]): Second rotation angle.
-            omega (Union[float, np.ndarray, List[float]]): Third rotation angle.
+            phi (Union[float, jnp.ndarray, List[float]]): First rotation angle.
+            theta (Union[float, jnp.ndarray, List[float]]): Second rotation angle.
+            omega (Union[float, jnp.ndarray, List[float]]): Third rotation angle.
             wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
                 Supports BitFlip, PhaseFlip, Depolarizing, and GateError.
@@ -209,7 +208,7 @@ class UnitaryGates:
 
     @staticmethod
     def RX(
-        w: Union[float, np.ndarray, List[float]],
+        w: Union[float, jnp.ndarray, List[float]],
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
@@ -218,7 +217,7 @@ class UnitaryGates:
         Apply X-axis rotation with optional noise.
 
         Args:
-            w (Union[float, np.ndarray, List[float]]): Rotation angle.
+            w (Union[float, jnp.ndarray, List[float]]): Rotation angle.
             wires (Union[int, List[int]]): Qubit index or indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
@@ -232,7 +231,7 @@ class UnitaryGates:
 
     @staticmethod
     def RY(
-        w: Union[float, np.ndarray, List[float]],
+        w: Union[float, jnp.ndarray, List[float]],
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
@@ -241,7 +240,7 @@ class UnitaryGates:
         Apply Y-axis rotation with optional noise.
 
         Args:
-            w (Union[float, np.ndarray, List[float]]): Rotation angle.
+            w (Union[float, jnp.ndarray, List[float]]): Rotation angle.
             wires (Union[int, List[int]]): Qubit index or indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
@@ -255,7 +254,7 @@ class UnitaryGates:
 
     @staticmethod
     def RZ(
-        w: Union[float, np.ndarray, List[float]],
+        w: Union[float, jnp.ndarray, List[float]],
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
@@ -264,7 +263,7 @@ class UnitaryGates:
         Apply Z-axis rotation with optional noise.
 
         Args:
-            w (Union[float, np.ndarray, List[float]]): Rotation angle.
+            w (Union[float, jnp.ndarray, List[float]]): Rotation angle.
             wires (Union[int, List[int]]): Qubit index or indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
@@ -278,7 +277,7 @@ class UnitaryGates:
 
     @staticmethod
     def CRX(
-        w: Union[float, np.ndarray, List[float]],
+        w: Union[float, jnp.ndarray, List[float]],
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
@@ -287,7 +286,7 @@ class UnitaryGates:
         Apply controlled X-rotation with optional noise.
 
         Args:
-            w (Union[float, np.ndarray, List[float]]): Rotation angle.
+            w (Union[float, jnp.ndarray, List[float]]): Rotation angle.
             wires (Union[int, List[int]]): Control and target qubit indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
@@ -301,7 +300,7 @@ class UnitaryGates:
 
     @staticmethod
     def CRY(
-        w: Union[float, np.ndarray, List[float]],
+        w: Union[float, jnp.ndarray, List[float]],
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
@@ -310,7 +309,7 @@ class UnitaryGates:
         Apply controlled Y-rotation with optional noise.
 
         Args:
-            w (Union[float, np.ndarray, List[float]]): Rotation angle.
+            w (Union[float, jnp.ndarray, List[float]]): Rotation angle.
             wires (Union[int, List[int]]): Control and target qubit indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
@@ -324,7 +323,7 @@ class UnitaryGates:
 
     @staticmethod
     def CRZ(
-        w: Union[float, np.ndarray, List[float]],
+        w: Union[float, jnp.ndarray, List[float]],
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
@@ -333,7 +332,7 @@ class UnitaryGates:
         Apply controlled Z-rotation with optional noise.
 
         Args:
-            w (Union[float, np.ndarray, List[float]]): Rotation angle.
+            w (Union[float, jnp.ndarray, List[float]]): Rotation angle.
             wires (Union[int, List[int]]): Control and target qubit indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
@@ -441,14 +440,14 @@ class PulseParams:
 
     Attributes:
         name (str): Name identifier for the gate.
-        _params (np.ndarray): Direct pulse parameters (leaf nodes only).
+        _params (jnp.ndarray): Direct pulse parameters (leaf nodes only).
         _pulse_obj (List): Child PulseParams objects (composite nodes only).
     """
 
     def __init__(
         self,
         name: str = "",
-        params: Optional[np.ndarray] = None,
+        params: Optional[jnp.ndarray] = None,
         pulse_obj: Optional[List] = None,
     ) -> None:
         """
@@ -456,7 +455,7 @@ class PulseParams:
 
         Args:
             name (str): Name identifier for the gate. Defaults to empty string.
-            params (Optional[np.ndarray]): Direct pulse parameters for leaf gates.
+            params (Optional[jnp.ndarray]): Direct pulse parameters for leaf gates.
                 Mutually exclusive with pulse_obj.
             pulse_obj (Optional[List]): List of child PulseParams for composite
                 gates. Mutually exclusive with params.
@@ -486,7 +485,7 @@ class PulseParams:
         """
         return len(self.params)
 
-    def __getitem__(self, idx: int) -> Union[float, np.ndarray]:
+    def __getitem__(self, idx: int) -> Union[float, jnp.ndarray]:
         """
         Access pulse parameter(s) by index.
 
@@ -497,7 +496,7 @@ class PulseParams:
             idx (int): Index to access.
 
         Returns:
-            Union[float, np.ndarray]: Parameter value or child parameters.
+            Union[float, jnp.ndarray]: Parameter value or child parameters.
         """
         if self.is_leaf:
             return self.params[idx]
@@ -576,7 +575,7 @@ class PulseParams:
         return shape
 
     @property
-    def params(self) -> np.ndarray:
+    def params(self) -> jnp.ndarray:
         """
         Get or compute pulse parameters.
 
@@ -584,17 +583,17 @@ class PulseParams:
         For composite nodes, returns concatenated parameters from all children.
 
         Returns:
-            np.ndarray: Pulse parameters array.
+            jnp.ndarray: Pulse parameters array.
         """
         if self.is_leaf:
             return self._params
 
         params = self.split_params(params=None, leafs=False)
 
-        return np.concatenate(params)
+        return jnp.concatenate(params)
 
     @params.setter
-    def params(self, value: np.ndarray) -> None:
+    def params(self, value: jnp.ndarray) -> None:
         """
         Set pulse parameters.
 
@@ -602,13 +601,13 @@ class PulseParams:
         For composite nodes, distributes values across children.
 
         Args:
-            value (np.ndarray): Pulse parameters to set.
+            value (jnp.ndarray): Pulse parameters to set.
 
         Raises:
-            AssertionError: If value is not np.ndarray for leaf nodes.
+            AssertionError: If value is not jnp.ndarray for leaf nodes.
         """
         if self.is_leaf:
-            assert isinstance(value, np.ndarray), "params must be a np.ndarray"
+            assert isinstance(value, jnp.ndarray), "params must be a jnp.ndarray"
             self._params = value
             return
 
@@ -619,27 +618,27 @@ class PulseParams:
             idx = nidx
 
     @property
-    def leaf_params(self) -> np.ndarray:
+    def leaf_params(self) -> jnp.ndarray:
         """
         Get parameters from all leaf nodes.
 
         Returns:
-            np.ndarray: Concatenated parameters from all leaf nodes.
+            jnp.ndarray: Concatenated parameters from all leaf nodes.
         """
         if self.is_leaf:
             return self._params
 
         params = self.split_params(None, leafs=True)
 
-        return np.concatenate(params)
+        return jnp.concatenate(params)
 
     @leaf_params.setter
-    def leaf_params(self, value: np.ndarray) -> None:
+    def leaf_params(self, value: jnp.ndarray) -> None:
         """
         Set parameters for all leaf nodes.
 
         Args:
-            value (np.ndarray): Parameters to distribute across leaf nodes.
+            value (jnp.ndarray): Parameters to distribute across leaf nodes.
         """
         if self.is_leaf:
             self._params = value
@@ -653,20 +652,20 @@ class PulseParams:
 
     def split_params(
         self,
-        params: Optional[np.ndarray] = None,
+        params: Optional[jnp.ndarray] = None,
         leafs: bool = False,
-    ) -> List[np.ndarray]:
+    ) -> List[jnp.ndarray]:
         """
         Split parameters into sub-arrays for children or leaves.
 
         Args:
-            params (Optional[np.ndarray]): Parameters to split. If None,
+            params (Optional[jnp.ndarray]): Parameters to split. If None,
                 uses internal parameters.
             leafs (bool): If True, splits across leaf nodes; if False,
                 splits across direct children. Defaults to False.
 
         Returns:
-            List[np.ndarray]: List of parameter arrays for children or leaves.
+            List[jnp.ndarray]: List of parameter arrays for children or leaves.
         """
         if params is None:
             if self.is_leaf:
@@ -700,14 +699,14 @@ class PulseInformation:
 
     RX = PulseParams(
         name="RX",
-        params=np.array([15.863171563255692, 29.66617464185762, 0.7544382603281181]),
+        params=jnp.array([15.863171563255692, 29.66617464185762, 0.7544382603281181]),
     )
     RY = PulseParams(
         name="RY",
-        params=np.array([7.921864297441735, 22.038129802391797, 1.0940923114464387]),
+        params=jnp.array([7.921864297441735, 22.038129802391797, 1.0940923114464387]),
     )
-    RZ = PulseParams(name="RZ", params=np.array([0.5]))
-    CZ = PulseParams(name="CZ", params=np.array([0.3183095268754836]))
+    RZ = PulseParams(name="RZ", params=jnp.array([0.5]))
+    CZ = PulseParams(name="CZ", params=jnp.array([0.3183095268754836]))
     H = PulseParams(
         name="H",
         pulse_obj=[RZ, RY],
@@ -753,7 +752,7 @@ class PulseInformation:
                         f"Loading optimized pulses for {row[0]}\
                             (Fidelity: {float(row[1]):.5f}): {row[2:]}"
                     )
-                    PulseInformation.OPTIMIZED_PULSES[row[0]] = np.array(
+                    PulseInformation.OPTIMIZED_PULSES[row[0]] = jnp.array(
                         [float(x) for x in row[2:]]
                     )
         else:
@@ -787,29 +786,31 @@ class PulseGates:
     Attributes:
         omega_q (float): Qubit frequency (10π).
         omega_c (float): Carrier frequency (10π).
-        H_static (np.ndarray): Static Hamiltonian in qubit rotating frame.
-        Id, X, Y, Z (np.ndarray): Pauli matrices for gate construction.
+        H_static (jnp.ndarray): Static Hamiltonian in qubit rotating frame.
+        Id, X, Y, Z (jnp.ndarray): Pauli matrices for gate construction.
     """
 
     # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT/CX and H pulse level
     #   gates closely follow https://doi.org/10.5445/IR/1000184129
     # TODO: Mention deviations from the above?
-    omega_q = 10 * np.pi
-    omega_c = 10 * np.pi
+    omega_q = 10 * jnp.pi
+    omega_c = 10 * jnp.pi
 
-    H_static = np.array([[np.exp(1j * omega_q / 2), 0], [0, np.exp(-1j * omega_q / 2)]])
+    H_static = jnp.array(
+        [[jnp.exp(1j * omega_q / 2), 0], [0, jnp.exp(-1j * omega_q / 2)]]
+    )
 
-    Id = np.eye(2, dtype=np.complex64)
-    X = np.array([[0, 1], [1, 0]])
-    Y = np.array([[0, -1j], [1j, 0]])
-    Z = np.array([[1, 0], [0, -1]])
+    Id = jnp.eye(2, dtype=jnp.complex64)
+    X = jnp.array([[0, 1], [1, 0]])
+    Y = jnp.array([[0, -1j], [1j, 0]])
+    Z = jnp.array([[1, 0], [0, -1]])
 
     @staticmethod
     def _S(
-        p: Union[List[float], np.ndarray],
-        t: Union[float, List[float], np.ndarray],
+        p: Union[List[float], jnp.ndarray],
+        t: Union[float, List[float], jnp.ndarray],
         phi_c: float,
-    ) -> np.ndarray:
+    ) -> jnp.ndarray:
         """
         Generate shaped Gaussian pulse envelope with carrier modulation.
 
@@ -817,21 +818,21 @@ class PulseGates:
         used in rotation gates. Not intended for direct circuit use.
 
         Args:
-            p (Union[List[float], np.ndarray]): Pulse parameters [A, sigma]:
+            p (Union[List[float], jnp.ndarray]): Pulse parameters [A, sigma]:
                 - A (float): Amplitude of the Gaussian envelope
                 - sigma (float): Width (standard deviation) of the Gaussian
-            t (Union[float, List[float], np.ndarray]): Time or time interval
+            t (Union[float, List[float], jnp.ndarray]): Time or time interval
                 for pulse application. If sequence, center is computed as midpoint.
             phi_c (float): Phase offset for the cosine carrier.
 
         Returns:
-            np.ndarray: Shaped pulse amplitude at time(s) t.
+            jnp.ndarray: Shaped pulse amplitude at time(s) t.
         """
         A, sigma = p
         t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
 
-        f = A * np.exp(-0.5 * ((t - t_c) / sigma) ** 2)
-        x = np.cos(PulseGates.omega_c * t + phi_c)
+        f = A * jnp.exp(-0.5 * ((t - t_c) / sigma) ** 2)
+        x = jnp.cos(PulseGates.omega_c * t + phi_c)
 
         return f * x
 
@@ -841,7 +842,7 @@ class PulseGates:
         theta: float,
         omega: float,
         wires: Union[int, List[int]],
-        pulse_params: Optional[np.ndarray] = None,
+        pulse_params: Optional[jnp.ndarray] = None,
     ) -> None:
         """
         Apply general single-qubit rotation using pulse decomposition.
@@ -854,7 +855,7 @@ class PulseGates:
             theta (float): Second rotation angle.
             omega (float): Third rotation angle.
             wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
-            pulse_params (Optional[np.ndarray]): Pulse parameters for the
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
                 composing gates. If None, uses optimized parameters.
 
         Returns:
@@ -872,7 +873,7 @@ class PulseGates:
     def RX(
         w: float,
         wires: Union[int, List[int]],
-        pulse_params: Optional[np.ndarray] = None,
+        pulse_params: Optional[jnp.ndarray] = None,
     ) -> None:
         """
         Apply X-axis rotation using pulse-level implementation.
@@ -883,7 +884,7 @@ class PulseGates:
         Args:
             w (float): Rotation angle in radians.
             wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
-            pulse_params (Optional[np.ndarray]): Array containing pulse parameters
+            pulse_params (Optional[jnp.ndarray]): Array containing pulse parameters
                 [A, sigma, t] for the Gaussian envelope. If None, uses optimized
                 parameters.
 
@@ -893,7 +894,7 @@ class PulseGates:
         pulse_params = PulseInformation.RX.split_params(pulse_params)
 
         def Sx(p, t):
-            return PulseGates._S(p, t, phi_c=np.pi) * w
+            return PulseGates._S(p, t, phi_c=jnp.pi) * w
 
         _H = PulseGates.H_static.conj().T @ PulseGates.X @ PulseGates.H_static
         _H = op.Hermitian(_H, wires=wires, record=False)
@@ -905,7 +906,7 @@ class PulseGates:
     def RY(
         w: float,
         wires: Union[int, List[int]],
-        pulse_params: Optional[np.ndarray] = None,
+        pulse_params: Optional[jnp.ndarray] = None,
     ) -> None:
         """
         Apply Y-axis rotation using pulse-level implementation.
@@ -916,7 +917,7 @@ class PulseGates:
         Args:
             w (float): Rotation angle in radians.
             wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
-            pulse_params (Optional[np.ndarray]): Array containing pulse parameters
+            pulse_params (Optional[jnp.ndarray]): Array containing pulse parameters
                 [A, sigma, t] for the Gaussian envelope. If None, uses optimized
                 parameters.
 
@@ -926,7 +927,7 @@ class PulseGates:
         pulse_params = PulseInformation.RY.split_params(pulse_params)
 
         def Sy(p, t):
-            return PulseGates._S(p, t, phi_c=-np.pi / 2) * w
+            return PulseGates._S(p, t, phi_c=-jnp.pi / 2) * w
 
         _H = PulseGates.H_static.conj().T @ PulseGates.Y @ PulseGates.H_static
         _H = op.Hermitian(_H, wires=wires, record=False)
@@ -966,7 +967,7 @@ class PulseGates:
 
     @staticmethod
     def H(
-        wires: Union[int, List[int]], pulse_params: Optional[np.ndarray] = None
+        wires: Union[int, List[int]], pulse_params: Optional[jnp.ndarray] = None
     ) -> None:
         """
         Apply Hadamard gate using pulse decomposition.
@@ -976,7 +977,7 @@ class PulseGates:
 
         Args:
             wires (Union[int, List[int]]): Qubit index or indices to apply gate to.
-            pulse_params (Optional[np.ndarray]): Pulse parameters for the
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
                 composing gates. If None, uses optimized parameters.
 
         Returns:
@@ -984,21 +985,21 @@ class PulseGates:
         """
         pulse_params_RZ, pulse_params_RY = PulseInformation.H.split_params(pulse_params)
 
-        # qml.GlobalPhase(-np.pi / 2)  # this could act as substitute to Sc
-        PulseGates.RZ(np.pi, wires=wires, pulse_params=pulse_params_RZ)
-        PulseGates.RY(np.pi / 2, wires=wires, pulse_params=pulse_params_RY)
+        # qml.GlobalPhase(-jnp.pi / 2)  # this could act as substitute to Sc
+        PulseGates.RZ(jnp.pi, wires=wires, pulse_params=pulse_params_RZ)
+        PulseGates.RY(jnp.pi / 2, wires=wires, pulse_params=pulse_params_RY)
 
         def Sc(p, t):
             return -1.0
 
-        _H = np.pi / 2 * np.eye(2, dtype=np.complex64)
+        _H = jnp.pi / 2 * jnp.eye(2, dtype=jnp.complex64)
         _H = op.Hermitian(_H, wires=wires, record=False)
         H_corr = Sc * _H
 
         ys.evolve(H_corr)([0], 1)
 
     @staticmethod
-    def CX(wires: List[int], pulse_params: Optional[np.ndarray] = None) -> None:
+    def CX(wires: List[int], pulse_params: Optional[jnp.ndarray] = None) -> None:
         """
         Apply CNOT gate using pulse decomposition.
 
@@ -1007,7 +1008,7 @@ class PulseGates:
 
         Args:
             wires (List[int]): Control and target qubit indices [control, target].
-            pulse_params (Optional[np.ndarray]): Pulse parameters for the
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
                 composing gates. If None, uses optimized parameters.
 
         Returns:
@@ -1024,7 +1025,7 @@ class PulseGates:
         PulseGates.H(wires=target, pulse_params=params_H_2)
 
     @staticmethod
-    def CY(wires: List[int], pulse_params: Optional[np.ndarray] = None) -> None:
+    def CY(wires: List[int], pulse_params: Optional[jnp.ndarray] = None) -> None:
         """
         Apply controlled-Y gate using pulse decomposition.
 
@@ -1033,7 +1034,7 @@ class PulseGates:
 
         Args:
             wires (List[int]): Control and target qubit indices [control, target].
-            pulse_params (Optional[np.ndarray]): Pulse parameters for the
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
                 composing gates. If None, uses optimized parameters.
 
         Returns:
@@ -1045,9 +1046,9 @@ class PulseGates:
 
         target = wires[1]
 
-        PulseGates.RZ(-np.pi / 2, wires=target, pulse_params=params_RZ_1)
+        PulseGates.RZ(-jnp.pi / 2, wires=target, pulse_params=params_RZ_1)
         PulseGates.CX(wires=wires, pulse_params=params_CX)
-        PulseGates.RZ(np.pi / 2, wires=target, pulse_params=params_RZ_2)
+        PulseGates.RZ(jnp.pi / 2, wires=target, pulse_params=params_RZ_2)
 
     @staticmethod
     def CZ(wires: List[int], pulse_params: Optional[float] = None) -> None:
@@ -1070,15 +1071,15 @@ class PulseGates:
         else:
             pulse_params = pulse_params
 
-        I_I = np.kron(PulseGates.Id, PulseGates.Id)
-        Z_I = np.kron(PulseGates.Z, PulseGates.Id)
-        I_Z = np.kron(PulseGates.Id, PulseGates.Z)
-        Z_Z = np.kron(PulseGates.Z, PulseGates.Z)
+        I_I = jnp.kron(PulseGates.Id, PulseGates.Id)
+        Z_I = jnp.kron(PulseGates.Z, PulseGates.Id)
+        I_Z = jnp.kron(PulseGates.Id, PulseGates.Z)
+        Z_Z = jnp.kron(PulseGates.Z, PulseGates.Z)
 
         def Scz(p, t):
-            return p * np.pi
+            return p * jnp.pi
 
-        _H = (np.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
+        _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
         _H = op.Hermitian(_H, wires=wires, record=False)
         H_eff = Scz * _H
 
@@ -1086,7 +1087,7 @@ class PulseGates:
 
     @staticmethod
     def CRX(
-        w: float, wires: List[int], pulse_params: Optional[np.ndarray] = None
+        w: float, wires: List[int], pulse_params: Optional[jnp.ndarray] = None
     ) -> None:
         """
         Apply controlled-RX gate using pulse decomposition.
@@ -1097,7 +1098,7 @@ class PulseGates:
         Args:
             w (float): Rotation angle in radians.
             wires (List[int]): Control and target qubit indices [control, target].
-            pulse_params (Optional[np.ndarray]): Pulse parameters for the
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
                 composing gates. If None, uses optimized parameters.
 
         Returns:
@@ -1109,16 +1110,16 @@ class PulseGates:
 
         target = wires[1]
 
-        PulseGates.RZ(np.pi / 2, wires=target, pulse_params=params_RZ_1)
+        PulseGates.RZ(jnp.pi / 2, wires=target, pulse_params=params_RZ_1)
         PulseGates.RY(w / 2, wires=target, pulse_params=params_RY)
         PulseGates.CX(wires=wires, pulse_params=params_CX_1)
         PulseGates.RY(-w / 2, wires=target, pulse_params=params_RY_2)
         PulseGates.CX(wires=wires, pulse_params=params_CX_2)
-        PulseGates.RZ(-np.pi / 2, wires=target, pulse_params=params_RZ_2)
+        PulseGates.RZ(-jnp.pi / 2, wires=target, pulse_params=params_RZ_2)
 
     @staticmethod
     def CRY(
-        w: float, wires: List[int], pulse_params: Optional[np.ndarray] = None
+        w: float, wires: List[int], pulse_params: Optional[jnp.ndarray] = None
     ) -> None:
         """
         Apply controlled-RY gate using pulse decomposition.
@@ -1129,7 +1130,7 @@ class PulseGates:
         Args:
             w (float): Rotation angle in radians.
             wires (List[int]): Control and target qubit indices [control, target].
-            pulse_params (Optional[np.ndarray]): Pulse parameters for the
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
                 composing gates. If None, uses optimized parameters.
 
         Returns:
@@ -1148,7 +1149,7 @@ class PulseGates:
 
     @staticmethod
     def CRZ(
-        w: float, wires: List[int], pulse_params: Optional[np.ndarray] = None
+        w: float, wires: List[int], pulse_params: Optional[jnp.ndarray] = None
     ) -> None:
         """
         Apply controlled-RZ gate using pulse decomposition.
@@ -1159,7 +1160,7 @@ class PulseGates:
         Args:
             w (float): Rotation angle in radians.
             wires (List[int]): Control and target qubit indices [control, target].
-            pulse_params (Optional[np.ndarray]): Pulse parameters for the
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
                 composing gates. If None, uses optimized parameters.
 
         Returns:
@@ -1255,9 +1256,9 @@ class Gates(metaclass=GatesMeta):
                 flat_params = pulse_params
 
             elif isinstance(pulse_params, jax.core.Tracer):
-                flat_params = np.ravel(pulse_params)
+                flat_params = jnp.ravel(pulse_params)
 
-            elif isinstance(pulse_params, (np.ndarray, np.ndarray)):
+            elif isinstance(pulse_params, (jnp.ndarray, jnp.ndarray)):
                 flat_params = pulse_params.flatten().tolist()
             elif isinstance(pulse_params, PulseParams):
                 # extract the params in case a full object is given
@@ -1304,7 +1305,7 @@ class Gates(metaclass=GatesMeta):
 
     @staticmethod
     @contextmanager
-    def pulse_manager_context(pulse_params: np.ndarray):
+    def pulse_manager_context(pulse_params: jnp.ndarray):
         """Temporarily set the global pulse manager for circuit building."""
         Gates._pulse_mgr = PulseParamManager(pulse_params)
         try:
@@ -1365,7 +1366,7 @@ class Gates(metaclass=GatesMeta):
 
 
 class PulseParamManager:
-    def __init__(self, pulse_params: np.ndarray):
+    def __init__(self, pulse_params: jnp.ndarray):
         self.pulse_params = pulse_params
         self.idx = 0
 
