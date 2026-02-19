@@ -161,7 +161,13 @@ class UnitaryGates:
                 random_key is not None
             ), "A random_key must be provided when using GateError"
 
-            random_key, sub_key = safe_random_split(random_key)
+            if UnitaryGates.batch_gate_error:
+                random_key, sub_key = safe_random_split(random_key)
+            else:
+                # Use a fixed key so that every batch element (under vmap)
+                # draws the same noise value, effectively broadcasting.
+                sub_key = jax.random.key(0)
+
             w += noise_params["GateError"] * jax.random.normal(
                 sub_key,
                 (

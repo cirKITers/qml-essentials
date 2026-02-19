@@ -4,6 +4,8 @@ from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Circuit
 from qml_essentials.gates import Gates, UnitaryGates
 from qml_essentials.gates import PulseInformation as pinfo
+from qml_essentials import yaqsi as ys
+from qml_essentials import operations as op
 import pennylane as qml
 import pennylane.numpy as np
 import jax
@@ -22,16 +24,16 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.unittest
 def test_gate_gateerror_noise():
-    dev = qml.device("default.mixed", wires=1)
     random_key = jax.random.key(1000)
 
-    @qml.qnode(dev)
     def circuit(noise_params=None):
         Gates.RX(np.pi, wires=0, noise_params=noise_params, random_key=random_key)
-        return qml.expval(qml.PauliZ(0))
 
-    no_noise = circuit({})
-    with_noise = circuit({"GateError": 50})
+    obs = [op.PauliZ(wires=0)]
+
+    script = ys.QuantumScript(circuit, n_qubits=1)
+    no_noise = script.execute(type="expval", obs=obs, args=({},))
+    with_noise = script.execute(type="expval", obs=obs, args=({"GateError": 50},))
 
     assert np.isclose(
         no_noise, -1, atol=0.01
@@ -77,15 +79,14 @@ def test_coherent_as_expval():
 
 @pytest.mark.unittest
 def test_gate_bitflip_noise():
-    dev = qml.device("default.mixed", wires=1)
-
-    @qml.qnode(dev)
     def circuit(noise_params=None):
         Gates.RX(np.pi, wires=0, noise_params=noise_params)
-        return qml.expval(qml.PauliZ(0))
 
-    no_noise = circuit({})
-    with_noise = circuit({"BitFlip": 0.5})
+    obs = [op.PauliZ(wires=0)]
+
+    script = ys.QuantumScript(circuit, n_qubits=1)
+    no_noise = script.execute(type="expval", obs=obs, args=({},))
+    with_noise = script.execute(type="expval", obs=obs, args=({"BitFlip": 0.5},))
 
     assert np.isclose(
         no_noise, -1, atol=0.1
@@ -97,15 +98,14 @@ def test_gate_bitflip_noise():
 
 @pytest.mark.unittest
 def test_gate_phaseflip_noise():
-    dev = qml.device("default.mixed", wires=1, shots=1000)
-
-    @qml.qnode(dev)
     def circuit(noise_params=None):
         Gates.H(wires=0, noise_params=noise_params)
-        return qml.expval(qml.PauliX(0))
 
-    no_noise = circuit({})
-    with_noise = circuit({"PhaseFlip": 0.5})
+    obs = [op.PauliX(wires=0)]
+
+    script = ys.QuantumScript(circuit, n_qubits=1)
+    no_noise = script.execute(type="expval", obs=obs, args=({},))
+    with_noise = script.execute(type="expval", obs=obs, args=({"PhaseFlip": 0.5},))
 
     assert np.isclose(
         no_noise, 1, atol=0.1
@@ -117,15 +117,14 @@ def test_gate_phaseflip_noise():
 
 @pytest.mark.unittest
 def test_gate_depolarizing_noise():
-    dev = qml.device("default.mixed", wires=1)
-
-    @qml.qnode(dev)
     def circuit(noise_params=None):
         Gates.RX(np.pi, wires=0, noise_params=noise_params)
-        return qml.expval(qml.PauliZ(0))
 
-    no_noise = circuit({})
-    with_noise = circuit({"Depolarizing": 3 / 4})
+    obs = [op.PauliZ(wires=0)]
+
+    script = ys.QuantumScript(circuit, n_qubits=1)
+    no_noise = script.execute(type="expval", obs=obs, args=({},))
+    with_noise = script.execute(type="expval", obs=obs, args=({"Depolarizing": 3 / 4},))
 
     assert np.isclose(
         no_noise, -1, atol=0.1
@@ -137,16 +136,17 @@ def test_gate_depolarizing_noise():
 
 @pytest.mark.unittest
 def test_gate_nqubitdepolarizing_noise():
-    dev_two = qml.device("default.mixed", wires=2)
-
-    @qml.qnode(dev_two)
-    def circuit(noise_params=None):
+    def circuit_two(noise_params=None):
         Gates.RX(np.pi, wires=0)
         Gates.CRX(np.pi, wires=[0, 1], noise_params=noise_params)
-        return qml.expval(qml.PauliZ(1))
 
-    no_noise_two = circuit({})
-    with_noise_two = circuit({"MultiQubitDepolarizing": 15 / 16})
+    obs_two = [op.PauliZ(wires=1)]
+
+    script_two = ys.QuantumScript(circuit_two, n_qubits=2)
+    no_noise_two = script_two.execute(type="expval", obs=obs_two, args=({},))
+    with_noise_two = script_two.execute(
+        type="expval", obs=obs_two, args=({"MultiQubitDepolarizing": 15 / 16},)
+    )
 
     assert np.isclose(
         no_noise_two, -1, atol=0.1
@@ -155,19 +155,21 @@ def test_gate_nqubitdepolarizing_noise():
         with_noise_two, 0, atol=0.1
     ), f"Expected ~0 with noise, got {with_noise_two}"
 
-    dev_three = qml.device("default.mixed", wires=3)
-
-    @qml.qnode(dev_three)
-    def circuit(noise_params=None):
+    def circuit_three(noise_params=None):
         if noise_params is not None:
             Gates.NQubitDepolarizingChannel(
                 noise_params.get("MultiQubitDepolarizing", 0), wires=[0, 1, 2]
             )
 
-        return qml.expval(qml.PauliZ(0) @ qml.PauliZ(1) @ qml.PauliZ(2))
+    obs_three = [ys.build_parity_observable([0, 1, 2])]
 
-    no_noise_three = circuit({})
-    with_noise_three = circuit({"MultiQubitDepolarizing": 63 / 64})
+    script_three = ys.QuantumScript(circuit_three, n_qubits=3)
+    no_noise_three = script_three.execute(type="expval", obs=obs_three, args=({},))
+    with_noise_three = script_three.execute(
+        type="expval",
+        obs=obs_three,
+        args=({"MultiQubitDepolarizing": 63 / 64},),
+    )
 
     assert np.isclose(
         no_noise_three, 1, atol=0.1
@@ -330,21 +332,47 @@ def test_min_qubit_warning() -> None:
 
 
 @pytest.mark.expensive
-@pytest.mark.smoketest
+@pytest.mark.unittest
 def test_pulse_params_ansaetze() -> None:
-    for ansatz in Ansaetze.get_available():
-        logger.info(f"Testing Ansatz: {ansatz.__name__}")
+    test_cases = {
+        "No_Ansatz": [1.0, 1.0],
+        "Circuit_1": [-0.06347358, -0.99916184],
+        "Circuit_2": [0.06294326, -0.99916164],
+        "Circuit_3": [0.42394627, -0.41875092],
+        "Circuit_4": [-0.15574438, -0.41875081],
+        "Circuit_5": [-0.8643505, 0.22041861],
+        "Circuit_6": [-0.48522045, -0.38787328],
+        "Circuit_7": [-0.44584206, 0.4983159],
+        "Circuit_8": [-0.44595841, 0.48103752],
+        "Circuit_9": [0.00012548, -0.00023631],
+        "Circuit_10": [0.91743331, -0.4636175],
+        "Circuit_13": [0.81335946, -0.92070053],
+        "Circuit_14": [0.60749882, -0.54199932],
+        "Circuit_15": [-0.06616174, -0.06790603],
+        "Circuit_16": [0.42394627, -0.41875092],
+        "Circuit_17": [-0.15574438, -0.41875081],
+        "Circuit_18": [0.08187592, -0.99445816],
+        "Circuit_19": [-0.50660179, -0.95456148],
+        "Circuit_20": [0.99820156, -0.06618526],
+        "No_Entangling": [-0.99444818, 0.64505527],
+        "Strongly_Entangling": [0.02930848, 0.60783151],
+        "Hardware_Efficient": [-0.9407261, 0.47868613],
+        "GHZ": [0.00026971, 0.00026978],
+    }
+    for ansatz, res in test_cases.items():
+        logger.info(f"Testing Ansatz: {ansatz}")
         model = Model(
             n_qubits=2,
             n_layers=1,
-            circuit_type=ansatz.__name__,
+            circuit_type=ansatz,
             data_reupload=False,
         )
 
         try:
-            model(gate_mode="pulse")
+            res = model(gate_mode="pulse")
+            assert np.allclose(res, res, atol=1e-6)
         except Exception as e:
-            raise Exception(f"Error for ansatz {ansatz.__name__}: {e}")
+            raise Exception(f"Error for ansatz {ansatz}: {e}")
 
 
 @pytest.mark.unittest
@@ -367,13 +395,14 @@ single_qubit_pulse_testdata = itertools.product(
 @pytest.mark.parametrize("gate,w", single_qubit_pulse_testdata)
 def test_single_qubit_pulse_gate(gate, w):
     qoc = QOC()
-    dev = qml.device("default.qubit", wires=1)
     pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
-    pulse_qnode = qml.QNode(pulse_circuit, dev, interface="jax")
-    target_qnode = qml.QNode(target_circuit, dev, interface="jax")
+    pulse_script = ys.QuantumScript(pulse_circuit, n_qubits=1)
+    target_script = ys.QuantumScript(target_circuit, n_qubits=1)
 
-    state_pulse = pulse_qnode(w, pinfo.gate_by_name(gate).params)
-    state_target = target_qnode(w)
+    state_pulse = pulse_script.execute(
+        type="state", args=(w, pinfo.gate_by_name(gate).params)
+    )
+    state_target = target_script.execute(type="state", args=(w,))
 
     fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
     assert np.isclose(
@@ -393,13 +422,14 @@ two_qubit_pulse_testdata = itertools.product(
 @pytest.mark.parametrize("gate,w", two_qubit_pulse_testdata)
 def test_two_qubit_pulse_gate(gate, w):
     qoc = QOC()
-    dev = qml.device("default.qubit", wires=2)
     pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
-    pulse_qnode = qml.QNode(pulse_circuit, dev, interface="jax")
-    target_qnode = qml.QNode(target_circuit, dev, interface="jax")
+    pulse_script = ys.QuantumScript(pulse_circuit, n_qubits=2)
+    target_script = ys.QuantumScript(target_circuit, n_qubits=2)
 
-    state_pulse = pulse_qnode(w, pinfo.gate_by_name(gate).params)
-    state_target = target_qnode(w)
+    state_pulse = pulse_script.execute(
+        type="state", args=(w, pinfo.gate_by_name(gate).params)
+    )
+    state_target = target_script.execute(type="state", args=(w,))
 
     fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
     assert np.isclose(

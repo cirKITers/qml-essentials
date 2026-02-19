@@ -786,7 +786,7 @@ class Model:
 
         # circuit building
         for layer in range(0, self.n_layers):
-            self.random_key, sub_key = safe_random_split(self.random_key)
+            random_key, sub_key = safe_random_split(random_key)
             # ansatz layers
             self.pqc(
                 params[layer],
@@ -797,7 +797,7 @@ class Model:
                 gate_mode=gate_mode,
             )
 
-            self.random_key, sub_key = safe_random_split(self.random_key)
+            random_key, sub_key = safe_random_split(random_key)
             # encoding layers
             self._iec(
                 inputs,
@@ -812,7 +812,7 @@ class Model:
 
         # final ansatz layer
         if self.has_dru:  # same check as in init
-            self.random_key, sub_key = safe_random_split(self.random_key)
+            random_key, sub_key = safe_random_split(random_key)
             self.pqc(
                 params[self.n_layers],
                 self.n_qubits,
@@ -927,7 +927,54 @@ class Model:
                 tg = circuit_depth * t_factor
                 op.ThermalRelaxationError(1.0, t1, t2, tg, q)
 
-    # TODO: Implement _get_circuit_depth using tape-based gate counting.
+    def _get_circuit_depth(self, inputs: Optional[jnp.ndarray] = None) -> int:
+        """
+        Calculate the depth of the quantum circuit.
+
+        Records the circuit onto a tape (without noise) and computes the
+        depth as the length of the critical path: each gate is scheduled
+        at the earliest time step after all of its qubits are free.
+
+        Args:
+            inputs (Optional[jnp.ndarray]): Input data for circuit evaluation.
+                If None, default zero inputs are used.
+
+        Returns:
+            int: The circuit depth (longest path of gates in the circuit).
+        """
+        from qml_essentials.tape import recording
+        from qml_essentials.operations import KrausChannel
+
+        inputs = self._inputs_validation(inputs)
+
+        # Record the tape without noise so that only unitary gates are counted
+        with recording() as tape:
+            self._variational(
+                self.params[:, :, 0] if self.params.ndim == 3 else self.params,
+                inputs[0] if inputs.ndim == 2 else inputs,
+                noise_params=None,
+            )
+
+        # Filter out noise channels — only count unitary gates
+        ops = [op for op in tape if not isinstance(op, KrausChannel)]
+
+        if not ops:
+            return 0
+
+        # Schedule each gate at the earliest time step where all its wires
+        # are free.  ``wire_busy[q]`` tracks the next free time step for
+        # qubit ``q``.
+        wire_busy: Dict[int, int] = {}
+        depth = 0
+        for gate in ops:
+            start = max((wire_busy.get(w, 0) for w in gate.wires), default=0)
+            end = start + 1
+            for w in gate.wires:
+                wire_busy[w] = end
+            depth = max(depth, end)
+
+        return depth
+
     # TODO: Implement draw() for circuit visualisation without PennyLane.
 
     def __repr__(self) -> str:
