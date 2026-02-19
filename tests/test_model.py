@@ -361,7 +361,6 @@ def test_encoding() -> None:
             expected {test_case['degree']} for test case {test_case}"
 
 
-@pytest.mark.skip
 @pytest.mark.smoketest
 def test_basic_draw() -> None:
     for ansatz in Ansaetze.get_available():
@@ -399,7 +398,6 @@ def test_basic_draw() -> None:
         _ = model.draw(figure="tikz")
 
 
-@pytest.mark.skip
 @pytest.mark.smoketest
 def test_advanced_draw() -> None:
     model = Model(

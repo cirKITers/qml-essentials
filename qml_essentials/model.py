@@ -988,18 +988,66 @@ class Model:
         self._cached_circuit_depth = depth
         return depth
 
-    # TODO: Implement draw() for circuit visualisation without PennyLane.
+    def draw(
+        self,
+        inputs: Optional[jnp.ndarray] = None,
+        figure: str = "text",
+        **kwargs: Any,
+    ) -> Union[str, Any]:
+        """Visualize the quantum circuit.
+
+        Records the circuit tape (without noise) and renders the gate
+        sequence using the requested backend.
+
+        Args:
+            inputs (Optional[jnp.ndarray]): Input data for the circuit.
+                If ``None``, default zero inputs are used.
+            figure (str): Rendering backend.  One of:
+
+                * ``"text"``  — ASCII art (returned as a ``str``).
+                * ``"mpl"``   — Matplotlib figure (returns ``(fig, ax)``).
+                * ``"tikz"``  — LaTeX/TikZ ``quantikz`` code (returns a
+                  :class:`~qml_essentials.utils.QuanTikz.TikzFigure`).
+
+            **kwargs: Extra options forwarded to the drawing backend
+                (e.g. ``gate_values=True``, ``inputs_symbols="x"``).
+
+        Returns:
+            Depends on *figure*:
+
+            * ``"text"``  → ``str``
+            * ``"mpl"``   → ``(matplotlib.figure.Figure, matplotlib.axes.Axes)``
+            * ``"tikz"``  → :class:`QuanTikz.TikzFigure`
+
+        Raises:
+            ValueError: If *figure* is not one of the supported modes.
+        """
+        inputs = self._inputs_validation(inputs)
+        params = self.params[:, :, 0] if self.params.ndim == 3 else self.params
+        inp = inputs[0] if inputs.ndim == 2 else inputs
+
+        # Record without noise to get a clean circuit
+        saved_noise = self._noise_params
+        self._noise_params = None
+
+        draw_script = ys.QuantumScript(f=self._variational, n_qubits=self.n_qubits)
+        result = draw_script.draw(
+            figure=figure,
+            args=(params, inp),
+            kwargs={"noise_params": None},
+            **kwargs,
+        )
+
+        self._noise_params = saved_noise
+        return result
 
     def __repr__(self) -> str:
         """Return text representation of the quantum circuit model."""
-        return (
-            f"Model(n_qubits={self.n_qubits}, n_layers={self.n_layers}, "
-            f"execution_type={self.execution_type!r})"
-        )
+        return self.draw(figure="text")
 
     def __str__(self) -> str:
         """Return string representation of the quantum circuit model."""
-        return self.__repr__()
+        return self.draw(figure="text")
 
     def _params_validation(self, params: Optional[jnp.ndarray]) -> jnp.ndarray:
         """

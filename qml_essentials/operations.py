@@ -63,6 +63,37 @@ class Operation:
                 tape.append(self)
 
     @property
+    def name(self) -> str:
+        """Return the class name of this operation (e.g. ``'RX'``, ``'CX'``).
+
+        Returns:
+            The operation name string.
+        """
+        return self.__class__.__name__
+
+    @property
+    def parameters(self) -> list:
+        """Return the list of numeric parameters for this operation.
+
+        Parametrized gates (RX, RY, RZ, CRX, CRY, CRZ, Rot) store their
+        angles as instance attributes.  This property collects them in a
+        canonical order.  Non-parametrized gates return an empty list.
+
+        Returns:
+            List of parameter values (floats or JAX arrays).
+        """
+        # Parametrized single-qubit rotations
+        if hasattr(self, "theta"):
+            return [self.theta]
+        # Rot gate has three parameters
+        if hasattr(self, "phi") and hasattr(self, "omega"):
+            return [self.phi, self.theta, self.omega]
+        # KrausChannel with p
+        if hasattr(self, "p"):
+            return [self.p]
+        return []
+
+    @property
     def matrix(self) -> jnp.ndarray:
         """Return the base matrix of this operation (before lifting).
 
