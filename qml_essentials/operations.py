@@ -39,8 +39,16 @@ X = jnp.array([[0, 1], [1, 0]], dtype=jnp.complex128)
 Y = jnp.array([[0, -1j], [1j, 0]], dtype=jnp.complex128)
 Z = jnp.array([[1, 0], [0, -1]], dtype=jnp.complex128)
 H = jnp.array([[1, 1], [1, -1]], dtype=jnp.complex128) / jnp.sqrt(2)
-CNOT = jnp.array(
+CX_MAT = jnp.array(
     [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]],
+    dtype=jnp.complex128,
+)
+CY_MAT = jnp.array(
+    [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, -1j], [0, 0, 1j, 0]],
+    dtype=jnp.complex128,
+)
+CZ_MAT = jnp.array(
+    [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1]],
     dtype=jnp.complex128,
 )
 
@@ -305,6 +313,51 @@ class H(Operation):
         super().__init__(wires=wires)
 
 
+class RX(Operation):
+    """Rotation around the X axis: RX(θ) = exp(-i θ/2 X)."""
+
+    def __init__(self, theta: float, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise an RX rotation gate.
+
+        Args:
+            theta: Rotation angle in radians.
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
+        self.theta = theta
+        mat = jnp.cos(theta / 2) * I - 1j * jnp.sin(theta / 2) * X
+        super().__init__(wires=wires, matrix=mat)
+
+
+class RY(Operation):
+    """Rotation around the Y axis: RY(θ) = exp(-i θ/2 Y)."""
+
+    def __init__(self, theta: float, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise an RY rotation gate.
+
+        Args:
+            theta: Rotation angle in radians.
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
+        self.theta = theta
+        mat = jnp.cos(theta / 2) * I - 1j * jnp.sin(theta / 2) * Y
+        super().__init__(wires=wires, matrix=mat)
+
+
+class RZ(Operation):
+    """Rotation around the Z axis: RZ(θ) = exp(-i θ/2 Z)."""
+
+    def __init__(self, theta: float, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise an RZ rotation gate.
+
+        Args:
+            theta: Rotation angle in radians.
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
+        self.theta = theta
+        mat = jnp.cos(theta / 2) * I - 1j * jnp.sin(theta / 2) * Z
+        super().__init__(wires=wires, matrix=mat)
+
+
 class CX(Operation):
     """Controlled-X (CNOT) gate.
 
@@ -312,7 +365,7 @@ class CX(Operation):
         wires: ``[control, target]``.
     """
 
-    _matrix = CNOT
+    _matrix = CX_MAT
 
     def __init__(self, wires: List[int] = [0, 1]) -> None:
         """Initialise a Controlled-X gate.
@@ -353,6 +406,178 @@ class CCX(Operation):
             wires: Three-element list ``[control0, control1, target]``.
         """
         super().__init__(wires=wires)
+
+
+class CY(Operation):
+    """Controlled-Y gate.
+
+    Applies a Pauli-Y gate on the target qubit conditioned on the control
+    qubit being in state |1⟩.
+
+    Args on construction:
+        wires: ``[control, target]``.
+    """
+
+    _matrix = CY_MAT
+
+    def __init__(self, wires: List[int] = [0, 1]) -> None:
+        """Initialise a Controlled-Y gate.
+
+        Args:
+            wires: Two-element list ``[control, target]``.
+        """
+        super().__init__(wires=wires)
+
+
+class CZ(Operation):
+    """Controlled-Z gate.
+
+    Applies a Pauli-Z gate on the target qubit conditioned on the control
+    qubit being in state |1⟩.
+
+    Args on construction:
+        wires: ``[control, target]``.
+    """
+
+    _matrix = CZ_MAT
+
+    def __init__(self, wires: List[int] = [0, 1]) -> None:
+        """Initialise a Controlled-Z gate.
+
+        Args:
+            wires: Two-element list ``[control, target]``.
+        """
+        super().__init__(wires=wires)
+
+
+class CRX(Operation):
+    """Controlled rotation around the X axis.
+
+    Applies RX(θ) on the target qubit conditioned on the control qubit
+    being in state |1⟩.
+
+    .. math::
+        CRX(\\theta) = |0\\rangle\\langle 0| \\otimes I
+                      + |1\\rangle\\langle 1| \\otimes RX(\\theta)
+    """
+
+    def __init__(self, theta: float, wires: List[int] = [0, 1]) -> None:
+        """Initialise a CRX gate.
+
+        Args:
+            theta: Rotation angle in radians.
+            wires: Two-element list ``[control, target]``.
+        """
+        self.theta = theta
+        c = jnp.cos(theta / 2)
+        s = jnp.sin(theta / 2)
+        mat = jnp.array(
+            [
+                [1, 0, 0, 0],
+                [0, 1, 0, 0],
+                [0, 0, c, -1j * s],
+                [0, 0, -1j * s, c],
+            ],
+            dtype=jnp.complex128,
+        )
+        super().__init__(wires=wires, matrix=mat)
+
+
+class CRY(Operation):
+    """Controlled rotation around the Y axis.
+
+    Applies RY(θ) on the target qubit conditioned on the control qubit
+    being in state |1⟩.
+
+    .. math::
+        CRY(\\theta) = |0\\rangle\\langle 0| \\otimes I
+                      + |1\\rangle\\langle 1| \\otimes RY(\\theta)
+    """
+
+    def __init__(self, theta: float, wires: List[int] = [0, 1]) -> None:
+        """Initialise a CRY gate.
+
+        Args:
+            theta: Rotation angle in radians.
+            wires: Two-element list ``[control, target]``.
+        """
+        self.theta = theta
+        c = jnp.cos(theta / 2)
+        s = jnp.sin(theta / 2)
+        mat = jnp.array(
+            [
+                [1, 0, 0, 0],
+                [0, 1, 0, 0],
+                [0, 0, c, -s],
+                [0, 0, s, c],
+            ],
+            dtype=jnp.complex128,
+        )
+        super().__init__(wires=wires, matrix=mat)
+
+
+class CRZ(Operation):
+    """Controlled rotation around the Z axis.
+
+    Applies RZ(θ) on the target qubit conditioned on the control qubit
+    being in state |1⟩.
+
+    .. math::
+        CRZ(\\theta) = |0\\rangle\\langle 0| \\otimes I
+                      + |1\\rangle\\langle 1| \\otimes RZ(\\theta)
+    """
+
+    def __init__(self, theta: float, wires: List[int] = [0, 1]) -> None:
+        """Initialise a CRZ gate.
+
+        Args:
+            theta: Rotation angle in radians.
+            wires: Two-element list ``[control, target]``.
+        """
+        self.theta = theta
+        mat = jnp.array(
+            [
+                [1, 0, 0, 0],
+                [0, 1, 0, 0],
+                [0, 0, jnp.exp(-1j * theta / 2), 0],
+                [0, 0, 0, jnp.exp(1j * theta / 2)],
+            ],
+            dtype=jnp.complex128,
+        )
+        super().__init__(wires=wires, matrix=mat)
+
+
+class Rot(Operation):
+    """General single-qubit rotation: Rot(φ, θ, ω) = RZ(ω) RY(θ) RZ(φ).
+
+    This is the most general SU(2) rotation (up to a global phase).  It
+    decomposes into three successive rotations and has three free parameters.
+    """
+
+    def __init__(
+        self,
+        phi: float,
+        theta: float,
+        omega: float,
+        wires: Union[int, List[int]] = 0,
+    ) -> None:
+        """Initialise a general rotation gate.
+
+        Args:
+            phi: First RZ rotation angle (radians).
+            theta: RY rotation angle (radians).
+            omega: Second RZ rotation angle (radians).
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
+        self.phi = phi
+        self.theta = theta
+        self.omega = omega
+        # Rot(φ, θ, ω) = RZ(ω) @ RY(θ) @ RZ(φ)
+        rz_phi = jnp.cos(phi / 2) * I - 1j * jnp.sin(phi / 2) * Z
+        ry_theta = jnp.cos(theta / 2) * I - 1j * jnp.sin(theta / 2) * Y
+        rz_omega = jnp.cos(omega / 2) * I - 1j * jnp.sin(omega / 2) * Z
+        mat = rz_omega @ ry_theta @ rz_phi
+        super().__init__(wires=wires, matrix=mat)
 
 
 # ===================================================================
@@ -751,48 +976,3 @@ class ThermalRelaxationError(KrausChannel):
                 mat = jnp.sqrt(jnp.abs(lam)) * vec.reshape(2, 2, order="F")  # type: ignore[call-overload]
                 kraus.append(mat.astype(jnp.complex128))
             return kraus
-
-
-class RX(Operation):
-    """Rotation around the X axis: RX(θ) = exp(-i θ/2 X)."""
-
-    def __init__(self, theta: float, wires: Union[int, List[int]] = 0) -> None:
-        """Initialise an RX rotation gate.
-
-        Args:
-            theta: Rotation angle in radians.
-            wires: Qubit index or list of qubit indices this gate acts on.
-        """
-        self.theta = theta
-        mat = jnp.cos(theta / 2) * I - 1j * jnp.sin(theta / 2) * X
-        super().__init__(wires=wires, matrix=mat)
-
-
-class RY(Operation):
-    """Rotation around the Y axis: RY(θ) = exp(-i θ/2 Y)."""
-
-    def __init__(self, theta: float, wires: Union[int, List[int]] = 0) -> None:
-        """Initialise an RY rotation gate.
-
-        Args:
-            theta: Rotation angle in radians.
-            wires: Qubit index or list of qubit indices this gate acts on.
-        """
-        self.theta = theta
-        mat = jnp.cos(theta / 2) * I - 1j * jnp.sin(theta / 2) * Y
-        super().__init__(wires=wires, matrix=mat)
-
-
-class RZ(Operation):
-    """Rotation around the Z axis: RZ(θ) = exp(-i θ/2 Z)."""
-
-    def __init__(self, theta: float, wires: Union[int, List[int]] = 0) -> None:
-        """Initialise an RZ rotation gate.
-
-        Args:
-            theta: Rotation angle in radians.
-            wires: Qubit index or list of qubit indices this gate acts on.
-        """
-        self.theta = theta
-        mat = jnp.cos(theta / 2) * I - 1j * jnp.sin(theta / 2) * Z
-        super().__init__(wires=wires, matrix=mat)

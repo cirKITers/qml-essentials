@@ -12,7 +12,15 @@ from qml_essentials.operations import (
     H,
     CX,
     CCX,
+    CY,
+    CZ,
+    CRX,
+    CRY,
+    CRZ,
+    Rot,
     RX,
+    RY,
+    RZ,
     PauliX,
     PauliZ,
     Hermitian,
@@ -289,6 +297,183 @@ def test_density_expval_matches_statevector() -> None:
     ev_density = jnp.real(jnp.trace(Z_mat @ rho))
 
     assert jnp.allclose(ev_pure, ev_density, atol=1e-8)
+
+
+# ---------------------------------------------------------------------------
+# New gate tests  (CY, CZ, CRX, CRY, CRZ, Rot) — validated against PennyLane
+# ---------------------------------------------------------------------------
+
+
+def _pennylane_probs(circuit_fn, n_qubits=2) -> np.ndarray:
+    """Run a PennyLane circuit and return the probability vector."""
+    dev = qml.device("default.qubit", wires=n_qubits)
+
+    @qml.qnode(dev)
+    def qnode():
+        circuit_fn()
+        return qml.probs(wires=list(range(n_qubits)))
+
+    return np.array(qnode())
+
+
+@pytest.mark.unittest
+def test_cy_matches_pennylane() -> None:
+    """CY gate probabilities match PennyLane."""
+
+    def yaqsi_circuit():
+        H(wires=0)
+        CY(wires=[0, 1])
+
+    def pl_circuit():
+        qml.Hadamard(wires=0)
+        qml.CY(wires=[0, 1])
+
+    script = QuantumScript(f=yaqsi_circuit)
+    probs_ours = np.array(script.execute(type="probs"))
+    probs_pl = _pennylane_probs(pl_circuit)
+
+    assert np.allclose(
+        probs_ours, probs_pl, atol=1e-10
+    ), f"CY mismatch:\nours = {probs_ours}\nPL   = {probs_pl}"
+
+
+@pytest.mark.unittest
+def test_cz_matches_pennylane() -> None:
+    """CZ gate probabilities match PennyLane."""
+
+    def yaqsi_circuit():
+        H(wires=0)
+        H(wires=1)
+        CZ(wires=[0, 1])
+
+    def pl_circuit():
+        qml.Hadamard(wires=0)
+        qml.Hadamard(wires=1)
+        qml.CZ(wires=[0, 1])
+
+    script = QuantumScript(f=yaqsi_circuit)
+    probs_ours = np.array(script.execute(type="probs"))
+    probs_pl = _pennylane_probs(pl_circuit)
+
+    assert np.allclose(
+        probs_ours, probs_pl, atol=1e-10
+    ), f"CZ mismatch:\nours = {probs_ours}\nPL   = {probs_pl}"
+
+
+@pytest.mark.unittest
+def test_crx_matches_pennylane() -> None:
+    """CRX gate probabilities match PennyLane for a non-trivial angle."""
+    theta = 1.3
+
+    def yaqsi_circuit():
+        H(wires=0)
+        CRX(theta, wires=[0, 1])
+
+    def pl_circuit():
+        qml.Hadamard(wires=0)
+        qml.CRX(theta, wires=[0, 1])
+
+    script = QuantumScript(f=yaqsi_circuit)
+    probs_ours = np.array(script.execute(type="probs"))
+    probs_pl = _pennylane_probs(pl_circuit)
+
+    assert np.allclose(
+        probs_ours, probs_pl, atol=1e-10
+    ), f"CRX mismatch:\nours = {probs_ours}\nPL   = {probs_pl}"
+
+
+@pytest.mark.unittest
+def test_cry_matches_pennylane() -> None:
+    """CRY gate probabilities match PennyLane for a non-trivial angle."""
+    theta = 0.9
+
+    def yaqsi_circuit():
+        H(wires=0)
+        CRY(theta, wires=[0, 1])
+
+    def pl_circuit():
+        qml.Hadamard(wires=0)
+        qml.CRY(theta, wires=[0, 1])
+
+    script = QuantumScript(f=yaqsi_circuit)
+    probs_ours = np.array(script.execute(type="probs"))
+    probs_pl = _pennylane_probs(pl_circuit)
+
+    assert np.allclose(
+        probs_ours, probs_pl, atol=1e-10
+    ), f"CRY mismatch:\nours = {probs_ours}\nPL   = {probs_pl}"
+
+
+@pytest.mark.unittest
+def test_crz_matches_pennylane() -> None:
+    """CRZ gate probabilities match PennyLane for a non-trivial angle."""
+    theta = 2.1
+
+    def yaqsi_circuit():
+        H(wires=0)
+        CRZ(theta, wires=[0, 1])
+
+    def pl_circuit():
+        qml.Hadamard(wires=0)
+        qml.CRZ(theta, wires=[0, 1])
+
+    script = QuantumScript(f=yaqsi_circuit)
+    probs_ours = np.array(script.execute(type="probs"))
+    probs_pl = _pennylane_probs(pl_circuit)
+
+    assert np.allclose(
+        probs_ours, probs_pl, atol=1e-10
+    ), f"CRZ mismatch:\nours = {probs_ours}\nPL   = {probs_pl}"
+
+
+@pytest.mark.unittest
+def test_rot_matches_pennylane() -> None:
+    """Rot(φ, θ, ω) = RZ(ω)·RY(θ)·RZ(φ) must match PennyLane's Rot gate."""
+    phi, theta, omega = 0.4, 1.2, 2.5
+
+    def yaqsi_circuit():
+        Rot(phi, theta, omega, wires=0)
+
+    def pl_circuit():
+        qml.Rot(phi, theta, omega, wires=0)
+
+    script = QuantumScript(f=yaqsi_circuit)
+    probs_ours = np.array(script.execute(type="probs"))
+    probs_pl = _pennylane_probs(pl_circuit, n_qubits=1)
+
+    assert np.allclose(
+        probs_ours, probs_pl, atol=1e-10
+    ), f"Rot mismatch:\nours = {probs_ours}\nPL   = {probs_pl}"
+
+
+@pytest.mark.unittest
+def test_rot_decomposition_matches_individual_gates() -> None:
+    """Rot(φ, θ, ω) applied as one gate equals sequential RZ·RY·RZ."""
+    phi, theta, omega = 0.7, 1.5, 0.3
+
+    def rot_circuit():
+        Rot(phi, theta, omega, wires=0)
+
+    def decomposed_circuit():
+        RZ(phi, wires=0)
+        RY(theta, wires=0)
+        RZ(omega, wires=0)
+
+    script_rot = QuantumScript(f=rot_circuit)
+    script_dec = QuantumScript(f=decomposed_circuit)
+
+    state_rot = np.array(script_rot.execute(type="state"))
+    state_dec = np.array(script_dec.execute(type="state"))
+
+    # Equal up to global phase
+    phase = (
+        state_rot[0] / state_dec[0]
+        if abs(state_dec[0]) > 1e-10
+        else state_rot[1] / state_dec[1]
+    )
+    assert np.allclose(
+        state_rot, phase * state_dec, atol=1e-10
+    ), f"Rot decomposition mismatch:\nrot = {state_rot}\ndec = {state_dec}"
 
 
 # ---------------------------------------------------------------------------
