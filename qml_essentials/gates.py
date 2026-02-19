@@ -13,7 +13,6 @@ import logging
 
 from qml_essentials.utils import safe_random_split
 
-jax.config.update("jax_enable_x64", True)
 log = logging.getLogger(__name__)
 
 

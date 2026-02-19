@@ -2,7 +2,6 @@ from typing import List, Callable, Union
 import jax
 import logging
 
-jax.config.update("jax_enable_x64", True)
 log = logging.getLogger(__name__)
 
 

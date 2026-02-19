@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, List, Optional, Tuple, Union
 
+import diffrax
 import jax
 import jax.numpy as jnp
 import jax.scipy.linalg
@@ -15,9 +16,6 @@ from qml_essentials.operations import (
 )
 from qml_essentials.tape import recording
 from qml_essentials.drawing import draw_text, draw_mpl, draw_tikz
-
-# Enable 64-bit precision (important for quantum simulation accuracy)
-jax.config.update("jax_enable_x64", True)
 
 
 # ===================================================================
@@ -147,8 +145,6 @@ class EvolvedOp(Operation):
 # ===================================================================
 # evolve – Hamiltonian time evolution (static & time-dependent)
 # ===================================================================
-
-import diffrax
 
 
 def evolve(hamiltonian, **odeint_kwargs):
@@ -396,7 +392,7 @@ class QuantumScript:
     # Both are static, accept only JAX arrays + plain Python lists, and
     # have no side-effects after the tape is built.  This makes them safe
     # targets for jax.jit, jax.grad, jax.vmap, and — in the future —
-    # jax.experimental.shard_map for multi-device parallelism.
+    # jax.shard_map for multi-device parallelism.
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -440,6 +436,40 @@ class QuantumScript:
         for op in tape:
             rho = op.apply_to_density(rho, n_qubits)
         return rho
+
+    # -- unified simulate-and-measure ------------------------------------
+
+    @staticmethod
+    def _simulate_and_measure(
+        tape: List[Operation],
+        n_qubits: int,
+        type: str,
+        obs: List[Operation],
+        use_density: bool,
+    ) -> jnp.ndarray:
+        """Run simulation and measurement in a single dispatch.
+
+        Chooses statevector or density-matrix simulation based on
+        *use_density*, then applies the appropriate measurement function.
+        This eliminates duplicated branching logic in single-sample and
+        batched execution paths.
+
+        Args:
+            tape: Ordered list of gate/channel operations to apply.
+            n_qubits: Total number of qubits.
+            type: Measurement type (``"state"``/``"probs"``/``"expval"``/
+                ``"density"``).
+            obs: Observables for ``"expval"`` measurements.
+            use_density: If ``True``, use density-matrix simulation.
+
+        Returns:
+            Measurement result (shape depends on *type*).
+        """
+        if use_density:
+            rho = QuantumScript._simulate_mixed(tape, n_qubits)
+            return QuantumScript._measure_density(rho, n_qubits, type, obs)
+        state = QuantumScript._simulate_pure(tape, n_qubits)
+        return QuantumScript._measure_state(state, n_qubits, type, obs)
 
     # -- measurement helpers --------------------------------------------
 
@@ -520,18 +550,10 @@ class QuantumScript:
             return jnp.real(jnp.diag(rho))
 
         if type == "expval":
-            # Tr(O ρ) — apply O column-wise to ρ via vmap, then take trace
+            # Tr(O ρ) — lift the observable to the full Hilbert space, then
+            # compute the trace of O·ρ directly.
             return jnp.array(
-                [
-                    jnp.real(
-                        jnp.trace(
-                            jax.vmap(lambda col: ob.apply_to_state(col, n_qubits))(
-                                rho.T
-                            ).T
-                        )
-                    )
-                    for ob in obs
-                ]
+                [jnp.real(jnp.trace(ob.lifted_matrix(n_qubits) @ rho)) for ob in obs]
             )
 
         raise ValueError(
@@ -607,7 +629,7 @@ class QuantumScript:
 
             **shard_map migration** — the ``jax.vmap`` call in
             :meth:`_execute_batched` is the exact boundary to replace with
-            ``jax.experimental.shard_map`` for multi-device execution.
+            ``jax.shard_map`` for multi-device execution.
         """
         if obs is None:
             obs = []
@@ -624,12 +646,9 @@ class QuantumScript:
         n_qubits = self._n_qubits or self._infer_n_qubits(tape, obs)
 
         has_noise = any(isinstance(op, KrausChannel) for op in tape)
-        if type == "density" or has_noise:
-            rho = self._simulate_mixed(tape, n_qubits)
-            return self._measure_density(rho, n_qubits, type, obs)
+        use_density = type == "density" or has_noise
 
-        state = self._simulate_pure(tape, n_qubits)
-        return self._measure_state(state, n_qubits, type, obs)
+        return self._simulate_and_measure(tape, n_qubits, type, obs, use_density)
 
     # -- batched execution ----------------------------------------------
 
@@ -665,12 +684,11 @@ class QuantumScript:
 
         Note:
             The ``jax.vmap`` call at the end of this method is the exact
-            boundary to replace with ``jax.experimental.shard_map`` for
-            multi-device execution::
+            boundary to replace with ``jax.shard_map`` for multi-device
+            execution::
 
-                from jax.experimental.shard_map import shard_map
                 from jax.sharding import PartitionSpec as P, Mesh
-                result = shard_map(
+                result = jax.shard_map(
                     _single_execute, mesh=mesh,
                     in_specs=tuple(P(0) if ax is not None else P() for ax in in_axes),
                     out_specs=P(0),
@@ -707,11 +725,9 @@ class QuantumScript:
         # the entire batch.
         def _single_execute(*single_args):
             single_tape = self._record(*single_args, **kwargs)
-            if use_density:
-                rho = self._simulate_mixed(single_tape, n_qubits)
-                return self._measure_density(rho, n_qubits, type, obs)
-            state = self._simulate_pure(single_tape, n_qubits)
-            return self._measure_state(state, n_qubits, type, obs)
+            return self._simulate_and_measure(
+                single_tape, n_qubits, type, obs, use_density
+            )
 
         # Step 3 — vmap over the requested axes.
         return jax.vmap(_single_execute, in_axes=in_axes)(*args)

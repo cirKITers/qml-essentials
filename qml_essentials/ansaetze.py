@@ -8,7 +8,6 @@ import warnings
 from qml_essentials.gates import Gates, PulseInformation
 from qml_essentials.topologies import Topology
 
-jax.config.update("jax_enable_x64", True)
 log = logging.getLogger(__name__)
 
 

@@ -5,8 +5,44 @@ import jax.numpy as jnp
 
 from qml_essentials.tape import active_tape, recording  # noqa: F401 (re-export)
 
-# Enable 64-bit precision (important for quantum simulation accuracy)
-jax.config.update("jax_enable_x64", True)
+
+# ===================================================================
+# Shared tensor-contraction helper
+# ===================================================================
+
+
+def _contract_and_restore(
+    tensor: jnp.ndarray,
+    gate: jnp.ndarray,
+    k: int,
+    target_axes: List[int],
+) -> jnp.ndarray:
+    """Contract *gate* against *target_axes* of *tensor* and restore axis order.
+
+    This is the core building block for applying a ``k``-qubit gate tensor to
+    a rank-*n* (statevector) or rank-*2n* (density-matrix) tensor.  After
+    ``jnp.tensordot``, the output axes are permuted back so that the
+    contracted axes appear in their original positions.
+
+    Args:
+        tensor: Rank-*N* tensor (e.g. ``(2,)*n`` for states or ``(2,)*2n``
+            for density matrices).
+        gate: Reshaped gate tensor of shape ``(2,)*2k``.
+        k: Number of qubits the gate acts on (= ``len(target_axes)``).
+        target_axes: The *k* axes of *tensor* to contract against.
+
+    Returns:
+        Updated tensor with the same rank as *tensor*, with the
+        contracted axes restored to their original positions.
+    """
+    total = tensor.ndim
+    out = jnp.tensordot(gate, tensor, axes=(list(range(k, 2 * k)), target_axes))
+    remaining = [ax for ax in range(total) if ax not in target_axes]
+    dest = list(target_axes) + remaining
+    perm = [0] * total
+    for src_pos, dst_pos in enumerate(dest):
+        perm[dst_pos] = src_pos
+    return jnp.transpose(out, perm)
 
 
 # ===================================================================
@@ -129,6 +165,25 @@ class Operation:
         else:
             self._wires = [wires]
 
+    def lifted_matrix(self, n_qubits: int) -> jnp.ndarray:
+        """Return the full ``2**n × 2**n`` matrix embedding this gate.
+
+        Embeds the ``k``-qubit gate matrix into the ``n``-qubit Hilbert space
+        by applying it to the identity matrix via :meth:`apply_to_state`.
+        This is useful for computing ``Tr(O·ρ)`` directly without vmap.
+
+        Args:
+            n_qubits: Total number of qubits in the circuit.
+
+        Returns:
+            The ``(2**n, 2**n)`` matrix of this operation in the full space.
+        """
+        dim = 2**n_qubits
+        # Apply the gate to each basis vector (column of identity)
+        return jax.vmap(lambda col: self.apply_to_state(col, n_qubits))(
+            jnp.eye(dim, dtype=jnp.complex128)
+        ).T
+
     def apply_to_state(self, state: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
         """Apply this gate to a statevector via tensor contraction.
 
@@ -149,20 +204,7 @@ class Operation:
         k = len(self.wires)
         gate_tensor = self.matrix.reshape((2,) * 2 * k)
         psi = state.reshape((2,) * n_qubits)
-
-        psi_out = jnp.tensordot(
-            gate_tensor, psi, axes=(list(range(k, 2 * k)), self.wires)
-        )
-
-        # Restore axis order: tensordot places the k output axes first,
-        # followed by the n-k untouched axes in their original relative order.
-        remaining = [q for q in range(n_qubits) if q not in self.wires]
-        dest = list(self.wires) + remaining
-        perm = [0] * n_qubits
-        for src_pos, dst_pos in enumerate(dest):
-            perm[dst_pos] = src_pos
-        psi_out = jnp.transpose(psi_out, perm)
-
+        psi_out = _contract_and_restore(psi, gate_tensor, k, self.wires)
         return psi_out.reshape(2**n_qubits)
 
     def apply_to_density(self, rho: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
@@ -171,12 +213,8 @@ class Operation:
         The density matrix (shape ``(2**n, 2**n)``) is treated as a rank-*2n*
         tensor with *n* "ket" axes (0..n-1) and *n* "bra" axes (n..2n-1).
         U acts on the ket half; U* acts on the bra half.  Both contractions
-        reuse the same axis-permutation logic as :meth:`apply_to_state`,
-        keeping the operation allocation-free with respect to building full
-        unitaries.
-
-        This is the correct building block for noise channels, where a mixed
-        state cannot be represented as a pure statevector.
+        use the shared :func:`_contract_and_restore` helper, keeping the
+        operation allocation-free with respect to building full unitaries.
 
         Args:
             rho: Density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
@@ -186,48 +224,15 @@ class Operation:
             Updated density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
         """
         k = len(self.wires)
-        U = self.matrix.reshape((2,) * 2 * k)  # (out)*k + (in)*k
+        U = self.matrix.reshape((2,) * 2 * k)
         U_conj = jnp.conj(U)
 
-        # Represent ρ as a (2,)*2n tensor: axes 0..n-1 = ket, n..2n-1 = bra
         rho_t = rho.reshape((2,) * 2 * n_qubits)
 
-        # Helper: apply a (2,)*2k gate tensor to k chosen axes of rho_t,
-        # then restore the correct axis order for a 2n-rank tensor.
-        def _contract_and_restore(
-            tensor: jnp.ndarray,
-            gate: jnp.ndarray,
-            target_axes: List[int],
-        ) -> jnp.ndarray:
-            """Contract *gate* against *target_axes* of *tensor* and restore axis order.
-
-            Args:
-                tensor: Rank-``2*n_qubits`` tensor representing the density matrix.
-                gate: Reshaped gate tensor of shape ``(2,)*2k``.
-                target_axes: The *k* axes of *tensor* to contract against.
-
-            Returns:
-                Updated tensor with the same rank as *tensor*, with the
-                contracted axes restored to their original positions.
-            """
-            total = 2 * n_qubits
-            out = jnp.tensordot(gate, tensor, axes=(list(range(k, 2 * k)), target_axes))
-            # tensordot output: k new axes first, then (2n-k) remaining axes
-            # in the same relative order they had in `tensor` minus target_axes.
-            remaining = [ax for ax in range(total) if ax not in target_axes]
-            # dest[i] = where the i-th output axis should go in the final tensor
-            dest = list(target_axes) + remaining
-            # Build inverse permutation
-            perm = [0] * total
-            for src_pos, dst_pos in enumerate(dest):
-                perm[dst_pos] = src_pos
-            return jnp.transpose(out, perm)
-
-        # Apply U  to ket axes (self.wires)
-        rho_t = _contract_and_restore(rho_t, U, self.wires)
-        # Apply U† to bra axes (self.wires + n_qubits)
+        # Apply U to ket axes, U† to bra axes
+        rho_t = _contract_and_restore(rho_t, U, k, self.wires)
         bra_wires = [w + n_qubits for w in self.wires]
-        rho_t = _contract_and_restore(rho_t, U_conj, bra_wires)
+        rho_t = _contract_and_restore(rho_t, U_conj, k, bra_wires)
 
         return rho_t.reshape(2**n_qubits, 2**n_qubits)
 
@@ -739,8 +744,8 @@ class KrausChannel(Operation):
     def apply_to_density(self, rho: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
         """Apply Φ(ρ) = Σ_k K_k ρ K_k† using tensor-contraction.
 
-        Uses the same axis-permutation engine as
-        :meth:`Operation.apply_to_density`, but sums over all Kraus operators.
+        Uses the shared :func:`_contract_and_restore` helper, summing the
+        result over all Kraus operators.
 
         Args:
             rho: Density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
@@ -750,28 +755,17 @@ class KrausChannel(Operation):
             Updated density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
         """
         k = len(self.wires)
-        total = 2 * n_qubits
+        dim = 2**n_qubits
+        bra_wires = [w + n_qubits for w in self.wires]
         rho_out = jnp.zeros_like(rho)
-
-        def _contract_and_restore(tensor, gate, target_axes):
-            out = jnp.tensordot(gate, tensor, axes=(list(range(k, 2 * k)), target_axes))
-            remaining = [ax for ax in range(total) if ax not in target_axes]
-            dest = list(target_axes) + remaining
-            perm = [0] * total
-            for src_pos, dst_pos in enumerate(dest):
-                perm[dst_pos] = src_pos
-            return jnp.transpose(out, perm)
 
         for K in self.kraus_matrices():
             K_t = K.reshape((2,) * 2 * k)
             K_conj_t = jnp.conj(K_t)
-            rho_t = rho.reshape((2,) * total)
-            # apply K to ket axes
-            rho_t = _contract_and_restore(rho_t, K_t, self.wires)
-            # apply K† to bra axes
-            bra_wires = [w + n_qubits for w in self.wires]
-            rho_t = _contract_and_restore(rho_t, K_conj_t, bra_wires)
-            rho_out = rho_out + rho_t.reshape(2**n_qubits, 2**n_qubits)
+            rho_t = rho.reshape((2,) * 2 * n_qubits)
+            rho_t = _contract_and_restore(rho_t, K_t, k, self.wires)
+            rho_t = _contract_and_restore(rho_t, K_conj_t, k, bra_wires)
+            rho_out = rho_out + rho_t.reshape(dim, dim)
 
         return rho_out
 
