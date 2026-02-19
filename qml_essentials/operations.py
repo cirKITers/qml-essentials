@@ -33,6 +33,7 @@ class Operation:
 
     # Subclasses should set this to the gate's unitary / matrix
     _matrix: jnp.ndarray = None
+    is_controlled = False
 
     def __init__(
         self,
@@ -447,6 +448,7 @@ class CX(Operation):
         [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]],
         dtype=jnp.complex128,
     )
+    is_controlled = True
 
     def __init__(self, wires: List[int] = [0, 1]) -> None:
         """Initialise a Controlled-X gate.
@@ -455,10 +457,6 @@ class CX(Operation):
             wires: Two-element list ``[control, target]``.
         """
         super().__init__(wires=wires)
-
-
-#: Shorthand alias for :class:`CX` (CNOT).
-CNOT = CX
 
 
 class CCX(Operation):
@@ -483,6 +481,7 @@ class CCX(Operation):
         ],
         dtype=jnp.complex128,
     )
+    is_controlled = True
 
     def __init__(self, wires: List[int] = [0, 1, 2]) -> None:
         """Initialise a Toffoli (CCX) gate.
@@ -507,6 +506,7 @@ class CY(Operation):
         [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, -1j], [0, 0, 1j, 0]],
         dtype=jnp.complex128,
     )
+    is_controlled = True
 
     def __init__(self, wires: List[int] = [0, 1]) -> None:
         """Initialise a Controlled-Y gate.
@@ -531,6 +531,7 @@ class CZ(Operation):
         [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1]],
         dtype=jnp.complex128,
     )
+    is_controlled = True
 
     def __init__(self, wires: List[int] = [0, 1]) -> None:
         """Initialise a Controlled-Z gate.
@@ -551,6 +552,8 @@ class CRX(Operation):
         CRX(\\theta) = |0\\rangle\\langle 0| \\otimes I
                       + |1\\rangle\\langle 1| \\otimes RX(\\theta)
     """
+
+    is_controlled = True
 
     def __init__(self, theta: float, wires: List[int] = [0, 1]) -> None:
         """Initialise a CRX gate.
@@ -585,6 +588,8 @@ class CRY(Operation):
                       + |1\\rangle\\langle 1| \\otimes RY(\\theta)
     """
 
+    is_controlled = True
+
     def __init__(self, theta: float, wires: List[int] = [0, 1]) -> None:
         """Initialise a CRY gate.
 
@@ -617,6 +622,8 @@ class CRZ(Operation):
         CRZ(\\theta) = |0\\rangle\\langle 0| \\otimes I
                       + |1\\rangle\\langle 1| \\otimes RZ(\\theta)
     """
+
+    is_controlled = True
 
     def __init__(self, theta: float, wires: List[int] = [0, 1]) -> None:
         """Initialise a CRZ gate.
