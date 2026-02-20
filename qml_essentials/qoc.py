@@ -5,7 +5,6 @@ import csv
 import jax
 from jax import numpy as jnp
 import optax
-import pennylane as qml
 from qml_essentials.gates import Gates, PulseInformation
 from qml_essentials import operations as op
 from qml_essentials import yaqsi as ys
@@ -20,7 +19,7 @@ log = logging.getLogger(__name__)
 class QOC:
     def __init__(
         self,
-        observable: Union[Callable, List[Callable]] = qml.state,
+        observable: Union[Callable, List[Callable], str] = "state",
         n_steps: int = 1000,
         n_loops: int = 1,
         n_samples: int = 8,
@@ -477,14 +476,13 @@ class QOC:
             op.H(wires=0)
             op.H(wires=1)
             op.CRZ(w, wires=[0, 1])
-            return qml.state()
 
         return pulse_circuit, target_circuit
 
     def optimize_all(self, sel_gates, make_log):
         assert (
-            self.observable == qml.state
-        ), "Observable must be qml.state when doing optimization"
+            self.observable == "state"
+        ), "Observable must be 'state' when doing optimization"
 
         log_history = {}
         optimize_1q = self.optimize("default.qubit", wires=1)
@@ -598,7 +596,7 @@ if __name__ == "__main__":
     log.addHandler(logging.StreamHandler())
 
     qoc = QOC(
-        observable=qml.state,
+        observable="state",
     )
 
     qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)

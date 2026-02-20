@@ -361,13 +361,13 @@ class I(Operation):
 
     _matrix = jnp.eye(2, dtype=jnp.complex128)
 
-    def __init__(self, wires: Union[int, List[int]] = 0) -> None:
+    def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise an identity gate.
 
         Args:
             wires: Qubit index or list of qubit indices this gate acts on.
         """
-        super().__init__(wires=wires)
+        super().__init__(wires=wires, **kwargs)
 
 
 class PauliX(Operation):
@@ -375,13 +375,13 @@ class PauliX(Operation):
 
     _matrix = jnp.array([[0, 1], [1, 0]], dtype=jnp.complex128)
 
-    def __init__(self, wires: Union[int, List[int]] = 0) -> None:
+    def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise a Pauli-X gate.
 
         Args:
             wires: Qubit index or list of qubit indices this gate acts on.
         """
-        super().__init__(wires=wires)
+        super().__init__(wires=wires, **kwargs)
 
 
 class PauliY(Operation):
@@ -389,13 +389,13 @@ class PauliY(Operation):
 
     _matrix = jnp.array([[0, -1j], [1j, 0]], dtype=jnp.complex128)
 
-    def __init__(self, wires: Union[int, List[int]] = 0) -> None:
+    def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise a Pauli-Y gate.
 
         Args:
             wires: Qubit index or list of qubit indices this gate acts on.
         """
-        super().__init__(wires=wires)
+        super().__init__(wires=wires, **kwargs)
 
 
 class PauliZ(Operation):
@@ -403,13 +403,13 @@ class PauliZ(Operation):
 
     _matrix = jnp.array([[1, 0], [0, -1]], dtype=jnp.complex128)
 
-    def __init__(self, wires: Union[int, List[int]] = 0) -> None:
+    def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise a Pauli-Z gate.
 
         Args:
             wires: Qubit index or list of qubit indices this gate acts on.
         """
-        super().__init__(wires=wires)
+        super().__init__(wires=wires, **kwargs)
 
 
 class H(Operation):
@@ -430,6 +430,50 @@ class H(Operation):
 Hadamard = H
 
 
+class S(Operation):
+    """S (phase) gate — a Clifford gate equal to √Z.
+
+    .. math::
+        S = \\begin{pmatrix}1 & 0\\\\ 0 & i\\end{pmatrix}
+    """
+
+    _matrix = jnp.array([[1, 0], [0, 1j]], dtype=jnp.complex128)
+
+    def __init__(self, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise an S gate.
+
+        Args:
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
+        super().__init__(wires=wires)
+
+
+class Barrier(Operation):
+    """Barrier operation — a no-op used for visual circuit separation.
+
+    The barrier does not change the quantum state.  It is recorded on the
+    tape so that drawing backends can insert a visual separator.
+    """
+
+    _matrix = None  # not a real gate
+
+    def __init__(self, wires: Union[int, List[int]] = 0) -> None:
+        """Initialise a Barrier.
+
+        Args:
+            wires: Qubit index or list of qubit indices this barrier spans.
+        """
+        super().__init__(wires=wires)
+
+    def apply_to_state(self, state: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
+        """No-op: return the state unchanged."""
+        return state
+
+    def apply_to_density(self, rho: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
+        """No-op: return the density matrix unchanged."""
+        return rho
+
+
 class RX(Operation):
     """Rotation around the X axis: RX(θ) = exp(-i θ/2 X)."""
 
@@ -443,6 +487,10 @@ class RX(Operation):
         self.theta = theta
         mat = jnp.cos(theta / 2) * I._matrix - 1j * jnp.sin(theta / 2) * PauliX._matrix
         super().__init__(wires=wires, matrix=mat)
+
+    def generator(self) -> Operation:
+        """Return the generator ``-0.5 · X`` as a :class:`PauliX` operation."""
+        return PauliX(wires=self.wires[0], record=False)
 
 
 class RY(Operation):
@@ -459,6 +507,10 @@ class RY(Operation):
         mat = jnp.cos(theta / 2) * I._matrix - 1j * jnp.sin(theta / 2) * PauliY._matrix
         super().__init__(wires=wires, matrix=mat)
 
+    def generator(self) -> Operation:
+        """Return the generator ``-0.5 · Y`` as a :class:`PauliY` operation."""
+        return PauliY(wires=self.wires[0], record=False)
+
 
 class RZ(Operation):
     """Rotation around the Z axis: RZ(θ) = exp(-i θ/2 Z)."""
@@ -473,6 +525,10 @@ class RZ(Operation):
         self.theta = theta
         mat = jnp.cos(theta / 2) * I._matrix - 1j * jnp.sin(theta / 2) * PauliZ._matrix
         super().__init__(wires=wires, matrix=mat)
+
+    def generator(self) -> Operation:
+        """Return the generator ``-0.5 · Z`` as a :class:`PauliZ` operation."""
+        return PauliZ(wires=self.wires[0], record=False)
 
 
 class CX(Operation):
@@ -751,6 +807,224 @@ class Rot(Operation):
         )
         mat = rz_omega @ ry_theta @ rz_phi
         super().__init__(wires=wires, matrix=mat)
+
+
+class PauliRot(Operation):
+    """Multi-qubit Pauli rotation: exp(-i θ/2 P) for a Pauli word P.
+
+    The Pauli word is given as a string of ``'I'``, ``'X'``, ``'Y'``, ``'Z'``
+    characters (one per qubit).  The rotation matrix is computed as
+    ``cos(θ/2) I - i sin(θ/2) P`` where *P* is the tensor product of the
+    corresponding single-qubit Pauli matrices.
+
+    Example::
+
+        PauliRot(0.5, "XY", wires=[0, 1])
+    """
+
+    # Map from character to 2×2 matrix
+    _PAULI_MAP = {
+        "I": I._matrix,
+        "X": PauliX._matrix,
+        "Y": PauliY._matrix,
+        "Z": PauliZ._matrix,
+    }
+
+    def __init__(
+        self,
+        theta: float,
+        pauli_word: str,
+        wires: Union[int, List[int]] = 0,
+    ) -> None:
+        """Initialise a PauliRot gate.
+
+        Args:
+            theta: Rotation angle in radians.
+            pauli_word: A string of ``'I'``, ``'X'``, ``'Y'``, ``'Z'``
+                characters specifying the Pauli tensor product.
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
+        from functools import reduce as _reduce
+
+        self.theta = theta
+        self.pauli_word = pauli_word
+
+        pauli_matrices = [self._PAULI_MAP[c] for c in pauli_word]
+        P = _reduce(jnp.kron, pauli_matrices)
+        dim = P.shape[0]
+        mat = (
+            jnp.cos(theta / 2) * jnp.eye(dim, dtype=jnp.complex128)
+            - 1j * jnp.sin(theta / 2) * P
+        )
+        super().__init__(wires=wires, matrix=mat)
+
+    def generator(self) -> Operation:
+        """Return the generator Pauli tensor product as an :class:`Operation`.
+
+        The generator of ``PauliRot(θ, word, wires)`` is the tensor product
+        of single-qubit Pauli matrices specified by *word*.  The returned
+        :class:`Hermitian` wraps that matrix and the gate's wires.
+
+        Returns:
+            :class:`Hermitian` operation representing the Pauli tensor product.
+        """
+        from functools import reduce as _reduce
+
+        pauli_matrices = [self._PAULI_MAP[c] for c in self.pauli_word]
+        P = _reduce(jnp.kron, pauli_matrices)
+        return Hermitian(matrix=P, wires=self.wires, record=False)
+
+
+#: Shorthand aliases matching PennyLane naming conventions.
+X = PauliX
+Y = PauliY
+Z = PauliZ
+CNOT = CX
+
+
+# ===================================================================
+# Pauli algebra helpers
+# ===================================================================
+
+# Single-qubit Pauli matrices (plain arrays, no Operation overhead)
+_PAULI_MATS = [I._matrix, PauliX._matrix, PauliY._matrix, PauliZ._matrix]
+_PAULI_LABELS = ["I", "X", "Y", "Z"]
+_PAULI_CLASSES = [I, PauliX, PauliY, PauliZ]
+
+
+def adjoint_matrix(op: Operation) -> jnp.ndarray:
+    """Return the adjoint (conjugate transpose) of *op*'s matrix.
+
+    Args:
+        op: A quantum operation with a ``.matrix`` property.
+
+    Returns:
+        The ``(d, d)`` adjoint matrix.
+    """
+    return jnp.conj(op.matrix).T
+
+
+def evolve_pauli_with_clifford(
+    clifford: Operation,
+    pauli: Operation,
+    adjoint_left: bool = True,
+) -> Operation:
+    """Compute C† P C  (or  C P C†)  and return the result as an Operation.
+
+    The computation is purely matrix-level; the result is wrapped in a
+    :class:`Hermitian` so it can be used in further algebra.
+
+    Args:
+        clifford: A Clifford gate.
+        pauli: A Pauli / Hermitian operator.
+        adjoint_left: If ``True``, compute C† P C; otherwise C P C†.
+
+    Returns:
+        A :class:`Hermitian` wrapping the evolved matrix.
+    """
+    C = clifford.matrix
+    Cd = jnp.conj(C).T
+    P = pauli.matrix
+
+    if adjoint_left:
+        result = Cd @ P @ C
+    else:
+        result = C @ P @ Cd
+
+    # Determine wires: the union of clifford and pauli wires, in order
+    all_wires = sorted(set(clifford.wires) | set(pauli.wires))
+    return Hermitian(matrix=result, wires=all_wires, record=False)
+
+
+def pauli_decompose(matrix: jnp.ndarray, wire_order: Optional[List[int]] = None):
+    r"""Decompose a Hermitian matrix into a sum of Pauli tensor products.
+
+    For an *n*-qubit matrix (``2**n × 2**n``), returns the dominant Pauli
+    term (the one with the largest absolute coefficient), wrapped as an
+    :class:`Operation`.  This is sufficient for the Fourier-tree algorithm
+    which only needs the single non-zero Pauli term produced by Clifford
+    conjugation of a Pauli operator.
+
+    The decomposition uses the trace formula:
+    ``c_P = Tr(P · M) / 2**n``
+
+    Args:
+        matrix: A ``(2**n, 2**n)`` Hermitian matrix.
+        wire_order: Optional list of wire indices.  If ``None``, defaults
+            to ``[0, 1, ..., n-1]``.
+
+    Returns:
+        A tuple ``(coeff, op)`` where *coeff* is the complex coefficient and
+        *op* is the Pauli :class:`Operation` (PauliX, PauliY, PauliZ, I, or
+        a :class:`Hermitian` for multi-qubit tensor products).
+    """
+    from itertools import product as _product
+    from functools import reduce as _reduce
+
+    dim = matrix.shape[0]
+    n_qubits = int(jnp.log2(dim))
+
+    if wire_order is None:
+        wire_order = list(range(n_qubits))
+
+    # For single qubit, fast path
+    if n_qubits == 1:
+        best_idx, best_coeff = 0, 0.0
+        for idx, P in enumerate(_PAULI_MATS):
+            coeff = jnp.trace(P @ matrix) / 2.0
+            if jnp.abs(coeff) > jnp.abs(best_coeff):
+                best_idx = idx
+                best_coeff = coeff
+        op_cls = _PAULI_CLASSES[best_idx]
+        return best_coeff, op_cls(wires=wire_order[0], record=False)
+
+    # Multi-qubit: iterate over all Pauli tensor products
+    best_label = None
+    best_coeff = 0.0
+    for indices in _product(range(4), repeat=n_qubits):
+        P = _reduce(jnp.kron, [_PAULI_MATS[i] for i in indices])
+        coeff = jnp.trace(P @ matrix) / dim
+        if jnp.abs(coeff) > jnp.abs(best_coeff):
+            best_coeff = coeff
+            best_label = indices
+
+    # Build the operation for the dominant term
+    if sum(1 for i in best_label if i != 0) <= 1:
+        # Single-qubit Pauli on one wire
+        for q, idx in enumerate(best_label):
+            if idx != 0:
+                op_cls = _PAULI_CLASSES[idx]
+                return best_coeff, op_cls(wires=wire_order[q], record=False)
+        # All identity
+        return best_coeff, I(wires=wire_order[0], record=False)
+    else:
+        # Multi-qubit tensor product → Hermitian
+        P = _reduce(jnp.kron, [_PAULI_MATS[i] for i in best_label])
+        return best_coeff, Hermitian(matrix=P, wires=wire_order, record=False)
+
+
+def pauli_string_from_operation(op: Operation) -> str:
+    """Extract a Pauli word string from an operation.
+
+    Maps ``PauliX`` → ``"X"``, ``PauliY`` → ``"Y"``, ``PauliZ`` → ``"Z"``,
+    ``I`` → ``"I"``.  For :class:`PauliRot`, returns its stored ``pauli_word``.
+    For :class:`Hermitian` or multi-qubit operators, attempts to identify the
+    Pauli word from the matrix via :func:`pauli_decompose`.
+
+    Args:
+        op: A quantum operation.
+
+    Returns:
+        A string like ``"X"``, ``"ZZ"``, etc.
+    """
+    if isinstance(op, PauliRot) and hasattr(op, "pauli_word"):
+        return op.pauli_word
+    name_map = {"PauliX": "X", "PauliY": "Y", "PauliZ": "Z", "I": "I"}
+    if op.name in name_map:
+        return name_map[op.name]
+    # Fall back: decompose the matrix
+    _, pauli_op = pauli_decompose(op.matrix, wire_order=op.wires)
+    return pauli_string_from_operation(pauli_op)
 
 
 # ===================================================================

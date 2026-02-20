@@ -2,18 +2,22 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from dataclasses import dataclass
-import pennylane as qml
 import jax.numpy as jnp
 from jax import random
 import numpy as np
-from pennylane.operation import Operator
-import pennylane.ops.op_math as qml_op
 from scipy.stats import rankdata
 from functools import reduce
 from typing import List, Tuple, Optional, Any, Dict, Union
 
 from qml_essentials.model import Model
 from qml_essentials.utils import PauliCircuit
+from qml_essentials.operations import (
+    Operation,
+    PauliX,
+    PauliY,
+    PauliZ,
+)
+from qml_essentials.tape import recording
 
 import logging
 
@@ -370,7 +374,7 @@ class FourierTree:
 
         sin_indices: List[int]
         cos_indices: List[int]
-        term: jnp.complex128
+        term: complex
 
     class PauliOperator:
         """
@@ -393,7 +397,7 @@ class FourierTree:
 
         def __init__(
             self,
-            pauli: Union[Operator, jnp.ndarray[int]],
+            pauli: Union[Operation, jnp.ndarray[int]],
             n_qubits: int,
             prev_xy_indices: Optional[jnp.ndarray[bool]] = None,
             is_observable: bool = False,
@@ -405,7 +409,7 @@ class FourierTree:
 
             if is_init:
                 if not is_observable:
-                    pauli = pauli.generator()[0].base
+                    pauli = pauli.generator()
                 self.list_repr = self._create_list_representation(pauli, n_qubits)
             else:
                 assert isinstance(pauli, jnp.ndarray)
@@ -440,10 +444,10 @@ class FourierTree:
 
         @staticmethod
         def _create_list_representation(
-            op: Operator, n_qubits: int
+            op: Operation, n_qubits: int
         ) -> jnp.ndarray[int]:
             """
-            Create list representation of a Pennylane Operator.
+            Create list representation of an Operation.
             Generally, the list representation is a list of length n_qubits,
             where at each position a Pauli Operator is encoded as such:
                 I: -1
@@ -452,30 +456,36 @@ class FourierTree:
                 Z: 2
 
             Args:
-                op (Operator): Pennylane Operator
+                op (Operation): Gate operation (PauliX, PauliY, PauliZ, or
+                    Hermitian wrapping a multi-qubit Pauli tensor product).
                 n_qubits (int): number of qubits in the circuit
 
             Returns:
                 jnp.ndarray[int]: List representation
             """
             pauli_repr = -jnp.ones(n_qubits, dtype=int)
-            op = op.terms()[1][0] if isinstance(op, qml_op.Prod) else op
-            op = op.base if isinstance(op, qml_op.SProd) else op
 
-            if isinstance(op, qml.PauliX):
+            _NAME_TO_IDX = {"PauliX": 0, "PauliY": 1, "PauliZ": 2}
+
+            if op.name in _NAME_TO_IDX:
+                pauli_repr = pauli_repr.at[op.wires[0]].set(_NAME_TO_IDX[op.name])
+            elif isinstance(op, PauliX):
                 pauli_repr = pauli_repr.at[op.wires[0]].set(0)
-            elif isinstance(op, qml.PauliY):
+            elif isinstance(op, PauliY):
                 pauli_repr = pauli_repr.at[op.wires[0]].set(1)
-            elif isinstance(op, qml.PauliZ):
+            elif isinstance(op, PauliZ):
                 pauli_repr = pauli_repr.at[op.wires[0]].set(2)
             else:
-                for o in op:
-                    if isinstance(o, qml.PauliX):
-                        pauli_repr = pauli_repr.at[o.wires[0]].set(0)
-                    elif isinstance(o, qml.PauliY):
-                        pauli_repr = pauli_repr.at[o.wires[0]].set(1)
-                    elif isinstance(o, qml.PauliZ):
-                        pauli_repr = pauli_repr.at[o.wires[0]].set(2)
+                # Multi-qubit case: decompose via pauli_string_from_operation
+                from qml_essentials.operations import pauli_string_from_operation
+
+                pauli_str = pauli_string_from_operation(op)
+                char_to_idx = {"X": 0, "Y": 1, "Z": 2, "I": -1}
+                for i, (wire, ch) in enumerate(zip(op.wires, pauli_str)):
+                    idx = char_to_idx.get(ch, -1)
+                    if idx >= 0:
+                        pauli_repr = pauli_repr.at[wire].set(idx)
+
             return pauli_repr
 
         def is_commuting(self, pauli: jnp.ndarray[int]) -> bool:
@@ -585,11 +595,15 @@ class FourierTree:
         if inputs.shape[0] == 1:
             inputs = jnp.repeat(inputs, 2, axis=0)
 
-        quantum_tape = qml.workflow.construct_tape(self.model.circuit)(
-            params=model.params, inputs=inputs
-        )
+        # Record the circuit tape using yaqsi's tape recording
+        raw_tape = self.model.script._record(params=model.params, inputs=inputs)
 
-        quantum_tape = PauliCircuit.from_parameterised_circuit(quantum_tape)
+        # Build observables from the model's output_qubit configuration
+        _, obs_list = self.model._build_obs()
+
+        quantum_tape = PauliCircuit.from_parameterised_circuit(
+            raw_tape, observables=obs_list
+        )
 
         self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
 
@@ -660,10 +674,15 @@ class FourierTree:
                 "Currently, noise is not supported when building FourierTree."
             )
 
-        quantum_tape = qml.workflow.construct_tape(self.model.circuit)(
-            params=self.model.params, inputs=inputs
+        # Record the circuit tape using yaqsi's tape recording
+        raw_tape = self.model.script._record(params=self.model.params, inputs=inputs)
+
+        # Build observables from the model's output_qubit configuration
+        _, obs_list = self.model._build_obs()
+
+        quantum_tape = PauliCircuit.from_parameterised_circuit(
+            raw_tape, observables=obs_list
         )
-        quantum_tape = PauliCircuit.from_parameterised_circuit(quantum_tape)
 
         self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
 
@@ -695,14 +714,14 @@ class FourierTree:
         return tree_roots
 
     def _encode_observables(
-        self, tape_obs: List[Operator]
+        self, tape_obs: List[Operation]
     ) -> List[FourierTree.PauliOperator]:
         """
-        Encodes Pennylane observables from tape as FourierTree.PauliOperator
+        Encodes observables from tape as FourierTree.PauliOperator
         utility objects.
 
         Args:
-            tape_obs (List[Operator]): Pennylane tape operations
+            tape_obs (List[Operation]): Observable operations
 
         Returns:
             List[FourierTree.PauliOperator]: List of Pauli operators

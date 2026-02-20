@@ -1,36 +1,52 @@
 from __future__ import annotations
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import jax
 import jax.numpy as jnp
 import numpy as np
-import pennylane as qml
-from pennylane.operation import Operator
-from pennylane.tape import QuantumScript, QuantumTape
-import pennylane.ops.op_math as qml_op
+from qml_essentials.operations import (
+    Operation,
+    PauliX,
+    PauliY,
+    PauliZ,
+    I,
+    H,
+    Hadamard,
+    S,
+    CX,
+    RX,
+    RY,
+    RZ,
+    PauliRot,
+    Barrier,
+    Hermitian,
+    adjoint_matrix,
+    evolve_pauli_with_clifford,
+    pauli_decompose,
+    pauli_string_from_operation,
+)
+from qml_essentials.tape import recording
 from fractions import Fraction
 from itertools import cycle
 from scipy.linalg import logm
 
 CLIFFORD_GATES = (
-    qml.PauliX,
-    qml.PauliY,
-    qml.PauliZ,
-    qml.X,
-    qml.Y,
-    qml.Z,
-    qml.Hadamard,
-    qml.S,
-    qml.CNOT,
+    PauliX,
+    PauliY,
+    PauliZ,
+    Hadamard,
+    H,
+    S,
+    CX,
 )
 
 PAULI_ROTATION_GATES = (
-    qml.RX,
-    qml.RY,
-    qml.RZ,
-    qml.PauliRot,
+    RX,
+    RY,
+    RZ,
+    PauliRot,
 )
 
-SKIPPABLE_OPERATIONS = (qml.Barrier,)
+SKIPPABLE_OPERATIONS = (Barrier,)
 
 
 def safe_random_split(random_key: jax.random.PRNGKey, *args, **kwargs):
@@ -64,6 +80,28 @@ def logm_v(A: jnp.ndarray, **kwargs) -> jnp.ndarray:
         raise NotImplementedError("Unsupported shape of input matrix")
 
 
+class PauliTape:
+    """Simple tape wrapper with ``operations``, ``observables``, and
+    ``get_parameters`` — replacing PennyLane's ``QuantumScript`` for the
+    Fourier-tree algorithm.
+    """
+
+    def __init__(
+        self,
+        operations: List[Operation],
+        observables: List[Operation],
+    ) -> None:
+        self.operations = operations
+        self.observables = observables
+
+    def get_parameters(self) -> list:
+        """Return the list of all parameter values from the operations."""
+        params = []
+        for op in self.operations:
+            params.extend(op.parameters)
+        return params
+
+
 class PauliCircuit:
     """
     Wrapper for Pauli-Clifford Circuits described by Nemkov et al.
@@ -76,45 +114,39 @@ class PauliCircuit:
 
     @staticmethod
     def from_parameterised_circuit(
-        tape: QuantumScript,
-    ) -> tuple[QuantumScript]:
+        tape: List[Operation],
+        observables: Optional[List[Operation]] = None,
+    ) -> PauliTape:
         """
-        Transforms the quantum tape of a circuit a Pauli-Clifford circuit.
+        Transforms a list of operations into a Pauli-Clifford circuit.
 
         Args:
-            tape (QuantumScript): The quantum tape for the operations in the
-                ansatz. This is automatically passed, when initialising the
-                transform function with a QNode. Note: directly calling
-                `PauliCircuit.from_parameterised_circuit(circuit)` for a QNode
-                circuit will fail
+            tape: List of operations recorded from the circuit.
+            observables: List of observable operations.  If ``None``, defaults
+                to ``[PauliZ(0)]``.
 
         Returns:
-            QuantumScript:
-                - A new quantum tape, containing the operations of the
-                  Pauli-Clifford Circuit.
+            PauliTape:
+                A new tape containing the operations of the Pauli-Clifford
+                circuit and the (possibly Clifford-evolved) observables.
         """
+        if observables is None:
+            observables = []
+
         operations = PauliCircuit.get_clifford_pauli_gates(tape)
 
         pauli_gates, final_cliffords = PauliCircuit.commute_all_cliffords_to_the_end(
             operations
         )
 
-        observables = PauliCircuit.cliffords_in_observable(
-            final_cliffords, tape.observables
-        )
+        observables = PauliCircuit.cliffords_in_observable(final_cliffords, observables)
 
-        with QuantumTape() as tape_new:
-            for op in pauli_gates:
-                op.queue()
-            for obs in observables:
-                qml.expval(obs)
-
-        return tape_new
+        return PauliTape(operations=pauli_gates, observables=observables)
 
     @staticmethod
     def commute_all_cliffords_to_the_end(
-        operations: List[Operator],
-    ) -> Tuple[List[Operator], List[Operator]]:
+        operations: List[Operation],
+    ) -> Tuple[List[Operation], List[Operation]]:
         """
         This function moves all clifford gates to the end of the circuit,
         accounting for commutation rules.
@@ -154,56 +186,52 @@ class PauliCircuit:
         return pauli_rotations, clifford_gates
 
     @staticmethod
-    def get_clifford_pauli_gates(tape: QuantumScript) -> List[Operator]:
+    def get_clifford_pauli_gates(tape: List[Operation]) -> List[Operation]:
         """
         This function decomposes all gates in the circuit to clifford and
-        pauli-rotation gates
+        pauli-rotation gates.
 
         Args:
-            tape (QuantumScript): The tape of the circuit containing all
-                operations.
+            tape: List of operations recorded from the circuit.
 
         Returns:
-            List[Operator]: A list of operations consisting only of clifford
+            List[Operation]: A list of operations consisting only of clifford
                 and Pauli-rotation gates.
         """
+        from qml_essentials.operations import Rot
+
         operations = []
-        for operation in tape.operations:
+        for operation in tape:
             if PauliCircuit._is_clifford(operation) or PauliCircuit._is_pauli_rotation(
                 operation
             ):
                 operations.append(operation)
             elif PauliCircuit._is_skippable(operation):
                 continue
+            elif isinstance(operation, Rot):
+                # Rot(φ, θ, ω) = RZ(ω) @ RY(θ) @ RZ(φ)
+                w = operation.wires[0]
+                operations.append(RZ(operation.phi, wires=w))
+                operations.append(RY(operation.theta, wires=w))
+                operations.append(RZ(operation.omega, wires=w))
             else:
-                # TODO: Maybe there is a prettier way to decompose a gate
-                # We currently can not handle parametrised input gates, that
-                # are not plain pauli rotations
-                tape = QuantumScript([operation])
-                decomposed_tape = qml.transforms.decompose(
-                    tape, gate_set=PAULI_ROTATION_GATES + CLIFFORD_GATES
+                raise NotImplementedError(
+                    f"Gate {operation.name} cannot be decomposed into "
+                    "Pauli rotations and Clifford gates. Consider using a "
+                    "circuit ansatz that only uses RX, RY, RZ, PauliRot, "
+                    "Rot, and standard Clifford gates."
                 )
-                decomposed_ops = decomposed_tape[0][0].operations
-                decomposed_ops = [
-                    (
-                        op
-                        if PauliCircuit._is_clifford(op)
-                        else op.__class__(jnp.array(op.parameters), op.wires)
-                    )
-                    for op in decomposed_ops
-                ]
-                operations.extend(decomposed_ops)
 
         return operations
 
     @staticmethod
-    def _is_skippable(operation: Operator) -> bool:
+    def _is_skippable(operation: Operation) -> bool:
         """
         Determines is an operator can be ignored when building the Pauli
         Clifford circuit. Currently this only contains barriers.
 
         Args:
-            operation (Operator): Gate operation
+            operation (Operation): Gate operation
 
         Returns:
             bool: Whether the operation can be skipped.
@@ -211,12 +239,12 @@ class PauliCircuit:
         return isinstance(operation, SKIPPABLE_OPERATIONS)
 
     @staticmethod
-    def _is_clifford(operation: Operator) -> bool:
+    def _is_clifford(operation: Operation) -> bool:
         """
         Determines is an operator is a Clifford gate.
 
         Args:
-            operation (Operator): Gate operation
+            operation (Operation): Gate operation
 
         Returns:
             bool: Whether the operation is Clifford.
@@ -224,12 +252,12 @@ class PauliCircuit:
         return isinstance(operation, CLIFFORD_GATES)
 
     @staticmethod
-    def _is_pauli_rotation(operation: Operator) -> bool:
+    def _is_pauli_rotation(operation: Operation) -> bool:
         """
         Determines is an operator is a Pauli rotation gate.
 
         Args:
-            operation (Operator): Gate operation
+            operation (Operation): Gate operation
 
         Returns:
             bool: Whether the operation is a Pauli operation.
@@ -238,11 +266,11 @@ class PauliCircuit:
 
     @staticmethod
     def _evolve_clifford_rotation(
-        clifford: Operator, pauli: Operator
-    ) -> Tuple[Operator, Operator]:
+        clifford: Operation, pauli: Operation
+    ) -> Tuple[Operation, Operation]:
         """
         This function computes the resulting operations, when switching a
-        Cifford gate and a Pauli rotation in the circuit.
+        Clifford gate and a Pauli rotation in the circuit.
 
         **Example**:
         Consider a circuit consisting of the gate sequence
@@ -252,13 +280,13 @@ class PauliCircuit:
         ... --- R_x --- H --- ...
 
         Args:
-            clifford (Operator): Clifford gate to move.
-            pauli (Operator): Pauli rotation gate to move the clifford past.
+            clifford (Operation): Clifford gate to move.
+            pauli (Operation): Pauli rotation gate to move the clifford past.
 
         Returns:
-            Tuple[Operator, Operator]:
-                - Resulting Clifford operator (should be the same as the input)
+            Tuple[Operation, Operation]:
                 - Evolved Pauli rotation operator
+                - Resulting Clifford operator (should be the same as the input)
         """
 
         if not any(p_c in clifford.wires for p_c in pauli.wires):
@@ -267,20 +295,23 @@ class PauliCircuit:
         gen = pauli.generator()
         param = pauli.parameters[0]
 
-        evolved_gen, _ = PauliCircuit._evolve_clifford_pauli(
-            clifford, gen, adjoint_left=False
-        )
+        evolved_gen = evolve_pauli_with_clifford(clifford, gen, adjoint_left=False)
         qubits = evolved_gen.wires
-        evolved_gen = qml.pauli_decompose(evolved_gen.matrix())
-        pauli_str, param_factor = PauliCircuit._get_paulistring_from_generator(
-            evolved_gen
+        _coeff, evolved_pauli_op = pauli_decompose(
+            evolved_gen.matrix, wire_order=qubits
         )
+
+        pauli_str = pauli_string_from_operation(evolved_pauli_op)
+        # The coefficient from the decomposition determines if there's a sign
+        # flip (param_factor).  For Pauli evolution the coefficient is ±1.
+        param_factor = float(jnp.real(_coeff))
+
         pauli_str, qubits = PauliCircuit._remove_identities_from_paulistr(
             pauli_str, qubits
         )
-        pauli = qml.PauliRot(param * param_factor, pauli_str, qubits)
+        new_pauli = PauliRot(param * param_factor, pauli_str, qubits)
 
-        return pauli, clifford
+        return new_pauli, clifford
 
     @staticmethod
     def _remove_identities_from_paulistr(
@@ -310,107 +341,68 @@ class PauliCircuit:
 
     @staticmethod
     def _evolve_clifford_pauli(
-        clifford: Operator, pauli: Operator, adjoint_left: bool = True
-    ) -> Tuple[Operator, Operator]:
+        clifford: Operation, pauli: Operation, adjoint_left: bool = True
+    ) -> Tuple[Operation, Operation]:
         """
         This function computes the resulting operation, when evolving a Pauli
         Operation with a Clifford operation.
-        For a Clifford operator C and a Pauli operator P, this functin computes:
-            P' = C* P C
+        For a Clifford operator C and a Pauli operator P, this function computes:
+            P' = C† P C   (adjoint_left=True)
+            P' = C P C†   (adjoint_left=False)
 
         Args:
-            clifford (Operator): Clifford gate
-            pauli (Operator): Pauli gate
+            clifford (Operation): Clifford gate
+            pauli (Operation): Pauli gate
             adjoint_left (bool, optional): If adjoint of the clifford gate is
-                applied to the left. If this is set to True C* P C is computed,
-                else C P C*. Defaults to True.
+                applied to the left. Defaults to True.
 
         Returns:
-            Tuple[Operator, Operator]:
+            Tuple[Operation, Operation]:
                 - Evolved Pauli operator
-                - Resulting Clifford operator (should be the same as the input)
+                - Resulting Clifford operator (same as input)
         """
         if not any(p_c in clifford.wires for p_c in pauli.wires):
             return pauli, clifford
 
-        if adjoint_left:
-            evolved_pauli = qml.adjoint(clifford) @ pauli @ qml.adjoint(clifford)
-        else:
-            evolved_pauli = clifford @ pauli @ qml.adjoint(clifford)
-
-        return evolved_pauli, clifford
+        evolved = evolve_pauli_with_clifford(clifford, pauli, adjoint_left=adjoint_left)
+        return evolved, clifford
 
     @staticmethod
-    def _evolve_cliffords_list(cliffords: List[Operator], pauli: Operator) -> Operator:
+    def _evolve_cliffords_list(
+        cliffords: List[Operation], pauli: Operation
+    ) -> Operation:
         """
-        This function evolves a Pauli operation according to a sequence of cliffords.
+        This function evolves a Pauli operation according to a sequence of
+        cliffords.
 
         Args:
-            clifford (Operator): Clifford gate
-            pauli (Operator): Pauli gate
+            cliffords (List[Operation]): Clifford gates
+            pauli (Operation): Pauli gate
 
         Returns:
-            Operator: Evolved Pauli operator
+            Operation: Evolved Pauli operator
         """
         for clifford in cliffords[::-1]:
             pauli, _ = PauliCircuit._evolve_clifford_pauli(clifford, pauli)
             qubits = pauli.wires
-            pauli = qml.pauli_decompose(pauli.matrix(), wire_order=qubits)
-
-        pauli = qml.simplify(pauli)
-
-        # remove coefficients
-        pauli = (
-            pauli.terms()[1][0]
-            if isinstance(pauli, (qml_op.Prod, qml_op.LinearCombination))
-            else pauli
-        )
+            _coeff, pauli = pauli_decompose(pauli.matrix, wire_order=qubits)
 
         return pauli
 
     @staticmethod
-    def _get_paulistring_from_generator(
-        gen: qml_op.LinearCombination,
-    ) -> Tuple[str, float]:
-        """
-        Compute a Paulistring, consisting of "X", "Y", "Z" and "I" from a
-        generator.
-
-        Args:
-            gen (qml_op.LinearCombination): The generator operation created by
-                Pennylane
-
-        Returns:
-            Tuple[str, float]:
-                - The Paulistring
-                - A factor with which to multiply a parameter to the rotation
-                  gate.
-        """
-        factor, term = gen.terms()
-        param_factor = -2 * factor  # Rotation is defined as exp(-0.5 theta G)
-        pauli_term = term[0] if isinstance(term[0], qml_op.Prod) else [term[0]]
-        pauli_str_list = ["I"] * len(pauli_term)
-        for p in pauli_term:
-            if "Pauli" in p.name:
-                q = p.wires[0]
-                pauli_str_list[q] = p.name[-1]
-        pauli_str = "".join(pauli_str_list)
-        return pauli_str, param_factor
-
-    @staticmethod
     def cliffords_in_observable(
-        operations: List[Operator], original_obs: List[Operator]
-    ) -> List[Operator]:
+        operations: List[Operation], original_obs: List[Operation]
+    ) -> List[Operation]:
         """
         Integrates Clifford gates in the observables of the original ansatz.
 
         Args:
-            operations (List[Operator]): Clifford gates
-            original_obs (List[Operator]): Original observables from the
+            operations (List[Operation]): Clifford gates
+            original_obs (List[Operation]): Original observables from the
                 circuit
 
         Returns:
-            List[Operator]: Observables with Clifford operations
+            List[Operation]: Observables with Clifford operations
         """
         observables = []
         for ob in original_obs:
@@ -533,7 +525,7 @@ class QuanTikz:
 
         Parameters
         ----------
-        op : qml.Operation
+        op : Operation
             The quantum gate to represent.
         index : int, optional
             Gate index in the circuit.
@@ -577,7 +569,7 @@ class QuanTikz:
 
         Parameters
         ----------
-        op : qml.Operation
+        op : Operation
             The quantum gate operation to represent.
         index : int, optional
             Gate index in the circuit.
@@ -625,7 +617,7 @@ class QuanTikz:
 
         Parameters
         ----------
-        op : qml.Operation
+        op : Operation
             The barrier operation to represent.
 
         Returns
@@ -639,19 +631,26 @@ class QuanTikz:
         )
 
     @staticmethod
-    def _build_tikz_circuit(quantum_tape, gate_values=False, inputs_symbols="x"):
+    def _build_tikz_circuit(
+        tape: List[Operation],
+        n_qubits: int,
+        gate_values=False,
+        inputs_symbols="x",
+    ):
         """
         Builds a LaTeX representation of a quantum circuit in TikZ format.
 
-        This static method constructs a TikZ circuit diagram from a given quantum
-        tape. It processes the operations in the tape, including gates, controlled
-        gates, barriers, and measurements. The resulting structure is a list of
-        LaTeX strings, each representing a wire in the circuit.
+        This static method constructs a TikZ circuit diagram from a given list
+        of operations.  It processes gates, controlled gates, and barriers.
+        The resulting structure is a list of LaTeX strings, each representing a
+        wire in the circuit.
 
         Parameters
         ----------
-        quantum_tape : QuantumTape
-            The quantum tape containing the operations of the circuit.
+        tape : List[Operation]
+            The list of operations in the circuit.
+        n_qubits : int
+            The number of qubits in the circuit.
         gate_values : bool, optional
             If True, include gate parameter values in the representation.
         inputs_symbols : str, optional
@@ -664,91 +663,73 @@ class QuanTikz:
             the operations on a single wire of the circuit.
         """
 
-        circuit_tikz = [
-            [QuanTikz.ground_state()] for _ in range(quantum_tape.num_wires)
-        ]
+        circuit_tikz = [[QuanTikz.ground_state()] for _ in range(n_qubits)]
 
-        index = iter(range(len(quantum_tape.operations)))
-        for op in quantum_tape.circuit:
-            # catch measurement operations
-            if op._queue_category == "_measurements":
+        index = iter(range(len(tape)))
+        for op in tape:
+            # catch barriers
+            if op.name == "Barrier":
                 # get the maximum length of all wires
                 max_len = max(len(circuit_tikz[cw]) for cw in range(len(circuit_tikz)))
-                if op.wires[0] != 0:
-                    max_len -= 1
-                # extend the wire by the number of missing operations
-                circuit_tikz[op.wires[0]].extend(
-                    "" for _ in range(max_len - len(circuit_tikz[op.wires[0]]))
+
+                # extend the wires by the number of missing operations
+                for ow in range(len(circuit_tikz)):
+                    circuit_tikz[ow].extend(
+                        "" for _ in range(max_len - len(circuit_tikz[ow]))
+                    )
+
+                circuit_tikz[op.wires[0]][-1] += QuanTikz.barrier(op)
+            # single qubit gate?
+            elif len(op.wires) == 1:
+                # build and append standard gate
+                circuit_tikz[op.wires[0]].append(
+                    QuanTikz.gate(
+                        op,
+                        index=next(index),
+                        gate_values=gate_values,
+                        inputs_symbols=next(inputs_symbols),
+                    )
                 )
-                circuit_tikz[op.wires[0]].append(QuanTikz.measure(op))
-            # process all gates
-            elif op._queue_category == "_ops":
-                # catch barriers
-                if op.name == "Barrier":
-                    # get the maximum length of all wires
-                    max_len = max(
-                        len(circuit_tikz[cw]) for cw in range(len(circuit_tikz))
+            # controlled gate?
+            elif len(op.wires) == 2:
+                # build the controlled gate
+                if op.name in ["CRX", "CRY", "CRZ"]:
+                    ctrl, targ = QuanTikz.cgate(
+                        op,
+                        index=next(index),
+                        gate_values=gate_values,
+                        inputs_symbols=next(inputs_symbols),
                     )
-
-                    # extend the wires by the number of missing operations
-                    for ow in [i for i in range(len(circuit_tikz))]:
-                        circuit_tikz[ow].extend(
-                            "" for _ in range(max_len - len(circuit_tikz[ow]))
-                        )
-
-                    circuit_tikz[op.wires[0]][-1] += QuanTikz.barrier(op)
-                # single qubit gate?
-                elif len(op.wires) == 1:
-                    # build and append standard gate
-                    circuit_tikz[op.wires[0]].append(
-                        QuanTikz.gate(
-                            op,
-                            index=next(index),
-                            gate_values=gate_values,
-                            inputs_symbols=next(inputs_symbols),
-                        )
-                    )
-                # controlled gate?
-                elif len(op.wires) == 2:
-                    # build the controlled gate
-                    if op.name in ["CRX", "CRY", "CRZ"]:
-                        ctrl, targ = QuanTikz.cgate(
-                            op,
-                            index=next(index),
-                            gate_values=gate_values,
-                            inputs_symbols=next(inputs_symbols),
-                        )
-                    else:
-                        ctrl, targ = QuanTikz.cgate(op)
-
-                    # get the wires that this cgate spans over
-                    crossing_wires = [
-                        i for i in range(min(op.wires), max(op.wires) + 1)
-                    ]
-                    # get the maximum length of all operations currently on this wire
-                    max_len = max([len(circuit_tikz[cw]) for cw in crossing_wires])
-
-                    # extend the affected wires by the number of missing operations
-                    for ow in [i for i in range(min(op.wires), max(op.wires) + 1)]:
-                        circuit_tikz[ow].extend(
-                            "" for _ in range(max_len - len(circuit_tikz[ow]))
-                        )
-
-                    # finally append the cgate operation
-                    circuit_tikz[op.wires[0]].append(ctrl)
-                    circuit_tikz[op.wires[1]].append(targ)
-
-                    # extend the non-affected wires by the number of missing operations
-                    for cw in crossing_wires - op.wires:
-                        circuit_tikz[cw].append("")
                 else:
-                    raise NotImplementedError(">2-wire gates are not supported yet")
+                    ctrl, targ = QuanTikz.cgate(op)
+
+                # get the wires that this cgate spans over
+                crossing_wires = [i for i in range(min(op.wires), max(op.wires) + 1)]
+                # get the maximum length of all operations currently on this wire
+                max_len = max([len(circuit_tikz[cw]) for cw in crossing_wires])
+
+                # extend the affected wires by the number of missing operations
+                for ow in range(min(op.wires), max(op.wires) + 1):
+                    circuit_tikz[ow].extend(
+                        "" for _ in range(max_len - len(circuit_tikz[ow]))
+                    )
+
+                # finally append the cgate operation
+                circuit_tikz[op.wires[0]].append(ctrl)
+                circuit_tikz[op.wires[1]].append(targ)
+
+                # extend the non-affected wires by the number of missing operations
+                non_gate_wires = [w for w in crossing_wires if w not in op.wires]
+                for cw in non_gate_wires:
+                    circuit_tikz[cw].append("")
+            else:
+                raise NotImplementedError(">2-wire gates are not supported yet")
 
         return circuit_tikz
 
     @staticmethod
     def build(
-        circuit: qml.QNode,
+        script,
         params,
         inputs,
         enc_params=None,
@@ -760,8 +741,8 @@ class QuanTikz:
 
         Parameters
         ----------
-        circuit : qml.QNode
-            The quantum circuit to represent.
+        script : QuantumScript
+            A yaqsi QuantumScript wrapping the circuit function.
         params : array
             Weight parameters for the circuit.
         inputs : array
@@ -779,13 +760,12 @@ class QuanTikz:
             LaTeX string for the circuit.
         """
         if enc_params is not None:
-            quantum_tape = qml.workflow.construct_tape(circuit)(
-                params=params, inputs=inputs, enc_params=enc_params
-            )
+            tape = script._record(params=params, inputs=inputs, enc_params=enc_params)
         else:
-            quantum_tape = qml.workflow.construct_tape(circuit)(
-                params=params, inputs=inputs
-            )
+            tape = script._record(params=params, inputs=inputs)
+
+        # Infer n_qubits from the tape
+        n_qubits = max((max(op.wires) + 1 for op in tape if op.wires), default=1)
 
         if isinstance(inputs_symbols, str) and inputs.size > 1:
             inputs_symbols = cycle(
@@ -801,7 +781,7 @@ class QuanTikz:
             inputs_symbols = cycle([inputs_symbols])
 
         circuit_tikz = QuanTikz._build_tikz_circuit(
-            quantum_tape, gate_values=gate_values, inputs_symbols=inputs_symbols
+            tape, n_qubits, gate_values=gate_values, inputs_symbols=inputs_symbols
         )
         quantikz_str = ""
 
@@ -809,7 +789,7 @@ class QuanTikz:
         max_len = max(len(circuit_tikz[cw]) for cw in range(len(circuit_tikz)))
 
         # extend the wires by the number of missing operations
-        for ow in [i for i in range(len(circuit_tikz))]:
+        for ow in range(len(circuit_tikz)):
             circuit_tikz[ow].extend("" for _ in range(max_len - len(circuit_tikz[ow])))
 
         for wire_idx, wire_ops in enumerate(circuit_tikz):
