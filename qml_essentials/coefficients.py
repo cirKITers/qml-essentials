@@ -17,7 +17,6 @@ from qml_essentials.operations import (
     PauliY,
     PauliZ,
 )
-from qml_essentials.tape import recording
 
 import logging
 

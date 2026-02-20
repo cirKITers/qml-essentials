@@ -2,7 +2,6 @@ from qml_essentials.model import Model
 from qml_essentials.ansaetze import Encoding
 from qml_essentials.coefficients import Coefficients, FourierTree, FCC, Datasets
 from pennylane.fourier import coefficients as pcoefficients
-import hashlib
 
 import traceback
 import numpy as np

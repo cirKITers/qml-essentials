@@ -1,14 +1,11 @@
-from __future__ import annotations
 from typing import List, Tuple, Optional
 import jax
 import jax.numpy as jnp
-import numpy as np
 from qml_essentials.operations import (
     Operation,
     PauliX,
     PauliY,
     PauliZ,
-    I,
     H,
     Hadamard,
     S,
@@ -18,13 +15,10 @@ from qml_essentials.operations import (
     RZ,
     PauliRot,
     Barrier,
-    Hermitian,
-    adjoint_matrix,
     evolve_pauli_with_clifford,
     pauli_decompose,
     pauli_string_from_operation,
 )
-from qml_essentials.tape import recording
 from fractions import Fraction
 from itertools import cycle
 from scipy.linalg import logm

@@ -7,11 +7,6 @@ import jax.numpy as jnp
 from qml_essentials.tape import active_tape, recording  # noqa: F401 (re-export)
 
 
-# ===================================================================
-# Shared tensor-contraction helper
-# ===================================================================
-
-
 @lru_cache(maxsize=256)
 def _permutation_for_contraction(
     total: int,
@@ -201,7 +196,7 @@ class Operation:
             self._wires = [wires]
 
     def lifted_matrix(self, n_qubits: int) -> jnp.ndarray:
-        """Return the full ``2**n × 2**n`` matrix embedding this gate.
+        """Return the full ``2**n x 2**n`` matrix embedding this gate.
 
         Embeds the ``k``-qubit gate matrix into the ``n``-qubit Hilbert space
         by applying it to the identity matrix via :meth:`apply_to_state`.
@@ -356,7 +351,7 @@ class ParametrizedHamiltonian:
         self.wires = wires
 
 
-class I(Operation):
+class Id(Operation):
     """Identity gate."""
 
     _matrix = jnp.eye(2, dtype=jnp.complex128)
@@ -485,7 +480,7 @@ class RX(Operation):
             wires: Qubit index or list of qubit indices this gate acts on.
         """
         self.theta = theta
-        mat = jnp.cos(theta / 2) * I._matrix - 1j * jnp.sin(theta / 2) * PauliX._matrix
+        mat = jnp.cos(theta / 2) * Id._matrix - 1j * jnp.sin(theta / 2) * PauliX._matrix
         super().__init__(wires=wires, matrix=mat)
 
     def generator(self) -> Operation:
@@ -504,7 +499,7 @@ class RY(Operation):
             wires: Qubit index or list of qubit indices this gate acts on.
         """
         self.theta = theta
-        mat = jnp.cos(theta / 2) * I._matrix - 1j * jnp.sin(theta / 2) * PauliY._matrix
+        mat = jnp.cos(theta / 2) * Id._matrix - 1j * jnp.sin(theta / 2) * PauliY._matrix
         super().__init__(wires=wires, matrix=mat)
 
     def generator(self) -> Operation:
@@ -523,7 +518,7 @@ class RZ(Operation):
             wires: Qubit index or list of qubit indices this gate acts on.
         """
         self.theta = theta
-        mat = jnp.cos(theta / 2) * I._matrix - 1j * jnp.sin(theta / 2) * PauliZ._matrix
+        mat = jnp.cos(theta / 2) * Id._matrix - 1j * jnp.sin(theta / 2) * PauliZ._matrix
         super().__init__(wires=wires, matrix=mat)
 
     def generator(self) -> Operation:
@@ -798,12 +793,12 @@ class Rot(Operation):
         self.theta = theta
         self.omega = omega
         # Rot(φ, θ, ω) = RZ(ω) @ RY(θ) @ RZ(φ)
-        rz_phi = jnp.cos(phi / 2) * I._matrix - 1j * jnp.sin(phi / 2) * PauliZ._matrix
+        rz_phi = jnp.cos(phi / 2) * Id._matrix - 1j * jnp.sin(phi / 2) * PauliZ._matrix
         ry_theta = (
-            jnp.cos(theta / 2) * I._matrix - 1j * jnp.sin(theta / 2) * PauliY._matrix
+            jnp.cos(theta / 2) * Id._matrix - 1j * jnp.sin(theta / 2) * PauliY._matrix
         )
         rz_omega = (
-            jnp.cos(omega / 2) * I._matrix - 1j * jnp.sin(omega / 2) * PauliZ._matrix
+            jnp.cos(omega / 2) * Id._matrix - 1j * jnp.sin(omega / 2) * PauliZ._matrix
         )
         mat = rz_omega @ ry_theta @ rz_phi
         super().__init__(wires=wires, matrix=mat)
@@ -822,9 +817,9 @@ class PauliRot(Operation):
         PauliRot(0.5, "XY", wires=[0, 1])
     """
 
-    # Map from character to 2×2 matrix
+    # Map from character to 2x2 matrix
     _PAULI_MAP = {
-        "I": I._matrix,
+        "I": Id._matrix,
         "X": PauliX._matrix,
         "Y": PauliY._matrix,
         "Z": PauliZ._matrix,
@@ -887,9 +882,9 @@ CNOT = CX
 # ===================================================================
 
 # Single-qubit Pauli matrices (plain arrays, no Operation overhead)
-_PAULI_MATS = [I._matrix, PauliX._matrix, PauliY._matrix, PauliZ._matrix]
+_PAULI_MATS = [Id._matrix, PauliX._matrix, PauliY._matrix, PauliZ._matrix]
 _PAULI_LABELS = ["I", "X", "Y", "Z"]
-_PAULI_CLASSES = [I, PauliX, PauliY, PauliZ]
+_PAULI_CLASSES = [Id, PauliX, PauliY, PauliZ]
 
 
 def adjoint_matrix(op: Operation) -> jnp.ndarray:
@@ -939,7 +934,7 @@ def evolve_pauli_with_clifford(
 def pauli_decompose(matrix: jnp.ndarray, wire_order: Optional[List[int]] = None):
     r"""Decompose a Hermitian matrix into a sum of Pauli tensor products.
 
-    For an *n*-qubit matrix (``2**n × 2**n``), returns the dominant Pauli
+    For an *n*-qubit matrix (``2**n x 2**n``), returns the dominant Pauli
     term (the one with the largest absolute coefficient), wrapped as an
     :class:`Operation`.  This is sufficient for the Fourier-tree algorithm
     which only needs the single non-zero Pauli term produced by Clifford
@@ -996,7 +991,7 @@ def pauli_decompose(matrix: jnp.ndarray, wire_order: Optional[List[int]] = None)
                 op_cls = _PAULI_CLASSES[idx]
                 return best_coeff, op_cls(wires=wire_order[q], record=False)
         # All identity
-        return best_coeff, I(wires=wire_order[0], record=False)
+        return best_coeff, Id(wires=wire_order[0], record=False)
     else:
         # Multi-qubit tensor product → Hermitian
         P = _reduce(jnp.kron, [_PAULI_MATS[i] for i in best_label])
@@ -1146,7 +1141,7 @@ class BitFlip(KrausChannel):
             List ``[K0, K1]`` where K0 = √(1-p)·I and K1 = √p·X.
         """
         p = self.p
-        K0 = jnp.sqrt(1 - p) * I._matrix
+        K0 = jnp.sqrt(1 - p) * Id._matrix
         K1 = jnp.sqrt(p) * PauliX._matrix
         return [K0, K1]
 
@@ -1182,7 +1177,7 @@ class PhaseFlip(KrausChannel):
             List ``[K0, K1]`` where K0 = √(1-p)·I and K1 = √p·Z.
         """
         p = self.p
-        K0 = jnp.sqrt(1 - p) * I._matrix
+        K0 = jnp.sqrt(1 - p) * Id._matrix
         K1 = jnp.sqrt(p) * PauliZ._matrix
         return [K0, K1]
 
@@ -1219,7 +1214,7 @@ class DepolarizingChannel(KrausChannel):
             List ``[K0, K1, K2, K3]`` corresponding to I, X, Y, Z components.
         """
         p = self.p
-        K0 = jnp.sqrt(1 - p) * I._matrix
+        K0 = jnp.sqrt(1 - p) * Id._matrix
         K1 = jnp.sqrt(p / 3) * PauliX._matrix
         K2 = jnp.sqrt(p / 3) * PauliY._matrix
         K3 = jnp.sqrt(p / 3) * PauliZ._matrix
@@ -1367,7 +1362,7 @@ class ThermalRelaxationError(KrausChannel):
         * **T₂ > T₁**: four operators derived from the Choi matrix eigendecomposition.
 
         Returns:
-            List of 2×2 JAX arrays representing the Kraus operators.
+            List of 2x2 JAX arrays representing the Kraus operators.
         """
         pe, t1, t2, tg = self.pe, self.t1, self.t2, self.tg
 
@@ -1403,13 +1398,12 @@ class ThermalRelaxationError(KrausChannel):
                 dtype=jnp.complex128,
             )
             eigenvalues, eigenvectors = jnp.linalg.eigh(choi)
-            # Each eigenvector (column of eigenvectors) reshaped as 2×2 → one Kraus op
+            # Each eigenvector (column of eigenvectors) reshaped as 2x2 → one Kraus op
             kraus = []
             for i in range(4):
                 lam = eigenvalues[i]
                 vec = eigenvectors[:, i]
-                # Map ℂ⁴ → ℂ²ˣ² with column-major order (matching PL convention)
-                mat = jnp.sqrt(jnp.abs(lam)) * vec.reshape(2, 2, order="F")  # type: ignore[call-overload]
+                mat = jnp.sqrt(jnp.abs(lam)) * vec.reshape(2, 2, order="F")
                 kraus.append(mat.astype(jnp.complex128))
             return kraus
 
@@ -1433,7 +1427,7 @@ class QubitChannel(KrausChannel):
 
         Args:
             kraus_ops: List of Kraus matrices.  Each must be a square 2D array
-                of dimension ``2**k × 2**k`` where *k* = ``len(wires)``.
+                of dimension ``2**k x 2**k`` where *k* = ``len(wires)``.
             wires: Qubit index or list of qubit indices this channel acts on.
         """
         self._kraus_ops = [jnp.asarray(K, dtype=jnp.complex128) for K in kraus_ops]

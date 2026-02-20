@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from functools import reduce
 from typing import Any, Callable, List, Optional, Tuple, Union
 
@@ -17,11 +15,6 @@ from qml_essentials.operations import (
 )
 from qml_essentials.tape import recording
 from qml_essentials.drawing import draw_text, draw_mpl, draw_tikz
-
-
-# ===================================================================
-# Measurement helpers — partial trace & marginalization
-# ===================================================================
 
 
 def _partial_trace_single(

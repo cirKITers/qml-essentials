@@ -203,7 +203,7 @@ def draw_mpl(
         ax.text(
             -0.5,
             q,
-            f"|0⟩",
+            "|0⟩",
             ha="right",
             va="center",
             fontsize=10,
@@ -311,11 +311,11 @@ def draw_tikz(
     # Build the per-wire column structure
     circuit_tikz: List[List[str]] = [["\\lstick{\\ket{0}}"] for _ in range(n_qubits)]
 
-    # Prepare an input symbol iterator
-    if isinstance(inputs_symbols, str):
-        sym_iter = cycle([inputs_symbols])
-    else:
-        sym_iter = cycle(inputs_symbols)
+    # # Prepare an input symbol iterator
+    # if isinstance(inputs_symbols, str):
+    #     sym_iter = cycle([inputs_symbols])
+    # else:
+    #     sym_iter = cycle(inputs_symbols)
 
     param_index = 0
 
