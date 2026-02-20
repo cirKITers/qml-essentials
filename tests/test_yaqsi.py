@@ -1179,7 +1179,7 @@ def test_evolve_type_error() -> None:
 @pytest.mark.expensive
 @pytest.mark.unittest
 def test_benchmark() -> None:
-    """Benchmark comparison with pennylane framework"""
+    """Benchmark comparison with pennylane framework (non-parametric circuit)"""
 
     n_qubits = 6
 
@@ -1197,7 +1197,7 @@ def test_benchmark() -> None:
     for _ in range(100):
         res_ys = QuantumScript(f=yaqsi_circuit).execute(type="density")
     t_ys = (time.time() - start) / 100
-    print(f"Yaqsi density (5q, avg 100): {t_ys*1000:.2f} ms")
+    print(f"Yaqsi density ({n_qubits}q, avg 100): {t_ys*1000:.2f} ms")
 
     # PennyLane
     dev = qml.device("default.qubit", wires=n_qubits)
@@ -1217,7 +1217,7 @@ def test_benchmark() -> None:
     for _ in range(100):
         res_pl = pl_circuit()
     t_pl = (time.time() - start) / 100
-    print(f"PennyLane density (5q, avg 100): {t_pl*1000:.2f} ms")
+    print(f"PennyLane density ({n_qubits}q, avg 100): {t_pl*1000:.2f} ms")
     print(f"Ratio yaqsi/pl: {t_ys/t_pl:.1f}x")
     print(f"Results match: {jnp.allclose(res_ys, res_pl, atol=1e-10)}")
 
@@ -1225,32 +1225,47 @@ def test_benchmark() -> None:
 @pytest.mark.expensive
 @pytest.mark.unittest
 def test_batch_benchmark() -> None:
-    """Benchmark comparison with pennylane framework"""
+    """Benchmark comparison with pennylane framework (parametric, batched).
+
+    Simulates a realistic training loop: parameters change every iteration,
+    batch of 100 samples is vmapped, and the same QuantumScript instance is
+    reused across iterations to test JIT compilation caching.
+    """
 
     n_qubits = 6
-    phis = jax.random.uniform(key=jax.random.PRNGKey(0), shape=(100))
+    n_iters = 100
+    batch_size = 100
 
-    # Yaqsi
+    # Pre-generate different parameters for each iteration to simulate
+    # a training loop where params change every step.
+    rng = jax.random.PRNGKey(42)
+    all_phis = jax.random.uniform(
+        rng, shape=(n_iters, batch_size), minval=-jnp.pi, maxval=jnp.pi
+    )
+
+    # --- Yaqsi ---
     def yaqsi_circuit(phi):
         for i in range(n_qubits):
             H(wires=i)
         for i in range(n_qubits):
             CRX(phi, wires=[i, (i + 1) % n_qubits])
 
-    # Warmup
-    _ = QuantumScript(f=yaqsi_circuit).execute(
-        type="density", args=(phis,), in_axes=(0,)
-    )
+    # Reuse the same QuantumScript to benefit from JIT compilation caching
+    script = QuantumScript(f=yaqsi_circuit)
+
+    # Warmup (triggers first compilation)
+    _ = script.execute(type="density", args=(all_phis[0],), in_axes=(0,))
 
     start = time.time()
-    for _ in range(100):
-        res_ys = QuantumScript(f=yaqsi_circuit).execute(
-            type="density", args=(phis,), in_axes=(0,)
-        )
-    t_ys = (time.time() - start) / 100
-    print(f"Yaqsi density (5q, avg 100): {t_ys*1000:.2f} ms")
+    for i in range(n_iters):
+        res_ys = script.execute(type="density", args=(all_phis[i],), in_axes=(0,))
+    t_ys = (time.time() - start) / n_iters
+    print(
+        f"Yaqsi density ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
+        f"{t_ys*1000:.2f} ms"
+    )
 
-    # PennyLane
+    # --- PennyLane ---
     dev = qml.device("default.qubit", wires=n_qubits)
 
     @qml.qnode(dev)
@@ -1262,12 +1277,15 @@ def test_batch_benchmark() -> None:
         return qml.density_matrix(wires=range(n_qubits))
 
     # Warmup
-    _ = pl_circuit(phis)
+    _ = pl_circuit(all_phis[0])
 
     start = time.time()
-    for _ in range(100):
-        res_pl = pl_circuit(phis)
-    t_pl = (time.time() - start) / 100
-    print(f"PennyLane density (5q, avg 100): {t_pl*1000:.2f} ms")
+    for i in range(n_iters):
+        res_pl = pl_circuit(all_phis[i])
+    t_pl = (time.time() - start) / n_iters
+    print(
+        f"PennyLane density ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
+        f"{t_pl*1000:.2f} ms"
+    )
     print(f"Ratio yaqsi/pl: {t_ys/t_pl:.1f}x")
     print(f"Results match: {jnp.allclose(res_ys, res_pl, atol=1e-10)}")

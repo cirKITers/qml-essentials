@@ -185,15 +185,17 @@ class Model:
 
         # convert to boolean values
         data_reupload = data_reupload.astype(bool)
-        self.data_reupload = jnp.array(data_reupload)
+        # Keep as NumPy array (not JAX) so that ``if data_reupload[q, idx]``
+        # in _iec remains a concrete Python bool even under jax.jit tracing.
+        self.data_reupload = np.array(data_reupload)
 
         self.degree: Tuple = tuple(
-            self._enc.get_n_freqs(jnp.count_nonzero(self.data_reupload[..., i]))
+            self._enc.get_n_freqs(np.count_nonzero(self.data_reupload[..., i]))
             for i in range(self.n_input_feat)
         )
 
         self.frequencies: Tuple = tuple(
-            self._enc.get_spectrum(jnp.count_nonzero(self.data_reupload[..., i]))
+            self._enc.get_spectrum(np.count_nonzero(self.data_reupload[..., i]))
             for i in range(self.n_input_feat)
         )
 
