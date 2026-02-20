@@ -7,7 +7,6 @@ from qml_essentials.operations import (
     PauliY,
     PauliZ,
     H,
-    Hadamard,
     S,
     CX,
     RX,
@@ -22,25 +21,6 @@ from qml_essentials.operations import (
 from fractions import Fraction
 from itertools import cycle
 from scipy.linalg import logm
-
-CLIFFORD_GATES = (
-    PauliX,
-    PauliY,
-    PauliZ,
-    Hadamard,
-    H,
-    S,
-    CX,
-)
-
-PAULI_ROTATION_GATES = (
-    RX,
-    RY,
-    RZ,
-    PauliRot,
-)
-
-SKIPPABLE_OPERATIONS = (Barrier,)
 
 
 def safe_random_split(random_key: jax.random.PRNGKey, *args, **kwargs):
@@ -105,6 +85,24 @@ class PauliCircuit:
     A Pauli Circuit only consists of parameterised Pauli-rotations and Clifford
     gates, which is the default for the most common VQCs.
     """
+
+    CLIFFORD_GATES = (
+        PauliX,
+        PauliY,
+        PauliZ,
+        H,
+        S,
+        CX,
+    )
+
+    PAULI_ROTATION_GATES = (
+        RX,
+        RY,
+        RZ,
+        PauliRot,
+    )
+
+    SKIPPABLE_OPERATIONS = (Barrier,)
 
     @staticmethod
     def from_parameterised_circuit(
@@ -192,7 +190,7 @@ class PauliCircuit:
             List[Operation]: A list of operations consisting only of clifford
                 and Pauli-rotation gates.
         """
-        from qml_essentials.operations import Rot
+        from qml_essentials.operations import Rot, CRX, CRY, CRZ
 
         operations = []
         for operation in tape:
@@ -208,6 +206,36 @@ class PauliCircuit:
                 operations.append(RZ(operation.phi, wires=w))
                 operations.append(RY(operation.theta, wires=w))
                 operations.append(RZ(operation.omega, wires=w))
+            elif isinstance(operation, CRZ):
+                # CRZ(θ, [c,t]) = RZ(θ/2, t) · CNOT(c,t) · RZ(-θ/2, t) · CNOT(c,t)
+                c, t = operation.wires
+                theta = operation.theta
+                operations.append(RZ(theta / 2, wires=t))
+                operations.append(CX(wires=[c, t]))
+                operations.append(RZ(-theta / 2, wires=t))
+                operations.append(CX(wires=[c, t]))
+            elif isinstance(operation, CRX):
+                # CRX(θ, [c,t]) = H(t) · CRZ(θ, [c,t]) · H(t)
+                #               = H(t) · RZ(θ/2,t) · CX(c,t) · RZ(-θ/2,t) · CX(c,t) · H(t)
+                c, t = operation.wires
+                theta = operation.theta
+                operations.append(H(wires=t))
+                operations.append(RZ(theta / 2, wires=t))
+                operations.append(CX(wires=[c, t]))
+                operations.append(RZ(-theta / 2, wires=t))
+                operations.append(CX(wires=[c, t]))
+                operations.append(H(wires=t))
+            elif isinstance(operation, CRY):
+                # CRY(θ, [c,t]) = RX(-π/2, t) · CRZ(θ, [c,t]) · RX(π/2, t)
+                #               = RX(-π/2,t) · RZ(θ/2,t) · CX(c,t) · RZ(-θ/2,t) · CX(c,t) · RX(π/2,t)
+                c, t = operation.wires
+                theta = operation.theta
+                operations.append(RX(-jnp.pi / 2, wires=t))
+                operations.append(RZ(theta / 2, wires=t))
+                operations.append(CX(wires=[c, t]))
+                operations.append(RZ(-theta / 2, wires=t))
+                operations.append(CX(wires=[c, t]))
+                operations.append(RX(jnp.pi / 2, wires=t))
             else:
                 raise NotImplementedError(
                     f"Gate {operation.name} cannot be decomposed into "
@@ -230,7 +258,7 @@ class PauliCircuit:
         Returns:
             bool: Whether the operation can be skipped.
         """
-        return isinstance(operation, SKIPPABLE_OPERATIONS)
+        return isinstance(operation, PauliCircuit.SKIPPABLE_OPERATIONS)
 
     @staticmethod
     def _is_clifford(operation: Operation) -> bool:
@@ -243,7 +271,7 @@ class PauliCircuit:
         Returns:
             bool: Whether the operation is Clifford.
         """
-        return isinstance(operation, CLIFFORD_GATES)
+        return isinstance(operation, PauliCircuit.CLIFFORD_GATES)
 
     @staticmethod
     def _is_pauli_rotation(operation: Operation) -> bool:
@@ -256,7 +284,7 @@ class PauliCircuit:
         Returns:
             bool: Whether the operation is a Pauli operation.
         """
-        return isinstance(operation, PAULI_ROTATION_GATES)
+        return isinstance(operation, PauliCircuit.PAULI_ROTATION_GATES)
 
     @staticmethod
     def _evolve_clifford_rotation(
@@ -535,7 +563,7 @@ class QuanTikz:
         """
         op_name = op.name
         match op.name:
-            case "Hadamard":
+            case "H":
                 op_name = "H"
             case "RX" | "RY" | "RZ":
                 pass

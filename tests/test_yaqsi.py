@@ -3,6 +3,7 @@ import jax
 import jax.numpy as jnp
 import pennylane as qml
 import numpy as np
+import time
 
 from qml_essentials.yaqsi import (
     QuantumScript,
@@ -1173,3 +1174,100 @@ def test_evolve_type_error() -> None:
     """evolve() with an unsupported type raises TypeError."""
     with pytest.raises(TypeError, match="evolve"):
         evolve("not a hamiltonian")
+
+
+@pytest.mark.expensive
+@pytest.mark.unittest
+def test_benchmark() -> None:
+    """Benchmark comparison with pennylane framework"""
+
+    n_qubits = 6
+
+    # Yaqsi
+    def yaqsi_circuit():
+        for i in range(n_qubits):
+            H(wires=i)
+        for i in range(n_qubits):
+            CX(wires=[i, (i + 1) % n_qubits])
+
+    # Warmup
+    _ = QuantumScript(f=yaqsi_circuit).execute(type="density")
+
+    start = time.time()
+    for _ in range(100):
+        res_ys = QuantumScript(f=yaqsi_circuit).execute(type="density")
+    t_ys = (time.time() - start) / 100
+    print(f"Yaqsi density (5q, avg 100): {t_ys*1000:.2f} ms")
+
+    # PennyLane
+    dev = qml.device("default.qubit", wires=n_qubits)
+
+    @qml.qnode(dev)
+    def pl_circuit():
+        for i in range(n_qubits):
+            qml.Hadamard(wires=i)
+        for i in range(n_qubits):
+            qml.CNOT(wires=[i, (i + 1) % n_qubits])
+        return qml.density_matrix(wires=range(n_qubits))
+
+    # Warmup
+    _ = pl_circuit()
+
+    start = time.time()
+    for _ in range(100):
+        res_pl = pl_circuit()
+    t_pl = (time.time() - start) / 100
+    print(f"PennyLane density (5q, avg 100): {t_pl*1000:.2f} ms")
+    print(f"Ratio yaqsi/pl: {t_ys/t_pl:.1f}x")
+    print(f"Results match: {jnp.allclose(res_ys, res_pl, atol=1e-10)}")
+
+
+@pytest.mark.expensive
+@pytest.mark.unittest
+def test_batch_benchmark() -> None:
+    """Benchmark comparison with pennylane framework"""
+
+    n_qubits = 6
+    phis = jax.random.uniform(key=jax.random.PRNGKey(0), shape=(100))
+
+    # Yaqsi
+    def yaqsi_circuit(phi):
+        for i in range(n_qubits):
+            H(wires=i)
+        for i in range(n_qubits):
+            CRX(phi, wires=[i, (i + 1) % n_qubits])
+
+    # Warmup
+    _ = QuantumScript(f=yaqsi_circuit).execute(
+        type="density", args=(phis,), in_axes=(0,)
+    )
+
+    start = time.time()
+    for _ in range(100):
+        res_ys = QuantumScript(f=yaqsi_circuit).execute(
+            type="density", args=(phis,), in_axes=(0,)
+        )
+    t_ys = (time.time() - start) / 100
+    print(f"Yaqsi density (5q, avg 100): {t_ys*1000:.2f} ms")
+
+    # PennyLane
+    dev = qml.device("default.qubit", wires=n_qubits)
+
+    @qml.qnode(dev)
+    def pl_circuit(phi):
+        for i in range(n_qubits):
+            qml.Hadamard(wires=i)
+        for i in range(n_qubits):
+            qml.CRX(phi, wires=[i, (i + 1) % n_qubits])
+        return qml.density_matrix(wires=range(n_qubits))
+
+    # Warmup
+    _ = pl_circuit(phis)
+
+    start = time.time()
+    for _ in range(100):
+        res_pl = pl_circuit(phis)
+    t_pl = (time.time() - start) / 100
+    print(f"PennyLane density (5q, avg 100): {t_pl*1000:.2f} ms")
+    print(f"Ratio yaqsi/pl: {t_ys/t_pl:.1f}x")
+    print(f"Results match: {jnp.allclose(res_ys, res_pl, atol=1e-10)}")

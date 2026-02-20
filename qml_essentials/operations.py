@@ -1,10 +1,14 @@
 from typing import Callable, List, Optional, Tuple, Union
 from functools import lru_cache
+import string
 
 import jax
 import jax.numpy as jnp
 
 from qml_essentials.tape import active_tape, recording  # noqa: F401 (re-export)
+
+# Alphabet for einsum subscript generation (up to 52 indices)
+_EINSUM_LETTERS = string.ascii_letters  # a-z, A-Z
 
 
 @lru_cache(maxsize=256)
@@ -40,6 +44,49 @@ def _permutation_for_contraction(
     return contract_axes, tuple(perm)
 
 
+@lru_cache(maxsize=256)
+def _einsum_subscript(
+    n: int,
+    k: int,
+    target_axes: Tuple[int, ...],
+) -> str:
+    """Build an ``einsum`` subscript that fuses contraction + axis restore.
+
+    Given an *n*-axis state tensor and a ``(2,)*2k`` gate tensor acting on
+    *target_axes*, returns a subscript string equivalent to::
+
+        tensordot(gate, state, axes=(contract_axes, target_axes))
+        transpose(result, perm)
+
+    but executed as a single ``jnp.einsum`` call, halving JAX dispatch
+    overhead per gate.
+
+    Args:
+        n: Total rank of the state tensor (number of qubits for statevectors,
+            ``2 * n_qubits`` for density matrices).
+        k: Number of qubits the gate acts on.
+        target_axes: Tuple of *k* axis indices in the state tensor that the
+            gate contracts against.
+
+    Returns:
+        ``einsum`` subscript string, e.g. ``"ab,cBd->cad"`` for a 1-qubit
+        gate on wire 1 of a 3-qubit state.
+    """
+    letters = _EINSUM_LETTERS
+    # State indices: one letter per axis
+    state_idx = list(letters[:n])
+    # Contracted indices (the ones being replaced by the gate)
+    contracted = [state_idx[ax] for ax in target_axes]
+    # Gate indices: new output indices + contracted input indices
+    new_out = [letters[n + i] for i in range(k)]  # fresh letters for output
+    gate_idx = new_out + contracted  # gate shape: (out0, out1, ..., in0, in1, ...)
+    # Result indices: replace target axes with new output letters
+    result_idx = list(state_idx)
+    for i, ax in enumerate(target_axes):
+        result_idx[ax] = new_out[i]
+    return "".join(gate_idx) + "," + "".join(state_idx) + "->" + "".join(result_idx)
+
+
 def _contract_and_restore(
     tensor: jnp.ndarray,
     gate: jnp.ndarray,
@@ -48,13 +95,12 @@ def _contract_and_restore(
 ) -> jnp.ndarray:
     """Contract *gate* against *target_axes* of *tensor* and restore axis order.
 
-    This is the core building block for applying a ``k``-qubit gate tensor to
-    a rank-*n* (statevector) or rank-*2n* (density-matrix) tensor.  After
-    ``jnp.tensordot``, the output axes are permuted back so that the
-    contracted axes appear in their original positions.
+    Uses a single ``jnp.einsum`` call that fuses the contraction and
+    permutation into one XLA dispatch, halving the per-gate Python overhead
+    compared to separate ``tensordot`` + ``transpose`` calls.
 
-    The permutation indices are cached via :func:`_permutation_for_contraction`
-    so that the Python-level list construction only happens once per unique
+    The einsum subscript is cached via :func:`_einsum_subscript` so the
+    string construction only happens once per unique
     ``(total, k, target_axes)`` combination.
 
     Args:
@@ -68,11 +114,8 @@ def _contract_and_restore(
         Updated tensor with the same rank as *tensor*, with the
         contracted axes restored to their original positions.
     """
-    contract_axes, perm = _permutation_for_contraction(
-        tensor.ndim, k, tuple(target_axes)
-    )
-    out = jnp.tensordot(gate, tensor, axes=(contract_axes, target_axes))
-    return jnp.transpose(out, perm)
+    subscript = _einsum_subscript(tensor.ndim, k, tuple(target_axes))
+    return jnp.einsum(subscript, gate, tensor)
 
 
 # ===================================================================
@@ -237,6 +280,47 @@ class Operation:
         psi_out = _contract_and_restore(psi, gate_tensor, k, self.wires)
         return psi_out.reshape(2**n_qubits)
 
+    def apply_to_state_tensor(self, psi: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
+        """Apply this gate to a statevector already in tensor form.
+
+        Like :meth:`apply_to_state` but expects the state in rank-*n* tensor
+        form ``(2,)*n`` and returns the result in the same form.  This avoids
+        the ``reshape`` calls at the per-gate level when the simulation loop
+        keeps the state in tensor form throughout.
+
+        Args:
+            psi: Statevector tensor of shape ``(2,)*n_qubits``.
+            n_qubits: Total number of qubits in the circuit.
+
+        Returns:
+            Updated statevector tensor of shape ``(2,)*n_qubits``.
+        """
+        k = len(self.wires)
+        gate_tensor = self._gate_tensor(k)
+        return _contract_and_restore(psi, gate_tensor, k, self.wires)
+
+    def _gate_tensor(self, k: int) -> jnp.ndarray:
+        """Return the gate matrix reshaped to ``(2,)*2k`` tensor form.
+
+        The result is cached on the instance so repeated calls (e.g. from
+        density-matrix simulation which applies U and U*) avoid redundant
+        reshape dispatch.
+
+        Args:
+            k: Number of qubits the gate acts on.
+
+        Returns:
+            Gate matrix as a rank-2k tensor of shape ``(2,)*2k``.
+        """
+        cached = getattr(self, "_cached_gate_tensor", None)
+        if cached is not None:
+            return cached
+        gt = self.matrix.reshape((2,) * 2 * k)
+        # Only cache for non-parametrized gates (whose matrix is a class attr)
+        if self._matrix is self.__class__._matrix:
+            object.__setattr__(self, "_cached_gate_tensor", gt)
+        return gt
+
     def apply_to_density(self, rho: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
         """Apply this gate to a density matrix via ρ → UρU†.
 
@@ -254,7 +338,7 @@ class Operation:
             Updated density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
         """
         k = len(self.wires)
-        U = self.matrix.reshape((2,) * 2 * k)
+        U = self._gate_tensor(k)
         U_conj = jnp.conj(U)
 
         rho_t = rho.reshape((2,) * 2 * n_qubits)
@@ -412,17 +496,13 @@ class H(Operation):
 
     _matrix = jnp.array([[1, 1], [1, -1]], dtype=jnp.complex128) / jnp.sqrt(2)
 
-    def __init__(self, wires: Union[int, List[int]] = 0) -> None:
+    def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise a Hadamard gate.
 
         Args:
             wires: Qubit index or list of qubit indices this gate acts on.
         """
-        super().__init__(wires=wires)
-
-
-#: Shorthand alias for :class:`H` (Hadamard).
-Hadamard = H
+        super().__init__(wires=wires, **kwargs)
 
 
 class S(Operation):
@@ -539,13 +619,13 @@ class CX(Operation):
     )
     is_controlled = True
 
-    def __init__(self, wires: List[int] = [0, 1]) -> None:
+    def __init__(self, wires: List[int] = [0, 1], **kwargs) -> None:
         """Initialise a Controlled-X gate.
 
         Args:
             wires: Two-element list ``[control, target]``.
         """
-        super().__init__(wires=wires)
+        super().__init__(wires=wires, **kwargs)
 
 
 class CCX(Operation):
@@ -572,13 +652,13 @@ class CCX(Operation):
     )
     is_controlled = True
 
-    def __init__(self, wires: List[int] = [0, 1, 2]) -> None:
+    def __init__(self, wires: List[int] = [0, 1, 2], **kwargs) -> None:
         """Initialise a Toffoli (CCX) gate.
 
         Args:
             wires: Three-element list ``[control0, control1, target]``.
         """
-        super().__init__(wires=wires)
+        super().__init__(wires=wires, **kwargs)
 
 
 class CSWAP(Operation):
@@ -605,13 +685,13 @@ class CSWAP(Operation):
     )
     is_controlled = True
 
-    def __init__(self, wires: List[int] = [0, 1, 2]) -> None:
+    def __init__(self, wires: List[int] = [0, 1, 2], **kwargs) -> None:
         """Initialise a Controlled-SWAP (Fredkin) gate.
 
         Args:
             wires: Three-element list ``[control, target0, target1]``.
         """
-        super().__init__(wires=wires)
+        super().__init__(wires=wires, **kwargs)
 
 
 class CY(Operation):
@@ -630,13 +710,13 @@ class CY(Operation):
     )
     is_controlled = True
 
-    def __init__(self, wires: List[int] = [0, 1]) -> None:
+    def __init__(self, wires: List[int] = [0, 1], **kwargs) -> None:
         """Initialise a Controlled-Y gate.
 
         Args:
             wires: Two-element list ``[control, target]``.
         """
-        super().__init__(wires=wires)
+        super().__init__(wires=wires, **kwargs)
 
 
 class CZ(Operation):
@@ -655,13 +735,13 @@ class CZ(Operation):
     )
     is_controlled = True
 
-    def __init__(self, wires: List[int] = [0, 1]) -> None:
+    def __init__(self, wires: List[int] = [0, 1], **kwargs) -> None:
         """Initialise a Controlled-Z gate.
 
         Args:
             wires: Two-element list ``[control, target]``.
         """
-        super().__init__(wires=wires)
+        super().__init__(wires=wires, **kwargs)
 
 
 class CRX(Operation):
@@ -677,7 +757,7 @@ class CRX(Operation):
 
     is_controlled = True
 
-    def __init__(self, theta: float, wires: List[int] = [0, 1]) -> None:
+    def __init__(self, theta: float, wires: List[int] = [0, 1], **kwargs) -> None:
         """Initialise a CRX gate.
 
         Args:
@@ -696,7 +776,7 @@ class CRX(Operation):
             ],
             dtype=jnp.complex128,
         )
-        super().__init__(wires=wires, matrix=mat)
+        super().__init__(wires=wires, matrix=mat, **kwargs)
 
 
 class CRY(Operation):
@@ -712,7 +792,7 @@ class CRY(Operation):
 
     is_controlled = True
 
-    def __init__(self, theta: float, wires: List[int] = [0, 1]) -> None:
+    def __init__(self, theta: float, wires: List[int] = [0, 1], **kwargs) -> None:
         """Initialise a CRY gate.
 
         Args:
@@ -731,7 +811,7 @@ class CRY(Operation):
             ],
             dtype=jnp.complex128,
         )
-        super().__init__(wires=wires, matrix=mat)
+        super().__init__(wires=wires, matrix=mat, **kwargs)
 
 
 class CRZ(Operation):
@@ -747,7 +827,7 @@ class CRZ(Operation):
 
     is_controlled = True
 
-    def __init__(self, theta: float, wires: List[int] = [0, 1]) -> None:
+    def __init__(self, theta: float, wires: List[int] = [0, 1], **kwargs) -> None:
         """Initialise a CRZ gate.
 
         Args:
@@ -764,7 +844,7 @@ class CRZ(Operation):
             ],
             dtype=jnp.complex128,
         )
-        super().__init__(wires=wires, matrix=mat)
+        super().__init__(wires=wires, matrix=mat, **kwargs)
 
 
 class Rot(Operation):
@@ -780,6 +860,7 @@ class Rot(Operation):
         theta: float,
         omega: float,
         wires: Union[int, List[int]] = 0,
+        **kwargs,
     ) -> None:
         """Initialise a general rotation gate.
 
@@ -801,7 +882,7 @@ class Rot(Operation):
             jnp.cos(omega / 2) * Id._matrix - 1j * jnp.sin(omega / 2) * PauliZ._matrix
         )
         mat = rz_omega @ ry_theta @ rz_phi
-        super().__init__(wires=wires, matrix=mat)
+        super().__init__(wires=wires, matrix=mat, **kwargs)
 
 
 class PauliRot(Operation):
@@ -826,10 +907,7 @@ class PauliRot(Operation):
     }
 
     def __init__(
-        self,
-        theta: float,
-        pauli_word: str,
-        wires: Union[int, List[int]] = 0,
+        self, theta: float, pauli_word: str, wires: Union[int, List[int]] = 0, **kwargs
     ) -> None:
         """Initialise a PauliRot gate.
 
@@ -851,7 +929,7 @@ class PauliRot(Operation):
             jnp.cos(theta / 2) * jnp.eye(dim, dtype=jnp.complex128)
             - 1j * jnp.sin(theta / 2) * P
         )
-        super().__init__(wires=wires, matrix=mat)
+        super().__init__(wires=wires, matrix=mat, **kwargs)
 
     def generator(self) -> Operation:
         """Return the generator Pauli tensor product as an :class:`Operation`.
@@ -868,158 +946,6 @@ class PauliRot(Operation):
         pauli_matrices = [self._PAULI_MAP[c] for c in self.pauli_word]
         P = _reduce(jnp.kron, pauli_matrices)
         return Hermitian(matrix=P, wires=self.wires, record=False)
-
-
-#: Shorthand aliases matching PennyLane naming conventions.
-X = PauliX
-Y = PauliY
-Z = PauliZ
-CNOT = CX
-
-
-# ===================================================================
-# Pauli algebra helpers
-# ===================================================================
-
-# Single-qubit Pauli matrices (plain arrays, no Operation overhead)
-_PAULI_MATS = [Id._matrix, PauliX._matrix, PauliY._matrix, PauliZ._matrix]
-_PAULI_LABELS = ["I", "X", "Y", "Z"]
-_PAULI_CLASSES = [Id, PauliX, PauliY, PauliZ]
-
-
-def adjoint_matrix(op: Operation) -> jnp.ndarray:
-    """Return the adjoint (conjugate transpose) of *op*'s matrix.
-
-    Args:
-        op: A quantum operation with a ``.matrix`` property.
-
-    Returns:
-        The ``(d, d)`` adjoint matrix.
-    """
-    return jnp.conj(op.matrix).T
-
-
-def evolve_pauli_with_clifford(
-    clifford: Operation,
-    pauli: Operation,
-    adjoint_left: bool = True,
-) -> Operation:
-    """Compute C† P C  (or  C P C†)  and return the result as an Operation.
-
-    The computation is purely matrix-level; the result is wrapped in a
-    :class:`Hermitian` so it can be used in further algebra.
-
-    Args:
-        clifford: A Clifford gate.
-        pauli: A Pauli / Hermitian operator.
-        adjoint_left: If ``True``, compute C† P C; otherwise C P C†.
-
-    Returns:
-        A :class:`Hermitian` wrapping the evolved matrix.
-    """
-    C = clifford.matrix
-    Cd = jnp.conj(C).T
-    P = pauli.matrix
-
-    if adjoint_left:
-        result = Cd @ P @ C
-    else:
-        result = C @ P @ Cd
-
-    # Determine wires: the union of clifford and pauli wires, in order
-    all_wires = sorted(set(clifford.wires) | set(pauli.wires))
-    return Hermitian(matrix=result, wires=all_wires, record=False)
-
-
-def pauli_decompose(matrix: jnp.ndarray, wire_order: Optional[List[int]] = None):
-    r"""Decompose a Hermitian matrix into a sum of Pauli tensor products.
-
-    For an *n*-qubit matrix (``2**n x 2**n``), returns the dominant Pauli
-    term (the one with the largest absolute coefficient), wrapped as an
-    :class:`Operation`.  This is sufficient for the Fourier-tree algorithm
-    which only needs the single non-zero Pauli term produced by Clifford
-    conjugation of a Pauli operator.
-
-    The decomposition uses the trace formula:
-    ``c_P = Tr(P · M) / 2**n``
-
-    Args:
-        matrix: A ``(2**n, 2**n)`` Hermitian matrix.
-        wire_order: Optional list of wire indices.  If ``None``, defaults
-            to ``[0, 1, ..., n-1]``.
-
-    Returns:
-        A tuple ``(coeff, op)`` where *coeff* is the complex coefficient and
-        *op* is the Pauli :class:`Operation` (PauliX, PauliY, PauliZ, I, or
-        a :class:`Hermitian` for multi-qubit tensor products).
-    """
-    from itertools import product as _product
-    from functools import reduce as _reduce
-
-    dim = matrix.shape[0]
-    n_qubits = int(jnp.log2(dim))
-
-    if wire_order is None:
-        wire_order = list(range(n_qubits))
-
-    # For single qubit, fast path
-    if n_qubits == 1:
-        best_idx, best_coeff = 0, 0.0
-        for idx, P in enumerate(_PAULI_MATS):
-            coeff = jnp.trace(P @ matrix) / 2.0
-            if jnp.abs(coeff) > jnp.abs(best_coeff):
-                best_idx = idx
-                best_coeff = coeff
-        op_cls = _PAULI_CLASSES[best_idx]
-        return best_coeff, op_cls(wires=wire_order[0], record=False)
-
-    # Multi-qubit: iterate over all Pauli tensor products
-    best_label = None
-    best_coeff = 0.0
-    for indices in _product(range(4), repeat=n_qubits):
-        P = _reduce(jnp.kron, [_PAULI_MATS[i] for i in indices])
-        coeff = jnp.trace(P @ matrix) / dim
-        if jnp.abs(coeff) > jnp.abs(best_coeff):
-            best_coeff = coeff
-            best_label = indices
-
-    # Build the operation for the dominant term
-    if sum(1 for i in best_label if i != 0) <= 1:
-        # Single-qubit Pauli on one wire
-        for q, idx in enumerate(best_label):
-            if idx != 0:
-                op_cls = _PAULI_CLASSES[idx]
-                return best_coeff, op_cls(wires=wire_order[q], record=False)
-        # All identity
-        return best_coeff, Id(wires=wire_order[0], record=False)
-    else:
-        # Multi-qubit tensor product → Hermitian
-        P = _reduce(jnp.kron, [_PAULI_MATS[i] for i in best_label])
-        return best_coeff, Hermitian(matrix=P, wires=wire_order, record=False)
-
-
-def pauli_string_from_operation(op: Operation) -> str:
-    """Extract a Pauli word string from an operation.
-
-    Maps ``PauliX`` → ``"X"``, ``PauliY`` → ``"Y"``, ``PauliZ`` → ``"Z"``,
-    ``I`` → ``"I"``.  For :class:`PauliRot`, returns its stored ``pauli_word``.
-    For :class:`Hermitian` or multi-qubit operators, attempts to identify the
-    Pauli word from the matrix via :func:`pauli_decompose`.
-
-    Args:
-        op: A quantum operation.
-
-    Returns:
-        A string like ``"X"``, ``"ZZ"``, etc.
-    """
-    if isinstance(op, PauliRot) and hasattr(op, "pauli_word"):
-        return op.pauli_word
-    name_map = {"PauliX": "X", "PauliY": "Y", "PauliZ": "Z", "I": "I"}
-    if op.name in name_map:
-        return name_map[op.name]
-    # Fall back: decompose the matrix
-    _, pauli_op = pauli_decompose(op.matrix, wire_order=op.wires)
-    return pauli_string_from_operation(pauli_op)
 
 
 # ===================================================================
@@ -1073,6 +999,13 @@ class KrausChannel(Operation):
         Raises:
             TypeError: Always raised; use ``execute(type='density')`` instead.
         """
+        raise TypeError(
+            f"{self.__class__.__name__} is a noise channel and cannot be "
+            "applied to a pure statevector. Use execute(type='density') instead."
+        )
+
+    def apply_to_state_tensor(self, psi: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
+        """Raises TypeError — noise channels require density-matrix simulation."""
         raise TypeError(
             f"{self.__class__.__name__} is a noise channel and cannot be "
             "applied to a pure statevector. Use execute(type='density') instead."
@@ -1440,3 +1373,235 @@ class QubitChannel(KrausChannel):
             List of Kraus operator matrices.
         """
         return self._kraus_ops
+
+
+# ===================================================================
+# Pauli algebra helpers
+# TODO: this needs refactoring and can be potentially merged into the
+# codebase above
+# ===================================================================
+
+# Single-qubit Pauli matrices (plain arrays, no Operation overhead)
+_PAULI_MATS = [Id._matrix, PauliX._matrix, PauliY._matrix, PauliZ._matrix]
+_PAULI_LABELS = ["I", "X", "Y", "Z"]
+_PAULI_CLASSES = [Id, PauliX, PauliY, PauliZ]
+
+
+def adjoint_matrix(op: Operation) -> jnp.ndarray:
+    """Return the adjoint (conjugate transpose) of *op*'s matrix.
+
+    Args:
+        op: A quantum operation with a ``.matrix`` property.
+
+    Returns:
+        The ``(d, d)`` adjoint matrix.
+    """
+    return jnp.conj(op.matrix).T
+
+
+def evolve_pauli_with_clifford(
+    clifford: Operation,
+    pauli: Operation,
+    adjoint_left: bool = True,
+) -> Operation:
+    """Compute C† P C  (or  C P C†)  and return the result as an Operation.
+
+    Both operators are first embedded into the full Hilbert space spanned by
+    the union of their wire sets.  The result is wrapped in a
+    :class:`Hermitian` so it can be used in further algebra.
+
+    Args:
+        clifford: A Clifford gate.
+        pauli: A Pauli / Hermitian operator.
+        adjoint_left: If ``True``, compute C† P C; otherwise C P C†.
+
+    Returns:
+        A :class:`Hermitian` wrapping the evolved matrix.
+    """
+    all_wires = sorted(set(clifford.wires) | set(pauli.wires))
+    n = len(all_wires)
+
+    C = _embed_matrix(clifford.matrix, clifford.wires, all_wires, n)
+    P = _embed_matrix(pauli.matrix, pauli.wires, all_wires, n)
+    Cd = jnp.conj(C).T
+
+    if adjoint_left:
+        result = Cd @ P @ C
+    else:
+        result = C @ P @ Cd
+
+    return Hermitian(matrix=result, wires=all_wires, record=False)
+
+
+def _embed_matrix(
+    mat: jnp.ndarray,
+    op_wires: list,
+    all_wires: list,
+    n_total: int,
+) -> jnp.ndarray:
+    """Embed a gate matrix into a larger Hilbert space via tensor products.
+
+    If the gate already acts on all wires, the matrix is returned as-is.
+    Otherwise the gate matrix is tensored with identities on the missing
+    wires, and the resulting matrix rows/columns are permuted so that qubit
+    ordering matches *all_wires*.
+
+    Args:
+        mat: The gate's unitary matrix of shape ``(2**k, 2**k)`` where
+            ``k = len(op_wires)``.
+        op_wires: The wires the gate acts on.
+        all_wires: The full ordered list of wires.
+        n_total: ``len(all_wires)``.
+
+    Returns:
+        A ``(2**n_total, 2**n_total)`` matrix.
+    """
+    k = len(op_wires)
+    if k == n_total and list(op_wires) == list(all_wires):
+        return mat
+
+    # Build the full-space matrix by tensoring with identities
+    # Strategy: tensor I on missing wires, then permute
+    missing = [w for w in all_wires if w not in op_wires]
+    # Full matrix = mat ⊗ I_{missing}
+    full_mat = mat
+    for _ in missing:
+        full_mat = jnp.kron(full_mat, jnp.eye(2, dtype=jnp.complex128))
+
+    # The current ordering is [op_wires..., missing...]
+    # We need to permute to match all_wires ordering
+    current_order = list(op_wires) + missing
+    if current_order != list(all_wires):
+        perm = [current_order.index(w) for w in all_wires]
+        full_mat = _permute_matrix(full_mat, perm, n_total)
+
+    return full_mat
+
+
+def _permute_matrix(mat: jnp.ndarray, perm: list, n_qubits: int) -> jnp.ndarray:
+    """Permute the qubit ordering of a matrix.
+
+    Given a ``(2**n, 2**n)`` matrix and a permutation of ``[0..n-1]``,
+    reorder the qubits so that qubit ``i`` moves to position ``perm[i]``.
+
+    Args:
+        mat: Square matrix of dimension ``2**n_qubits``.
+        perm: Permutation list.
+        n_qubits: Number of qubits.
+
+    Returns:
+        Permuted matrix of the same shape.
+    """
+    dim = 2**n_qubits
+    # Reshape to tensor, permute axes, reshape back
+    tensor = mat.reshape([2] * (2 * n_qubits))
+    # Axes: first n_qubits are row indices, last n_qubits are column indices
+    row_perm = perm
+    col_perm = [p + n_qubits for p in perm]
+    tensor = jnp.transpose(tensor, row_perm + col_perm)
+    return tensor.reshape(dim, dim)
+
+
+def pauli_decompose(matrix: jnp.ndarray, wire_order: Optional[List[int]] = None):
+    r"""Decompose a Hermitian matrix into a sum of Pauli tensor products.
+
+    For an *n*-qubit matrix (``2**n x 2**n``), returns the dominant Pauli
+    term (the one with the largest absolute coefficient), wrapped as an
+    :class:`Operation`.  This is sufficient for the Fourier-tree algorithm
+    which only needs the single non-zero Pauli term produced by Clifford
+    conjugation of a Pauli operator.
+
+    The decomposition uses the trace formula:
+    ``c_P = Tr(P · M) / 2**n``
+
+    Args:
+        matrix: A ``(2**n, 2**n)`` Hermitian matrix.
+        wire_order: Optional list of wire indices.  If ``None``, defaults
+            to ``[0, 1, ..., n-1]``.
+
+    Returns:
+        A tuple ``(coeff, op)`` where *coeff* is the complex coefficient and
+        *op* is the Pauli :class:`Operation` (PauliX, PauliY, PauliZ, I, or
+        a :class:`Hermitian` for multi-qubit tensor products).
+    """
+    from itertools import product as _product
+    from functools import reduce as _reduce
+
+    dim = matrix.shape[0]
+    n_qubits = int(jnp.log2(dim))
+
+    if wire_order is None:
+        wire_order = list(range(n_qubits))
+
+    # For single qubit, fast path
+    if n_qubits == 1:
+        best_idx, best_coeff = 0, 0.0
+        for idx, P in enumerate(_PAULI_MATS):
+            coeff = jnp.trace(P @ matrix) / 2.0
+            if jnp.abs(coeff) > jnp.abs(best_coeff):
+                best_idx = idx
+                best_coeff = coeff
+        op_cls = _PAULI_CLASSES[best_idx]
+        result_op = op_cls(wires=wire_order[0], record=False)
+        result_op._pauli_label = _PAULI_LABELS[best_idx]
+        return best_coeff, result_op
+
+    # Multi-qubit: iterate over all Pauli tensor products
+    best_label = None
+    best_coeff = 0.0
+    for indices in _product(range(4), repeat=n_qubits):
+        P = _reduce(jnp.kron, [_PAULI_MATS[i] for i in indices])
+        coeff = jnp.trace(P @ matrix) / dim
+        if jnp.abs(coeff) > jnp.abs(best_coeff):
+            best_coeff = coeff
+            best_label = indices
+
+    # Build the Pauli string label
+    pauli_label = "".join(_PAULI_LABELS[i] for i in best_label)
+
+    # Build the operation for the dominant term
+    if sum(1 for i in best_label if i != 0) <= 1:
+        # Single-qubit Pauli on one wire
+        for q, idx in enumerate(best_label):
+            if idx != 0:
+                op_cls = _PAULI_CLASSES[idx]
+                result_op = op_cls(wires=wire_order[q], record=False)
+                result_op._pauli_label = _PAULI_LABELS[idx]
+                return best_coeff, result_op
+        # All identity
+        result_op = Id(wires=wire_order[0], record=False)
+        result_op._pauli_label = "I" * n_qubits
+        return best_coeff, result_op
+    else:
+        # Multi-qubit tensor product → Hermitian with pauli label attached
+        P = _reduce(jnp.kron, [_PAULI_MATS[i] for i in best_label])
+        result_op = Hermitian(matrix=P, wires=wire_order, record=False)
+        result_op._pauli_label = pauli_label
+        return best_coeff, result_op
+
+
+def pauli_string_from_operation(op: Operation) -> str:
+    """Extract a Pauli word string from an operation.
+
+    Maps ``PauliX`` → ``"X"``, ``PauliY`` → ``"Y"``, ``PauliZ`` → ``"Z"``,
+    ``I`` → ``"I"``.  For :class:`PauliRot`, returns its stored ``pauli_word``.
+    For operations produced by :func:`pauli_decompose`, returns the stored
+    ``_pauli_label`` attribute.
+
+    Args:
+        op: A quantum operation.
+
+    Returns:
+        A string like ``"X"``, ``"ZZ"``, etc.
+    """
+    if isinstance(op, PauliRot) and hasattr(op, "pauli_word"):
+        return op.pauli_word
+    # Check for label stored by pauli_decompose
+    if hasattr(op, "_pauli_label"):
+        return op._pauli_label
+    name_map = {"PauliX": "X", "PauliY": "Y", "PauliZ": "Z", "I": "I"}
+    if op.name in name_map:
+        return name_map[op.name]
+    # Fall back: decompose the matrix
+    _, pauli_op = pauli_decompose(op.matrix, wire_order=op.wires)
+    return pauli_op._pauli_label

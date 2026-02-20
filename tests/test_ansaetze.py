@@ -6,8 +6,7 @@ from qml_essentials.gates import Gates, UnitaryGates
 from qml_essentials.gates import PulseInformation as pinfo
 from qml_essentials import yaqsi as ys
 from qml_essentials import operations as op
-import pennylane as qml
-import pennylane.numpy as np
+import numpy as np
 import jax
 from jax import numpy as jnp
 import pytest
