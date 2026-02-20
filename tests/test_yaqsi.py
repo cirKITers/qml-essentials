@@ -1178,9 +1178,8 @@ def test_evolve_type_error() -> None:
 
 @pytest.mark.expensive
 @pytest.mark.unittest
-@pytest.mark.parametrize("mode", ["probs", "expval", "state", "density"])
-def test_benchmark(mode) -> None:
-    """Benchmark comparison with pennylane framework (non-parametric circuit)"""
+def test_benchmark() -> None:
+    """Benchmark comparison with pennylane framework"""
 
     n_qubits = 6
 
@@ -1191,26 +1190,17 @@ def test_benchmark(mode) -> None:
         for i in range(n_qubits):
             CX(wires=[i, (i + 1) % n_qubits])
 
-    obs = [PauliZ(wires=i, record=False) for i in range(n_qubits)]
-
     # Warmup
-    _ = QuantumScript(f=yaqsi_circuit).execute(type=mode, obs=obs)
+    _ = QuantumScript(f=yaqsi_circuit).execute(type="density")
 
     start = time.time()
     for _ in range(100):
-        res_ys = QuantumScript(f=yaqsi_circuit).execute(type=mode, obs=obs)
+        res_ys = QuantumScript(f=yaqsi_circuit).execute(type="density")
     t_ys = (time.time() - start) / 100
-    print(f"Yaqsi {mode} ({n_qubits}q, avg 100): {t_ys*1000:.2f} ms")
+    print(f"Yaqsi density (5q, avg 100): {t_ys*1000:.2f} ms")
 
-    # PennyLane — use a separate QNode per mode since the return differs
+    # PennyLane
     dev = qml.device("default.qubit", wires=n_qubits)
-
-    pl_return_map = {
-        "density": lambda: qml.density_matrix(wires=range(n_qubits)),
-        "state": lambda: qml.state(),
-        "probs": lambda: qml.probs(wires=range(n_qubits)),
-        "expval": lambda: [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)],
-    }
 
     @qml.qnode(dev)
     def pl_circuit():
@@ -1218,7 +1208,7 @@ def test_benchmark(mode) -> None:
             qml.Hadamard(wires=i)
         for i in range(n_qubits):
             qml.CNOT(wires=[i, (i + 1) % n_qubits])
-        return pl_return_map[mode]()
+        return qml.density_matrix(wires=range(n_qubits))
 
     # Warmup
     _ = pl_circuit()
@@ -1227,66 +1217,41 @@ def test_benchmark(mode) -> None:
     for _ in range(100):
         res_pl = pl_circuit()
     t_pl = (time.time() - start) / 100
-    print(f"PennyLane {mode} ({n_qubits}q, avg 100): {t_pl*1000:.2f} ms")
+    print(f"PennyLane density (5q, avg 100): {t_pl*1000:.2f} ms")
     print(f"Ratio yaqsi/pl: {t_ys/t_pl:.1f}x")
-    print(f"Results match: {jnp.allclose(res_ys, jnp.array(res_pl), atol=1e-10)}")
+    print(f"Results match: {jnp.allclose(res_ys, res_pl, atol=1e-10)}")
 
 
 @pytest.mark.expensive
 @pytest.mark.unittest
-@pytest.mark.parametrize("mode", ["probs", "expval", "state", "density"])
-def test_batch_benchmark(mode) -> None:
-    """Benchmark comparison with pennylane framework (parametric, batched).
-
-    Simulates a realistic training loop: parameters change every iteration,
-    batch of 100 samples is vmapped, and the same QuantumScript instance is
-    reused across iterations to test JIT compilation caching.
-    """
+def test_batch_benchmark() -> None:
+    """Benchmark comparison with pennylane framework"""
 
     n_qubits = 6
-    n_iters = 100
-    batch_size = 100
+    phis = jax.random.uniform(key=jax.random.PRNGKey(0), shape=(100))
 
-    # Pre-generate different parameters for each iteration to simulate
-    # a training loop where params change every step.
-    rng = jax.random.PRNGKey(42)
-    all_phis = jax.random.uniform(
-        rng, shape=(n_iters, batch_size), minval=-jnp.pi, maxval=jnp.pi
-    )
-
-    obs = [PauliZ(wires=i, record=False) for i in range(n_qubits)]
-
-    # --- Yaqsi ---
+    # Yaqsi
     def yaqsi_circuit(phi):
         for i in range(n_qubits):
             H(wires=i)
         for i in range(n_qubits):
             CRX(phi, wires=[i, (i + 1) % n_qubits])
 
-    # Reuse the same QuantumScript to benefit from JIT compilation caching
-    script = QuantumScript(f=yaqsi_circuit)
-
-    # Warmup (triggers first compilation)
-    _ = script.execute(type=mode, obs=obs, args=(all_phis[0],), in_axes=(0,))
-
-    start = time.time()
-    for i in range(n_iters):
-        res_ys = script.execute(type=mode, obs=obs, args=(all_phis[i],), in_axes=(0,))
-    t_ys = (time.time() - start) / n_iters
-    print(
-        f"Yaqsi {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
-        f"{t_ys*1000:.2f} ms"
+    # Warmup
+    _ = QuantumScript(f=yaqsi_circuit).execute(
+        type="density", args=(phis,), in_axes=(0,)
     )
 
-    # --- PennyLane ---
-    dev = qml.device("default.qubit", wires=n_qubits)
+    start = time.time()
+    for _ in range(100):
+        res_ys = QuantumScript(f=yaqsi_circuit).execute(
+            type="density", args=(phis,), in_axes=(0,)
+        )
+    t_ys = (time.time() - start) / 100
+    print(f"Yaqsi density (5q, avg 100): {t_ys*1000:.2f} ms")
 
-    pl_return_map = {
-        "density": lambda: qml.density_matrix(wires=range(n_qubits)),
-        "state": lambda: qml.state(),
-        "probs": lambda: qml.probs(wires=range(n_qubits)),
-        "expval": lambda: [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)],
-    }
+    # PennyLane
+    dev = qml.device("default.qubit", wires=n_qubits)
 
     @qml.qnode(dev)
     def pl_circuit(phi):
@@ -1294,22 +1259,15 @@ def test_batch_benchmark(mode) -> None:
             qml.Hadamard(wires=i)
         for i in range(n_qubits):
             qml.CRX(phi, wires=[i, (i + 1) % n_qubits])
-        return pl_return_map[mode]()
+        return qml.density_matrix(wires=range(n_qubits))
 
     # Warmup
-    _ = pl_circuit(all_phis[0])
+    _ = pl_circuit(phis)
 
     start = time.time()
-    for i in range(n_iters):
-        res_pl = pl_circuit(all_phis[i])
-    t_pl = (time.time() - start) / n_iters
-    print(
-        f"PennyLane {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
-        f"{t_pl*1000:.2f} ms"
-    )
+    for _ in range(100):
+        res_pl = pl_circuit(phis)
+    t_pl = (time.time() - start) / 100
+    print(f"PennyLane density (5q, avg 100): {t_pl*1000:.2f} ms")
     print(f"Ratio yaqsi/pl: {t_ys/t_pl:.1f}x")
-    res_pl_arr = jnp.array(res_pl)
-    # PennyLane expval returns (n_obs, batch) while yaqsi returns (batch, n_obs)
-    if res_pl_arr.shape != res_ys.shape:
-        res_pl_arr = res_pl_arr.T
-    print(f"Results match: {jnp.allclose(res_ys, res_pl_arr, atol=1e-10)}")
+    print(f"Results match: {jnp.allclose(res_ys, res_pl, atol=1e-10)}")

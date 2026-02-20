@@ -430,7 +430,7 @@ class UnitaryGates:
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
-        op.H(wires=wires)
+        op.Hadamard(wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
 

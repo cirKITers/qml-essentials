@@ -12,7 +12,6 @@ from qml_essentials.operations import (
     Operation,
     KrausChannel,
     PauliZ,
-    _einsum_subscript,
 )
 from qml_essentials.tape import recording
 from qml_essentials.drawing import draw_text, draw_mpl, draw_tikz
@@ -328,7 +327,6 @@ class QuantumScript:
         """
         self.f = f
         self._n_qubits = n_qubits
-        self._jit_cache: dict = {}  # keyed on (type, use_density, in_axes, shapes)
 
     # -- internal: record the tape by running f -------------------------
     def _record(self, *args, **kwargs) -> List[Operation]:
@@ -382,16 +380,8 @@ class QuantumScript:
     def _simulate_pure(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
         """Statevector simulation kernel.
 
-        Starts from |00…0⟩ and applies each gate in *tape* via tensor
-        contraction.  The state is kept in rank-*n* tensor form ``(2,)*n``
-        throughout the gate loop to avoid per-gate ``reshape`` dispatch;
-        only the initial and final conversions to/from the flat ``(2**n,)``
-        representation incur a reshape.
-
-        All gate tensors and einsum subscript strings are pre-extracted from
-        the tape before the simulation loop so that each iteration performs
-        only a single ``jnp.einsum`` call with zero additional Python
-        overhead (no method dispatch, no property access, no cache lookup).
+        Starts from |00…0⟩ and applies each gate in *tape* via
+        :meth:`~qml_essentials.operations.Operation.apply_to_state`.
 
         Args:
             tape: Ordered list of gate operations to apply.
@@ -401,22 +391,10 @@ class QuantumScript:
             Statevector of shape ``(2**n_qubits,)``.
         """
         dim = 2**n_qubits
-
-        # Pre-extract gate tensors and einsum subscripts — eliminates all
-        # per-gate Python overhead (method calls, property lookups, cache
-        # hits on _einsum_subscript) from the hot loop.
-        compiled = []
-        for op in tape:
-            k = len(op.wires)
-            gt = op._gate_tensor(k)
-            sub = _einsum_subscript(n_qubits, k, tuple(op.wires))
-            compiled.append((gt, sub))
-
         state = jnp.zeros(dim, dtype=jnp.complex128).at[0].set(1.0)
-        psi = state.reshape((2,) * n_qubits)
-        for gt, sub in compiled:
-            psi = jnp.einsum(sub, gt, psi)
-        return psi.reshape(dim)
+        for op in tape:
+            state = op.apply_to_state(state, n_qubits)
+        return state
 
     @staticmethod
     def _simulate_mixed(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
@@ -752,37 +730,24 @@ class QuantumScript:
                 single_tape, n_qubits, type, obs, use_density
             )
 
-        # Step 3 — vmap + jit over the requested axes.
+        # Step 3 — vmap over the requested axes.
         #
-        # Wrapping the vmapped function in jax.jit has two effects:
+        # Note on JIT: we intentionally do NOT wrap this in jax.jit here.
+        # Circuit functions (e.g. Model._variational) commonly use
+        # Python-level control flow that depends on array values
+        # (``if data_reupload[q, idx]: ...``).  This is fine under vmap
+        # (which keeps concrete values), but jit turns all inputs into
+        # abstract tracers and raises TracerBoolConversionError.
         #
-        # 1. **Multi-core utilisation** — the JIT-compiled XLA program can
-        #    use intra-op parallelism to distribute independent SIMD lanes
-        #    across CPU threads, unlike an eager vmap which runs
-        #    single-threaded.
+        # Users whose circuit functions are JIT-compatible can opt in by
+        # wrapping the execute call themselves::
         #
-        # 2. **Compilation caching** — subsequent calls with the same input
-        #    shapes reuse the compiled kernel and skip all Python-level
-        #    tracing, eliminating the O(B × circuit_depth) Python overhead.
+        #     jax.jit(lambda args: script.execute(..., args=args, in_axes=...))
         #
-        # The compiled function is cached on this QuantumScript instance,
-        # keyed on (type, use_density, in_axes, arg_shapes).  Repeated calls
-        # with the same structure (e.g. training iterations) skip both
-        # Python-level tracing and XLA compilation entirely.
-        #
-        # Note on control flow: circuit functions (e.g. Model._variational)
-        # use ``if data_reupload[q, idx]: ...`` which requires a concrete
-        # bool.  This works under jit because ``data_reupload`` is stored
-        # as a NumPy (not JAX) array, so it remains concrete during tracing.
-        arg_shapes = tuple(
-            (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in args
-        )
-        cache_key = (type, use_density, in_axes, arg_shapes)
-        batched_fn = self._jit_cache.get(cache_key)
-        if batched_fn is None:
-            batched_fn = jax.jit(jax.vmap(_single_execute, in_axes=in_axes))
-            self._jit_cache[cache_key] = batched_fn
-        return batched_fn(*args)
+        # The vmap alone already produces a single fused XLA computation
+        # for the batch — the main remaining overhead is Python-level tape
+        # re-recording during tracing, which happens once per vmap call.
+        return jax.vmap(_single_execute, in_axes=in_axes)(*args)
 
     # -- circuit drawing ------------------------------------------------
 
