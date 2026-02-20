@@ -140,7 +140,7 @@ def test_expressibility(layers) -> None:
         )
 
         # Calculate the mean (over all inputs, if required)
-        kl_dist = Expressibility.kl_divergence_to_Haar(
+        kl_dist = Expressibility.kl_divergence_to_haar(
             seed=1000,
             n_bins=75,
             n_samples=5000,

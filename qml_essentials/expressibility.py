@@ -256,7 +256,7 @@ class Expressibility:
 
         return kl_divergence
 
-    def kl_divergence_to_Haar(
+    def kl_divergence_to_haar(
         model: Model,
         seed: int,
         n_samples: int,
