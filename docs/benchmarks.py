@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import pennylane as qml
 import time
+from datetime import datetime
 
 from qml_essentials.yaqsi import (
     QuantumScript,
@@ -16,6 +17,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 rng = jax.random.PRNGKey(42)
+
+identifier = datetime.now().strftime("%Y%m%d%H%M%S")
 
 
 def test_batch_benchmark(mode, q) -> None:
@@ -32,6 +35,7 @@ def test_batch_benchmark(mode, q) -> None:
     batch_size = 1000
     rng, subkey = jax.random.split(rng)
 
+    print(f"Running Yaqsi benchmark (mode: {mode}, {q} qubits)")
     # Pre-generate different parameters for each iteration to simulate
     # a training loop where params change every step.
     all_phis = jax.random.uniform(
@@ -117,7 +121,7 @@ for q in qubit_sizes:
         results[mode]["pl"].append(t_pl * 1000)
 
 # --- CSV export ---
-with open("benchmarks.csv", "w", newline="") as f:
+with open(f"benchmarks-{identifier}.csv", "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(["n_qubits", "mode", "t_ys_ms", "t_pl_ms", "ratio_ys_pl"])
     for q_idx, q in enumerate(qubit_sizes):
@@ -186,6 +190,6 @@ ax.legend(
 )
 
 plt.tight_layout()
-plt.savefig("benchmarks.png", dpi=150)
+plt.savefig(f"benchmarks-{identifier}.png", dpi=150)
 plt.show()
 print("Figure saved to benchmarks.png")
