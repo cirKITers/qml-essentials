@@ -17,6 +17,15 @@ from qml_essentials.operations import (
 from qml_essentials.tape import recording
 from qml_essentials.drawing import draw_text, draw_mpl, draw_tikz
 
+import numpy as _np
+
+# Module-level cache for JIT-compiled ODE solvers.  Keyed on
+# (coeff_fn_id, dim, atol, rtol) so that all evolve() calls with the
+# same pulse shape function and matrix size share one compiled XLA
+# program.  This turns O(n_gates) JIT compilations into
+# O(n_distinct_pulse_shapes) during pulse-mode circuit building.
+_evolve_solver_cache: dict = {}
+
 
 def _partial_trace_single(
     rho: jnp.ndarray,
@@ -205,8 +214,11 @@ def _evolve_parametrized(ph: ParametrizedHamiltonian, **odeint_kwargs) -> Callab
 
     * Uses **diffrax** — a modern, well-maintained JAX ODE library with
       better XLA compilation, adjoint methods, and step-size control.
-    * The ODE solve is wrapped in ``jax.jit`` so repeated calls with
-      different parameters reuse the compiled XLA computation.
+    * The JIT-compiled solver is **cached** per coefficient function so
+      that multiple ``evolve()`` calls with the same pulse shape (but
+      different Hamiltonian matrices or parameters) reuse the same
+      compiled XLA program.  This avoids O(n_gates) JIT compilations
+      during pulse-mode tape recording.
     * Pre-computes ``-i·H`` once instead of multiplying at every RHS
       evaluation.
     * Avoids dynamic ``jnp.where`` branching for the time span.
@@ -228,35 +240,49 @@ def _evolve_parametrized(ph: ParametrizedHamiltonian, **odeint_kwargs) -> Callab
     atol = odeint_kwargs.pop("atol", 1.4e-8)
     rtol = odeint_kwargs.pop("rtol", 1.4e-8)
 
-    # Pre-build solver and step-size controller (stateless, reusable)
-    solver = diffrax.Dopri5()
-    stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
+    # Look up or build the JIT-compiled solver for this (coeff_fn, dim)
+    # combination.  All pulse gates with the same pulse shape function
+    # (e.g. all RX gates share Sx, all RY share Sy) reuse a single
+    # compiled XLA program, with neg_iH passed as a regular argument
+    # rather than captured in the closure.  This turns O(n_gates) JIT
+    # compilations into O(n_distinct_pulse_shapes) compilations.
+    #
+    # We key on the function's __code__ object rather than id(coeff_fn)
+    # because each pulse gate call creates a new closure (capturing the
+    # rotation angle `w`), but the underlying code is identical.  Under
+    # JIT, the captured `w` is a tracer anyway, so the compiled program
+    # is generic over `w`.
+    cache_key = (id(coeff_fn.__code__), dim, atol, rtol)
+    _solve = _evolve_solver_cache.get(cache_key)
+    if _solve is None:
+        solver = diffrax.Dopri5()
+        stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
 
-    # JIT-compiled ODE solve kernel — the core performance win.
-    # This is traced once and reused for every call with different params/T.
-    @jax.jit
-    def _solve(params, t0, t1):
-        """Solve dU/dt = f(params,t) · (-iH) · U from t0 to t1."""
+        @jax.jit
+        def _solve(neg_iH, params, t0, t1):
+            """Solve dU/dt = f(params,t) · (-iH) · U from t0 to t1."""
 
-        def rhs(t, y, args):
-            return coeff_fn(args, t) * (neg_iH @ y)
+            def rhs(t, y, args):
+                return coeff_fn(args, t) * (neg_iH @ y)
 
-        y0 = jnp.eye(dim, dtype=jnp.complex128)
+            y0 = jnp.eye(dim, dtype=jnp.complex128)
 
-        sol = diffrax.diffeqsolve(
-            diffrax.ODETerm(rhs),
-            solver,
-            t0=t0,
-            t1=t1,
-            dt0=None,  # let the controller choose the initial step
-            y0=y0,
-            args=params,
-            stepsize_controller=stepsize_controller,
-            max_steps=4096,
-        )
+            sol = diffrax.diffeqsolve(
+                diffrax.ODETerm(rhs),
+                solver,
+                t0=t0,
+                t1=t1,
+                dt0=None,  # let the controller choose the initial step
+                y0=y0,
+                args=params,
+                stepsize_controller=stepsize_controller,
+                max_steps=4096,
+            )
 
-        # sol.ys has shape (1, dim, dim) for SaveAt(t1=True) (default)
-        return sol.ys[0]
+            # sol.ys has shape (1, dim, dim) for SaveAt(t1=True) (default)
+            return sol.ys[0]
+
+        _evolve_solver_cache[cache_key] = _solve
 
     def _apply(coeff_args, T) -> Operation:
         """Evolve under the time-dependent Hamiltonian.
@@ -284,7 +310,7 @@ def _evolve_parametrized(ph: ParametrizedHamiltonian, **odeint_kwargs) -> Callab
             t0 = T_arr[0]
             t1 = T_arr[1]
 
-        U = _solve(params, t0, t1)
+        U = _solve(neg_iH, params, t0, t1)
 
         return Operation(wires=wires, matrix=U)
 
@@ -538,7 +564,6 @@ class Script:
             # The diagonal check uses the class-level _matrix attribute
             # (always a concrete constant) and plain NumPy operations to
             # avoid TracerBoolConversionError inside jit/vmap.
-            import numpy as _np
 
             def _is_single_qubit_diag(ob):
                 m = ob.__class__._matrix

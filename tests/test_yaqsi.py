@@ -1206,7 +1206,7 @@ def test_memory() -> None:
 @pytest.mark.expensive
 @pytest.mark.unittest
 @pytest.mark.parametrize("mode", ["probs", "expval", "state", "density"])
-def test_batch_benchmark(mode) -> None:
+def test_benchmark(mode) -> None:
     """
     Benchmark comparison with pennylane framework (parametric, batched).
     """

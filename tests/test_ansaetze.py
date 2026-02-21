@@ -12,6 +12,7 @@ from jax import numpy as jnp
 import pytest
 import inspect
 import itertools
+import time
 
 import logging
 
@@ -372,6 +373,19 @@ def test_pulse_params_ansaetze() -> None:
             assert np.allclose(res, res, atol=1e-6)
         except Exception as e:
             raise Exception(f"Error for ansatz {ansatz}: {e}")
+
+
+def test_pulse_benchmarks() -> None:
+    start = time.time()
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        data_reupload=False,
+    )
+    res = model(gate_mode="pulse")
+    end = time.time()
+    print(f"Time: {end - start}")
 
 
 @pytest.mark.unittest

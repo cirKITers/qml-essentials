@@ -810,6 +810,55 @@ class PulseGates:
     Y = jnp.array([[0, -1j], [1j, 0]])
     Z = jnp.array([[1, 0], [0, -1]])
 
+    # Pre-computed interaction-picture Hamiltonians (H_static† @ P @ H_static).
+    # These are constants reused by every RX/RY call — computing them once
+    # avoids two JAX matmul dispatches per primitive pulse gate.
+    _H_X = H_static.conj().T @ X @ H_static
+    _H_Y = H_static.conj().T @ Y @ H_static
+
+    # Pre-computed CZ Hamiltonian: (π/4)(I⊗I - Z⊗I - I⊗Z + Z⊗Z)
+    _H_CZ = (jnp.pi / 4) * (
+        jnp.kron(Id, Id) - jnp.kron(Z, Id) - jnp.kron(Id, Z) + jnp.kron(Z, Z)
+    )
+
+    # Pre-computed H correction Hamiltonian: (π/2) I
+    _H_corr = jnp.pi / 2 * jnp.eye(2, dtype=jnp.complex64)
+
+    # -- Module-level coefficient functions for pulse shapes ---------------
+    # Defining these as static methods (rather than nested closures) ensures
+    # that all gates of the same type share the same function object.  This
+    # enables the JIT solver cache in _evolve_parametrized to reuse a single
+    # compiled XLA program across all RX/RY/RZ/etc. calls, avoiding
+    # O(n_gates) JIT compilations.
+    #
+    # Rotation angle `w` is passed as the third element of `p` (the params
+    # tuple) instead of being captured in a closure.
+
+    @staticmethod
+    def _coeff_Sx(p, t):
+        """Coefficient function for RX pulse: Sx(p,t) * w."""
+        return PulseGates._S(p, t, phi_c=jnp.pi) * p[2]
+
+    @staticmethod
+    def _coeff_Sy(p, t):
+        """Coefficient function for RY pulse: Sy(p,t) * w."""
+        return PulseGates._S(p, t, phi_c=-jnp.pi / 2) * p[2]
+
+    @staticmethod
+    def _coeff_Sz(p, t):
+        """Coefficient function for RZ pulse: p * w."""
+        return p[0] * p[1]
+
+    @staticmethod
+    def _coeff_Sc(p, t):
+        """Constant coefficient for H correction phase."""
+        return -1.0
+
+    @staticmethod
+    def _coeff_Scz(p, t):
+        """Coefficient function for CZ pulse."""
+        return p * jnp.pi
+
     @staticmethod
     def _S(
         p: Union[List[float], jnp.ndarray],
@@ -833,7 +882,7 @@ class PulseGates:
         Returns:
             jnp.ndarray: Shaped pulse amplitude at time(s) t.
         """
-        A, sigma = p
+        A, sigma = p[0], p[1]
         t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
 
         f = A * jnp.exp(-0.5 * ((t - t_c) / sigma) ** 2)
@@ -898,14 +947,14 @@ class PulseGates:
         """
         pulse_params = PulseInformation.RX.split_params(pulse_params)
 
-        def Sx(p, t):
-            return PulseGates._S(p, t, phi_c=jnp.pi) * w
+        _H = op.Hermitian(PulseGates._H_X, wires=wires, record=False)
+        H_eff = PulseGates._coeff_Sx * _H
 
-        _H = PulseGates.H_static.conj().T @ PulseGates.X @ PulseGates.H_static
-        _H = op.Hermitian(_H, wires=wires, record=False)
-        H_eff = Sx * _H
-
-        ys.evolve(H_eff)([pulse_params[0:2]], pulse_params[2])
+        # Pack w into the params so the coefficient function doesn't need
+        # a closure — this enables JIT solver cache sharing across all RX calls.
+        ys.evolve(H_eff)(
+            [jnp.array([pulse_params[0], pulse_params[1], w])], pulse_params[2]
+        )
 
     @staticmethod
     def RY(
@@ -931,14 +980,14 @@ class PulseGates:
         """
         pulse_params = PulseInformation.RY.split_params(pulse_params)
 
-        def Sy(p, t):
-            return PulseGates._S(p, t, phi_c=-jnp.pi / 2) * w
+        _H = op.Hermitian(PulseGates._H_Y, wires=wires, record=False)
+        H_eff = PulseGates._coeff_Sy * _H
 
-        _H = PulseGates.H_static.conj().T @ PulseGates.Y @ PulseGates.H_static
-        _H = op.Hermitian(_H, wires=wires, record=False)
-        H_eff = Sy * _H
-
-        ys.evolve(H_eff)([pulse_params[0:2]], pulse_params[2])
+        # Pack w into the params so the coefficient function doesn't need
+        # a closure — this enables JIT solver cache sharing across all RY calls.
+        ys.evolve(H_eff)(
+            [jnp.array([pulse_params[0], pulse_params[1], w])], pulse_params[2]
+        )
 
     @staticmethod
     def RZ(
@@ -962,13 +1011,14 @@ class PulseGates:
         pulse_params = PulseInformation.RZ.split_params(pulse_params)
 
         _H = op.Hermitian(PulseGates.Z, wires=wires, record=False)
+        H_eff = PulseGates._coeff_Sz * _H
 
-        def Sz(p, t):
-            return p * w
-
-        H_eff = Sz * _H
-
-        ys.evolve(H_eff)([pulse_params], 1)
+        # Pack w into the params so the coefficient function doesn't need
+        # a closure — [pulse_param_scalar, w] enables JIT solver cache sharing.
+        # pulse_params may be a 1-element array or scalar; ravel + index to
+        # ensure a scalar for concatenation.
+        pp_scalar = jnp.ravel(jnp.asarray(pulse_params))[0]
+        ys.evolve(H_eff)([jnp.array([pp_scalar, w])], 1)
 
     @staticmethod
     def H(
@@ -994,12 +1044,8 @@ class PulseGates:
         PulseGates.RZ(jnp.pi, wires=wires, pulse_params=pulse_params_RZ)
         PulseGates.RY(jnp.pi / 2, wires=wires, pulse_params=pulse_params_RY)
 
-        def Sc(p, t):
-            return -1.0
-
-        _H = jnp.pi / 2 * jnp.eye(2, dtype=jnp.complex64)
-        _H = op.Hermitian(_H, wires=wires, record=False)
-        H_corr = Sc * _H
+        _H = op.Hermitian(PulseGates._H_corr, wires=wires, record=False)
+        H_corr = PulseGates._coeff_Sc * _H
 
         ys.evolve(H_corr)([0], 1)
 
@@ -1076,17 +1122,8 @@ class PulseGates:
         else:
             pulse_params = pulse_params
 
-        I_I = jnp.kron(PulseGates.Id, PulseGates.Id)
-        Z_I = jnp.kron(PulseGates.Z, PulseGates.Id)
-        I_Z = jnp.kron(PulseGates.Id, PulseGates.Z)
-        Z_Z = jnp.kron(PulseGates.Z, PulseGates.Z)
-
-        def Scz(p, t):
-            return p * jnp.pi
-
-        _H = (jnp.pi / 4) * (I_I - Z_I - I_Z + Z_Z)
-        _H = op.Hermitian(_H, wires=wires, record=False)
-        H_eff = Scz * _H
+        _H = op.Hermitian(PulseGates._H_CZ, wires=wires, record=False)
+        H_eff = PulseGates._coeff_Scz * _H
 
         ys.evolve(H_eff)([pulse_params], 1)
 
