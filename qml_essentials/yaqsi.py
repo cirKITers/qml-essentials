@@ -528,13 +528,51 @@ class QuantumScript:
             return jnp.abs(state) ** 2
 
         if type == "expval":
-            # ⟨ψ|O|ψ⟩ = Re(⟨ψ| (O|ψ⟩))  — avoids building the full matrix
-            return jnp.array(
-                [
-                    jnp.real(jnp.vdot(state, ob.apply_to_state(state, n_qubits)))
-                    for ob in obs
-                ]
-            )
+            # Fast path for single-qubit diagonal observables (PauliZ, etc.):
+            # compute probabilities once, then derive each ⟨O_q⟩ as
+            #   ⟨O_q⟩ = d0 · P(q=0) + d1 · P(q=1)
+            # where d0, d1 are the diagonal elements of the 2×2 observable.
+            # This replaces n_obs tensor contractions with a single |ψ|²
+            # and n_obs reductions over the probability vector.
+            #
+            # The diagonal check uses the class-level _matrix attribute
+            # (always a concrete constant) and plain NumPy operations to
+            # avoid TracerBoolConversionError inside jit/vmap.
+            import numpy as _np
+
+            def _is_single_qubit_diag(ob):
+                m = ob.__class__._matrix
+                if m is None or len(ob.wires) != 1:
+                    return False
+                # Convert to NumPy to ensure concrete boolean evaluation
+                m_np = _np.asarray(m)
+                return _np.allclose(m_np - _np.diag(_np.diag(m_np)), 0)
+
+            all_single_qubit_diag = all(_is_single_qubit_diag(ob) for ob in obs)
+
+            if all_single_qubit_diag:
+                probs = jnp.abs(state) ** 2
+                psi_t = probs.reshape((2,) * n_qubits)
+                results = []
+                for ob in obs:
+                    q = ob.wires[0]
+                    d = _np.real(_np.diag(_np.asarray(ob.__class__._matrix)))
+                    # Sum probabilities over all axes except qubit q
+                    p_q = jnp.sum(
+                        psi_t, axis=tuple(i for i in range(n_qubits) if i != q)
+                    )
+                    results.append(d[0] * p_q[0] + d[1] * p_q[1])
+                return jnp.array(results)
+
+            # General path: stack observable matrices and use a single
+            # batched matmul instead of a Python loop of tensor contractions.
+            # O_states[i] = obs[i] |ψ⟩, then ⟨O_i⟩ = Re(⟨ψ|O_states[i]⟩).
+            obs_mats = jnp.stack(
+                [ob.lifted_matrix(n_qubits) for ob in obs], axis=0
+            )  # (n_obs, dim, dim)
+            # Batched matvec: (n_obs, dim, dim) @ (dim,) → (n_obs, dim)
+            O_states = jnp.einsum("oij,j->oi", obs_mats, state)
+            return jnp.real(jnp.einsum("i,oi->o", jnp.conj(state), O_states))
 
         raise ValueError(f"Unknown measurement type: {type!r}")
 
@@ -572,12 +610,14 @@ class QuantumScript:
             return jnp.real(jnp.diag(rho))
 
         if type == "expval":
-            # Tr(O ρ) = Σ_ij O_ij ρ_ji = Σ_ij O_ij (ρ^T)_ij
-            # Using elementwise multiply + sum avoids materializing O @ ρ.
-            rho_T = rho.T
-            return jnp.array(
-                [jnp.real(jnp.sum(ob.lifted_matrix(n_qubits) * rho_T)) for ob in obs]
-            )
+            # Tr(O ρ) = Σ_ij O_ij ρ_ji
+            # Stack all observable matrices and compute all traces in one
+            # batched operation.
+            obs_mats = jnp.stack(
+                [ob.lifted_matrix(n_qubits) for ob in obs], axis=0
+            )  # (n_obs, dim, dim)
+            # einsum "oij,ji->o" computes Tr(O_o @ ρ) for each observable
+            return jnp.real(jnp.einsum("oij,ji->o", obs_mats, rho))
 
         raise ValueError(
             "Measurement type 'state' is not defined for mixed (noisy) circuits. "
