@@ -16,9 +16,10 @@ from qml_essentials.operations import (
 import logging
 
 logger = logging.getLogger(__name__)
-rng = jax.random.PRNGKey(42)
+rng = jax.random.PRNGKey(1000)
 
 identifier = datetime.now().strftime("%Y%m%d%H%M%S")
+print(f"Identifier: {identifier}")
 
 
 def test_batch_benchmark(mode, q) -> None:
@@ -42,8 +43,6 @@ def test_batch_benchmark(mode, q) -> None:
         subkey, shape=(n_iters, batch_size), minval=-jnp.pi, maxval=jnp.pi
     )
 
-    obs = [PauliZ(wires=i, record=False) for i in range(n_qubits)]
-
     # --- Yaqsi ---
     def yaqsi_circuit(phi):
         for i in range(n_qubits):
@@ -55,6 +54,7 @@ def test_batch_benchmark(mode, q) -> None:
     script = QuantumScript(f=yaqsi_circuit)
 
     # Warmup (triggers first compilation)
+    obs = [PauliZ(wires=i, record=False) for i in range(n_qubits)]
     _ = script.execute(type=mode, obs=obs, args=(all_phis[0],), in_axes=(0,))
 
     start = time.time()
@@ -100,7 +100,9 @@ def test_batch_benchmark(mode, q) -> None:
     # PennyLane expval returns (n_obs, batch) while yaqsi returns (batch, n_obs)
     if res_pl_arr.shape != res_ys.shape:
         res_pl_arr = res_pl_arr.T
-    print(f"Results match: {jnp.allclose(res_ys, res_pl_arr, atol=1e-10)}")
+
+    assert jnp.allclose(res_ys, res_pl_arr, atol=1e-10), "Results do not match"
+    print(f"Results match")
 
     return [t_ys, t_pl]
 
@@ -191,5 +193,4 @@ ax.legend(
 
 plt.tight_layout()
 plt.savefig(f"benchmarks-{identifier}.png", dpi=150)
-plt.show()
 print("Figure saved to benchmarks.png")
