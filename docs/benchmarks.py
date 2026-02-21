@@ -3,6 +3,8 @@ import jax.numpy as jnp
 import pennylane as qml
 import time
 from datetime import datetime
+import matplotlib.pyplot as plt
+import csv
 
 from qml_essentials.yaqsi import (
     QuantumScript,
@@ -21,8 +23,13 @@ rng = jax.random.PRNGKey(1000)
 identifier = datetime.now().strftime("%Y%m%d%H%M%S")
 print(f"Identifier: {identifier}")
 
+qubit_sizes = list(range(3, 12))
+modes = ["probs", "expval", "state", "density"]
+n_iters = 100
+batch_size = 100
 
-def test_batch_benchmark(mode, q) -> None:
+
+def var_ghz_benchmark(mode, q) -> None:
     """Benchmark comparison with pennylane framework (parametric, batched).
 
     Simulates a realistic training loop: parameters change every iteration,
@@ -32,8 +39,6 @@ def test_batch_benchmark(mode, q) -> None:
 
     global rng
     n_qubits = q
-    n_iters = 100
-    batch_size = 1000
     rng, subkey = jax.random.split(rng)
 
     print(f"Running Yaqsi benchmark (mode: {mode}, {q} qubits)")
@@ -107,22 +112,17 @@ def test_batch_benchmark(mode, q) -> None:
     return [t_ys, t_pl]
 
 
-import matplotlib.pyplot as plt
-import csv
-
-qubit_sizes = [4, 6, 8, 10, 12, 14]
-modes = ["probs", "expval", "state", "density"]
-
 # results[mode] = {"ys": [...], "pl": [...]} indexed by qubit_sizes
 results = {mode: {"ys": [], "pl": []} for mode in modes}
 
 for q in qubit_sizes:
     for mode in modes:
-        t_ys, t_pl = test_batch_benchmark(mode, q)
+        t_ys, t_pl = var_ghz_benchmark(mode, q)
         results[mode]["ys"].append(t_ys * 1000)  # convert to ms
         results[mode]["pl"].append(t_pl * 1000)
 
 # --- CSV export ---
+print(f"Exporting results to benchmarks-{identifier}.csv")
 with open(f"benchmarks-{identifier}.csv", "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(["n_qubits", "mode", "t_ys_ms", "t_pl_ms", "ratio_ys_pl"])
@@ -141,6 +141,7 @@ with open(f"benchmarks-{identifier}.csv", "w", newline="") as f:
             )
 
 # --- Matplotlib figure ---
+print(f"Plotting results to benchmarks-{identifier}.png")
 import matplotlib.lines as mlines
 
 mode_colors = {
@@ -165,12 +166,13 @@ for mode in modes:
     )
 
 # Reference line at ratio = 1 (equal performance)
-ax.axhline(1.0, color="gray", linestyle=":", linewidth=1.2, label="_nolegend_")
-ax.text(qubit_sizes[-1] + 0.1, 1.0, "parity", va="center", color="gray", fontsize=8)
+ax.axhline(1.0, color="gray", linestyle=":", linewidth=1.4, label="_nolegend_")
 
 ax.set_xlabel("Number of qubits")
 ax.set_ylabel("Time ratio  Yaqsi / PennyLane")
-ax.set_title("Benchmark: Yaqsi vs PennyLane – relative speed (batched, parametric)")
+ax.set_title(
+    f"Yaqsi vs PennyLane - Rel., Parametric, Avg. over {n_iters} Iters, {batch_size} Batches"
+)
 ax.set_xticks(qubit_sizes)
 ax.grid(True, linestyle=":", alpha=0.6)
 
@@ -186,11 +188,12 @@ mode_handles = [
 ax.legend(
     handles=mode_handles,
     title="Mode",
-    loc="lower left",
+    loc="upper left",
     fontsize=8,
     title_fontsize=9,
 )
 
 plt.tight_layout()
+plt.show()
 plt.savefig(f"benchmarks-{identifier}.png", dpi=150)
 print("Figure saved to benchmarks.png")

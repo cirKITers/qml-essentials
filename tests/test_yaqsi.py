@@ -1178,10 +1178,13 @@ def test_evolve_type_error() -> None:
 
 @pytest.mark.expensive
 @pytest.mark.unittest
-def test_benchmark() -> None:
-    """Benchmark comparison with pennylane framework"""
-
-    n_qubits = 6
+@pytest.mark.limit_memory("1 GB")
+def test_memory() -> None:
+    """
+    Note, this test requires memray to be activated. Run with
+    .venv/bin/python -m pytest tests/test_yaqsi.py::test_memory -x -s --memray
+    """
+    n_qubits = 12
 
     # Yaqsi
     def yaqsi_circuit():
@@ -1195,31 +1198,9 @@ def test_benchmark() -> None:
 
     start = time.time()
     for _ in range(100):
-        res_ys = QuantumScript(f=yaqsi_circuit).execute(type="density")
+        _ = QuantumScript(f=yaqsi_circuit).execute(type="density")
     t_ys = (time.time() - start) / 100
-    print(f"Yaqsi density (5q, avg 100): {t_ys*1000:.2f} ms")
-
-    # PennyLane
-    dev = qml.device("default.qubit", wires=n_qubits)
-
-    @qml.qnode(dev)
-    def pl_circuit():
-        for i in range(n_qubits):
-            qml.Hadamard(wires=i)
-        for i in range(n_qubits):
-            qml.CNOT(wires=[i, (i + 1) % n_qubits])
-        return qml.density_matrix(wires=range(n_qubits))
-
-    # Warmup
-    _ = pl_circuit()
-
-    start = time.time()
-    for _ in range(100):
-        res_pl = pl_circuit()
-    t_pl = (time.time() - start) / 100
-    print(f"PennyLane density (5q, avg 100): {t_pl*1000:.2f} ms")
-    print(f"Ratio yaqsi/pl: {t_ys/t_pl:.1f}x")
-    print(f"Results match: {jnp.allclose(res_ys, res_pl, atol=1e-10)}")
+    print(f"Yaqsi density (12q, avg 100): {t_ys*1000:.2f} ms")
 
 
 @pytest.mark.expensive
