@@ -1,10 +1,14 @@
 from typing import Callable, List, Optional, Tuple, Union
 from functools import lru_cache
+import string
 
 import jax
 import jax.numpy as jnp
 
 from qml_essentials.tape import active_tape, recording  # noqa: F401 (re-export)
+
+# Alphabet for einsum subscript generation (up to 52 indices)
+_EINSUM_LETTERS = string.ascii_letters  # a-z, A-Z
 
 
 @lru_cache(maxsize=256)
@@ -40,6 +44,49 @@ def _permutation_for_contraction(
     return contract_axes, tuple(perm)
 
 
+@lru_cache(maxsize=256)
+def _einsum_subscript(
+    n: int,
+    k: int,
+    target_axes: Tuple[int, ...],
+) -> str:
+    """Build an ``einsum`` subscript that fuses contraction + axis restore.
+
+    Given an *n*-axis state tensor and a ``(2,)*2k`` gate tensor acting on
+    *target_axes*, returns a subscript string equivalent to::
+
+        tensordot(gate, state, axes=(contract_axes, target_axes))
+        transpose(result, perm)
+
+    but executed as a single ``jnp.einsum`` call, halving JAX dispatch
+    overhead per gate.
+
+    Args:
+        n: Total rank of the state tensor (number of qubits for statevectors,
+            ``2 * n_qubits`` for density matrices).
+        k: Number of qubits the gate acts on.
+        target_axes: Tuple of *k* axis indices in the state tensor that the
+            gate contracts against.
+
+    Returns:
+        ``einsum`` subscript string, e.g. ``"ab,cBd->cad"`` for a 1-qubit
+        gate on wire 1 of a 3-qubit state.
+    """
+    letters = _EINSUM_LETTERS
+    # State indices: one letter per axis
+    state_idx = list(letters[:n])
+    # Contracted indices (the ones being replaced by the gate)
+    contracted = [state_idx[ax] for ax in target_axes]
+    # Gate indices: new output indices + contracted input indices
+    new_out = [letters[n + i] for i in range(k)]  # fresh letters for output
+    gate_idx = new_out + contracted  # gate shape: (out0, out1, ..., in0, in1, ...)
+    # Result indices: replace target axes with new output letters
+    result_idx = list(state_idx)
+    for i, ax in enumerate(target_axes):
+        result_idx[ax] = new_out[i]
+    return "".join(gate_idx) + "," + "".join(state_idx) + "->" + "".join(result_idx)
+
+
 def _contract_and_restore(
     tensor: jnp.ndarray,
     gate: jnp.ndarray,
@@ -48,13 +95,12 @@ def _contract_and_restore(
 ) -> jnp.ndarray:
     """Contract *gate* against *target_axes* of *tensor* and restore axis order.
 
-    This is the core building block for applying a ``k``-qubit gate tensor to
-    a rank-*n* (statevector) or rank-*2n* (density-matrix) tensor.  After
-    ``jnp.tensordot``, the output axes are permuted back so that the
-    contracted axes appear in their original positions.
+    Uses a single ``jnp.einsum`` call that fuses the contraction and
+    permutation into one XLA dispatch, halving the per-gate Python overhead
+    compared to separate ``tensordot`` + ``transpose`` calls.
 
-    The permutation indices are cached via :func:`_permutation_for_contraction`
-    so that the Python-level list construction only happens once per unique
+    The einsum subscript is cached via :func:`_einsum_subscript` so the
+    string construction only happens once per unique
     ``(total, k, target_axes)`` combination.
 
     Args:
@@ -68,11 +114,8 @@ def _contract_and_restore(
         Updated tensor with the same rank as *tensor*, with the
         contracted axes restored to their original positions.
     """
-    contract_axes, perm = _permutation_for_contraction(
-        tensor.ndim, k, tuple(target_axes)
-    )
-    out = jnp.tensordot(gate, tensor, axes=(contract_axes, target_axes))
-    return jnp.transpose(out, perm)
+    subscript = _einsum_subscript(tensor.ndim, k, tuple(target_axes))
+    return jnp.einsum(subscript, gate, tensor)
 
 
 # ===================================================================
@@ -237,6 +280,47 @@ class Operation:
         psi_out = _contract_and_restore(psi, gate_tensor, k, self.wires)
         return psi_out.reshape(2**n_qubits)
 
+    def apply_to_state_tensor(self, psi: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
+        """Apply this gate to a statevector already in tensor form.
+
+        Like :meth:`apply_to_state` but expects the state in rank-*n* tensor
+        form ``(2,)*n`` and returns the result in the same form.  This avoids
+        the ``reshape`` calls at the per-gate level when the simulation loop
+        keeps the state in tensor form throughout.
+
+        Args:
+            psi: Statevector tensor of shape ``(2,)*n_qubits``.
+            n_qubits: Total number of qubits in the circuit.
+
+        Returns:
+            Updated statevector tensor of shape ``(2,)*n_qubits``.
+        """
+        k = len(self.wires)
+        gate_tensor = self._gate_tensor(k)
+        return _contract_and_restore(psi, gate_tensor, k, self.wires)
+
+    def _gate_tensor(self, k: int) -> jnp.ndarray:
+        """Return the gate matrix reshaped to ``(2,)*2k`` tensor form.
+
+        The result is cached on the instance so repeated calls (e.g. from
+        density-matrix simulation which applies U and U*) avoid redundant
+        reshape dispatch.
+
+        Args:
+            k: Number of qubits the gate acts on.
+
+        Returns:
+            Gate matrix as a rank-2k tensor of shape ``(2,)*2k``.
+        """
+        cached = getattr(self, "_cached_gate_tensor", None)
+        if cached is not None:
+            return cached
+        gt = self.matrix.reshape((2,) * 2 * k)
+        # Only cache for non-parametrized gates (whose matrix is a class attr)
+        if self._matrix is self.__class__._matrix:
+            object.__setattr__(self, "_cached_gate_tensor", gt)
+        return gt
+
     def apply_to_density(self, rho: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
         """Apply this gate to a density matrix via ρ → UρU†.
 
@@ -254,7 +338,7 @@ class Operation:
             Updated density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
         """
         k = len(self.wires)
-        U = self.matrix.reshape((2,) * 2 * k)
+        U = self._gate_tensor(k)
         U_conj = jnp.conj(U)
 
         rho_t = rho.reshape((2,) * 2 * n_qubits)
@@ -412,13 +496,13 @@ class H(Operation):
 
     _matrix = jnp.array([[1, 1], [1, -1]], dtype=jnp.complex128) / jnp.sqrt(2)
 
-    def __init__(self, wires: Union[int, List[int]] = 0) -> None:
+    def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise a Hadamard gate.
 
         Args:
             wires: Qubit index or list of qubit indices this gate acts on.
         """
-        super().__init__(wires=wires)
+        super().__init__(wires=wires, **kwargs)
 
 
 class S(Operation):
@@ -535,13 +619,13 @@ class CX(Operation):
     )
     is_controlled = True
 
-    def __init__(self, wires: List[int] = [0, 1]) -> None:
+    def __init__(self, wires: List[int] = [0, 1], **kwargs) -> None:
         """Initialise a Controlled-X gate.
 
         Args:
             wires: Two-element list ``[control, target]``.
         """
-        super().__init__(wires=wires)
+        super().__init__(wires=wires, **kwargs)
 
 
 class CCX(Operation):
@@ -568,13 +652,13 @@ class CCX(Operation):
     )
     is_controlled = True
 
-    def __init__(self, wires: List[int] = [0, 1, 2]) -> None:
+    def __init__(self, wires: List[int] = [0, 1, 2], **kwargs) -> None:
         """Initialise a Toffoli (CCX) gate.
 
         Args:
             wires: Three-element list ``[control0, control1, target]``.
         """
-        super().__init__(wires=wires)
+        super().__init__(wires=wires, **kwargs)
 
 
 class CSWAP(Operation):
@@ -601,13 +685,13 @@ class CSWAP(Operation):
     )
     is_controlled = True
 
-    def __init__(self, wires: List[int] = [0, 1, 2]) -> None:
+    def __init__(self, wires: List[int] = [0, 1, 2], **kwargs) -> None:
         """Initialise a Controlled-SWAP (Fredkin) gate.
 
         Args:
             wires: Three-element list ``[control, target0, target1]``.
         """
-        super().__init__(wires=wires)
+        super().__init__(wires=wires, **kwargs)
 
 
 class CY(Operation):
@@ -626,13 +710,13 @@ class CY(Operation):
     )
     is_controlled = True
 
-    def __init__(self, wires: List[int] = [0, 1]) -> None:
+    def __init__(self, wires: List[int] = [0, 1], **kwargs) -> None:
         """Initialise a Controlled-Y gate.
 
         Args:
             wires: Two-element list ``[control, target]``.
         """
-        super().__init__(wires=wires)
+        super().__init__(wires=wires, **kwargs)
 
 
 class CZ(Operation):
@@ -651,13 +735,13 @@ class CZ(Operation):
     )
     is_controlled = True
 
-    def __init__(self, wires: List[int] = [0, 1]) -> None:
+    def __init__(self, wires: List[int] = [0, 1], **kwargs) -> None:
         """Initialise a Controlled-Z gate.
 
         Args:
             wires: Two-element list ``[control, target]``.
         """
-        super().__init__(wires=wires)
+        super().__init__(wires=wires, **kwargs)
 
 
 class CRX(Operation):
@@ -673,7 +757,7 @@ class CRX(Operation):
 
     is_controlled = True
 
-    def __init__(self, theta: float, wires: List[int] = [0, 1]) -> None:
+    def __init__(self, theta: float, wires: List[int] = [0, 1], **kwargs) -> None:
         """Initialise a CRX gate.
 
         Args:
@@ -692,7 +776,7 @@ class CRX(Operation):
             ],
             dtype=jnp.complex128,
         )
-        super().__init__(wires=wires, matrix=mat)
+        super().__init__(wires=wires, matrix=mat, **kwargs)
 
 
 class CRY(Operation):
@@ -708,7 +792,7 @@ class CRY(Operation):
 
     is_controlled = True
 
-    def __init__(self, theta: float, wires: List[int] = [0, 1]) -> None:
+    def __init__(self, theta: float, wires: List[int] = [0, 1], **kwargs) -> None:
         """Initialise a CRY gate.
 
         Args:
@@ -727,7 +811,7 @@ class CRY(Operation):
             ],
             dtype=jnp.complex128,
         )
-        super().__init__(wires=wires, matrix=mat)
+        super().__init__(wires=wires, matrix=mat, **kwargs)
 
 
 class CRZ(Operation):
@@ -743,7 +827,7 @@ class CRZ(Operation):
 
     is_controlled = True
 
-    def __init__(self, theta: float, wires: List[int] = [0, 1]) -> None:
+    def __init__(self, theta: float, wires: List[int] = [0, 1], **kwargs) -> None:
         """Initialise a CRZ gate.
 
         Args:
@@ -760,7 +844,7 @@ class CRZ(Operation):
             ],
             dtype=jnp.complex128,
         )
-        super().__init__(wires=wires, matrix=mat)
+        super().__init__(wires=wires, matrix=mat, **kwargs)
 
 
 class Rot(Operation):
@@ -776,6 +860,7 @@ class Rot(Operation):
         theta: float,
         omega: float,
         wires: Union[int, List[int]] = 0,
+        **kwargs,
     ) -> None:
         """Initialise a general rotation gate.
 
@@ -797,7 +882,7 @@ class Rot(Operation):
             jnp.cos(omega / 2) * Id._matrix - 1j * jnp.sin(omega / 2) * PauliZ._matrix
         )
         mat = rz_omega @ ry_theta @ rz_phi
-        super().__init__(wires=wires, matrix=mat)
+        super().__init__(wires=wires, matrix=mat, **kwargs)
 
 
 class PauliRot(Operation):
@@ -822,10 +907,7 @@ class PauliRot(Operation):
     }
 
     def __init__(
-        self,
-        theta: float,
-        pauli_word: str,
-        wires: Union[int, List[int]] = 0,
+        self, theta: float, pauli_word: str, wires: Union[int, List[int]] = 0, **kwargs
     ) -> None:
         """Initialise a PauliRot gate.
 
@@ -847,7 +929,7 @@ class PauliRot(Operation):
             jnp.cos(theta / 2) * jnp.eye(dim, dtype=jnp.complex128)
             - 1j * jnp.sin(theta / 2) * P
         )
-        super().__init__(wires=wires, matrix=mat)
+        super().__init__(wires=wires, matrix=mat, **kwargs)
 
     def generator(self) -> Operation:
         """Return the generator Pauli tensor product as an :class:`Operation`.
@@ -917,6 +999,13 @@ class KrausChannel(Operation):
         Raises:
             TypeError: Always raised; use ``execute(type='density')`` instead.
         """
+        raise TypeError(
+            f"{self.__class__.__name__} is a noise channel and cannot be "
+            "applied to a pure statevector. Use execute(type='density') instead."
+        )
+
+    def apply_to_state_tensor(self, psi: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
+        """Raises TypeError — noise channels require density-matrix simulation."""
         raise TypeError(
             f"{self.__class__.__name__} is a noise channel and cannot be "
             "applied to a pure statevector. Use execute(type='density') instead."
