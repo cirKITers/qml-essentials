@@ -4,6 +4,8 @@ import pennylane as qml
 import time
 from datetime import datetime
 import matplotlib.pyplot as plt
+import matplotlib.lines as mlines
+import matplotlib.ticker
 import csv
 
 from qml_essentials.yaqsi import (
@@ -23,7 +25,9 @@ rng = jax.random.PRNGKey(1000)
 identifier = datetime.now().strftime("%Y%m%d%H%M%S")
 print(f"Identifier: {identifier}")
 
-qubit_sizes = list(range(3, 12))
+LOAD_LATEST = True  # Set to True to skip computation and load the latest CSV instead
+
+qubit_sizes = list(range(3, 14))
 modes = ["probs", "expval", "state", "density"]
 n_iters = 100
 batch_size = 100
@@ -100,7 +104,7 @@ def var_ghz_benchmark(mode, q) -> None:
         f"PennyLane {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
         f"{t_pl*1000:.2f} ms"
     )
-    print(f"Ratio yaqsi/pl: {t_ys/t_pl:.1f}x")
+    print(f"Ratio pl/yaqsi: {t_pl/t_ys:.2f}x")
     res_pl_arr = jnp.array(res_pl)
     # PennyLane expval returns (n_obs, batch) while yaqsi returns (batch, n_obs)
     if res_pl_arr.shape != res_ys.shape:
@@ -115,34 +119,67 @@ def var_ghz_benchmark(mode, q) -> None:
 # results[mode] = {"ys": [...], "pl": [...]} indexed by qubit_sizes
 results = {mode: {"ys": [], "pl": []} for mode in modes}
 
-for q in qubit_sizes:
-    for mode in modes:
-        t_ys, t_pl = var_ghz_benchmark(mode, q)
-        results[mode]["ys"].append(t_ys * 1000)  # convert to ms
-        results[mode]["pl"].append(t_pl * 1000)
+if LOAD_LATEST:
+    # Find the most recent benchmarks CSV in the current directory
+    import glob
 
-# --- CSV export ---
-print(f"Exporting results to benchmarks-{identifier}.csv")
-with open(f"benchmarks-{identifier}.csv", "w", newline="") as f:
-    writer = csv.writer(f)
-    writer.writerow(["n_qubits", "mode", "t_ys_ms", "t_pl_ms", "ratio_ys_pl"])
-    for q_idx, q in enumerate(qubit_sizes):
+    csv_files = sorted(glob.glob("benchmarks-*.csv"))
+    if not csv_files:
+        raise FileNotFoundError("No benchmarks-*.csv files found to load.")
+    latest_csv = csv_files[-1]
+    identifier = latest_csv[len("benchmarks-") : -len(".csv")]
+    print(f"Loading latest results from {latest_csv} (identifier: {identifier})")
+
+    with open(latest_csv, newline="") as f:
+        reader = csv.DictReader(f)
+        # Reconstruct qubit_sizes from the file to keep ordering consistent
+        qubit_sizes_seen = []
+        rows = list(reader)
+        for row in rows:
+            q = int(row["n_qubits"])
+            if q not in qubit_sizes_seen:
+                qubit_sizes_seen.append(q)
+        qubit_sizes = qubit_sizes_seen
+
+        # Re-initialise results with the actual modes present in the file
+        for row in rows:
+            mode = row["mode"]
+            if mode not in results:
+                results[mode] = {"ys": [], "pl": []}
+
+        for mode in results:
+            mode_rows = [r for r in rows if r["mode"] == mode]
+            results[mode]["ys"] = [float(r["t_ys_ms"]) for r in mode_rows]
+            results[mode]["pl"] = [float(r["t_pl_ms"]) for r in mode_rows]
+else:
+    for q in qubit_sizes:
         for mode in modes:
-            t_ys_ms = results[mode]["ys"][q_idx]
-            t_pl_ms = results[mode]["pl"][q_idx]
-            writer.writerow(
-                [
-                    q,
-                    mode,
-                    t_ys_ms,
-                    t_pl_ms,
-                    t_ys_ms / t_pl_ms,
-                ]
-            )
+            t_ys, t_pl = var_ghz_benchmark(mode, q)
+            results[mode]["ys"].append(t_ys * 1000)  # convert to ms
+            results[mode]["pl"].append(t_pl * 1000)
+
+    # --- CSV export ---
+    print(f"Exporting results to benchmarks-{identifier}.csv")
+    with open(f"benchmarks-{identifier}.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["n_qubits", "mode", "t_ys_ms", "t_pl_ms", "ratio_pl_ys"])
+        for q_idx, q in enumerate(qubit_sizes):
+            for mode in modes:
+                t_ys_ms = results[mode]["ys"][q_idx]
+                t_pl_ms = results[mode]["pl"][q_idx]
+                writer.writerow(
+                    [
+                        q,
+                        mode,
+                        t_ys_ms,
+                        t_pl_ms,
+                        t_pl_ms / t_ys_ms,
+                    ]
+                )
 
 # --- Matplotlib figure ---
 print(f"Plotting results to benchmarks-{identifier}.png")
-import matplotlib.lines as mlines
+
 
 mode_colors = {
     "probs": "#1f77b4",
@@ -155,7 +192,7 @@ fig, ax = plt.subplots(figsize=(9, 5))
 
 for mode in modes:
     color = mode_colors[mode]
-    ratio = [ys / pl for ys, pl in zip(results[mode]["ys"], results[mode]["pl"])]
+    ratio = [pl / ys for ys, pl in zip(results[mode]["ys"], results[mode]["pl"])]
     ax.plot(
         qubit_sizes,
         ratio,
@@ -166,14 +203,18 @@ for mode in modes:
     )
 
 # Reference line at ratio = 1 (equal performance)
-ax.axhline(1.0, color="gray", linestyle=":", linewidth=1.4, label="_nolegend_")
+ax.axhline(1.0, color="gray", linestyle=":", linewidth=2, label="_nolegend_")
 
 ax.set_xlabel("Number of qubits")
-ax.set_ylabel("Time ratio  Yaqsi / PennyLane")
+ax.set_ylabel("Time ratio  PennyLane / Yaqsi")
 ax.set_title(
     f"Yaqsi vs PennyLane - Rel., Parametric, Avg. over {n_iters} Iters, {batch_size} Batches"
 )
+# ax.set_xscale("log")
+ax.set_yscale("log")
+ax.set_ylim(bottom=1.0)
 ax.set_xticks(qubit_sizes)
+ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
 ax.grid(True, linestyle=":", alpha=0.6)
 
 # --- Grouped legend ---
@@ -187,10 +228,10 @@ mode_handles = [
 
 ax.legend(
     handles=mode_handles,
-    title="Mode",
-    loc="upper left",
-    fontsize=8,
-    title_fontsize=9,
+    title="Simulation Mode",
+    loc="lower left",
+    fontsize=9,
+    title_fontsize=10,
 )
 
 plt.tight_layout()
