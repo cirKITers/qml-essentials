@@ -126,7 +126,7 @@ class Operation:
 
     Further gates should inherit from this class to realise more specific
     operations.  Generally, operations are created by instantiation inside a
-    circuit function passed to :class:`QuantumScript`; the instance is
+    circuit function passed to :class:`Script`; the instance is
     automatically appended to the active tape.
 
     An ``Operation`` can also serve as an *observable*: its matrix is used to

@@ -5,16 +5,16 @@ instances are collected when a circuit function is executed.  This module
 provides a clean context-manager interface that:
 
 * is **thread-safe** — each thread has its own tape stack via
-  ``threading.local()``, so concurrent ``QuantumScript.execute`` calls in
+  ``threading.local()``, so concurrent ``Script.execute`` calls in
   different threads never interfere;
 * is **re-entrant** — nested ``recording()`` blocks each get their own tape
   (implemented as a stack), which is important because
-  ``QuantumScript._execute_batched`` re-records inside a ``jax.vmap``-traced
+  ``Script._execute_batched`` re-records inside a ``jax.vmap``-traced
   function;
 * is **multiprocessing-safe** by construction — each process has its own
   address space, so there is nothing to share.
 
-Usage (inside ``QuantumScript._record``)::
+Usage (inside ``Script._record``)::
 
     with recording() as tape:
         circuit_fn(*args, **kwargs)

@@ -30,7 +30,7 @@ def test_gate_gateerror_noise():
 
     obs = [op.PauliZ(wires=0)]
 
-    script = ys.QuantumScript(circuit, n_qubits=1)
+    script = ys.Script(circuit, n_qubits=1)
     no_noise = script.execute(type="expval", obs=obs, args=({},))
     with_noise = script.execute(type="expval", obs=obs, args=({"GateError": 50},))
 
@@ -83,7 +83,7 @@ def test_gate_bitflip_noise():
 
     obs = [op.PauliZ(wires=0)]
 
-    script = ys.QuantumScript(circuit, n_qubits=1)
+    script = ys.Script(circuit, n_qubits=1)
     no_noise = script.execute(type="expval", obs=obs, args=({},))
     with_noise = script.execute(type="expval", obs=obs, args=({"BitFlip": 0.5},))
 
@@ -102,7 +102,7 @@ def test_gate_phaseflip_noise():
 
     obs = [op.PauliX(wires=0)]
 
-    script = ys.QuantumScript(circuit, n_qubits=1)
+    script = ys.Script(circuit, n_qubits=1)
     no_noise = script.execute(type="expval", obs=obs, args=({},))
     with_noise = script.execute(type="expval", obs=obs, args=({"PhaseFlip": 0.5},))
 
@@ -121,7 +121,7 @@ def test_gate_depolarizing_noise():
 
     obs = [op.PauliZ(wires=0)]
 
-    script = ys.QuantumScript(circuit, n_qubits=1)
+    script = ys.Script(circuit, n_qubits=1)
     no_noise = script.execute(type="expval", obs=obs, args=({},))
     with_noise = script.execute(type="expval", obs=obs, args=({"Depolarizing": 3 / 4},))
 
@@ -141,7 +141,7 @@ def test_gate_nqubitdepolarizing_noise():
 
     obs_two = [op.PauliZ(wires=1)]
 
-    script_two = ys.QuantumScript(circuit_two, n_qubits=2)
+    script_two = ys.Script(circuit_two, n_qubits=2)
     no_noise_two = script_two.execute(type="expval", obs=obs_two, args=({},))
     with_noise_two = script_two.execute(
         type="expval", obs=obs_two, args=({"MultiQubitDepolarizing": 15 / 16},)
@@ -162,7 +162,7 @@ def test_gate_nqubitdepolarizing_noise():
 
     obs_three = [ys.build_parity_observable([0, 1, 2])]
 
-    script_three = ys.QuantumScript(circuit_three, n_qubits=3)
+    script_three = ys.Script(circuit_three, n_qubits=3)
     no_noise_three = script_three.execute(type="expval", obs=obs_three, args=({},))
     with_noise_three = script_three.execute(
         type="expval",
@@ -395,8 +395,8 @@ single_qubit_pulse_testdata = itertools.product(
 def test_single_qubit_pulse_gate(gate, w):
     qoc = QOC()
     pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
-    pulse_script = ys.QuantumScript(pulse_circuit, n_qubits=1)
-    target_script = ys.QuantumScript(target_circuit, n_qubits=1)
+    pulse_script = ys.Script(pulse_circuit, n_qubits=1)
+    target_script = ys.Script(target_circuit, n_qubits=1)
 
     state_pulse = pulse_script.execute(
         type="state", args=(w, pinfo.gate_by_name(gate).params)
@@ -422,8 +422,8 @@ two_qubit_pulse_testdata = itertools.product(
 def test_two_qubit_pulse_gate(gate, w):
     qoc = QOC()
     pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
-    pulse_script = ys.QuantumScript(pulse_circuit, n_qubits=2)
-    target_script = ys.QuantumScript(target_circuit, n_qubits=2)
+    pulse_script = ys.Script(pulse_circuit, n_qubits=2)
+    target_script = ys.Script(target_circuit, n_qubits=2)
 
     state_pulse = pulse_script.execute(
         type="state", args=(w, pinfo.gate_by_name(gate).params)

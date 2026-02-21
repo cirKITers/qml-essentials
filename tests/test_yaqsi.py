@@ -6,7 +6,7 @@ import numpy as np
 import time
 
 from qml_essentials.yaqsi import (
-    QuantumScript,
+    Script,
     evolve,
     partial_trace,
     marginalize_probs,
@@ -76,7 +76,7 @@ def evol_circuit_plus(t):
 @pytest.mark.unittest
 def test_expval_bell_x() -> None:
     """Bell state (|00⟩+|11⟩)/√2 has ⟨Xᵢ⟩ = 0 (no single-qubit X bias)."""
-    script = QuantumScript(f=bell_circuit)
+    script = Script(f=bell_circuit)
     res = script.execute(type="expval", obs=[PauliX(0), PauliX(1)])
     assert jnp.allclose(res, jnp.array([0.0, 0.0]), atol=1e-10)
 
@@ -84,7 +84,7 @@ def test_expval_bell_x() -> None:
 @pytest.mark.unittest
 def test_probs_bell() -> None:
     """Bell state yields |00⟩ and |11⟩ each with probability 0.5."""
-    script = QuantumScript(f=bell_circuit)
+    script = Script(f=bell_circuit)
     probs = script.execute(type="probs")
     assert jnp.allclose(probs, jnp.array([0.5, 0.0, 0.0, 0.5]), atol=1e-10)
 
@@ -92,7 +92,7 @@ def test_probs_bell() -> None:
 @pytest.mark.unittest
 def test_expval_bell_z() -> None:
     """Bell state has ⟨Zᵢ⟩ = 0 for each qubit individually."""
-    script = QuantumScript(f=bell_circuit)
+    script = Script(f=bell_circuit)
     res_zz = script.execute(type="expval", obs=[PauliZ(0), PauliZ(1)])
     assert jnp.allclose(res_zz, jnp.array([0.0, 0.0]), atol=1e-10)
 
@@ -100,7 +100,7 @@ def test_expval_bell_z() -> None:
 @pytest.mark.unittest
 def test_parameterized_expval() -> None:
     """RX(θ)|0⟩ gives ⟨Z⟩ = cos(θ)."""
-    script = QuantumScript(f=parameterized_circuit)
+    script = Script(f=parameterized_circuit)
     theta_val = jnp.array(0.5)
 
     def cost(theta):
@@ -112,7 +112,7 @@ def test_parameterized_expval() -> None:
 @pytest.mark.unittest
 def test_jax_gradient() -> None:
     """Gradient of ⟨Z⟩ w.r.t. θ for RX(θ)|0⟩ equals -sin(θ)."""
-    script = QuantumScript(f=parameterized_circuit)
+    script = Script(f=parameterized_circuit)
     theta_val = jnp.array(0.5)
 
     def cost(theta):
@@ -126,7 +126,7 @@ def test_jax_gradient() -> None:
 @pytest.mark.unittest
 def test_evolve_from_zero() -> None:
     """exp(-i·t·Z)|0⟩ leaves ⟨X⟩ = 0 since |0⟩ is a Z eigenstate."""
-    script = QuantumScript(f=evol_circuit)
+    script = Script(f=evol_circuit)
     res = script.execute(type="expval", obs=[PauliX(0)], args=(0.3,))
     assert jnp.allclose(res, jnp.array([0.0]), atol=1e-6)
 
@@ -135,7 +135,7 @@ def test_evolve_from_zero() -> None:
 def test_evolve_from_plus() -> None:
     """exp(-i·t·Z)|+⟩ gives |⟨X⟩| = cos(2t)."""
     t = 0.3
-    script = QuantumScript(f=evol_circuit_plus)
+    script = Script(f=evol_circuit_plus)
     res = script.execute(type="expval", obs=[PauliX(0)], args=(t,))
     assert jnp.allclose(jnp.abs(res), jnp.cos(2 * t), atol=1e-6)
 
@@ -180,7 +180,7 @@ def ghz_toffoli_3(*args, **kwargs):
 @pytest.mark.unittest
 def test_probs_ghz_3() -> None:
     """3-qubit GHZ state has prob 0.5 on |000⟩ and |111⟩, zero elsewhere."""
-    script = QuantumScript(f=ghz_circuit_3)
+    script = Script(f=ghz_circuit_3)
     probs = script.execute(type="probs")
     expected = jnp.zeros(8).at[0].set(0.5).at[7].set(0.5)
     assert jnp.allclose(probs, expected, atol=1e-10)
@@ -189,7 +189,7 @@ def test_probs_ghz_3() -> None:
 @pytest.mark.unittest
 def test_expval_ghz_3_z() -> None:
     """Each qubit of a 3-qubit GHZ state has ⟨Zᵢ⟩ = 0."""
-    script = QuantumScript(f=ghz_circuit_3)
+    script = Script(f=ghz_circuit_3)
     obs = [PauliZ(0), PauliZ(1), PauliZ(2)]
     res = script.execute(type="expval", obs=obs)
     assert jnp.allclose(res, jnp.zeros(3), atol=1e-10)
@@ -198,7 +198,7 @@ def test_expval_ghz_3_z() -> None:
 @pytest.mark.unittest
 def test_probs_ghz_4() -> None:
     """4-qubit GHZ state has prob 0.5 on |0000⟩ and |1111⟩, zero elsewhere."""
-    script = QuantumScript(f=ghz_circuit_4)
+    script = Script(f=ghz_circuit_4)
     probs = script.execute(type="probs")
     expected = jnp.zeros(16).at[0].set(0.5).at[15].set(0.5)
     assert jnp.allclose(probs, expected, atol=1e-10)
@@ -207,8 +207,8 @@ def test_probs_ghz_4() -> None:
 @pytest.mark.unittest
 def test_probs_ghz_toffoli() -> None:
     """3-qubit GHZ via Toffoli matches the CNOT-chain result."""
-    script_cnot = QuantumScript(f=ghz_circuit_3)
-    script_toff = QuantumScript(f=ghz_toffoli_3)
+    script_cnot = Script(f=ghz_circuit_3)
+    script_toff = Script(f=ghz_toffoli_3)
     probs_cnot = script_cnot.execute(type="probs")
     probs_toff = script_toff.execute(type="probs")
     assert jnp.allclose(probs_cnot, probs_toff, atol=1e-10)
@@ -222,7 +222,7 @@ def test_state_ghz_3_non_adjacent_wires() -> None:
         H(wires=0)
         CX(wires=[0, 2])  # control=0, target=2 (skip qubit 1)
 
-    script = QuantumScript(f=circuit)
+    script = Script(f=circuit)
     probs = script.execute(type="probs")
     # |000⟩ (index 0) and |101⟩ (index 5 = 0b101) each with prob 0.5
     expected = jnp.zeros(8).at[0].set(0.5).at[5].set(0.5)
@@ -240,7 +240,7 @@ def test_density_pure_state_is_projector() -> None:
     A density matrix from a pure circuit satisfies ρ² = ρ (idempotent)
     and Tr(ρ) = 1.
     """
-    script = QuantumScript(f=bell_circuit)
+    script = Script(f=bell_circuit)
     rho = script.execute(type="density")
 
     assert rho.shape == (4, 4)
@@ -254,7 +254,7 @@ def test_density_bell_matches_statevector() -> None:
     Density matrix of the Bell state equals |ψ⟩⟨ψ|
     computed from the statevector path.
     """
-    script = QuantumScript(f=bell_circuit)
+    script = Script(f=bell_circuit)
     state = script.execute(type="state")
     rho = script.execute(type="density")
 
@@ -268,7 +268,7 @@ def test_density_diagonal_equals_probs() -> None:
     The diagonal of the density matrix equals the probability vector
     from the statevector path, for any pure circuit.
     """
-    script = QuantumScript(f=ghz_circuit_3)
+    script = Script(f=ghz_circuit_3)
     probs = script.execute(type="probs")
     rho = script.execute(type="density")
 
@@ -278,7 +278,7 @@ def test_density_diagonal_equals_probs() -> None:
 @pytest.mark.unittest
 def test_density_is_hermitian() -> None:
     """Density matrix must satisfy ρ = ρ†."""
-    script = QuantumScript(f=ghz_circuit_4)
+    script = Script(f=ghz_circuit_4)
     rho = script.execute(type="density")
 
     assert jnp.allclose(rho, jnp.conj(rho.T), atol=1e-10)
@@ -290,7 +290,7 @@ def test_density_expval_matches_statevector() -> None:
     Tr(O ρ) via the density path must equal ⟨ψ|O|ψ⟩ from the statevector path
     for any observable and any pure circuit.
     """
-    script = QuantumScript(f=parameterized_circuit)
+    script = Script(f=parameterized_circuit)
     theta_val = jnp.array(0.7)
 
     ev_pure = script.execute(type="expval", obs=[PauliZ(0)], args=(theta_val,))[0]
@@ -332,7 +332,7 @@ def test_cy_matches_pennylane() -> None:
         qml.Hadamard(wires=0)
         qml.CY(wires=[0, 1])
 
-    script = QuantumScript(f=yaqsi_circuit)
+    script = Script(f=yaqsi_circuit)
     probs_ours = np.array(script.execute(type="probs"))
     probs_pl = _pennylane_probs(pl_circuit)
 
@@ -355,7 +355,7 @@ def test_cz_matches_pennylane() -> None:
         qml.Hadamard(wires=1)
         qml.CZ(wires=[0, 1])
 
-    script = QuantumScript(f=yaqsi_circuit)
+    script = Script(f=yaqsi_circuit)
     probs_ours = np.array(script.execute(type="probs"))
     probs_pl = _pennylane_probs(pl_circuit)
 
@@ -377,7 +377,7 @@ def test_crx_matches_pennylane() -> None:
         qml.Hadamard(wires=0)
         qml.CRX(theta, wires=[0, 1])
 
-    script = QuantumScript(f=yaqsi_circuit)
+    script = Script(f=yaqsi_circuit)
     probs_ours = np.array(script.execute(type="probs"))
     probs_pl = _pennylane_probs(pl_circuit)
 
@@ -399,7 +399,7 @@ def test_cry_matches_pennylane() -> None:
         qml.Hadamard(wires=0)
         qml.CRY(theta, wires=[0, 1])
 
-    script = QuantumScript(f=yaqsi_circuit)
+    script = Script(f=yaqsi_circuit)
     probs_ours = np.array(script.execute(type="probs"))
     probs_pl = _pennylane_probs(pl_circuit)
 
@@ -421,7 +421,7 @@ def test_crz_matches_pennylane() -> None:
         qml.Hadamard(wires=0)
         qml.CRZ(theta, wires=[0, 1])
 
-    script = QuantumScript(f=yaqsi_circuit)
+    script = Script(f=yaqsi_circuit)
     probs_ours = np.array(script.execute(type="probs"))
     probs_pl = _pennylane_probs(pl_circuit)
 
@@ -441,7 +441,7 @@ def test_rot_matches_pennylane() -> None:
     def pl_circuit():
         qml.Rot(phi, theta, omega, wires=0)
 
-    script = QuantumScript(f=yaqsi_circuit)
+    script = Script(f=yaqsi_circuit)
     probs_ours = np.array(script.execute(type="probs"))
     probs_pl = _pennylane_probs(pl_circuit, n_qubits=1)
 
@@ -463,8 +463,8 @@ def test_rot_decomposition_matches_individual_gates() -> None:
         RY(theta, wires=0)
         RZ(omega, wires=0)
 
-    script_rot = QuantumScript(f=rot_circuit)
-    script_dec = QuantumScript(f=decomposed_circuit)
+    script_rot = Script(f=rot_circuit)
+    script_dec = Script(f=decomposed_circuit)
 
     state_rot = np.array(script_rot.execute(type="state"))
     state_dec = np.array(script_dec.execute(type="state"))
@@ -511,7 +511,7 @@ def test_bitflip_matches_pennylane() -> None:
         qml.RX(theta, wires=0)
         qml.BitFlip(p, wires=0)
 
-    script = QuantumScript(f=yaqsi_circuit)
+    script = Script(f=yaqsi_circuit)
     rho_ours = np.array(script.execute(type="density", args=(jnp.array(theta),)))
     rho_pl = _pennylane_density(pl_circuit)
 
@@ -534,7 +534,7 @@ def test_phaseflip_matches_pennylane() -> None:
         qml.RX(theta, wires=0)
         qml.PhaseFlip(p, wires=0)
 
-    script = QuantumScript(f=yaqsi_circuit)
+    script = Script(f=yaqsi_circuit)
     rho_ours = np.array(script.execute(type="density", args=(jnp.array(theta),)))
     rho_pl = _pennylane_density(pl_circuit)
 
@@ -557,7 +557,7 @@ def test_depolarizing_matches_pennylane() -> None:
         qml.RX(theta, wires=0)
         qml.DepolarizingChannel(p, wires=0)
 
-    script = QuantumScript(f=yaqsi_circuit)
+    script = Script(f=yaqsi_circuit)
     rho_ours = np.array(script.execute(type="density", args=(jnp.array(theta),)))
     rho_pl = _pennylane_density(pl_circuit)
 
@@ -580,7 +580,7 @@ def test_amplitude_damping_matches_pennylane() -> None:
         qml.RX(theta, wires=0)
         qml.AmplitudeDamping(gamma, wires=0)
 
-    script = QuantumScript(f=yaqsi_circuit)
+    script = Script(f=yaqsi_circuit)
     rho_ours = np.array(script.execute(type="density", args=(jnp.array(theta),)))
     rho_pl = _pennylane_density(pl_circuit)
 
@@ -603,7 +603,7 @@ def test_phase_damping_matches_pennylane() -> None:
         qml.RX(theta, wires=0)
         qml.PhaseDamping(gamma, wires=0)
 
-    script = QuantumScript(f=yaqsi_circuit)
+    script = Script(f=yaqsi_circuit)
     rho_ours = np.array(script.execute(type="density", args=(jnp.array(theta),)))
     rho_pl = _pennylane_density(pl_circuit)
 
@@ -626,7 +626,7 @@ def test_thermal_relaxation_t2_le_t1_matches_pennylane() -> None:
         qml.RX(theta, wires=0)
         qml.ThermalRelaxationError(pe, t1, t2, tg, wires=0)
 
-    script = QuantumScript(f=yaqsi_circuit)
+    script = Script(f=yaqsi_circuit)
     rho_ours = np.array(script.execute(type="density", args=(jnp.array(theta),)))
     rho_pl = _pennylane_density(pl_circuit)
 
@@ -643,7 +643,7 @@ def test_noise_auto_routes_to_density() -> None:
         H(wires=0)
         BitFlip(0.1, wires=0)
 
-    script = QuantumScript(f=noisy_circuit)
+    script = Script(f=noisy_circuit)
     # Calling with type="probs" should still work (auto density path)
     probs = script.execute(type="probs")
     assert probs.shape == (2,)
@@ -660,7 +660,7 @@ def test_noise_density_is_valid() -> None:
         DepolarizingChannel(0.05, wires=0)
         DepolarizingChannel(0.05, wires=1)
 
-    script = QuantumScript(f=noisy_bell)
+    script = Script(f=noisy_bell)
     rho = script.execute(type="density")
 
     assert rho.shape == (4, 4)
@@ -686,7 +686,7 @@ def test_batched_expval_matches_sequential() -> None:
     This is the primary correctness check: jax.vmap must not introduce
     any numerical difference vs. the single-sample path.
     """
-    script = QuantumScript(f=parameterized_circuit)
+    script = Script(f=parameterized_circuit)
     thetas = jnp.array([0.1, 0.5, 1.0, 1.5, 2.0])
 
     sequential = jnp.stack(
@@ -713,7 +713,7 @@ def test_batched_expval_values() -> None:
     Mirrors the B_P (parameter-batch) axis from model.py where params
     has shape (n_layers, n_params, B_P) and in_axes=(2, ...).
     """
-    script = QuantumScript(f=parameterized_circuit)
+    script = Script(f=parameterized_circuit)
     thetas = jnp.linspace(0.0, jnp.pi, 9)
 
     results = script.execute(
@@ -733,7 +733,7 @@ def test_batched_probs() -> None:
     Batch over two extreme angles: RX(0)|0⟩ = |0⟩ and RX(π)|0⟩ ≈ i|1⟩.
     Probabilities must be [1,0] and [0,1] respectively.
     """
-    script = QuantumScript(f=parameterized_circuit)
+    script = Script(f=parameterized_circuit)
     thetas = jnp.array([0.0, jnp.pi])
 
     results = script.execute(type="probs", args=(thetas,), in_axes=(0,))
@@ -752,7 +752,7 @@ def test_batched_gradient() -> None:
     gradient flows through the batched path without breaking.
     This is the core requirement for training with batched parameters.
     """
-    script = QuantumScript(f=parameterized_circuit)
+    script = Script(f=parameterized_circuit)
     thetas = jnp.array([0.3, 0.7, 1.2])
 
     def loss(thetas):
@@ -783,7 +783,7 @@ def test_batched_broadcast_none_axis() -> None:
         RX(theta, wires=0)
         RX(phi, wires=0)
 
-    script = QuantumScript(f=two_arg_circuit)
+    script = Script(f=two_arg_circuit)
     thetas = jnp.linspace(0.0, 1.0, 5)  # batched — axis 0
     phi = jnp.array(0.5)  # broadcast — None
 
@@ -808,7 +808,7 @@ def test_batched_broadcast_none_axis() -> None:
 @pytest.mark.unittest
 def test_batched_in_axes_mismatch_raises() -> None:
     """in_axes length != args length must raise a clear ValueError."""
-    script = QuantumScript(f=parameterized_circuit)
+    script = Script(f=parameterized_circuit)
     with pytest.raises(ValueError, match="in_axes has"):
         script.execute(
             type="expval",
@@ -835,7 +835,7 @@ def test_batched_multi_qubit() -> None:
         H(wires=0)
         CX(wires=[0, 1])
 
-    script = QuantumScript(f=rotated_bell)
+    script = Script(f=rotated_bell)
     thetas = jnp.linspace(0.0, jnp.pi, 4)
 
     results = script.execute(type="probs", args=(thetas,), in_axes=(0,))
@@ -853,7 +853,7 @@ def test_batched_multi_qubit() -> None:
 @pytest.mark.unittest
 def test_partial_trace_bell_keep_0() -> None:
     """Tracing out qubit 1 of the Bell state gives the maximally mixed state."""
-    script = QuantumScript(f=bell_circuit)
+    script = Script(f=bell_circuit)
     rho = script.execute(type="density")
     rho_0 = partial_trace(rho, n_qubits=2, keep=[0])
     expected = 0.5 * jnp.eye(2, dtype=jnp.complex128)
@@ -863,7 +863,7 @@ def test_partial_trace_bell_keep_0() -> None:
 @pytest.mark.unittest
 def test_partial_trace_bell_keep_1() -> None:
     """Tracing out qubit 0 of the Bell state gives the maximally mixed state."""
-    script = QuantumScript(f=bell_circuit)
+    script = Script(f=bell_circuit)
     rho = script.execute(type="density")
     rho_1 = partial_trace(rho, n_qubits=2, keep=[1])
     expected = 0.5 * jnp.eye(2, dtype=jnp.complex128)
@@ -877,7 +877,7 @@ def test_partial_trace_product_state() -> None:
     def circuit(*a, **kw):
         H(wires=1)  # qubit 1 -> |+⟩, qubit 0 stays |0⟩
 
-    script = QuantumScript(f=circuit)
+    script = Script(f=circuit)
     rho = script.execute(type="density")
     rho_1 = partial_trace(rho, n_qubits=2, keep=[1])
     # |+⟩⟨+| = 0.5 * [[1, 1], [1, 1]]
@@ -888,7 +888,7 @@ def test_partial_trace_product_state() -> None:
 @pytest.mark.unittest
 def test_partial_trace_keep_all() -> None:
     """Keeping all qubits returns the original density matrix."""
-    script = QuantumScript(f=bell_circuit)
+    script = Script(f=bell_circuit)
     rho = script.execute(type="density")
     rho_all = partial_trace(rho, n_qubits=2, keep=[0, 1])
     assert jnp.allclose(rho_all, rho, atol=1e-10)
@@ -901,7 +901,7 @@ def test_partial_trace_batched() -> None:
     def rx_circuit(theta):
         RX(theta, wires=0)
 
-    script = QuantumScript(f=rx_circuit)
+    script = Script(f=rx_circuit)
     thetas = jnp.array([0.0, jnp.pi / 2, jnp.pi])
 
     rho_batch = jnp.stack([script.execute(type="density", args=(t,)) for t in thetas])
@@ -920,7 +920,7 @@ def test_partial_trace_batched() -> None:
 @pytest.mark.unittest
 def test_marginalize_probs_bell_keep_0() -> None:
     """Marginalizing qubit 1 of the Bell state gives [0.5, 0.5]."""
-    script = QuantumScript(f=bell_circuit)
+    script = Script(f=bell_circuit)
     probs = script.execute(type="probs")
     marginal = marginalize_probs(probs, n_qubits=2, keep=[0])
     assert jnp.allclose(marginal, jnp.array([0.5, 0.5]), atol=1e-10)
@@ -929,7 +929,7 @@ def test_marginalize_probs_bell_keep_0() -> None:
 @pytest.mark.unittest
 def test_marginalize_probs_keep_all() -> None:
     """Keeping all qubits returns the original probabilities."""
-    script = QuantumScript(f=bell_circuit)
+    script = Script(f=bell_circuit)
     probs = script.execute(type="probs")
     full = marginalize_probs(probs, n_qubits=2, keep=[0, 1])
     assert jnp.allclose(full, probs, atol=1e-10)
@@ -943,7 +943,7 @@ def test_marginalize_probs_batched() -> None:
         RX(theta, wires=0)
         H(wires=1)
 
-    script = QuantumScript(f=rx_circuit)
+    script = Script(f=rx_circuit)
     thetas = jnp.array([0.0, jnp.pi / 2])
 
     probs_batch = jnp.stack([script.execute(type="probs", args=(t,)) for t in thetas])
@@ -1060,7 +1060,7 @@ def test_evolve_parametrized_constant_matches_static() -> None:
         gate = evolve(Hermitian(matrix=Z, wires=0, record=False))
         gate(t=t, wires=0)
 
-    script_s = QuantumScript(f=static_circuit)
+    script_s = Script(f=static_circuit)
     state_static = script_s.execute(type="state", args=(T_val,))
 
     # Parametrized evolve with f(p, t) = 1
@@ -1071,7 +1071,7 @@ def test_evolve_parametrized_constant_matches_static() -> None:
         ph = const_coeff * Hermitian(matrix=Z, wires=0, record=False)
         evolve(ph)([0.0], T)  # coeff_args=[0.0] unused
 
-    script_p = QuantumScript(f=param_circuit)
+    script_p = Script(f=param_circuit)
     state_param = script_p.execute(type="state", args=(T_val,))
 
     assert jnp.allclose(
@@ -1116,7 +1116,7 @@ def test_evolve_parametrized_differentiable() -> None:
             ph = coeff * Hermitian(matrix=Z, wires=0, record=False)
             evolve(ph)([p_val], 1.0)
 
-        script = QuantumScript(f=circuit)
+        script = Script(f=circuit)
         return script.execute(type="expval", obs=[PauliX(0)], args=(p,))[0]
 
     p_val = jnp.array(0.5)
@@ -1194,11 +1194,11 @@ def test_memory() -> None:
             CX(wires=[i, (i + 1) % n_qubits])
 
     # Warmup
-    _ = QuantumScript(f=yaqsi_circuit).execute(type="density")
+    _ = Script(f=yaqsi_circuit).execute(type="density")
 
     start = time.time()
     for _ in range(100):
-        _ = QuantumScript(f=yaqsi_circuit).execute(type="density")
+        _ = Script(f=yaqsi_circuit).execute(type="density")
     t_ys = (time.time() - start) / 100
     print(f"Yaqsi density (12q, avg 100): {t_ys*1000:.2f} ms")
 
@@ -1231,8 +1231,8 @@ def test_batch_benchmark(mode) -> None:
         for i in range(n_qubits):
             CRX(phi, wires=[i, (i + 1) % n_qubits])
 
-    # Reuse the same QuantumScript to benefit from JIT compilation caching
-    script = QuantumScript(f=yaqsi_circuit)
+    # Reuse the same Script to benefit from JIT compilation caching
+    script = Script(f=yaqsi_circuit)
 
     # Warmup (triggers first compilation)
     _ = script.execute(type=mode, obs=obs, args=(all_phis[0],), in_axes=(0,))

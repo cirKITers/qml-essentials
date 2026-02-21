@@ -177,7 +177,7 @@ class Entanglement:
                 op.CX(wires=[q, q + n])
                 op.H(wires=q)
 
-        bell_script = ys.QuantumScript(f=_bell_circuit, n_qubits=2 * n)
+        bell_script = ys.Script(f=_bell_circuit, n_qubits=2 * n)
 
         random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:
@@ -572,7 +572,7 @@ class Entanglement:
             for i in range(n):
                 op.H(wires=i)
 
-        swap_script = ys.QuantumScript(f=_swap_test_circuit, n_qubits=3 * n)
+        swap_script = ys.Script(f=_swap_test_circuit, n_qubits=3 * n)
 
         random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:

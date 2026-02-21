@@ -56,7 +56,7 @@ def logm_v(A: jnp.ndarray, **kwargs) -> jnp.ndarray:
 
 class PauliTape:
     """Simple tape wrapper with ``operations``, ``observables``, and
-    ``get_parameters`` — replacing PennyLane's ``QuantumScript`` for the
+    ``get_parameters`` — replacing PennyLane's ``Script`` for the
     Fourier-tree algorithm.
     """
 
@@ -763,8 +763,8 @@ class QuanTikz:
 
         Parameters
         ----------
-        script : QuantumScript
-            A yaqsi QuantumScript wrapping the circuit function.
+        script : Script
+            A yaqsi Script wrapping the circuit function.
         params : array
             Weight parameters for the circuit.
         inputs : array

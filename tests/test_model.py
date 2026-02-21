@@ -7,7 +7,7 @@ from qml_essentials.model import Model
 from qml_essentials.ansaetze import Circuit, Ansaetze, Gates, Encoding
 from qml_essentials.gates import PulseInformation as pinfo
 from qml_essentials.utils import PauliCircuit
-from qml_essentials.yaqsi import QuantumScript
+from qml_essentials.yaqsi import Script
 import pytest
 import logging
 import pennylane as qml
@@ -1070,7 +1070,7 @@ def test_pauli_circuit_model() -> None:
         )
 
         # Execute the Pauli tape via yaqsi's statevector simulator
-        result_pauli_circuit = QuantumScript._simulate_and_measure(
+        result_pauli_circuit = Script._simulate_and_measure(
             pauli_tape.operations,
             model.n_qubits,
             "expval",

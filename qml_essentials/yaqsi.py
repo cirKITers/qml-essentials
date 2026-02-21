@@ -292,12 +292,12 @@ def _evolve_parametrized(ph: ParametrizedHamiltonian, **odeint_kwargs) -> Callab
 
 
 # ===================================================================
-# QuantumScript – circuit container & executor
+# Script – circuit container & executor
 # ===================================================================
-class QuantumScript:
+class Script:
     """Circuit container and executor backed by pure JAX kernels.
 
-    ``QuantumScript`` takes a callable *f* representing a quantum circuit.
+    ``Script`` takes a callable *f* representing a quantum circuit.
     Within *f*, :class:`~qml_essentials.operations.Operation` objects are
     instantiated and automatically recorded onto a tape.  The tape is then
     simulated using either a statevector or density-matrix kernel depending on
@@ -313,12 +313,12 @@ class QuantumScript:
         >>> def circuit(theta):
         ...     RX(theta, wires=0)
         ...     PauliZ(wires=1)
-        >>> script = QuantumScript(circuit, n_qubits=2)
+        >>> script = Script(circuit, n_qubits=2)
         >>> result = script.execute(type="expval", obs=[PauliZ(0)])
     """
 
     def __init__(self, f: Callable, n_qubits: Optional[int] = None) -> None:
-        """Initialise a QuantumScript.
+        """Initialise a Script.
 
         Args:
             f: A function whose body instantiates ``Operation`` objects.
@@ -481,17 +481,17 @@ class QuantumScript:
             has_noise = any(isinstance(o, KrausChannel) for o in tape)
             if has_noise:
                 # Must do full density-matrix evolution for Kraus channels.
-                rho = QuantumScript._simulate_mixed(tape, n_qubits)
+                rho = Script._simulate_mixed(tape, n_qubits)
             else:
                 # Pure circuit requesting density output: simulate the
                 # statevector (O(depth × 2^n)) and form ρ = |ψ⟩⟨ψ| once
                 # (O(4^n)).  This avoids the O(depth × 4^n) cost of
                 # evolving the full density matrix gate by gate.
-                state = QuantumScript._simulate_pure(tape, n_qubits)
+                state = Script._simulate_pure(tape, n_qubits)
                 rho = jnp.outer(state, jnp.conj(state))
-            return QuantumScript._measure_density(rho, n_qubits, type, obs)
-        state = QuantumScript._simulate_pure(tape, n_qubits)
-        return QuantumScript._measure_state(state, n_qubits, type, obs)
+            return Script._measure_density(rho, n_qubits, type, obs)
+        state = Script._simulate_pure(tape, n_qubits)
+        return Script._measure_state(state, n_qubits, type, obs)
 
     # -- measurement helpers --------------------------------------------
 
@@ -819,7 +819,7 @@ class QuantumScript:
         #    shapes reuse the compiled kernel and skip all Python-level
         #    tracing, eliminating the O(B × circuit_depth) Python overhead.
         #
-        # The compiled function is cached on this QuantumScript instance,
+        # The compiled function is cached on this Script instance,
         # keyed on (type, in_axes, arg_shapes).  Repeated calls with the
         # same structure (e.g. training iterations) skip both Python-level
         # tracing and XLA compilation entirely — they jump straight to the

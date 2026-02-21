@@ -245,11 +245,11 @@ class Model:
 
         log.info(f"Initialized pulse parameters with shape {self.pulse_params.shape}.")
 
-        # Initialise the yaqsi QuantumScript that wraps _variational.
+        # Initialise the yaqsi Script that wraps _variational.
         # No device selection needed — yaqsi auto-routes between statevector
         # and density-matrix simulation based on whether noise channels are
         # present on the tape.
-        self.script = ys.QuantumScript(f=self._variational, n_qubits=self.n_qubits)
+        self.script = ys.Script(f=self._variational, n_qubits=self.n_qubits)
 
     @property
     def noise_params(self) -> Optional[Dict[str, Union[float, Dict[str, float]]]]:
@@ -702,7 +702,7 @@ class Model:
 
         The first four parameters (after ``self``) — ``params``, ``inputs``,
         ``pulse_params``, ``random_key`` — are the batchable positional
-        arguments that ``_mp_executor`` passes via ``QuantumScript.execute``.
+        arguments that ``_mp_executor`` passes via ``Script.execute``.
         The remaining keyword arguments are broadcast across the batch.
 
         Args:
@@ -833,7 +833,7 @@ class Model:
 
         Translates the model's ``execution_type`` and ``output_qubit``
         settings into parameters suitable for
-        :meth:`~qml_essentials.yaqsi.QuantumScript.execute`.
+        :meth:`~qml_essentials.yaqsi.Script.execute`.
 
         Returns:
             Tuple ``(meas_type, obs)`` where *meas_type* is one of
@@ -1032,7 +1032,7 @@ class Model:
         saved_noise = self._noise_params
         self._noise_params = None
 
-        draw_script = ys.QuantumScript(f=self._variational, n_qubits=self.n_qubits)
+        draw_script = ys.Script(f=self._variational, n_qubits=self.n_qubits)
         result = draw_script.draw(
             figure=figure,
             args=(params, inp),
@@ -1212,8 +1212,8 @@ class Model:
         """
         Execute circuit function with optional parallelization over batches.
 
-        Uses the yaqsi QuantumScript to execute the circuit.  When batching
-        is needed (B > 1), ``QuantumScript.execute`` is called with
+        Uses the yaqsi Script to execute the circuit.  When batching
+        is needed (B > 1), ``Script.execute`` is called with
         ``in_axes`` so that ``jax.vmap`` is applied internally.
 
         Args:

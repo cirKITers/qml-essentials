@@ -116,8 +116,8 @@ class QOC:
         Args:
             pulse_params (list or array): Optimized parameters to
                 use for the pulse-based gate.
-            pulse_script (ys.QuantumScript): Pulse-based gate QuantumScript.
-            target_script (ys.QuantumScript): Unitary-based gate QuantumScript.
+            pulse_script (ys.Script): Pulse-based gate Script.
+            target_script (ys.Script): Unitary-based gate Script.
 
         Returns:
             float: Cost function value.
@@ -148,8 +148,8 @@ class QOC:
         Args:
             pulse_params (list or array): Optimized parameters to use for
                 the pulse-based gate.
-            pulse_scripts (list): List of pulse-based gate QuantumScripts.
-            target_scripts (list): List of unitary-based gate QuantumScripts.
+            pulse_scripts (list): List of pulse-based gate Scripts.
+            target_scripts (list): List of unitary-based gate Scripts.
 
         Returns:
             float: Cost function value.
@@ -244,8 +244,8 @@ class QOC:
                 """
                 pulse_circuit, target_circuit = create_circuits()
 
-                pulse_script = ys.QuantumScript(pulse_circuit, n_qubits=wires)
-                target_script = ys.QuantumScript(target_circuit, n_qubits=wires)
+                pulse_script = ys.Script(pulse_circuit, n_qubits=wires)
+                target_script = ys.Script(target_circuit, n_qubits=wires)
 
                 gate_name = create_circuits.__name__.split("_")[1]
 
@@ -306,12 +306,8 @@ class QOC:
                 for create_circuits in create_circuits_array:
                     pulse_circuit, target_circuit = create_circuits()
 
-                    pulse_scripts.append(
-                        ys.QuantumScript(pulse_circuit, n_qubits=wires)
-                    )
-                    target_scripts.append(
-                        ys.QuantumScript(target_circuit, n_qubits=wires)
-                    )
+                    pulse_scripts.append(ys.Script(pulse_circuit, n_qubits=wires))
+                    target_scripts.append(ys.Script(target_circuit, n_qubits=wires))
 
                     gate_name = create_circuits.__name__.split("_")[1]
 
