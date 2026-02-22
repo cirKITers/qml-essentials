@@ -63,6 +63,8 @@ def test_batch_gate_error():
     assert np.allclose(res_b, np.flip(res_b)), (
         "Expected all outputs to be the same " "when batch_gate_error is False"
     )
+    # Reset to default so other tests are not affected
+    UnitaryGates.batch_gate_error = True
 
 
 @pytest.mark.smoketest

@@ -3,16 +3,15 @@ from typing import Any, Dict, Optional, Tuple, Callable, Union, List
 from qml_essentials import operations as op
 from qml_essentials import yaqsi as ys
 import warnings
-from copy import deepcopy
-import jax
 import jax.numpy as jnp
 import numpy as np
 from jax import random
 
+from qml_essentials.tape import recording
+from qml_essentials.operations import KrausChannel
 from qml_essentials.ansaetze import Ansaetze, Circuit, Encoding
-from qml_essentials.gates import Gates
-from qml_essentials.gates import PulseInformation as pinfo
-from qml_essentials.utils import QuanTikz, safe_random_split
+from qml_essentials.gates import Gates, PulseInformation as pinfo
+from qml_essentials.utils import safe_random_split
 
 import logging
 
@@ -23,9 +22,6 @@ class Model:
     """
     A quantum circuit model.
     """
-
-    lightning_threshold = 12
-    cpu_scaler = 0.9  # default cpu scaler, =1 means full CPU for MP
 
     def __init__(
         self,
@@ -947,9 +943,6 @@ class Model:
         # Return cached value if available
         if hasattr(self, "_cached_circuit_depth"):
             return self._cached_circuit_depth
-
-        from qml_essentials.tape import recording
-        from qml_essentials.operations import KrausChannel
 
         inputs = self._inputs_validation(inputs)
 

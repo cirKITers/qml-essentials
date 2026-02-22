@@ -172,7 +172,7 @@ class UnitaryGates:
                 (
                     w.shape
                     if isinstance(w, jnp.ndarray) and UnitaryGates.batch_gate_error
-                    else (1,)
+                    else ()
                 ),
             )
         return w, random_key

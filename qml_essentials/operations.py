@@ -7,42 +7,6 @@ import jax.numpy as jnp
 
 from qml_essentials.tape import active_tape, recording  # noqa: F401 (re-export)
 
-# Alphabet for einsum subscript generation (up to 52 indices)
-_EINSUM_LETTERS = string.ascii_letters  # a-z, A-Z
-
-
-@lru_cache(maxsize=256)
-def _permutation_for_contraction(
-    total: int,
-    k: int,
-    target_axes: Tuple[int, ...],
-) -> Tuple[Tuple[int, ...], Tuple[int, ...]]:
-    """Pre-compute the contraction and permutation indices.
-
-    These are pure functions of ``(total, k, target_axes)`` and never change
-    for a given gate/wire combination.  Caching them avoids rebuilding
-    Python lists on every single gate application — a measurable overhead
-    when circuits have hundreds of gates.
-
-    Args:
-        total: Total rank of the tensor (``n`` for states, ``2n`` for density
-            matrices).
-        k: Number of qubits the gate acts on.
-        target_axes: The axes to contract against (as a tuple for hashability).
-
-    Returns:
-        ``(contract_axes, perm)`` — the axes to pass to ``jnp.tensordot`` and
-        the permutation to restore the original axis order.
-    """
-    contract_axes = tuple(range(k, 2 * k))
-    target_set = set(target_axes)
-    remaining = [ax for ax in range(total) if ax not in target_set]
-    dest = list(target_axes) + remaining
-    perm = [0] * total
-    for src_pos, dst_pos in enumerate(dest):
-        perm[dst_pos] = src_pos
-    return contract_axes, tuple(perm)
-
 
 @lru_cache(maxsize=256)
 def _einsum_subscript(
@@ -72,7 +36,7 @@ def _einsum_subscript(
         ``einsum`` subscript string, e.g. ``"ab,cBd->cad"`` for a 1-qubit
         gate on wire 1 of a 3-qubit state.
     """
-    letters = _EINSUM_LETTERS
+    letters = string.ascii_letters
     # State indices: one letter per axis
     state_idx = list(letters[:n])
     # Contracted indices (the ones being replaced by the gate)
@@ -1377,7 +1341,8 @@ class QubitChannel(KrausChannel):
 
 # ===================================================================
 # Pauli algebra helpers
-# TODO: this needs refactoring and can be potentially merged into the
+# TODO: all of this below
+# needs refactoring and can be potentially merged into the
 # codebase above
 # ===================================================================
 
@@ -1385,18 +1350,6 @@ class QubitChannel(KrausChannel):
 _PAULI_MATS = [Id._matrix, PauliX._matrix, PauliY._matrix, PauliZ._matrix]
 _PAULI_LABELS = ["I", "X", "Y", "Z"]
 _PAULI_CLASSES = [Id, PauliX, PauliY, PauliZ]
-
-
-def adjoint_matrix(op: Operation) -> jnp.ndarray:
-    """Return the adjoint (conjugate transpose) of *op*'s matrix.
-
-    Args:
-        op: A quantum operation with a ``.matrix`` property.
-
-    Returns:
-        The ``(d, d)`` adjoint matrix.
-    """
-    return jnp.conj(op.matrix).T
 
 
 def evolve_pauli_with_clifford(

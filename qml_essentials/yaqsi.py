@@ -5,6 +5,7 @@ import diffrax
 import jax
 import jax.numpy as jnp
 import jax.scipy.linalg
+import numpy as np  # needed to prevent jitting some operations
 
 from qml_essentials.operations import (
     Hermitian,
@@ -17,13 +18,13 @@ from qml_essentials.operations import (
 from qml_essentials.tape import recording
 from qml_essentials.drawing import draw_text, draw_mpl, draw_tikz
 
-import numpy as _np
 
 # Module-level cache for JIT-compiled ODE solvers.  Keyed on
 # (coeff_fn_id, dim, atol, rtol) so that all evolve() calls with the
 # same pulse shape function and matrix size share one compiled XLA
 # program.  This turns O(n_gates) JIT compilations into
 # O(n_distinct_pulse_shapes) during pulse-mode circuit building.
+# TODO: thread safe?
 _evolve_solver_cache: dict = {}
 
 
@@ -570,8 +571,8 @@ class Script:
                 if m is None or len(ob.wires) != 1:
                     return False
                 # Convert to NumPy to ensure concrete boolean evaluation
-                m_np = _np.asarray(m)
-                return _np.allclose(m_np - _np.diag(_np.diag(m_np)), 0)
+                m_np = np.asarray(m)
+                return np.allclose(m_np - np.diag(np.diag(m_np)), 0)
 
             all_single_qubit_diag = all(_is_single_qubit_diag(ob) for ob in obs)
 
@@ -581,7 +582,7 @@ class Script:
                 results = []
                 for ob in obs:
                     q = ob.wires[0]
-                    d = _np.real(_np.diag(_np.asarray(ob.__class__._matrix)))
+                    d = np.real(np.diag(np.asarray(ob.__class__._matrix)))
                     # Sum probabilities over all axes except qubit q
                     p_q = jnp.sum(
                         psi_t, axis=tuple(i for i in range(n_qubits) if i != q)
