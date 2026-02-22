@@ -15,7 +15,6 @@ from qml_essentials.operations import (
     PauliZ,
     _einsum_subscript,
 )
-from qml_essentials.gates import UnitaryGates
 from qml_essentials.tape import recording
 from qml_essentials.drawing import draw_text, draw_mpl, draw_tikz
 
@@ -803,6 +802,7 @@ class Script:
         # invalidates the cached JIT-compiled function (the if/else branch
         # inside GateError is resolved at trace time and baked into XLA).
         # TODO: we need to fix the dirty class-level `batch_gate_error` hack
+        from qml_essentials.gates import UnitaryGates
 
         cache_key = (type, in_axes, arg_shapes, UnitaryGates.batch_gate_error)
         batched_fn = self._jit_cache.get(cache_key)
