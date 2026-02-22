@@ -15,6 +15,7 @@ from qml_essentials.operations import (
     PauliZ,
     _einsum_subscript,
 )
+from qml_essentials.gates import UnitaryGates
 from qml_essentials.tape import recording
 from qml_essentials.drawing import draw_text, draw_mpl, draw_tikz
 
@@ -798,7 +799,12 @@ class Script:
         arg_shapes = tuple(
             (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in args
         )
-        cache_key = (type, in_axes, arg_shapes)
+        # Include batch_gate_error in the cache key so that toggling it
+        # invalidates the cached JIT-compiled function (the if/else branch
+        # inside GateError is resolved at trace time and baked into XLA).
+        # TODO: we need to fix the dirty class-level `batch_gate_error` hack
+
+        cache_key = (type, in_axes, arg_shapes, UnitaryGates.batch_gate_error)
         batched_fn = self._jit_cache.get(cache_key)
         if batched_fn is not None:
             return batched_fn(*args)
