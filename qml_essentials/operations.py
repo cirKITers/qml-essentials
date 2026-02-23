@@ -230,6 +230,57 @@ class Operation:
         else:
             self._wires = [wires]
 
+    def _update_tape_operation(self, op: "Operation") -> None:
+        """
+        If ``self`` is already on the active tape (the typical case when
+        chaining ``Gate(...).dagger()``), it is replaced by the daggered
+        operation so that only U† appears on the tape — not both U and ``U\\dagger``.
+        Note that this should only be called immediately after the tape is updated.s
+
+        Args:
+            op (Operation): New replaced operation on the tape
+        """
+        # If self was recorded on the tape, replace it with the daggered op.
+        tape = active_tape()
+        if tape is not None:
+            if tape and tape[-1] is self:
+                tape[-1] = op
+            else:
+                tape.append(op)
+
+    def dagger(self) -> "Operation":
+        """Return a new operation, the conjugate transpose (``U\\dagger``)
+        Usage inside a circuit function::
+
+            RX(0.5, wires=0).dagger()
+
+        Returns:
+            A new :class:`Operation` with matrix ``U†`` acting on the same wires.
+        """
+        mat = jnp.conj(self._matrix).T
+        op = Operation(wires=self.wires, matrix=mat, record=False)
+
+        self._update_tape_operation(op)
+
+        return op
+
+    def power(self, power) -> "Operation":
+        """Return a new operation, the power (``U^power``)
+        Usage inside a circuit function::
+
+            PauliX(wires=0).power(2)
+
+        Returns:
+            A new :class:`Operation` with matrix ``U†`` acting on the same wires.
+        """
+        # TODO: support fractional powers
+        mat = jnp.linalg.matrix_power(self._matrix, power)
+        op = Operation(wires=self.wires, matrix=mat, record=False)
+
+        self._update_tape_operation(op)
+
+        return op
+
     def lifted_matrix(self, n_qubits: int) -> jnp.ndarray:
         """Return the full ``2**n x 2**n`` matrix embedding this gate.
 
@@ -567,12 +618,14 @@ def _make_rotation_gate(pauli_class: type, name: str) -> type:
         _num_wires = 1
         _param_names = ("theta",)
 
-        def __init__(self, theta: float, wires: Union[int, List[int]] = 0) -> None:
+        def __init__(
+            self, theta: float, wires: Union[int, List[int]] = 0, **kwargs
+        ) -> None:
             self.theta = theta
             c = jnp.cos(theta / 2)
             s = jnp.sin(theta / 2)
             mat = c * Id._matrix - 1j * s * pauli_mat
-            super().__init__(wires=wires, matrix=mat)
+            super().__init__(wires=wires, matrix=mat, **kwargs)
 
         def generator(self) -> Operation:
             """Return the generator as the corresponding Pauli operation."""

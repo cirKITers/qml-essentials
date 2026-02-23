@@ -765,9 +765,9 @@ class Script:
                 - ``"density"`` — full density matrix of shape
                   ``(2**n, 2**n)``.
 
-            obs: Observables required when *type* is ``"expval"``.
-            args: Positional arguments forwarded to the circuit function *f*.
-            kwargs: Keyword arguments forwarded to *f*.
+            obs: Observables required when type is ``"expval"``.
+            args: Positional arguments forwarded to the circuit function f.
+            kwargs: Keyword arguments forwarded to f.
             in_axes: Batch axes for each element of *args*, following the same
                 convention as ``jax.vmap``:
 
@@ -786,8 +786,8 @@ class Script:
                 is set, a default key ``jax.random.PRNGKey(0)`` is used.
 
         Returns:
-            Without *in_axes*: shape determined by *type*.
-            With *in_axes*: shape ``(B, ...)`` with a leading batch dimension.
+            Without in_axes: shape determined by type.
+            With in_axes: shape ``(B, ...)`` with a leading batch dimension.
         """
         if obs is None:
             obs = []
@@ -848,8 +848,9 @@ class Script:
             obs: Observables (see :meth:`execute`).
             args: Positional arguments for the circuit function.
             kwargs: Keyword arguments for the circuit function.
-            in_axes: One entry per element of *args*.  Follows ``jax.vmap``
-                convention: an int gives the batch axis; ``None`` broadcasts.
+            in_axes: One entry per element of args.
+            Follows ``jax.vmap`` convention:
+            an int gives the batch axis; ``None`` broadcasts.
             shots: Number of measurement shots.  If ``None``, exact results.
             key: JAX PRNG key for shot sampling.
 
