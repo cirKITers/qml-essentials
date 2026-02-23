@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 rng = jax.random.PRNGKey(1000)
 
 identifier = datetime.now().strftime("%Y%m%d%H%M%S")
-print(f"Identifier: {identifier}")
+logger.info(f"Identifier: {identifier}")
 
 LOAD_LATEST = False  # Set to True to skip computation and load the latest CSV instead
 WARMUP = True  # Does not produce meaningful results if False
@@ -47,7 +47,7 @@ def var_ghz_benchmark(mode, q) -> None:
     n_qubits = q
     rng, subkey = jax.random.split(rng)
 
-    print(f"Running Yaqsi benchmark (mode: {mode}, {q} qubits)")
+    logger.info(f"Running Yaqsi benchmark (mode: {mode}, {q} qubits)")
     # Pre-generate different parameters for each iteration to simulate
     # a training loop where params change every step.
     all_phis = jax.random.uniform(
@@ -84,7 +84,7 @@ def var_ghz_benchmark(mode, q) -> None:
     t_ys = float(np.mean(ys_times))
     std_ys = float(np.std(ys_times))
 
-    print(
+    logger.info(
         f"Yaqsi {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
         f"{t_ys*1000:.2f} ± {std_ys*1000:.2f} ms"
     )
@@ -118,18 +118,18 @@ def var_ghz_benchmark(mode, q) -> None:
     t_pl = float(np.mean(pl_times))
     std_pl = float(np.std(pl_times))
 
-    print(
+    logger.info(
         f"PennyLane {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
         f"{t_pl*1000:.2f} ± {std_pl*1000:.2f} ms"
     )
-    print(f"Ratio pl/yaqsi: {t_pl/t_ys:.2f}x")
+    logger.info(f"Ratio pl/yaqsi: {t_pl/t_ys:.2f}x")
 
     res_pl_arr = jnp.array(res_pl)
     if res_pl_arr.shape != res_ys.shape:
         res_pl_arr = res_pl_arr.T
 
     assert jnp.allclose(res_ys, res_pl_arr, atol=1e-10), "Results do not match"
-    print(f"Results match")
+    logger.info(f"Results match")
 
     return [t_ys, t_pl, std_ys, std_pl]
 
@@ -146,7 +146,7 @@ if LOAD_LATEST:
         raise FileNotFoundError("No benchmarks-*.csv files found to load.")
     latest_csv = csv_files[-1]
     identifier = latest_csv[len("benchmarks-") : -len(".csv")]
-    print(f"Loading latest results from {latest_csv} (identifier: {identifier})")
+    logger.info(f"Loading latest results from {latest_csv} (identifier: {identifier})")
 
     with open(latest_csv, newline="") as f:
         reader = csv.DictReader(f)
@@ -181,7 +181,7 @@ else:
             results[mode]["std_pl"].append(std_pl * 1000)
 
     # --- CSV export ---
-    print(f"Exporting results to benchmarks-{identifier}.csv")
+    logger.info(f"Exporting results to benchmarks-{identifier}.csv")
     with open(f"benchmarks-{identifier}.csv", "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(
@@ -212,7 +212,7 @@ else:
                 )
 
 # --- Matplotlib figure ---
-print(f"Plotting results to benchmarks-{identifier}.png")
+logger.info(f"Plotting results to benchmarks-{identifier}.png")
 
 
 mode_colors = {
@@ -287,4 +287,4 @@ ax.legend(
 plt.tight_layout()
 plt.show()
 plt.savefig(f"benchmarks-{identifier}.png", dpi=150)
-print("Figure saved to benchmarks.png")
+logger.info("Figure saved to benchmarks.png")
