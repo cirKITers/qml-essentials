@@ -1142,11 +1142,11 @@ class ThermalRelaxationError(KrausChannel):
     Models simultaneous T₁ energy relaxation and T₂ dephasing.  Two regimes
     are handled:
 
-    **T₂ ≤ T₁** (Markovian dephasing + reset):
+    T₂ ≤ T₁ (Markovian dephasing + reset):
         Six Kraus operators built from p_z (phase-flip probability), p_r0
         (reset-to-|0⟩ probability) and p_r1 (reset-to-|1⟩ probability).
 
-    **T₂ > T₁** (non-Markovian; Choi matrix decomposition):
+    T₂ > T₁ (non-Markovian; Choi matrix decomposition):
         The Choi matrix is assembled from the relaxation/dephasing rates, then
         diagonalised; Kraus operators are K_i = \sqrt λ_i · mat(v_i).
 
@@ -1201,9 +1201,9 @@ class ThermalRelaxationError(KrausChannel):
 
         The number of operators depends on the regime:
 
-        * **T₂ ≤ T₁**: six operators (identity, phase-flip, two reset-to-|0⟩,
+        * T₂ ≤ T₁: six operators (identity, phase-flip, two reset-to-|0⟩,
           two reset-to-|1⟩).
-        * **T₂ > T₁**: four operators derived from the Choi matrix eigendecomposition.
+        * T₂ > T₁: four operators derived from the Choi matrix eigendecomposition.
 
         Returns:
             List of 2x2 JAX arrays representing the Kraus operators.

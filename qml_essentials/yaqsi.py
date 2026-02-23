@@ -217,9 +217,9 @@ class Yaqsi:
         Performance improvements over the previous ``jax.experimental.ode``
         implementation:
 
-        * Uses **diffrax** — a modern, well-maintained JAX ODE library with
+        * Uses diffrax — a modern, well-maintained JAX ODE library with
         better XLA compilation, adjoint methods, and step-size control.
-        * The JIT-compiled solver is **cached** per coefficient function so
+        * The JIT-compiled solver is cached per coefficient function so
         that multiple ``evolve()`` calls with the same pulse shape (but
         different Hamiltonian matrices or parameters) reuse the same
         compiled XLA program.  This avoids O(n_gates) JIT compilations
@@ -503,7 +503,7 @@ class Script:
         This eliminates duplicated branching logic in single-sample and
         batched execution paths.
 
-        **Pure-circuit density optimisation** — when ``type == "density"``
+        Pure-circuit density optimisation — when ``type == "density"``
         but no noise channels are present on the tape, the density matrix
         is computed via statevector simulation followed by an outer product
         ``\rho  = \vert\psi\rangle\langle\psi\vert`` instead of evolving the full ``2^n\times 2^n`` matrix
@@ -711,13 +711,13 @@ class Script:
             With *in_axes*: shape ``(B, ...)`` with a leading batch dimension.
 
         Note:
-            **Tape / kernel split** — the circuit function is executed in
+            Tape / kernel split — the circuit function is executed in
             Python *once* to record the tape and determine ``n_qubits`` and
             whether noise is present.  The pure JAX kernels
             (``_simulate_pure`` / ``_simulate_mixed``) are then vmapped, so
             Python overhead is O(circuit_depth), not O(B\times circuit_depth).
 
-            **shard_map migration** — the ``jax.vmap`` call in
+            shard_map migration — the ``jax.vmap`` call in
             :meth:`_execute_batched` is the exact boundary to replace with
             ``jax.shard_map`` for multi-device execution.
         """
@@ -754,7 +754,7 @@ class Script:
     ) -> jnp.ndarray:
         """Vectorise :meth:`execute` over a batch axis using ``jax.vmap``.
 
-        The circuit function is traced **once** in Python with scalar slices to
+        The circuit function is traced once in Python with scalar slices to
         record the tape, determine ``n_qubits``, and detect noise.  The
         resulting pure simulation kernel is then vmapped over the requested
         axes.
@@ -845,12 +845,12 @@ class Script:
         #
         # Wrapping the vmapped function in jax.jit has two effects:
         #
-        # 1. **Multi-core utilisation** — the JIT-compiled XLA program can
+        # 1. Multi-core utilisation — the JIT-compiled XLA program can
         #    use intra-op parallelism to distribute independent SIMD lanes
         #    across CPU threads, unlike an eager vmap which runs
         #    single-threaded.
         #
-        # 2. **Compilation caching** — subsequent calls with the same input
+        # 2. Compilation caching — subsequent calls with the same input
         #    shapes reuse the compiled kernel and skip all Python-level
         #    tracing, eliminating the O(B\times circuit_depth) Python overhead.
         #
