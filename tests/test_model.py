@@ -588,7 +588,6 @@ def test_pulse_model() -> None:
     assert jnp.any(jnp.abs(grads[1]) > 1e-6), "Gradient wrt pulse_params is too small"
 
 
-@pytest.mark.expensive
 @pytest.mark.unittest
 def test_pulse_model_inference():
     model = Model(

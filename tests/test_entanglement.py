@@ -94,7 +94,6 @@ def get_test_cases():
     return circuits, results_n_layers_1, results_n_layers_3, skip_indices
 
 
-@pytest.mark.expensive
 @pytest.mark.unittest
 def test_mw_measure() -> None:
     circuits, results_n_layers_1, results_n_layers_3, skip_indices = get_test_cases()
@@ -247,7 +246,6 @@ def test_multithreaded_entanglement() -> None:
         )
 
 
-@pytest.mark.expensive
 @pytest.mark.unittest
 def test_bell_measure() -> None:
     circuits, results_n_layers_1, results_n_layers_3, skip_indices = get_test_cases()
@@ -359,7 +357,6 @@ def test_entangling_measures() -> None:
 
 
 @pytest.mark.smoketest
-@pytest.mark.expensive
 def test_scaling() -> None:
     model = Model(
         n_qubits=2,
@@ -411,7 +408,6 @@ def test_relative_entropy() -> None:
 
 
 @pytest.mark.smoketest
-@pytest.mark.expensive
 def test_relative_entropy_order() -> None:
 
     circuits = [
@@ -486,7 +482,6 @@ def test_entanglement_of_formation() -> None:
 
 
 @pytest.mark.smoketest
-@pytest.mark.expensive
 def test_entanglement_of_formation_order() -> None:
 
     circuits = [
@@ -545,7 +540,6 @@ def test_concentratable_entanglement() -> None:
 
 
 @pytest.mark.smoketest
-@pytest.mark.expensive
 def test_concentratable_entanglement_order() -> None:
 
     circuits = [

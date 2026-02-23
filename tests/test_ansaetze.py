@@ -333,7 +333,6 @@ def test_min_qubit_warning() -> None:
         )
 
 
-@pytest.mark.expensive
 @pytest.mark.unittest
 def test_pulse_params_ansaetze() -> None:
     test_cases = {

@@ -1176,7 +1176,6 @@ def test_evolve_type_error() -> None:
         evolve("not a hamiltonian")
 
 
-@pytest.mark.expensive
 @pytest.mark.unittest
 @pytest.mark.limit_memory("1 GB")
 def test_memory() -> None:
@@ -1197,7 +1196,6 @@ def test_memory() -> None:
         _ = Script(f=yaqsi_circuit).execute(type="density")
 
 
-@pytest.mark.expensive
 @pytest.mark.benchmark
 @pytest.mark.unittest
 @pytest.mark.parametrize("mode", ["probs", "expval", "state", "density"])
@@ -1301,3 +1299,167 @@ def test_mode_performances(benchmark, mode) -> None:
 
     assert jnp.allclose(res_ys, res_pl_arr, atol=1e-10), "Results do not match"
     print("Results match")
+
+
+def _bell_circuit(theta):
+    """Simple 2-qubit circuit: H(0) CX(0,1) RZ(theta, 0)."""
+    H(wires=0)
+    CX(wires=[0, 1])
+    RZ(theta, wires=0)
+
+
+@pytest.mark.unittest
+def test_shots_probs_single():
+    """Shot-sampled probs should sum to 1 and have correct shape."""
+    script = Script(_bell_circuit, n_qubits=2)
+    key = jax.random.PRNGKey(42)
+    result = script.execute(
+        type="probs",
+        args=(0.5,),
+        shots=4096,
+        key=key,
+    )
+    assert result.shape == (4,), f"Expected shape (4,), got {result.shape}"
+    assert jnp.allclose(result.sum(), 1.0, atol=1e-10), "Probs don't sum to 1"
+    # All probabilities should be non-negative
+    assert jnp.all(result >= 0), "Negative probability found"
+
+
+@pytest.mark.unittest
+def test_shots_probs_convergence():
+    """With many shots, shot-sampled probs should converge to exact."""
+    script = Script(_bell_circuit, n_qubits=2)
+    key = jax.random.PRNGKey(123)
+    exact = script.execute(type="probs", args=(0.5,))
+    sampled = script.execute(type="probs", args=(0.5,), shots=100000, key=key)
+    assert jnp.allclose(exact, sampled, atol=0.02), (
+        f"Shot probs don't converge to exact.\n"
+        f"  exact:   {exact}\n"
+        f"  sampled: {sampled}"
+    )
+
+
+@pytest.mark.unittest
+def test_shots_expval_single():
+    """Shot-sampled expval should be close to exact for many shots."""
+    script = Script(_bell_circuit, n_qubits=2)
+    key = jax.random.PRNGKey(7)
+    obs = [PauliZ(wires=0), PauliZ(wires=1)]
+    exact = script.execute(type="expval", obs=obs, args=(0.5,))
+    sampled = script.execute(type="expval", obs=obs, args=(0.5,), shots=100000, key=key)
+    assert (
+        sampled.shape == exact.shape
+    ), f"Shape mismatch: {sampled.shape} vs {exact.shape}"
+    assert jnp.allclose(exact, sampled, atol=0.02), (
+        f"Shot expval doesn't converge to exact.\n"
+        f"  exact:   {exact}\n"
+        f"  sampled: {sampled}"
+    )
+
+
+@pytest.mark.unittest
+def test_shots_expval_bounded():
+    """Shot-sampled expval for PauliZ should be in [-1, 1]."""
+    script = Script(_bell_circuit, n_qubits=2)
+    key = jax.random.PRNGKey(99)
+    obs = [PauliZ(wires=0)]
+    for _ in range(10):
+        key, subkey = jax.random.split(key)
+        result = script.execute(
+            type="expval", obs=obs, args=(0.5,), shots=100, key=subkey
+        )
+        assert -1.0 <= float(result[0]) <= 1.0, f"Expval out of bounds: {result[0]}"
+
+
+@pytest.mark.unittest
+def test_shots_different_keys_give_different_results():
+    """Different PRNG keys should produce different shot samples."""
+    script = Script(_bell_circuit, n_qubits=2)
+    r1 = script.execute(
+        type="probs",
+        args=(0.5,),
+        shots=100,
+        key=jax.random.PRNGKey(0),
+    )
+    r2 = script.execute(
+        type="probs",
+        args=(0.5,),
+        shots=100,
+        key=jax.random.PRNGKey(1),
+    )
+    # With only 100 shots, different keys should almost always differ
+    assert not jnp.allclose(r1, r2), "Different keys produced identical results"
+
+
+@pytest.mark.unittest
+def test_shots_probs_batched():
+    """Shot-sampled probs with batched execution."""
+    script = Script(_bell_circuit, n_qubits=2)
+    thetas = jnp.array([0.1, 0.5, 1.0, 2.0])
+    key = jax.random.PRNGKey(42)
+    result = script.execute(
+        type="probs",
+        args=(thetas,),
+        in_axes=(0,),
+        shots=10000,
+        key=key,
+    )
+    assert result.shape == (4, 4), f"Expected shape (4, 4), got {result.shape}"
+    # Each row should sum to 1
+    row_sums = result.sum(axis=1)
+    assert jnp.allclose(
+        row_sums, 1.0, atol=1e-10
+    ), f"Batched probs don't sum to 1: {row_sums}"
+
+
+@pytest.mark.unittest
+def test_shots_expval_batched():
+    """Shot-sampled expval with batched execution converges to exact."""
+    script = Script(_bell_circuit, n_qubits=2)
+    thetas = jnp.array([0.1, 0.5, 1.0])
+    obs = [PauliZ(wires=0)]
+    key = jax.random.PRNGKey(42)
+    exact = script.execute(
+        type="expval",
+        obs=obs,
+        args=(thetas,),
+        in_axes=(0,),
+    )
+    sampled = script.execute(
+        type="expval",
+        obs=obs,
+        args=(thetas,),
+        in_axes=(0,),
+        shots=100000,
+        key=key,
+    )
+    assert sampled.shape == exact.shape
+    assert jnp.allclose(exact, sampled, atol=0.02), (
+        f"Batched shot expval doesn't converge.\n"
+        f"  exact:   {exact}\n"
+        f"  sampled: {sampled}"
+    )
+
+
+@pytest.mark.unittest
+def test_shots_none_returns_exact():
+    """shots=None should return exact analytic results (no sampling)."""
+    script = Script(_bell_circuit, n_qubits=2)
+    r1 = script.execute(type="probs", args=(0.5,))
+    r2 = script.execute(type="probs", args=(0.5,), shots=None)
+    assert jnp.allclose(r1, r2), "shots=None should match exact results"
+
+
+@pytest.mark.unittest
+def test_shots_state_type_ignored():
+    """shots parameter should be ignored for 'state' measurement type."""
+    script = Script(_bell_circuit, n_qubits=2)
+    # For 'state' type, shots should have no effect (exact statevector)
+    exact = script.execute(type="state", args=(0.5,))
+    with_shots = script.execute(
+        type="state",
+        args=(0.5,),
+        shots=100,
+        key=jax.random.PRNGKey(0),
+    )
+    assert jnp.allclose(exact, with_shots), "shots should be ignored for 'state' type"

@@ -509,7 +509,6 @@ def test_spearman_correlation() -> None:
                 For index {i}, {j}, got {pearson[i, j]}, expected {reference}"
 
 
-@pytest.mark.expensive
 @pytest.mark.unittest
 def test_fcc() -> None:
     """
@@ -596,7 +595,6 @@ def test_fourier_fingerprint() -> None:
         )
 
 
-@pytest.mark.expensive
 @pytest.mark.unittest
 def test_fcc_2d() -> None:
     """
@@ -637,7 +635,6 @@ def test_fcc_2d() -> None:
             Got {fcc}, expected {test_case['fcc']}."
 
 
-@pytest.mark.expensive
 @pytest.mark.unittest
 def test_weighting() -> None:
     """
