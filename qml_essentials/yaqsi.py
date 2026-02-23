@@ -459,9 +459,10 @@ class Script:
     def _simulate_mixed(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
         """Density-matrix simulation kernel.
 
-        Starts from \rho  = |00…0⟩⟨00…0| and applies each gate in *tape* via
+        Starts from \\rho  = |00…0⟩⟨00…0| and applies each gate in *tape* via
         :meth:`~qml_essentials.operations.Operation.apply_to_density`
-        (\rho  -> U\rho U† for unitaries, \Sigma_k K_k \rho  K_k† for Kraus channels).
+        (\\rho  -> U\\rho U† for unitaries, \\Sigma_k K_k \\rho  K_k\\dagger
+        for Kraus channels).
         Required for noisy circuits.
 
         Args:
@@ -497,7 +498,8 @@ class Script:
         Pure-circuit density optimisation — when ``type == "density"``
         but no noise channels are present on the tape, the density matrix
         is computed via statevector simulation followed by an outer product
-        ``\rho  = \vert\psi\rangle\langle\psi\vert`` instead of evolving the full ``2^n\times 2^n`` matrix
+        ``\\rho  = \\vert\\psi\\rangle\\langle\\psi\\vert``
+        instead of evolving the full ``2^n\\times 2^n`` matrix
         gate by gate.  This reduces the per-gate cost from O(4^n) to
         O(2^n), giving a significant speed-up for medium qubit counts
         (≈4x for 5 qubits).
@@ -521,8 +523,9 @@ class Script:
                 rho = Script._simulate_mixed(tape, n_qubits)
             else:
                 # Pure circuit requesting density output: simulate the
-                # statevector (O(depth\times 2^n)) and form \rho  = \vert\psi\rangle\langle\psi\vert once
-                # (O(4^n)).  This avoids the O(depth\times 4^n) cost of
+                # statevector (O(depth\times 2^n)) and form  # noqa: W605
+                # \rho  = \vert\psi\rangle\langle\psi\vert once  # noqa: W605
+                # (O(4^n)).  This avoids the O(depth\times 4^n) cost of  # noqa: W605
                 # evolving the full density matrix gate by gate.
                 state = Script._simulate_pure(tape, n_qubits)
                 rho = jnp.outer(state, jnp.conj(state))
@@ -646,13 +649,13 @@ class Script:
             return jnp.real(jnp.diag(rho))
 
         if type == "expval":
-            # Tr(O \rho ) = \Sigma_ij O_ij \rho _ji
+            # Tr(O \\rho ) = \\Sigma_ij O_ij \\rho _ji
             # Stack all observable matrices and compute all traces in one
             # batched operation.
             obs_mats = jnp.stack(
                 [ob.lifted_matrix(n_qubits) for ob in obs], axis=0
             )  # (n_obs, dim, dim)
-            # einsum "oij,ji->o" computes Tr(O_o @ \rho ) for each observable
+            # einsum "oij,ji->o" computes Tr(O_o @ \\rho ) for each observable
             return jnp.real(jnp.einsum("oij,ji->o", obs_mats, rho))
 
         raise ValueError(
@@ -676,7 +679,7 @@ class Script:
         Args:
             type: Measurement type.  One of:
 
-                - ``"expval"``  — expectation value ⟨ψ|O|ψ⟩ / Tr(O\rho ) for
+                - ``"expval"``  — expectation value ⟨ψ|O|ψ⟩ / Tr(O\\rho ) for
                   each observable in *obs*.
                 - ``"probs"``   — probability vector of shape ``(2**n,)``.
                 - ``"state"``   — raw statevector of shape ``(2**n,)``.
@@ -832,7 +835,7 @@ class Script:
         #
         # 2. Compilation caching — subsequent calls with the same input
         #    shapes reuse the compiled kernel and skip all Python-level
-        #    tracing, eliminating the O(B\times circuit_depth) Python overhead.
+        #    tracing, eliminating the O(B\\times circuit_depth) Python overhead.
         #
         # The compiled function is cached on this Script instance,
         # keyed on (type, in_axes, arg_shapes).  Repeated calls with the
@@ -871,7 +874,7 @@ class Script:
             **draw_kwargs: Extra options forwarded to the rendering backend:
 
                 - ``gate_values`` (bool): Show numeric gate angles instead of
-                  symbolic \theta_i labels.  Default ``False``.
+                  symbolic \\theta_i labels.  Default ``False``.
                 - ``inputs_symbols`` (str | list): Symbol(s) used for input
                   gates.  Default ``"x"``.
 

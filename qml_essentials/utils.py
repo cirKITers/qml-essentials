@@ -201,13 +201,11 @@ class PauliCircuit:
             elif PauliCircuit._is_skippable(operation):
                 continue
             elif isinstance(operation, Rot):
-                # Rot(φ, θ, ω) = RZ(ω) @ RY(θ) @ RZ(φ)
                 w = operation.wires[0]
                 operations.append(RZ(operation.phi, wires=w))
                 operations.append(RY(operation.theta, wires=w))
                 operations.append(RZ(operation.omega, wires=w))
             elif isinstance(operation, CRZ):
-                # CRZ(θ, [c,t]) = RZ(θ/2, t) · CNOT(c,t) · RZ(-θ/2, t) · CNOT(c,t)
                 c, t = operation.wires
                 theta = operation.theta
                 operations.append(RZ(theta / 2, wires=t))
@@ -215,8 +213,6 @@ class PauliCircuit:
                 operations.append(RZ(-theta / 2, wires=t))
                 operations.append(CX(wires=[c, t]))
             elif isinstance(operation, CRX):
-                # CRX(θ, [c,t]) = H(t) · CRZ(θ, [c,t]) · H(t)
-                #               = H(t) · RZ(θ/2,t) · CX(c,t) · RZ(-θ/2,t) · CX(c,t) · H(t)
                 c, t = operation.wires
                 theta = operation.theta
                 operations.append(H(wires=t))
@@ -226,8 +222,6 @@ class PauliCircuit:
                 operations.append(CX(wires=[c, t]))
                 operations.append(H(wires=t))
             elif isinstance(operation, CRY):
-                # CRY(θ, [c,t]) = RX(-π/2, t) · CRZ(θ, [c,t]) · RX(π/2, t)
-                #               = RX(-π/2,t) · RZ(θ/2,t) · CX(c,t) · RZ(-θ/2,t) · CX(c,t) · RX(π/2,t)
                 c, t = operation.wires
                 theta = operation.theta
                 operations.append(RX(-jnp.pi / 2, wires=t))
