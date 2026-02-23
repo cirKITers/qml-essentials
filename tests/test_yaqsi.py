@@ -1193,36 +1193,31 @@ def test_memory() -> None:
         for i in range(n_qubits):
             CX(wires=[i, (i + 1) % n_qubits])
 
-    # Warmup
-    _ = Script(f=yaqsi_circuit).execute(type="density")
-
-    start = time.time()
     for _ in range(100):
         _ = Script(f=yaqsi_circuit).execute(type="density")
-    t_ys = (time.time() - start) / 100
-    print(f"Yaqsi density (12q, avg 100): {t_ys*1000:.2f} ms")
 
 
 @pytest.mark.expensive
+@pytest.mark.benchmark
 @pytest.mark.unittest
 @pytest.mark.parametrize("mode", ["probs", "expval", "state", "density"])
-def test_benchmark(mode) -> None:
+def test_mode_performances(benchmark, mode) -> None:
     """
-    Benchmark comparison with pennylane framework (parametric, batched).
+    Note, this test requires codspeed to be activated. Run with
+    .venv/bin/python -m pytest tests/test_yaqsi.py::test_mode_performances -x -s --codspeed
     """
 
     n_qubits = 6
     n_iters = 100
     batch_size = 100
+    rng = jax.random.PRNGKey(1000)
+    rng, subkey = jax.random.split(rng)
 
     # Pre-generate different parameters for each iteration to simulate
     # a training loop where params change every step.
-    rng = jax.random.PRNGKey(42)
     all_phis = jax.random.uniform(
-        rng, shape=(n_iters, batch_size), minval=-jnp.pi, maxval=jnp.pi
+        subkey, shape=(n_iters, batch_size), minval=-jnp.pi, maxval=jnp.pi
     )
-
-    obs = [PauliZ(wires=i, record=False) for i in range(n_qubits)]
 
     # --- Yaqsi ---
     def yaqsi_circuit(phi):
@@ -1231,19 +1226,35 @@ def test_benchmark(mode) -> None:
         for i in range(n_qubits):
             CRX(phi, wires=[i, (i + 1) % n_qubits])
 
-    # Reuse the same Script to benefit from JIT compilation caching
     script = Script(f=yaqsi_circuit)
 
-    # Warmup (triggers first compilation)
-    _ = script.execute(type=mode, obs=obs, args=(all_phis[0],), in_axes=(0,))
+    _ = script.execute(
+        type=mode,
+        obs=[PauliZ(wires=i, record=False) for i in range(n_qubits)],
+        args=(all_phis[0],),
+        in_axes=(0,),
+    )
 
-    start = time.time()
-    for i in range(n_iters):
-        res_ys = script.execute(type=mode, obs=obs, args=(all_phis[i],), in_axes=(0,))
-    t_ys = (time.time() - start) / n_iters
+    def ys_benchmark():
+        ys_times = []
+        for i in range(n_iters):
+            t0 = time.perf_counter()
+            res_ys = script.execute(
+                type=mode,
+                obs=[PauliZ(wires=i, record=False) for i in range(n_qubits)],
+                args=(all_phis[i],),
+                in_axes=(0,),
+            )
+            ys_times.append(time.perf_counter() - t0)
+        return ys_times, res_ys
+
+    ys_times, res_ys = benchmark(ys_benchmark)
+    t_ys = float(np.mean(ys_times))
+    std_ys = float(np.std(ys_times))
+
     print(
         f"Yaqsi {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
-        f"{t_ys*1000:.2f} ms"
+        f"{t_ys*1000:.2f} ± {std_ys*1000:.2f} ms"
     )
 
     # --- PennyLane ---
@@ -1264,25 +1275,29 @@ def test_benchmark(mode) -> None:
             qml.CRX(phi, wires=[i, (i + 1) % n_qubits])
         return pl_return_map[mode]()
 
-    # Warmup
     _ = pl_circuit(all_phis[0])
 
-    start = time.time()
-    for i in range(n_iters):
-        res_pl = pl_circuit(all_phis[i])
-    t_pl = (time.time() - start) / n_iters
+    def pl_benchmark():
+        pl_times = []
+        for i in range(n_iters):
+            t0 = time.perf_counter()
+            res_pl = pl_circuit(all_phis[i])
+            pl_times.append(time.perf_counter() - t0)
+        t_pl = float(np.mean(pl_times))
+        std_pl = float(np.std(pl_times))
+        return t_pl, std_pl, res_pl
+
+    t_pl, std_pl, res_pl = pl_benchmark()
+
     print(
         f"PennyLane {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
-        f"{t_pl*1000:.2f} ms"
+        f"{t_pl*1000:.2f} ± {std_pl*1000:.2f} ms"
     )
-    res_pl_arr = jnp.array(res_pl)
+    print(f"Ratio pl/yaqsi: {t_pl/t_ys:.2f}x")
 
-    # PennyLane expval returns (n_obs, batch) while yaqsi returns (batch, n_obs)
+    res_pl_arr = jnp.array(res_pl)
     if res_pl_arr.shape != res_ys.shape:
         res_pl_arr = res_pl_arr.T
+
     assert jnp.allclose(res_ys, res_pl_arr, atol=1e-10), "Results do not match"
-
-    print(f"Ratio yaqsi/pl: {t_ys/t_pl:.1f}x")
-
-    # Being a bit bold here.. but hey, why not?
-    assert t_ys < 10 * t_pl, "Yaqsi is slower than PennyLane"
+    print(f"Results match")

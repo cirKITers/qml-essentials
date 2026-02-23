@@ -49,6 +49,7 @@ dev = [
     "pennylane>=0.44.0",
     "pre-commit>=4.5.1",
     "pytest>=8.4.2",
+    "pytest-codspeed>=4.3.0",
     "pytest-cov>=6.3.0",
     "pytest-memray>=1.8.0",
     "pytest-xdist>=3.8.0",
