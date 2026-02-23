@@ -1182,7 +1182,7 @@ def test_evolve_type_error() -> None:
 def test_memory() -> None:
     """
     Note, this test requires memray to be activated. Run with
-    .venv/bin/python -m pytest tests/test_yaqsi.py::test_memory -x -s --memray
+    pytest tests/test_yaqsi.py::test_memory -x -s --memray
     """
     n_qubits = 12
 
@@ -1204,7 +1204,7 @@ def test_memory() -> None:
 def test_mode_performances(benchmark, mode) -> None:
     """
     Note, this test requires codspeed to be activated. Run with
-    .venv/bin/python -m pytest tests/test_yaqsi.py::test_mode_performances -x -s --codspeed
+    pytest tests/test_yaqsi.py::test_mode_performances -x -s --codspeed
     """
 
     n_qubits = 6
@@ -1300,4 +1300,4 @@ def test_mode_performances(benchmark, mode) -> None:
         res_pl_arr = res_pl_arr.T
 
     assert jnp.allclose(res_ys, res_pl_arr, atol=1e-10), "Results do not match"
-    print(f"Results match")
+    print("Results match")
