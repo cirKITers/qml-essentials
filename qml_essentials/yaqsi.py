@@ -1,5 +1,6 @@
 from functools import reduce
 from typing import Any, Callable, List, Optional, Tuple, Union
+import threading
 
 import diffrax
 import jax
@@ -19,303 +20,327 @@ from qml_essentials.tape import recording
 from qml_essentials.drawing import draw_text, draw_mpl, draw_tikz
 
 
-# Module-level cache for JIT-compiled ODE solvers.  Keyed on
-# (coeff_fn_id, dim, atol, rtol) so that all evolve() calls with the
-# same pulse shape function and matrix size share one compiled XLA
-# program.  This turns O(n_gates) JIT compilations into
-# O(n_distinct_pulse_shapes) during pulse-mode circuit building.
-# TODO: thread safe?
-_evolve_solver_cache: dict = {}
+class Yaqsi:
 
+    # Module-level cache for JIT-compiled ODE solvers.  Keyed on
+    # (coeff_fn_id, dim, atol, rtol) so that all evolve() calls with the
+    # same pulse shape function and matrix size share one compiled XLA
+    # program.  This turns O(n_gates) JIT compilations into
+    # O(n_distinct_pulse_shapes) during pulse-mode circuit building.
+    _evolve_solver_cache: dict = {}
+    _evolve_solver_cache_lock = threading.Lock()
 
-def _partial_trace_single(
-    rho: jnp.ndarray,
-    n_qubits: int,
-    keep: List[int],
-) -> jnp.ndarray:
-    """Partial trace of a single density matrix (no batch dimension)."""
-    shape = (2,) * (2 * n_qubits)
-    rho_t = rho.reshape(shape)
+    @staticmethod
+    def _partial_trace_single(
+        rho: jnp.ndarray,
+        n_qubits: int,
+        keep: List[int],
+    ) -> jnp.ndarray:
+        """Partial trace of a single density matrix (no batch dimension)."""
+        shape = (2,) * (2 * n_qubits)
+        rho_t = rho.reshape(shape)
 
-    trace_out = sorted(set(range(n_qubits)) - set(keep))
+        trace_out = sorted(set(range(n_qubits)) - set(keep))
 
-    for q in reversed(trace_out):
-        n_remaining = rho_t.ndim // 2
-        rho_t = jnp.trace(rho_t, axis1=q, axis2=q + n_remaining)
+        for q in reversed(trace_out):
+            n_remaining = rho_t.ndim // 2
+            rho_t = jnp.trace(rho_t, axis1=q, axis2=q + n_remaining)
 
-    dim = 2 ** len(keep)
-    return rho_t.reshape(dim, dim)
+        dim = 2 ** len(keep)
+        return rho_t.reshape(dim, dim)
 
+    @classmethod
+    def partial_trace(
+        cls,
+        rho: jnp.ndarray,
+        n_qubits: int,
+        keep: List[int],
+    ) -> jnp.ndarray:
+        """Partial trace of a density matrix, keeping only the specified qubits.
 
-def partial_trace(
-    rho: jnp.ndarray,
-    n_qubits: int,
-    keep: List[int],
-) -> jnp.ndarray:
-    """Partial trace of a density matrix, keeping only the specified qubits.
-
-    Supports both single density matrices of shape ``(2**n, 2**n)`` and
-    batched density matrices of shape ``(B, 2**n, 2**n)``.
-
-    Args:
-        rho: Density matrix of shape ``(2**n, 2**n)`` or ``(B, 2**n, 2**n)``.
-        n_qubits: Total number of qubits.
-        keep: List of qubit indices to *keep* (0-indexed).
-
-    Returns:
-        Reduced density matrix of shape ``(2**k, 2**k)`` or ``(B, 2**k, 2**k)``
-        where *k* = ``len(keep)``.
-    """
-    dim = 2**n_qubits
-    if rho.shape == (dim, dim):
-        return _partial_trace_single(rho, n_qubits, keep)
-    # Batched: shape (B, dim, dim)
-    return jax.vmap(lambda r: _partial_trace_single(r, n_qubits, keep))(rho)
-
-
-def _marginalize_probs_single(
-    probs: jnp.ndarray,
-    n_qubits: int,
-    keep: List[int],
-) -> jnp.ndarray:
-    """Marginalize a single probability vector (no batch dimension)."""
-    probs_t = probs.reshape((2,) * n_qubits)
-
-    trace_out = sorted(set(range(n_qubits)) - set(keep), reverse=True)
-    for q in trace_out:
-        probs_t = probs_t.sum(axis=q)
-
-    return probs_t.ravel()
-
-
-def marginalize_probs(
-    probs: jnp.ndarray,
-    n_qubits: int,
-    keep: List[int],
-) -> jnp.ndarray:
-    """Marginalize a probability vector to keep only the specified qubits.
-
-    Supports both single probability vectors of shape ``(2**n,)`` and
-    batched vectors of shape ``(B, 2**n)``.
-
-    Args:
-        probs: Probability vector of shape ``(2**n,)`` or ``(B, 2**n)``.
-        n_qubits: Total number of qubits.
-        keep: List of qubit indices to *keep* (0-indexed).
-
-    Returns:
-        Marginalized probability vector of shape ``(2**k,)`` or ``(B, 2**k)``
-        where *k* = ``len(keep)``.
-    """
-    dim = 2**n_qubits
-    if probs.shape == (dim,):
-        return _marginalize_probs_single(probs, n_qubits, keep)
-    # Batched: shape (B, dim)
-    return jax.vmap(lambda p: _marginalize_probs_single(p, n_qubits, keep))(probs)
-
-
-def build_parity_observable(
-    qubit_group: List[int],
-) -> Hermitian:
-    """Build a multi-qubit Z⊗Z⊗...⊗Z parity observable.
-
-    For a group of qubit indices ``[i, j, ...]``, constructs the tensor product
-    ``Z_i ⊗ Z_j ⊗ ...`` as a ``Hermitian`` operation.
-
-    Args:
-        qubit_group: List of qubit indices for the parity measurement.
-
-    Returns:
-        A :class:`Hermitian` operation whose matrix is the Z parity
-        tensor product and whose wires match the given qubits.
-    """
-    Z = PauliZ._matrix
-    mat = reduce(jnp.kron, [Z] * len(qubit_group))
-    return Hermitian(matrix=mat, wires=qubit_group, record=False)
-
-
-# ===================================================================
-# evolve – Hamiltonian time evolution (static & time-dependent)
-# ===================================================================
-
-
-def evolve(hamiltonian, **odeint_kwargs):
-    """Return a gate-factory for Hamiltonian time evolution.
-
-    Supports two modes:
-
-    **Static** — when *hamiltonian* is a :class:`Hermitian`::
-
-        gate = evolve(Hermitian(H_mat, wires=0))
-        gate(t=0.5)            # U = exp(-i·0.5·H)
-
-    **Time-dependent** — when *hamiltonian* is a
-    :class:`ParametrizedHamiltonian` (created via ``coeff_fn * Hermitian``)::
-
-        H_td = coeff_fn * Hermitian(H_mat, wires=0)
-        gate = evolve(H_td)
-        gate([A, sigma], T)    # U via ODE: dU/dt = -i f(p,t) H · U
-
-    The time-dependent case solves the Schrödinger equation numerically
-    using ``diffrax.diffeqsolve`` with a Dopri5 adaptive Runge-Kutta
-    solver, matching PennyLane's ``ParametrizedEvolution`` implementation.
-
-    All computations are pure JAX and fully differentiable with
-    ``jax.grad``.
-
-    Args:
-        hamiltonian: Either a :class:`Hermitian` (static evolution) or a
-            :class:`ParametrizedHamiltonian` (time-dependent evolution).
-        **odeint_kwargs: Extra keyword arguments.  Recognised keys:
-
-            * ``atol``, ``rtol`` — absolute/relative tolerances for the
-              adaptive step-size controller (default ``1.4e-8``).
-
-    Returns:
-        A callable gate factory.  Signature depends on the mode:
-
-        * Static: ``(t, wires=0) -> Operation``
-        * Time-dependent: ``(coeff_args, T) -> Operation``
-
-    Raises:
-        TypeError: If *hamiltonian* is neither ``Hermitian`` nor
-            ``ParametrizedHamiltonian``.
-    """
-    if isinstance(hamiltonian, Hermitian):
-        return _evolve_static(hamiltonian)
-    elif isinstance(hamiltonian, ParametrizedHamiltonian):
-        return _evolve_parametrized(hamiltonian, **odeint_kwargs)
-    else:
-        raise TypeError(
-            f"evolve() expects a Hermitian or ParametrizedHamiltonian, "
-            f"got {type(hamiltonian)}"
-        )
-
-
-def _evolve_static(hermitian: Hermitian) -> Callable:
-    """Gate factory for static Hamiltonian evolution U = exp(-i t H)."""
-    H_mat = hermitian.matrix
-
-    def _apply(t: float, wires: Union[int, List[int]] = 0) -> Operation:
-        U = jax.scipy.linalg.expm(-1j * t * H_mat)
-        return Operation(wires=wires, matrix=U)
-
-    return _apply
-
-
-def _evolve_parametrized(ph: ParametrizedHamiltonian, **odeint_kwargs) -> Callable:
-    """Gate factory for time-dependent Hamiltonian evolution.
-
-    Solves the matrix ODE ``dU/dt = -i f(params, t) H · U`` with
-    ``U(0) = I`` using ``diffrax.diffeqsolve`` (Dopri5 adaptive RK),
-    matching PennyLane's ``ParametrizedEvolution``.
-
-    Performance improvements over the previous ``jax.experimental.ode``
-    implementation:
-
-    * Uses **diffrax** — a modern, well-maintained JAX ODE library with
-      better XLA compilation, adjoint methods, and step-size control.
-    * The JIT-compiled solver is **cached** per coefficient function so
-      that multiple ``evolve()`` calls with the same pulse shape (but
-      different Hamiltonian matrices or parameters) reuse the same
-      compiled XLA program.  This avoids O(n_gates) JIT compilations
-      during pulse-mode tape recording.
-    * Pre-computes ``-i·H`` once instead of multiplying at every RHS
-      evaluation.
-    * Avoids dynamic ``jnp.where`` branching for the time span.
-
-    Args:
-        ph: A :class:`ParametrizedHamiltonian` holding the coefficient
-            function, the Hamiltonian matrix, and wire indices.
-        **odeint_kwargs: ``atol`` and ``rtol`` for the step-size controller.
-    """
-    H_mat = ph.H_mat
-    coeff_fn = ph.coeff_fn
-    wires = ph.wires
-    dim = H_mat.shape[0]
-
-    # Pre-compute -i·H once (avoids repeated multiplication in RHS)
-    neg_iH = -1j * H_mat
-
-    # Extract tolerances, default to PennyLane values
-    atol = odeint_kwargs.pop("atol", 1.4e-8)
-    rtol = odeint_kwargs.pop("rtol", 1.4e-8)
-
-    # Look up or build the JIT-compiled solver for this (coeff_fn, dim)
-    # combination.  All pulse gates with the same pulse shape function
-    # (e.g. all RX gates share Sx, all RY share Sy) reuse a single
-    # compiled XLA program, with neg_iH passed as a regular argument
-    # rather than captured in the closure.  This turns O(n_gates) JIT
-    # compilations into O(n_distinct_pulse_shapes) compilations.
-    #
-    # We key on the function's __code__ object rather than id(coeff_fn)
-    # because each pulse gate call creates a new closure (capturing the
-    # rotation angle `w`), but the underlying code is identical.  Under
-    # JIT, the captured `w` is a tracer anyway, so the compiled program
-    # is generic over `w`.
-    cache_key = (id(coeff_fn.__code__), dim, atol, rtol)
-    _solve = _evolve_solver_cache.get(cache_key)
-    if _solve is None:
-        solver = diffrax.Dopri5()
-        stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
-
-        @jax.jit
-        def _solve(neg_iH, params, t0, t1):
-            """Solve dU/dt = f(params,t) · (-iH) · U from t0 to t1."""
-
-            def rhs(t, y, args):
-                return coeff_fn(args, t) * (neg_iH @ y)
-
-            y0 = jnp.eye(dim, dtype=jnp.complex128)
-
-            sol = diffrax.diffeqsolve(
-                diffrax.ODETerm(rhs),
-                solver,
-                t0=t0,
-                t1=t1,
-                dt0=None,  # let the controller choose the initial step
-                y0=y0,
-                args=params,
-                stepsize_controller=stepsize_controller,
-                max_steps=4096,
-            )
-
-            # sol.ys has shape (1, dim, dim) for SaveAt(t1=True) (default)
-            return sol.ys[0]
-
-        _evolve_solver_cache[cache_key] = _solve
-
-    def _apply(coeff_args, T) -> Operation:
-        """Evolve under the time-dependent Hamiltonian.
+        Supports both single density matrices of shape ``(2**n, 2**n)`` and
+        batched density matrices of shape ``(B, 2**n, 2**n)``.
 
         Args:
-            coeff_args: List of parameter sets, one per Hamiltonian term.
-                Following PennyLane convention, ``coeff_args[0]`` is
-                forwarded to ``coeff_fn(params, t)`` as the first argument.
-            T: Total evolution time.  If scalar, the ODE is solved on
-                ``[0, T]``.  If a 2-element array, on ``[T[0], T[1]]``.
+            rho: Density matrix of shape ``(2**n, 2**n)`` or ``(B, 2**n, 2**n)``.
+            n_qubits: Total number of qubits.
+            keep: List of qubit indices to *keep* (0-indexed).
 
         Returns:
-            An :class:`Operation` wrapping the computed unitary.
+            Reduced density matrix of shape ``(2**k, 2**k)`` or ``(B, 2**k, 2**k)``
+            where *k* = ``len(keep)``.
         """
-        # PennyLane convention: coeff_args is a list of param-sets,
-        # one per term.  Single term → unpack the first.
-        params = coeff_args[0] if isinstance(coeff_args, (list, tuple)) else coeff_args
 
-        # Build time span — resolve at Python level to avoid traced branching
-        T_arr = jnp.asarray(T, dtype=jnp.float64)
-        if T_arr.ndim == 0:
-            t0 = jnp.float64(0.0)
-            t1 = T_arr
+        dim = 2**n_qubits
+        if rho.shape == (dim, dim):
+            return Yaqsi._partial_trace_single(rho, n_qubits, keep)
+        # Batched: shape (B, dim, dim)
+        return jax.vmap(lambda r: Yaqsi._partial_trace_single(r, n_qubits, keep))(rho)
+
+    @staticmethod
+    def _marginalize_probs_single(
+        probs: jnp.ndarray,
+        n_qubits: int,
+        keep: List[int],
+    ) -> jnp.ndarray:
+        """Marginalize a single probability vector (no batch dimension)."""
+        probs_t = probs.reshape((2,) * n_qubits)
+
+        trace_out = sorted(set(range(n_qubits)) - set(keep), reverse=True)
+        for q in trace_out:
+            probs_t = probs_t.sum(axis=q)
+
+        return probs_t.ravel()
+
+    @classmethod
+    def marginalize_probs(
+        cls,
+        probs: jnp.ndarray,
+        n_qubits: int,
+        keep: List[int],
+    ) -> jnp.ndarray:
+        """Marginalize a probability vector to keep only the specified qubits.
+
+        Supports both single probability vectors of shape ``(2**n,)`` and
+        batched vectors of shape ``(B, 2**n)``.
+
+        Args:
+            probs: Probability vector of shape ``(2**n,)`` or ``(B, 2**n)``.
+            n_qubits: Total number of qubits.
+            keep: List of qubit indices to *keep* (0-indexed).
+
+        Returns:
+            Marginalized probability vector of shape ``(2**k,)`` or ``(B, 2**k)``
+            where *k* = ``len(keep)``.
+        """
+
+        dim = 2**n_qubits
+        if probs.shape == (dim,):
+            return Yaqsi._marginalize_probs_single(probs, n_qubits, keep)
+        # Batched: shape (B, dim)
+        return jax.vmap(lambda p: Yaqsi._marginalize_probs_single(p, n_qubits, keep))(
+            probs
+        )
+
+    @classmethod
+    def build_parity_observable(
+        cls,
+        qubit_group: List[int],
+    ) -> Hermitian:
+        """Build a multi-qubit Z⊗Z⊗...⊗Z parity observable.
+
+        For a group of qubit indices ``[i, j, ...]``, constructs the tensor product
+        ``Z_i ⊗ Z_j ⊗ ...`` as a ``Hermitian`` operation.
+
+        Args:
+            qubit_group: List of qubit indices for the parity measurement.
+
+        Returns:
+            A :class:`Hermitian` operation whose matrix is the Z parity
+            tensor product and whose wires match the given qubits.
+        """
+        Z = PauliZ._matrix
+        mat = reduce(jnp.kron, [Z] * len(qubit_group))
+        return Hermitian(matrix=mat, wires=qubit_group, record=False)
+
+    @classmethod
+    def evolve(cls, hamiltonian, **odeint_kwargs):
+        """Return a gate-factory for Hamiltonian time evolution.
+
+        Supports two modes:
+
+        **Static** — when *hamiltonian* is a :class:`Hermitian`::
+
+            gate = evolve(Hermitian(H_mat, wires=0))
+            gate(t=0.5)            # U = exp(-i·0.5·H)
+
+        **Time-dependent** — when *hamiltonian* is a
+        :class:`ParametrizedHamiltonian` (created via ``coeff_fn * Hermitian``)::
+
+            H_td = coeff_fn * Hermitian(H_mat, wires=0)
+            gate = evolve(H_td)
+            gate([A, sigma], T)    # U via ODE: dU/dt = -i f(p,t) H · U
+
+        The time-dependent case solves the Schrödinger equation numerically
+        using ``diffrax.diffeqsolve`` with a Dopri5 adaptive Runge-Kutta
+        solver, matching PennyLane's ``ParametrizedEvolution`` implementation.
+
+        All computations are pure JAX and fully differentiable with
+        ``jax.grad``.
+
+        Args:
+            hamiltonian: Either a :class:`Hermitian` (static evolution) or a
+                :class:`ParametrizedHamiltonian` (time-dependent evolution).
+            **odeint_kwargs: Extra keyword arguments.  Recognised keys:
+
+                - ``atol``, ``rtol`` — absolute/relative tolerances for the
+                adaptive step-size controller (default ``1.4e-8``).
+
+        Returns:
+            A callable gate factory.  Signature depends on the mode:
+
+            * Static: ``(t, wires=0) -> Operation``
+            * Time-dependent: ``(coeff_args, T) -> Operation``
+
+        Raises:
+            TypeError: If *hamiltonian* is neither ``Hermitian`` nor
+                ``ParametrizedHamiltonian``.
+        """
+        if isinstance(hamiltonian, Hermitian):
+            return cls._evolve_static(hamiltonian)
+        elif isinstance(hamiltonian, ParametrizedHamiltonian):
+            return cls._evolve_parametrized(hamiltonian, **odeint_kwargs)
         else:
-            t0 = T_arr[0]
-            t1 = T_arr[1]
+            raise TypeError(
+                f"evolve() expects a Hermitian or ParametrizedHamiltonian, "
+                f"got {type(hamiltonian)}"
+            )
 
-        U = _solve(neg_iH, params, t0, t1)
+    @staticmethod
+    def _evolve_static(hermitian: Hermitian) -> Callable:
+        """Gate factory for static Hamiltonian evolution U = exp(-i t H)."""
+        H_mat = hermitian.matrix
 
-        return Operation(wires=wires, matrix=U)
+        def _apply(t: float, wires: Union[int, List[int]] = 0) -> Operation:
+            U = jax.scipy.linalg.expm(-1j * t * H_mat)
+            return Operation(wires=wires, matrix=U)
 
-    return _apply
+        return _apply
+
+    @classmethod
+    def _evolve_parametrized(
+        cls, ph: ParametrizedHamiltonian, **odeint_kwargs
+    ) -> Callable:
+        """Gate factory for time-dependent Hamiltonian evolution.
+
+        Solves the matrix ODE ``dU/dt = -i f(params, t) H · U`` with
+        ``U(0) = I`` using ``diffrax.diffeqsolve`` (Dopri5 adaptive RK),
+        matching PennyLane's ``ParametrizedEvolution``.
+
+        Performance improvements over the previous ``jax.experimental.ode``
+        implementation:
+
+        * Uses **diffrax** — a modern, well-maintained JAX ODE library with
+        better XLA compilation, adjoint methods, and step-size control.
+        * The JIT-compiled solver is **cached** per coefficient function so
+        that multiple ``evolve()`` calls with the same pulse shape (but
+        different Hamiltonian matrices or parameters) reuse the same
+        compiled XLA program.  This avoids O(n_gates) JIT compilations
+        during pulse-mode tape recording.
+        * Pre-computes ``-i·H`` once instead of multiplying at every RHS
+        evaluation.
+        * Avoids dynamic ``jnp.where`` branching for the time span.
+
+        Args:
+            ph: A :class:`ParametrizedHamiltonian` holding the coefficient
+                function, the Hamiltonian matrix, and wire indices.
+            **odeint_kwargs: ``atol`` and ``rtol`` for the step-size controller.
+        """
+        H_mat = ph.H_mat
+        coeff_fn = ph.coeff_fn
+        wires = ph.wires
+        dim = H_mat.shape[0]
+
+        # Pre-compute -i·H once (avoids repeated multiplication in RHS)
+        neg_iH = -1j * H_mat
+
+        # Extract tolerances, default to PennyLane values
+        atol = odeint_kwargs.pop("atol", 1.4e-8)
+        rtol = odeint_kwargs.pop("rtol", 1.4e-8)
+
+        # Look up or build the JIT-compiled solver for this (coeff_fn, dim)
+        # combination.  All pulse gates with the same pulse shape function
+        # (e.g. all RX gates share Sx, all RY share Sy) reuse a single
+        # compiled XLA program, with neg_iH passed as a regular argument
+        # rather than captured in the closure.  This turns O(n_gates) JIT
+        # compilations into O(n_distinct_pulse_shapes) compilations.
+        #
+        # We key on the function's __code__ object rather than id(coeff_fn)
+        # because each pulse gate call creates a new closure (capturing the
+        # rotation angle `w`), but the underlying code is identical.  Under
+        # JIT, the captured `w` is a tracer anyway, so the compiled program
+        # is generic over `w`.
+        cache_key = (id(coeff_fn.__code__), dim, atol, rtol)
+
+        with cls._evolve_solver_cache_lock:
+            _solve = cls._evolve_solver_cache.get(cache_key)
+
+        if _solve is None:
+            solver = diffrax.Dopri5()
+            stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
+
+            @jax.jit
+            def _solve(neg_iH, params, t0, t1):
+                """Solve dU/dt = f(params,t) · (-iH) · U from t0 to t1."""
+
+                def rhs(t, y, args):
+                    return coeff_fn(args, t) * (neg_iH @ y)
+
+                y0 = jnp.eye(dim, dtype=jnp.complex128)
+
+                sol = diffrax.diffeqsolve(
+                    diffrax.ODETerm(rhs),
+                    solver,
+                    t0=t0,
+                    t1=t1,
+                    dt0=None,  # let the controller choose the initial step
+                    y0=y0,
+                    args=params,
+                    stepsize_controller=stepsize_controller,
+                    max_steps=4096,
+                )
+
+                # sol.ys has shape (1, dim, dim) for SaveAt(t1=True) (default)
+                return sol.ys[0]
+
+            with cls._evolve_solver_cache_lock:
+                # Double-check to avoid overwriting a concurrent build
+                existing = cls._evolve_solver_cache.get(cache_key)
+                if existing is not None:
+                    _solve = existing
+                else:
+                    cls._evolve_solver_cache[cache_key] = _solve
+
+        def _apply(coeff_args, T) -> Operation:
+            """Evolve under the time-dependent Hamiltonian.
+
+            Args:
+                coeff_args: List of parameter sets, one per Hamiltonian term.
+                    Following PennyLane convention, ``coeff_args[0]`` is
+                    forwarded to ``coeff_fn(params, t)`` as the first argument.
+                T: Total evolution time.  If scalar, the ODE is solved on
+                    ``[0, T]``.  If a 2-element array, on ``[T[0], T[1]]``.
+
+            Returns:
+                An :class:`Operation` wrapping the computed unitary.
+            """
+            # PennyLane convention: coeff_args is a list of param-sets,
+            # one per term.  Single term → unpack the first.
+            params = (
+                coeff_args[0] if isinstance(coeff_args, (list, tuple)) else coeff_args
+            )
+
+            # Build time span — resolve at Python level to avoid traced branching
+            T_arr = jnp.asarray(T, dtype=jnp.float64)
+            if T_arr.ndim == 0:
+                t0 = jnp.float64(0.0)
+                t1 = T_arr
+            else:
+                t0 = T_arr[0]
+                t1 = T_arr[1]
+
+            U = _solve(neg_iH, params, t0, t1)
+
+            return Operation(wires=wires, matrix=U)
+
+        return _apply
+
+
+# TODO adjust imports to use classmethods instead
+partial_trace = Yaqsi.partial_trace
+evolve = Yaqsi.evolve
+marginalize_probs = Yaqsi.marginalize_probs
+build_parity_observable = Yaqsi.build_parity_observable
 
 
 # ===================================================================
@@ -541,9 +566,9 @@ class Script:
         Returns:
             Measurement result whose shape depends on *type*:
 
-            * ``"state"``  → ``(2**n_qubits,)``
-            * ``"probs"``  → ``(2**n_qubits,)``
-            * ``"expval"`` → ``(len(obs),)``
+            - ``"state"``  → ``(2**n_qubits,)``
+            - ``"probs"``  → ``(2**n_qubits,)``
+            - ``"expval"`` → ``(len(obs),)``
 
         Raises:
             ValueError: If *type* is not a recognised measurement type.
@@ -621,9 +646,9 @@ class Script:
         Returns:
             Measurement result whose shape depends on *type*:
 
-            * ``"density"`` → ``(2**n_qubits, 2**n_qubits)``
-            * ``"probs"``   → ``(2**n_qubits,)``
-            * ``"expval"``  → ``(len(obs),)``
+            - ``"density"`` → ``(2**n_qubits, 2**n_qubits)``
+            - ``"probs"``   → ``(2**n_qubits,)``
+            - ``"expval"``  → ``(len(obs),)``
 
         Raises:
             ValueError: If *type* is ``"state"`` (not valid for mixed circuits)
@@ -658,7 +683,7 @@ class Script:
         obs: Optional[List[Operation]] = None,
         *,
         args: tuple = (),
-        kwargs: dict = {},
+        kwargs: Optional[dict] = None,
         in_axes: Optional[Tuple] = None,
     ) -> jnp.ndarray:
         """Execute the circuit and return measurement results.
@@ -666,11 +691,11 @@ class Script:
         Args:
             type: Measurement type.  One of:
 
-                * ``"expval"``  — expectation value ⟨ψ|O|ψ⟩ / Tr(Oρ) for
+                - ``"expval"``  — expectation value ⟨ψ|O|ψ⟩ / Tr(Oρ) for
                   each observable in *obs*.
-                * ``"probs"``   — probability vector of shape ``(2**n,)``.
-                * ``"state"``   — raw statevector of shape ``(2**n,)``.
-                * ``"density"`` — full density matrix of shape
+                - ``"probs"``   — probability vector of shape ``(2**n,)``.
+                - ``"state"``   — raw statevector of shape ``(2**n,)``.
+                - ``"density"`` — full density matrix of shape
                   ``(2**n, 2**n)``.
 
             obs: Observables required when *type* is ``"expval"``.
@@ -679,31 +704,13 @@ class Script:
             in_axes: Batch axes for each element of *args*, following the same
                 convention as ``jax.vmap``:
 
-                * An integer selects that axis of the corresponding array as
+                - An integer selects that axis of the corresponding array as
                   the batch dimension.
-                * ``None`` broadcasts the argument (no batching).
+                - ``None`` broadcasts the argument (no batching).
 
                 When provided, :meth:`execute` calls ``jax.vmap`` over the
                 pure simulation kernel and returns results with a leading
                 batch dimension.
-
-                Example — batch over axis 0 of a parameter array::
-
-                    script.execute(
-                        type="expval",
-                        obs=[PauliZ(0)],
-                        args=(thetas,),
-                        in_axes=(0,),
-                    )
-
-                Example — batch over axis 2 of params, axis 0 of inputs::
-
-                    script.execute(
-                        type="expval",
-                        obs=[PauliZ(0)],
-                        args=(params, inputs),
-                        in_axes=(2, 0),
-                    )
 
         Returns:
             Without *in_axes*: shape determined by *type*.
@@ -722,6 +729,8 @@ class Script:
         """
         if obs is None:
             obs = []
+        if kwargs is None:
+            kwargs = {}
 
         if in_axes is not None:
             return self._execute_batched(
@@ -871,7 +880,7 @@ class Script:
         self,
         figure: str = "text",
         args: tuple = (),
-        kwargs: dict = {},
+        kwargs: Optional[dict] = None,
         **draw_kwargs: Any,
     ) -> Union[str, Any]:
         """Draw the quantum circuit.
@@ -882,9 +891,9 @@ class Script:
         Args:
             figure: Rendering backend.  One of:
 
-                * ``"text"``  — ASCII art (returned as a ``str``).
-                * ``"mpl"``   — Matplotlib figure (returns ``(fig, ax)``).
-                * ``"tikz"``  — LaTeX/TikZ code via ``quantikz``
+                - ``"text"``  — ASCII art (returned as a ``str``).
+                - ``"mpl"``   — Matplotlib figure (returns ``(fig, ax)``).
+                - ``"tikz"``  — LaTeX/TikZ code via ``quantikz``
                   (returns a :class:`~qml_essentials.utils.QuanTikz.TikzFigure`).
 
             args: Positional arguments forwarded to the circuit function
@@ -892,17 +901,17 @@ class Script:
             kwargs: Keyword arguments forwarded to the circuit function.
             **draw_kwargs: Extra options forwarded to the rendering backend:
 
-                * ``gate_values`` (bool): Show numeric gate angles instead of
+                - ``gate_values`` (bool): Show numeric gate angles instead of
                   symbolic θ_i labels.  Default ``False``.
-                * ``inputs_symbols`` (str | list): Symbol(s) used for input
+                - ``inputs_symbols`` (str | list): Symbol(s) used for input
                   gates.  Default ``"x"``.
 
         Returns:
             Depends on *figure*:
 
-            * ``"text"``  → ``str``
-            * ``"mpl"``   → ``(matplotlib.figure.Figure, matplotlib.axes.Axes)``
-            * ``"tikz"``  → :class:`QuanTikz.TikzFigure`
+            - ``"text"``  → ``str``
+            - ``"mpl"``   → ``(matplotlib.figure.Figure, matplotlib.axes.Axes)``
+            - ``"tikz"``  → :class:`QuanTikz.TikzFigure`
 
         Raises:
             ValueError: If *figure* is not one of the supported modes.
@@ -911,6 +920,9 @@ class Script:
             raise ValueError(
                 f"Invalid figure mode: {figure!r}. " "Must be 'text', 'mpl', or 'tikz'."
             )
+
+        if kwargs is None:
+            kwargs = {}
 
         tape = self._record(*args, **kwargs)
         n_qubits = self._n_qubits or self._infer_n_qubits(tape, [])

@@ -29,7 +29,7 @@ print(f"Identifier: {identifier}")
 LOAD_LATEST = False  # Set to True to skip computation and load the latest CSV instead
 WARMUP = True  # Does not produce meaningful results if False
 
-qubit_sizes = list(range(3, 6))
+qubit_sizes = list(range(2, 12))
 modes = ["probs", "expval", "state", "density"]
 n_iters = 100
 batch_size = 100

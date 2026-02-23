@@ -1,6 +1,7 @@
 from typing import Callable, List, Optional, Tuple, Union
 from functools import lru_cache
 import string
+import numpy as np
 
 import jax
 import jax.numpy as jnp
@@ -100,11 +101,18 @@ class Operation:
         _matrix: Class-level default gate matrix.  Subclasses set this to their
             fixed unitary.  Instances may override it via the *matrix* argument
             to ``__init__``.
+        _num_wires: Expected number of wires for this gate.  Subclasses set
+            this to enforce wire count validation.  ``None`` means any number
+            of wires is accepted.
+        _param_names: Tuple of attribute names for the gate parameters.
+            Used by :attr:`parameters` and :meth:`__repr__`.
     """
 
     # Subclasses should set this to the gate's unitary / matrix
     _matrix: jnp.ndarray = None
     is_controlled = False
+    _num_wires: Optional[int] = None
+    _param_names: Tuple[str, ...] = ()
 
     def __init__(
         self,
@@ -123,8 +131,21 @@ class Operation:
                 auxiliary objects that should not appear in the circuit
                 (e.g. Hamiltonians used only to build time-dependent
                 evolutions).
+
+        Raises:
+            ValueError: If ``_num_wires`` is set and the number of wires
+                doesn't match, or if duplicate wires are provided.
         """
         self.wires = list(wires) if isinstance(wires, (list, tuple)) else [wires]
+
+        if self._num_wires is not None and len(self.wires) != self._num_wires:
+            raise ValueError(
+                f"{self.name} expects {self._num_wires} wire(s), "
+                f"got {len(self.wires)}: {self.wires}"
+            )
+        if len(self.wires) != len(set(self.wires)):
+            raise ValueError(f"{self.name} received duplicate wires: {self.wires}")
+
         if matrix is not None:
             self._matrix = matrix
 
@@ -147,23 +168,33 @@ class Operation:
     def parameters(self) -> list:
         """Return the list of numeric parameters for this operation.
 
-        Parametrized gates (RX, RY, RZ, CRX, CRY, CRZ, Rot) store their
-        angles as instance attributes.  This property collects them in a
-        canonical order.  Non-parametrized gates return an empty list.
+        Uses the declarative ``_param_names`` tuple to collect parameter
+        values in a canonical order.  Non-parametrized gates return an
+        empty list.
 
         Returns:
             List of parameter values (floats or JAX arrays).
         """
-        # Parametrized single-qubit rotations
-        if hasattr(self, "theta"):
-            return [self.theta]
-        # Rot gate has three parameters
-        if hasattr(self, "phi") and hasattr(self, "omega"):
-            return [self.phi, self.theta, self.omega]
-        # KrausChannel with p
-        if hasattr(self, "p"):
-            return [self.p]
-        return []
+        return [getattr(self, name) for name in self._param_names]
+
+    def __repr__(self) -> str:
+        """Return a human-readable representation of this operation.
+
+        Returns:
+            A string like ``"RX(0.5000, wires=[0])"`` or ``"CX(wires=[0, 1])"``.
+        """
+        params = self.parameters
+        if params:
+            param_str = ", ".join(
+                (
+                    f"{float(v):.4f}"
+                    if isinstance(v, (float, np.floating, jnp.ndarray))
+                    else str(v)
+                )
+                for v in params
+            )
+            return f"{self.name}({param_str}, wires={self.wires})"
+        return f"{self.name}(wires={self.wires})"
 
     @property
     def matrix(self) -> jnp.ndarray:
@@ -403,6 +434,7 @@ class Id(Operation):
     """Identity gate."""
 
     _matrix = jnp.eye(2, dtype=jnp.complex128)
+    _num_wires = 1
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise an identity gate.
@@ -417,6 +449,7 @@ class PauliX(Operation):
     """Pauli-X gate / observable (bit-flip, σ_x)."""
 
     _matrix = jnp.array([[0, 1], [1, 0]], dtype=jnp.complex128)
+    _num_wires = 1
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise a Pauli-X gate.
@@ -431,6 +464,7 @@ class PauliY(Operation):
     """Pauli-Y gate / observable (σ_y)."""
 
     _matrix = jnp.array([[0, -1j], [1j, 0]], dtype=jnp.complex128)
+    _num_wires = 1
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise a Pauli-Y gate.
@@ -445,6 +479,7 @@ class PauliZ(Operation):
     """Pauli-Z gate / observable (phase-flip, σ_z)."""
 
     _matrix = jnp.array([[1, 0], [0, -1]], dtype=jnp.complex128)
+    _num_wires = 1
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise a Pauli-Z gate.
@@ -459,6 +494,7 @@ class H(Operation):
     """Hadamard gate."""
 
     _matrix = jnp.array([[1, 1], [1, -1]], dtype=jnp.complex128) / jnp.sqrt(2)
+    _num_wires = 1
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise a Hadamard gate.
@@ -477,6 +513,7 @@ class S(Operation):
     """
 
     _matrix = jnp.array([[1, 0], [0, 1j]], dtype=jnp.complex128)
+    _num_wires = 1
 
     def __init__(self, wires: Union[int, List[int]] = 0) -> None:
         """Initialise an S gate.
@@ -513,83 +550,88 @@ class Barrier(Operation):
         return rho
 
 
-class RX(Operation):
-    """Rotation around the X axis: RX(θ) = exp(-i θ/2 X)."""
+def _make_rotation_gate(pauli_class: type, name: str) -> type:
+    """Factory for single-qubit rotation gates RX, RY, RZ.
 
-    def __init__(self, theta: float, wires: Union[int, List[int]] = 0) -> None:
-        """Initialise an RX rotation gate.
+    Each gate has the form ``R_P(θ) = cos(θ/2) I - i sin(θ/2) P``.
 
-        Args:
-            theta: Rotation angle in radians.
-            wires: Qubit index or list of qubit indices this gate acts on.
-        """
-        self.theta = theta
-        mat = jnp.cos(theta / 2) * Id._matrix - 1j * jnp.sin(theta / 2) * PauliX._matrix
-        super().__init__(wires=wires, matrix=mat)
+    Args:
+        pauli_class: One of PauliX, PauliY, PauliZ.
+        name: Class name for the generated gate (e.g. ``"RX"``).
 
-    def generator(self) -> Operation:
-        """Return the generator ``-0.5 · X`` as a :class:`PauliX` operation."""
-        return PauliX(wires=self.wires[0], record=False)
-
-
-class RY(Operation):
-    """Rotation around the Y axis: RY(θ) = exp(-i θ/2 Y)."""
-
-    def __init__(self, theta: float, wires: Union[int, List[int]] = 0) -> None:
-        """Initialise an RY rotation gate.
-
-        Args:
-            theta: Rotation angle in radians.
-            wires: Qubit index or list of qubit indices this gate acts on.
-        """
-        self.theta = theta
-        mat = jnp.cos(theta / 2) * Id._matrix - 1j * jnp.sin(theta / 2) * PauliY._matrix
-        super().__init__(wires=wires, matrix=mat)
-
-    def generator(self) -> Operation:
-        """Return the generator ``-0.5 · Y`` as a :class:`PauliY` operation."""
-        return PauliY(wires=self.wires[0], record=False)
-
-
-class RZ(Operation):
-    """Rotation around the Z axis: RZ(θ) = exp(-i θ/2 Z)."""
-
-    def __init__(self, theta: float, wires: Union[int, List[int]] = 0) -> None:
-        """Initialise an RZ rotation gate.
-
-        Args:
-            theta: Rotation angle in radians.
-            wires: Qubit index or list of qubit indices this gate acts on.
-        """
-        self.theta = theta
-        mat = jnp.cos(theta / 2) * Id._matrix - 1j * jnp.sin(theta / 2) * PauliZ._matrix
-        super().__init__(wires=wires, matrix=mat)
-
-    def generator(self) -> Operation:
-        """Return the generator ``-0.5 · Z`` as a :class:`PauliZ` operation."""
-        return PauliZ(wires=self.wires[0], record=False)
-
-
-class CX(Operation):
-    """Controlled-X (CNOT) gate.
-
-    Args on construction:
-        wires: ``[control, target]``.
+    Returns:
+        A new :class:`Operation` subclass.
     """
+    pauli_mat = pauli_class._matrix
 
-    _matrix = jnp.array(
-        [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]],
-        dtype=jnp.complex128,
-    )
-    is_controlled = True
+    class _RotationGate(Operation):
+        __doc__ = (
+            f"Rotation around the {name[1]} axis: {name}(θ) = exp(-i θ/2 {name[1]})."
+        )
+        _num_wires = 1
+        _param_names = ("theta",)
 
-    def __init__(self, wires: List[int] = [0, 1], **kwargs) -> None:
-        """Initialise a Controlled-X gate.
+        def __init__(self, theta: float, wires: Union[int, List[int]] = 0) -> None:
+            self.theta = theta
+            c = jnp.cos(theta / 2)
+            s = jnp.sin(theta / 2)
+            mat = c * Id._matrix - 1j * s * pauli_mat
+            super().__init__(wires=wires, matrix=mat)
 
-        Args:
-            wires: Two-element list ``[control, target]``.
-        """
-        super().__init__(wires=wires, **kwargs)
+        def generator(self) -> Operation:
+            """Return the generator as the corresponding Pauli operation."""
+            return pauli_class(wires=self.wires[0], record=False)
+
+    _RotationGate.__name__ = name
+    _RotationGate.__qualname__ = name
+    return _RotationGate
+
+
+RX = _make_rotation_gate(PauliX, "RX")
+RY = _make_rotation_gate(PauliY, "RY")
+RZ = _make_rotation_gate(PauliZ, "RZ")
+
+
+# Projectors used by controlled-gate factories
+_P0 = jnp.array([[1, 0], [0, 0]], dtype=jnp.complex128)  # |0><0|
+_P1 = jnp.array([[0, 0], [0, 1]], dtype=jnp.complex128)  # |1><1|
+
+
+def _make_controlled_gate(target_class: type, name: str) -> type:
+    """Factory for controlled Pauli gates CX, CY, CZ.
+
+    Each gate has the form ``CP = |0><0| ⊗ I + |1><1| ⊗ P``.
+
+    Args:
+        target_class: The single-qubit gate class (PauliX, PauliY, PauliZ).
+        name: Class name for the generated gate (e.g. ``"CX"``).
+
+    Returns:
+        A new :class:`Operation` subclass.
+    """
+    target_mat = target_class._matrix
+
+    class _ControlledGate(Operation):
+        __doc__ = (
+            f"Controlled-{target_class.__name__[5:]} gate.\n\n"
+            f"Applies {target_class.__name__} on the target qubit conditioned "
+            f"on the control qubit being in state |1⟩."
+        )
+        _matrix = jnp.kron(_P0, Id._matrix) + jnp.kron(_P1, target_mat)
+        _num_wires = 2
+        is_controlled = True
+
+        def __init__(self, wires: List[int] = [0, 1], **kwargs) -> None:
+            super().__init__(wires=wires, **kwargs)
+
+    _ControlledGate.__name__ = name
+    _ControlledGate.__qualname__ = name
+    return _ControlledGate
+
+
+CX = _make_controlled_gate(PauliX, "CX")
+CY = _make_controlled_gate(PauliY, "CY")
+CZ = _make_controlled_gate(PauliZ, "CZ")
 
 
 class CCX(Operation):
@@ -615,6 +657,7 @@ class CCX(Operation):
         dtype=jnp.complex128,
     )
     is_controlled = True
+    _num_wires = 3
 
     def __init__(self, wires: List[int] = [0, 1, 2], **kwargs) -> None:
         """Initialise a Toffoli (CCX) gate.
@@ -648,6 +691,7 @@ class CSWAP(Operation):
         dtype=jnp.complex128,
     )
     is_controlled = True
+    _num_wires = 3
 
     def __init__(self, wires: List[int] = [0, 1, 2], **kwargs) -> None:
         """Initialise a Controlled-SWAP (Fredkin) gate.
@@ -658,157 +702,50 @@ class CSWAP(Operation):
         super().__init__(wires=wires, **kwargs)
 
 
-class CY(Operation):
-    """Controlled-Y gate.
+def _make_controlled_rotation_gate(pauli_class: type, name: str) -> type:
+    """Factory for controlled rotation gates CRX, CRY, CRZ.
 
-    Applies a Pauli-Y gate on the target qubit conditioned on the control
-    qubit being in state |1⟩.
+    Each gate has the form
+    ``CR_P(θ) = |0><0| ⊗ I + |1><1| ⊗ R_P(θ)``.
 
-    Args on construction:
-        wires: ``[control, target]``.
+    Args:
+        pauli_class: One of PauliX, PauliY, PauliZ.
+        name: Class name for the generated gate (e.g. ``"CRX"``).
+
+    Returns:
+        A new :class:`Operation` subclass.
     """
+    pauli_mat = pauli_class._matrix
 
-    _matrix = jnp.array(
-        [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, -1j], [0, 0, 1j, 0]],
-        dtype=jnp.complex128,
-    )
-    is_controlled = True
-
-    def __init__(self, wires: List[int] = [0, 1], **kwargs) -> None:
-        """Initialise a Controlled-Y gate.
-
-        Args:
-            wires: Two-element list ``[control, target]``.
-        """
-        super().__init__(wires=wires, **kwargs)
-
-
-class CZ(Operation):
-    """Controlled-Z gate.
-
-    Applies a Pauli-Z gate on the target qubit conditioned on the control
-    qubit being in state |1⟩.
-
-    Args on construction:
-        wires: ``[control, target]``.
-    """
-
-    _matrix = jnp.array(
-        [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1]],
-        dtype=jnp.complex128,
-    )
-    is_controlled = True
-
-    def __init__(self, wires: List[int] = [0, 1], **kwargs) -> None:
-        """Initialise a Controlled-Z gate.
-
-        Args:
-            wires: Two-element list ``[control, target]``.
-        """
-        super().__init__(wires=wires, **kwargs)
-
-
-class CRX(Operation):
-    """Controlled rotation around the X axis.
-
-    Applies RX(θ) on the target qubit conditioned on the control qubit
-    being in state |1⟩.
-
-    .. math::
-        CRX(\\theta) = |0\\rangle\\langle 0| \\otimes I
-                      + |1\\rangle\\langle 1| \\otimes RX(\\theta)
-    """
-
-    is_controlled = True
-
-    def __init__(self, theta: float, wires: List[int] = [0, 1], **kwargs) -> None:
-        """Initialise a CRX gate.
-
-        Args:
-            theta: Rotation angle in radians.
-            wires: Two-element list ``[control, target]``.
-        """
-        self.theta = theta
-        c = jnp.cos(theta / 2)
-        s = jnp.sin(theta / 2)
-        mat = jnp.array(
-            [
-                [1, 0, 0, 0],
-                [0, 1, 0, 0],
-                [0, 0, c, -1j * s],
-                [0, 0, -1j * s, c],
-            ],
-            dtype=jnp.complex128,
+    class _CRotationGate(Operation):
+        __doc__ = (
+            f"Controlled rotation around the {name[2]} axis.\n\n"
+            f"Applies R{name[2]}(θ) on the target qubit conditioned on the "
+            f"control qubit being in state |1⟩.\n\n"
+            f".. math::\n"
+            f"    {name}(\\\\theta) = |0\\\\rangle\\\\langle 0| \\\\otimes I\n"
+            f"                      + |1\\\\rangle\\\\langle 1| \\\\otimes R{name[2]}(\\\\theta)"
         )
-        super().__init__(wires=wires, matrix=mat, **kwargs)
+        _num_wires = 2
+        _param_names = ("theta",)
+        is_controlled = True
+
+        def __init__(self, theta: float, wires: List[int] = [0, 1], **kwargs) -> None:
+            self.theta = theta
+            c = jnp.cos(theta / 2)
+            s = jnp.sin(theta / 2)
+            rot = c * Id._matrix - 1j * s * pauli_mat
+            mat = jnp.kron(_P0, Id._matrix) + jnp.kron(_P1, rot)
+            super().__init__(wires=wires, matrix=mat, **kwargs)
+
+    _CRotationGate.__name__ = name
+    _CRotationGate.__qualname__ = name
+    return _CRotationGate
 
 
-class CRY(Operation):
-    """Controlled rotation around the Y axis.
-
-    Applies RY(θ) on the target qubit conditioned on the control qubit
-    being in state |1⟩.
-
-    .. math::
-        CRY(\\theta) = |0\\rangle\\langle 0| \\otimes I
-                      + |1\\rangle\\langle 1| \\otimes RY(\\theta)
-    """
-
-    is_controlled = True
-
-    def __init__(self, theta: float, wires: List[int] = [0, 1], **kwargs) -> None:
-        """Initialise a CRY gate.
-
-        Args:
-            theta: Rotation angle in radians.
-            wires: Two-element list ``[control, target]``.
-        """
-        self.theta = theta
-        c = jnp.cos(theta / 2)
-        s = jnp.sin(theta / 2)
-        mat = jnp.array(
-            [
-                [1, 0, 0, 0],
-                [0, 1, 0, 0],
-                [0, 0, c, -s],
-                [0, 0, s, c],
-            ],
-            dtype=jnp.complex128,
-        )
-        super().__init__(wires=wires, matrix=mat, **kwargs)
-
-
-class CRZ(Operation):
-    """Controlled rotation around the Z axis.
-
-    Applies RZ(θ) on the target qubit conditioned on the control qubit
-    being in state |1⟩.
-
-    .. math::
-        CRZ(\\theta) = |0\\rangle\\langle 0| \\otimes I
-                      + |1\\rangle\\langle 1| \\otimes RZ(\\theta)
-    """
-
-    is_controlled = True
-
-    def __init__(self, theta: float, wires: List[int] = [0, 1], **kwargs) -> None:
-        """Initialise a CRZ gate.
-
-        Args:
-            theta: Rotation angle in radians.
-            wires: Two-element list ``[control, target]``.
-        """
-        self.theta = theta
-        mat = jnp.array(
-            [
-                [1, 0, 0, 0],
-                [0, 1, 0, 0],
-                [0, 0, jnp.exp(-1j * theta / 2), 0],
-                [0, 0, 0, jnp.exp(1j * theta / 2)],
-            ],
-            dtype=jnp.complex128,
-        )
-        super().__init__(wires=wires, matrix=mat, **kwargs)
+CRX = _make_controlled_rotation_gate(PauliX, "CRX")
+CRY = _make_controlled_rotation_gate(PauliY, "CRY")
+CRZ = _make_controlled_rotation_gate(PauliZ, "CRZ")
 
 
 class Rot(Operation):
@@ -817,6 +754,9 @@ class Rot(Operation):
     This is the most general SU(2) rotation (up to a global phase).  It
     decomposes into three successive rotations and has three free parameters.
     """
+
+    _num_wires = 1
+    _param_names = ("phi", "theta", "omega")
 
     def __init__(
         self,
@@ -861,6 +801,8 @@ class PauliRot(Operation):
 
         PauliRot(0.5, "XY", wires=[0, 1])
     """
+
+    _param_names = ("theta",)
 
     # Map from character to 2x2 matrix
     _PAULI_MAP = {
@@ -1016,6 +958,9 @@ class BitFlip(KrausChannel):
     where *p* ∈ [0, 1] is the probability of a bit flip.
     """
 
+    _num_wires = 1
+    _param_names = ("p",)
+
     def __init__(self, p: float, wires: Union[int, List[int]] = 0) -> None:
         """Initialise a bit-flip channel.
 
@@ -1051,6 +996,9 @@ class PhaseFlip(KrausChannel):
 
     where *p* ∈ [0, 1] is the probability of a phase flip.
     """
+
+    _num_wires = 1
+    _param_names = ("p",)
 
     def __init__(self, p: float, wires: Union[int, List[int]] = 0) -> None:
         """Initialise a phase-flip channel.
@@ -1088,6 +1036,9 @@ class DepolarizingChannel(KrausChannel):
 
     where *p* ∈ [0, 1].  At p = 3/4 the channel is fully depolarizing.
     """
+
+    _num_wires = 1
+    _param_names = ("p",)
 
     def __init__(self, p: float, wires: Union[int, List[int]] = 0) -> None:
         """Initialise a depolarizing channel.
@@ -1128,6 +1079,9 @@ class AmplitudeDamping(KrausChannel):
     where *γ* ∈ [0, 1] is the probability of energy loss (|1⟩ → |0⟩).
     """
 
+    _num_wires = 1
+    _param_names = ("gamma",)
+
     def __init__(self, gamma: float, wires: Union[int, List[int]] = 0) -> None:
         """Initialise an amplitude damping channel.
 
@@ -1164,6 +1118,9 @@ class PhaseDamping(KrausChannel):
 
     where *γ* ∈ [0, 1] is the phase damping probability.
     """
+
+    _num_wires = 1
+    _param_names = ("gamma",)
 
     def __init__(self, gamma: float, wires: Union[int, List[int]] = 0) -> None:
         """Initialise a phase damping channel.
@@ -1212,6 +1169,9 @@ class ThermalRelaxationError(KrausChannel):
         t2: T₂ transverse dephasing time.
         tg: Gate duration.
     """
+
+    _num_wires = 1
+    _param_names = ("pe", "t1", "t2", "tg")
 
     def __init__(
         self,
