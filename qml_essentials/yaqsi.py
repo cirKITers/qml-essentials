@@ -21,6 +21,8 @@ from qml_essentials.drawing import draw_text, draw_mpl, draw_tikz
 
 
 class Yaqsi:
+    # TODO: generally, I would like to merge this into operations or vice-versa
+    # and only keep Script here.  It's not clear how to do this though.
 
     # Module-level cache for JIT-compiled ODE solvers.  Keyed on
     # (coeff_fn_id, dim, atol, rtol) so that all evolve() calls with the
@@ -376,7 +378,6 @@ class Script:
         self._n_qubits = n_qubits
         self._jit_cache: dict = {}  # keyed on (type, in_axes, arg_shapes)
 
-    # -- internal: record the tape by running f -------------------------
     def _record(self, *args, **kwargs) -> List[Operation]:
         """Run the circuit function and collect the recorded operations.
 
@@ -397,7 +398,6 @@ class Script:
             self.f(*args, **kwargs)
         return tape
 
-    # -- infer qubit count from the tape --------------------------------
     @staticmethod
     def _infer_n_qubits(ops: List[Operation], obs: List[Operation]) -> int:
         """Infer the number of qubits from a list of operations and observables.
@@ -414,15 +414,6 @@ class Script:
         for op in ops + obs:
             all_wires.update(op.wires)
         return max(all_wires) + 1 if all_wires else 1
-
-    # ------------------------------------------------------------------
-    # Pure simulation kernels
-    #
-    # Both are static, accept only JAX arrays + plain Python lists, and
-    # have no side-effects after the tape is built.  This makes them safe
-    # targets for jax.jit, jax.grad, jax.vmap, and — in the future —
-    # jax.shard_map for multi-device parallelism.
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _simulate_pure(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
@@ -709,38 +700,27 @@ class Script:
         Returns:
             Without *in_axes*: shape determined by *type*.
             With *in_axes*: shape ``(B, ...)`` with a leading batch dimension.
-
-        Note:
-            Tape / kernel split — the circuit function is executed in
-            Python *once* to record the tape and determine ``n_qubits`` and
-            whether noise is present.  The pure JAX kernels
-            (``_simulate_pure`` / ``_simulate_mixed``) are then vmapped, so
-            Python overhead is O(circuit_depth), not O(B\times circuit_depth).
-
-            shard_map migration — the ``jax.vmap`` call in
-            :meth:`_execute_batched` is the exact boundary to replace with
-            ``jax.shard_map`` for multi-device execution.
         """
         if obs is None:
             obs = []
         if kwargs is None:
             kwargs = {}
 
+        # Split single/ parallel execution
+        # TODO: we might want to unify the n_qubit stuff such that we can eliminate
+        # the parameter to this method entirely
         if in_axes is not None:
             return self._execute_batched(
                 type=type, obs=obs, args=args, kwargs=kwargs, in_axes=in_axes
             )
+        else:
+            tape = self._record(*args, **kwargs)
+            n_qubits = self._n_qubits or self._infer_n_qubits(tape, obs)
 
-        # ------------------------------------------------------------------
-        # Single-sample path
-        # ------------------------------------------------------------------
-        tape = self._record(*args, **kwargs)
-        n_qubits = self._n_qubits or self._infer_n_qubits(tape, obs)
+            has_noise = any(isinstance(op, KrausChannel) for op in tape)
+            use_density = type == "density" or has_noise
 
-        has_noise = any(isinstance(op, KrausChannel) for op in tape)
-        use_density = type == "density" or has_noise
-
-        return self._simulate_and_measure(tape, n_qubits, type, obs, use_density)
+            return self._simulate_and_measure(tape, n_qubits, type, obs, use_density)
 
     # -- batched execution ----------------------------------------------
 
@@ -812,10 +792,10 @@ class Script:
         if batched_fn is not None:
             return batched_fn(*args)
 
-        # Step 1 — record the tape once using scalar slices of each arg.
+        # First, record the tape once using scalar slices of each arg.
         # This determines n_qubits and whether noise channels are present
         # without running the full batch.
-        # NOTE: We use lax.index_in_dim instead of jnp.take because JAX
+        # Note, that we use lax.index_in_dim instead of jnp.take because JAX
         # random key arrays do not support jnp.take.
         def _slice_first(a, ax):
             """Take the first element along axis *ax*."""
@@ -829,7 +809,7 @@ class Script:
         has_noise = any(isinstance(op, KrausChannel) for op in tape)
         use_density = type == "density" or has_noise
 
-        # Step 2 — define a pure single-sample function to vmap over.
+        # Second, define a pure single-sample function to vmap over.
         # Re-recording inside this function is necessary: the tape may
         # contain operations whose matrices depend on the batched argument
         # (e.g. RX(theta) where theta is a JAX tracer).  jax.vmap traces
@@ -841,7 +821,7 @@ class Script:
                 single_tape, n_qubits, type, obs, use_density
             )
 
-        # Step 3 — vmap + jit over the requested axes.
+        # Third, vmap + jit over the requested axes.
         #
         # Wrapping the vmapped function in jax.jit has two effects:
         #
@@ -859,16 +839,11 @@ class Script:
         # same structure (e.g. training iterations) skip both Python-level
         # tracing and XLA compilation entirely — they jump straight to the
         # cache check at the top of this method.
-        #
-        # Note on control flow: circuit functions (e.g. Model._variational)
-        # use ``if data_reupload[q, idx]: ...`` which requires a concrete
-        # bool.  This works under jit because ``data_reupload`` is stored
-        # as a NumPy (not JAX) array, so it remains concrete during tracing.
+
+        # TODO: we might want to rework the data_reupload mechanism at some point
         batched_fn = jax.jit(jax.vmap(_single_execute, in_axes=in_axes))
         self._jit_cache[cache_key] = batched_fn
         return batched_fn(*args)
-
-    # -- circuit drawing ------------------------------------------------
 
     def draw(
         self,

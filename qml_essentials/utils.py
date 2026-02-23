@@ -294,7 +294,7 @@ class PauliCircuit:
         This function computes the resulting operations, when switching a
         Clifford gate and a Pauli rotation in the circuit.
 
-        **Example**:
+        Example:
         Consider a circuit consisting of the gate sequence
         ... --- H --- R_z --- ...
         This function computes the evolved Pauli Rotation, and moves the

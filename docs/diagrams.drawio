@@ -1,4 +1,4 @@
-<mxfile host="Electron" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.0.3 Chrome/140.0.7339.249 Electron/38.7.0 Safari/537.36" version="29.0.3" pages="4">
+<mxfile host="Electron" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.0.3 Chrome/140.0.7339.249 Electron/38.7.0 Safari/537.36" version="29.0.3" pages="5">
   <diagram name="logo" id="tte6xfm6YIGyEFaF_oNk">
     <mxGraphModel dx="1434" dy="959" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
       <root>
@@ -267,6 +267,65 @@
             <mxPoint x="512" y="240" as="sourcePoint" />
             <mxPoint x="812" y="240" as="targetPoint" />
           </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="spa1uVqdiQQ0YvOVlW3r" name="yaqsi">
+    <mxGraphModel dx="2191" dy="1305" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="qWqGzGG-b71D2YMG60HP-1" value="QuantumScript (yaqsi.py)" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=bottom;" parent="1" vertex="1">
+          <mxGeometry x="760" y="390" width="570" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="qWqGzGG-b71D2YMG60HP-2" value="Circuit" style="rounded=1;whiteSpace=wrap;html=1;arcSize=9;" parent="1" vertex="1">
+          <mxGeometry x="983.5" y="150" width="463" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-2" value="Operations (operations.py)" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=bottom;" vertex="1" parent="1">
+          <mxGeometry x="100" y="395" width="570" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-1" value="Gates (gates.py)" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=bottom;" vertex="1" parent="1">
+          <mxGeometry x="80" y="80" width="330" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-3" value="Tape (tape.py)" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=bottom;" vertex="1" parent="1">
+          <mxGeometry x="100" y="695" width="570" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-4" value="Yaqsi (yaqsi.py)" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=bottom;" vertex="1" parent="1">
+          <mxGeometry x="760" y="695" width="570" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-5" value="Kraus Channels" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="470" y="485" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-6" value="Recording" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="180" y="715" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-7" value="Multi Qubit Operations" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="320" y="535" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-9" value="Operation" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="180" y="435" width="410" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-10" value="Hermitian" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="180" y="485" width="260" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-12" value="Noise" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="470" y="535" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-14" value="Thread-safe&lt;br&gt;Management" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="325" y="715" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-16" value="Single Qubit Operations" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="180" y="535" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-19" value="Hamiltonian&lt;div&gt;Evolution&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="833.5" y="715" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-20" value="Partial&lt;div&gt;Trace&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="986.5" y="715" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-21" value="Probs&lt;div&gt;Marginalization&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="1136.5" y="715" width="120" height="60" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
