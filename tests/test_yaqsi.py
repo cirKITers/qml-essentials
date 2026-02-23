@@ -1176,7 +1176,6 @@ def test_evolve_type_error() -> None:
         evolve("not a hamiltonian")
 
 
-@pytest.mark.expensive
 @pytest.mark.unittest
 @pytest.mark.limit_memory("1 GB")
 def test_memory() -> None:
@@ -1197,7 +1196,6 @@ def test_memory() -> None:
         _ = Script(f=yaqsi_circuit).execute(type="density")
 
 
-@pytest.mark.expensive
 @pytest.mark.benchmark
 @pytest.mark.unittest
 @pytest.mark.parametrize("mode", ["probs", "expval", "state", "density"])
