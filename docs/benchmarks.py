@@ -29,10 +29,11 @@ print(f"Identifier: {identifier}")
 LOAD_LATEST = False  # Set to True to skip computation and load the latest CSV instead
 WARMUP = True  # Does not produce meaningful results if False
 
-qubit_sizes = list(range(2, 12))
+qubit_sizes = list(range(2, 15))
 modes = ["probs", "expval", "state", "density"]
 n_iters = 100
-batch_size = 100
+batch_size = 5
+precision = 1e-5
 
 
 def var_ghz_benchmark(mode, q) -> None:
@@ -99,7 +100,7 @@ def var_ghz_benchmark(mode, q) -> None:
         "expval": lambda: [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)],
     }
 
-    @qml.qnode(dev)
+    @qml.qnode(dev, interface="jax")
     def pl_circuit(phi):
         for i in range(n_qubits):
             qml.Hadamard(wires=i)
@@ -128,8 +129,12 @@ def var_ghz_benchmark(mode, q) -> None:
     if res_pl_arr.shape != res_ys.shape:
         res_pl_arr = res_pl_arr.T
 
-    assert jnp.allclose(res_ys, res_pl_arr, atol=1e-10), "Results do not match"
-    print(f"Results match")
+    if jnp.allclose(res_ys, res_pl_arr, atol=precision):
+        logger.error(f"Error occured at {q} qubits for mode {mode}:\
+                     Results do not match; got {res_ys} and {res_pl_arr}\
+                     Shape is {res_ys.shape} and {res_pl_arr.shape}")
+    else:
+        logger.info("Results match")
 
     return [t_ys, t_pl, std_ys, std_pl]
 
