@@ -11,7 +11,7 @@ from qml_essentials.operations import (
 
 def _ctrl_target_name(name: str) -> str:
     """Strip the leading 'C' from a controlled gate name to get the target name."""
-    # CRX → RX, CX → X, etc.
+    # CRX -> RX, CX -> X, etc.
     return name.replace("C", "")
 
 
@@ -65,9 +65,9 @@ def draw_text(ops: List[Operation], n_qubits: int) -> str:
         return "\n".join(lines)
 
     # Schedule operations into time-step columns.
-    # Each column is a dict mapping qubit → display string.
+    # Each column is a dict mapping qubit -> display string.
     columns: List[Dict[int, str]] = []
-    wire_busy: Dict[int, int] = {}  # qubit → next free column index
+    wire_busy: Dict[int, int] = {}  # qubit -> next free column index
 
     for op in ops:
         start = max((wire_busy.get(w, 0) for w in op.wires), default=0)

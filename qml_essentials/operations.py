@@ -83,9 +83,6 @@ def _contract_and_restore(
     return jnp.einsum(subscript, gate, tensor)
 
 
-# ===================================================================
-# Operation base class
-# ===================================================================
 class Operation:
     """Base class for any quantum operation or observable.
 
@@ -238,7 +235,7 @@ class Operation:
 
         Embeds the ``k``-qubit gate matrix into the ``n``-qubit Hilbert space
         by applying it to the identity matrix via :meth:`apply_to_state`.
-        This is useful for computing ``Tr(O·ρ)`` directly without vmap.
+        This is useful for computing ``Tr(O·\rho )`` directly without vmap.
 
         Args:
             n_qubits: Total number of qubits in the circuit.
@@ -317,7 +314,7 @@ class Operation:
         return gt
 
     def apply_to_density(self, rho: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
-        """Apply this gate to a density matrix via ρ → UρU†.
+        """Apply this gate to a density matrix via \rho -> U\rho U†.
 
         The density matrix (shape ``(2**n, 2**n)``) is treated as a rank-*2n*
         tensor with *n* "ket" axes (0..n-1) and *n* "bra" axes (n..2n-1).
@@ -346,9 +343,6 @@ class Operation:
         return rho_t.reshape(2**n_qubits, 2**n_qubits)
 
 
-# ===================================================================
-# Concrete gates / observables
-# ===================================================================
 class Hermitian(Operation):
     """A generic Hermitian observable or gate defined by an arbitrary matrix.
 
@@ -378,7 +372,7 @@ class Hermitian(Operation):
         )
 
     def __rmul__(self, coeff_fn):
-        """Support ``coeff_fn * Hermitian`` → :class:`ParametrizedHamiltonian`.
+        """Support ``coeff_fn * Hermitian`` -> :class:`ParametrizedHamiltonian`.
 
         Args:
             coeff_fn: A callable ``(params, t) -> scalar`` giving the
@@ -446,7 +440,7 @@ class Id(Operation):
 
 
 class PauliX(Operation):
-    """Pauli-X gate / observable (bit-flip, σ_x)."""
+    """Pauli-X gate / observable (bit-flip, \sigma_x)."""
 
     _matrix = jnp.array([[0, 1], [1, 0]], dtype=jnp.complex128)
     _num_wires = 1
@@ -461,7 +455,7 @@ class PauliX(Operation):
 
 
 class PauliY(Operation):
-    """Pauli-Y gate / observable (σ_y)."""
+    """Pauli-Y gate / observable (\sigma_y)."""
 
     _matrix = jnp.array([[0, -1j], [1j, 0]], dtype=jnp.complex128)
     _num_wires = 1
@@ -476,7 +470,7 @@ class PauliY(Operation):
 
 
 class PauliZ(Operation):
-    """Pauli-Z gate / observable (phase-flip, σ_z)."""
+    """Pauli-Z gate / observable (phase-flip, \sigma_z)."""
 
     _matrix = jnp.array([[1, 0], [0, -1]], dtype=jnp.complex128)
     _num_wires = 1
@@ -506,7 +500,7 @@ class H(Operation):
 
 
 class S(Operation):
-    """S (phase) gate — a Clifford gate equal to √Z.
+    """S (phase) gate — a Clifford gate equal to \sqrt Z.
 
     .. math::
         S = \\begin{pmatrix}1 & 0\\\\ 0 & i\\end{pmatrix}
@@ -553,7 +547,7 @@ class Barrier(Operation):
 def _make_rotation_gate(pauli_class: type, name: str) -> type:
     """Factory for single-qubit rotation gates RX, RY, RZ.
 
-    Each gate has the form ``R_P(θ) = cos(θ/2) I - i sin(θ/2) P``.
+    Each gate has the form ``R_P(\theta) = cos(\theta/2) I - i sin(\theta/2) P``.
 
     Args:
         pauli_class: One of PauliX, PauliY, PauliZ.
@@ -565,9 +559,8 @@ def _make_rotation_gate(pauli_class: type, name: str) -> type:
     pauli_mat = pauli_class._matrix
 
     class _RotationGate(Operation):
-        __doc__ = (
-            f"Rotation around the {name[1]} axis: {name}(θ) = exp(-i θ/2 {name[1]})."
-        )
+        # Fancy way of setting docstring to make it generic
+        __doc__ = f"Rotation around the {name[1]} axis: {name}(\theta) = exp(-i \theta/2 {name[1]})."
         _num_wires = 1
         _param_names = ("theta",)
 
@@ -706,7 +699,7 @@ def _make_controlled_rotation_gate(pauli_class: type, name: str) -> type:
     """Factory for controlled rotation gates CRX, CRY, CRZ.
 
     Each gate has the form
-    ``CR_P(θ) = |0><0| ⊗ I + |1><1| ⊗ R_P(θ)``.
+    ``CR_P(\theta) = |0><0| ⊗ I + |1><1| ⊗ R_P(\theta)``.
 
     Args:
         pauli_class: One of PauliX, PauliY, PauliZ.
@@ -720,7 +713,7 @@ def _make_controlled_rotation_gate(pauli_class: type, name: str) -> type:
     class _CRotationGate(Operation):
         __doc__ = (
             f"Controlled rotation around the {name[2]} axis.\n\n"
-            f"Applies R{name[2]}(θ) on the target qubit conditioned on the "
+            f"Applies R{name[2]}(\theta) on the target qubit conditioned on the "
             f"control qubit being in state |1⟩.\n\n"
             f".. math::\n"
             f"    {name}(\\\\theta) = |0\\\\rangle\\\\langle 0| \\\\otimes I\n"
@@ -749,7 +742,7 @@ CRZ = _make_controlled_rotation_gate(PauliZ, "CRZ")
 
 
 class Rot(Operation):
-    """General single-qubit rotation: Rot(φ, θ, ω) = RZ(ω) RY(θ) RZ(φ).
+    """General single-qubit rotation: Rot(φ, \theta, ω) = RZ(ω) RY(\theta) RZ(φ).
 
     This is the most general SU(2) rotation (up to a global phase).  It
     decomposes into three successive rotations and has three free parameters.
@@ -777,7 +770,7 @@ class Rot(Operation):
         self.phi = phi
         self.theta = theta
         self.omega = omega
-        # Rot(φ, θ, ω) = RZ(ω) @ RY(θ) @ RZ(φ)
+        # Rot(φ, \theta, ω) = RZ(ω) @ RY(\theta) @ RZ(φ)
         rz_phi = jnp.cos(phi / 2) * Id._matrix - 1j * jnp.sin(phi / 2) * PauliZ._matrix
         ry_theta = (
             jnp.cos(theta / 2) * Id._matrix - 1j * jnp.sin(theta / 2) * PauliY._matrix
@@ -790,11 +783,11 @@ class Rot(Operation):
 
 
 class PauliRot(Operation):
-    """Multi-qubit Pauli rotation: exp(-i θ/2 P) for a Pauli word P.
+    """Multi-qubit Pauli rotation: exp(-i \theta/2 P) for a Pauli word P.
 
     The Pauli word is given as a string of ``'I'``, ``'X'``, ``'Y'``, ``'Z'``
     characters (one per qubit).  The rotation matrix is computed as
-    ``cos(θ/2) I - i sin(θ/2) P`` where *P* is the tensor product of the
+    ``cos(\theta/2) I - i sin(\theta/2) P`` where *P* is the tensor product of the
     corresponding single-qubit Pauli matrices.
 
     Example::
@@ -840,7 +833,7 @@ class PauliRot(Operation):
     def generator(self) -> Operation:
         """Return the generator Pauli tensor product as an :class:`Operation`.
 
-        The generator of ``PauliRot(θ, word, wires)`` is the tensor product
+        The generator of ``PauliRot(\theta, word, wires)`` is the tensor product
         of single-qubit Pauli matrices specified by *word*.  The returned
         :class:`Hermitian` wraps that matrix and the gate's wires.
 
@@ -854,13 +847,10 @@ class PauliRot(Operation):
         return Hermitian(matrix=P, wires=self.wires, record=False)
 
 
-# ===================================================================
-# Kraus channel base class
-# ===================================================================
 class KrausChannel(Operation):
     """Base class for noise channels defined by a set of Kraus operators.
 
-    A Kraus channel Φ(ρ) = Σ_k K_k ρ K_k† is the most general physical
+    A Kraus channel Φ(\rho ) = \sigma_k K_k \rho  K_k† is the most general physical
     operation on a quantum state.  For a pure unitary gate there is a single
     operator K_0 = U satisfying K_0†K_0 = I; for noisy channels there are
     multiple operators.
@@ -918,7 +908,7 @@ class KrausChannel(Operation):
         )
 
     def apply_to_density(self, rho: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
-        """Apply Φ(ρ) = Σ_k K_k ρ K_k† using tensor-contraction.
+        """Apply Φ(\rho ) = \sigma_k K_k \rho  K_k† using tensor-contraction.
 
         Uses the shared :func:`_contract_and_restore` helper, summing the
         result over all Kraus operators.
@@ -946,9 +936,6 @@ class KrausChannel(Operation):
         return rho_out
 
 
-# ===================================================================
-# Noise channels
-# ===================================================================
 class BitFlip(KrausChannel):
     r"""Single-qubit bit-flip (Pauli-X) error channel.
 
@@ -980,7 +967,7 @@ class BitFlip(KrausChannel):
         """Return the two Kraus operators for the bit-flip channel.
 
         Returns:
-            List ``[K0, K1]`` where K0 = √(1-p)·I and K1 = √p·X.
+            List ``[K0, K1]`` where K0 = \sqrt (1-p)·I and K1 = \sqrt p·X.
         """
         p = self.p
         K0 = jnp.sqrt(1 - p) * Id._matrix
@@ -1019,7 +1006,7 @@ class PhaseFlip(KrausChannel):
         """Return the two Kraus operators for the phase-flip channel.
 
         Returns:
-            List ``[K0, K1]`` where K0 = √(1-p)·I and K1 = √p·Z.
+            List ``[K0, K1]`` where K0 = \sqrt (1-p)·I and K1 = \sqrt p·Z.
         """
         p = self.p
         K0 = jnp.sqrt(1 - p) * Id._matrix
@@ -1076,7 +1063,7 @@ class AmplitudeDamping(KrausChannel):
         K_0 = \begin{pmatrix}1 & 0\\ 0 & \sqrt{1-\gamma}\end{pmatrix},\quad
         K_1 = \begin{pmatrix}0 & \sqrt{\gamma}\\ 0 & 0\end{pmatrix}
 
-    where *γ* ∈ [0, 1] is the probability of energy loss (|1⟩ → |0⟩).
+    where *γ* ∈ [0, 1] is the probability of energy loss (|1⟩ -> |0⟩).
     """
 
     _num_wires = 1
@@ -1161,7 +1148,7 @@ class ThermalRelaxationError(KrausChannel):
 
     **T₂ > T₁** (non-Markovian; Choi matrix decomposition):
         The Choi matrix is assembled from the relaxation/dephasing rates, then
-        diagonalised; Kraus operators are K_i = √λ_i · mat(v_i).
+        diagonalised; Kraus operators are K_i = \sqrt λ_i · mat(v_i).
 
     Attributes:
         pe: Excited-state population (thermal population of |1⟩).
@@ -1255,7 +1242,7 @@ class ThermalRelaxationError(KrausChannel):
                 dtype=jnp.complex128,
             )
             eigenvalues, eigenvectors = jnp.linalg.eigh(choi)
-            # Each eigenvector (column of eigenvectors) reshaped as 2x2 → one Kraus op
+            # Each eigenvector (column of eigenvectors) reshaped as 2x2 -> one Kraus op
             kraus = []
             for i in range(4):
                 lam = eigenvalues[i]
@@ -1269,7 +1256,7 @@ class QubitChannel(KrausChannel):
     """Generic Kraus channel from a user-supplied list of Kraus operators.
 
     This replaces PennyLane's ``qml.QubitChannel`` and accepts an arbitrary set
-    of Kraus matrices satisfying Σ_k K_k†K_k = I.
+    of Kraus matrices satisfying \sigma_k K_k†K_k = I.
 
     Example::
 
@@ -1486,7 +1473,7 @@ def pauli_decompose(matrix: jnp.ndarray, wire_order: Optional[List[int]] = None)
         result_op._pauli_label = "I" * n_qubits
         return best_coeff, result_op
     else:
-        # Multi-qubit tensor product → Hermitian with pauli label attached
+        # Multi-qubit tensor product -> Hermitian with pauli label attached
         P = _reduce(jnp.kron, [_PAULI_MATS[i] for i in best_label])
         result_op = Hermitian(matrix=P, wires=wire_order, record=False)
         result_op._pauli_label = pauli_label
@@ -1496,8 +1483,8 @@ def pauli_decompose(matrix: jnp.ndarray, wire_order: Optional[List[int]] = None)
 def pauli_string_from_operation(op: Operation) -> str:
     """Extract a Pauli word string from an operation.
 
-    Maps ``PauliX`` → ``"X"``, ``PauliY`` → ``"Y"``, ``PauliZ`` → ``"Z"``,
-    ``I`` → ``"I"``.  For :class:`PauliRot`, returns its stored ``pauli_word``.
+    Maps ``PauliX`` -> ``"X"``, ``PauliY`` -> ``"Y"``, ``PauliZ`` -> ``"Z"``,
+    ``I`` -> ``"I"``.  For :class:`PauliRot`, returns its stored ``pauli_word``.
     For operations produced by :func:`pauli_decompose`, returns the stored
     ``_pauli_label`` attribute.
 

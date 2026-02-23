@@ -1,4 +1,4 @@
-from typing import Optional, Any, List, Tuple
+from typing import Optional, Any, Tuple
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -149,6 +149,8 @@ class Entanglement:
             model._variational(
                 params, inputs, pulse_params=pulse_params, random_key=random_key, **kw
             )
+
+            # TODO: this is very user-unfriendly and we should find a better way
 
             # Second copy on wires n..2n-1: record the tape then shift wires
             from qml_essentials.tape import recording as _recording

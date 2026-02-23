@@ -127,10 +127,7 @@ class Yaqsi:
         cls,
         qubit_group: List[int],
     ) -> Hermitian:
-        """Build a multi-qubit Z⊗Z⊗...⊗Z parity observable.
-
-        For a group of qubit indices ``[i, j, ...]``, constructs the tensor product
-        ``Z_i ⊗ Z_j ⊗ ...`` as a ``Hermitian`` operation.
+        """Build a multi-qubit parity observable.
 
         Args:
             qubit_group: List of qubit indices for the parity measurement.
@@ -152,14 +149,14 @@ class Yaqsi:
         **Static** — when *hamiltonian* is a :class:`Hermitian`::
 
             gate = evolve(Hermitian(H_mat, wires=0))
-            gate(t=0.5)            # U = exp(-i·0.5·H)
+            gate(t=0.5)            # U = exp(-i*0.5*H)
 
         **Time-dependent** — when *hamiltonian* is a
         :class:`ParametrizedHamiltonian` (created via ``coeff_fn * Hermitian``)::
 
             H_td = coeff_fn * Hermitian(H_mat, wires=0)
             gate = evolve(H_td)
-            gate([A, sigma], T)    # U via ODE: dU/dt = -i f(p,t) H · U
+            gate([A, sigma], T)    # U via ODE: dU/dt = -i f(p,t) H * U
 
         The time-dependent case solves the Schrödinger equation numerically
         using ``diffrax.diffeqsolve`` with a Dopri5 adaptive Runge-Kutta
@@ -213,7 +210,7 @@ class Yaqsi:
     ) -> Callable:
         """Gate factory for time-dependent Hamiltonian evolution.
 
-        Solves the matrix ODE ``dU/dt = -i f(params, t) H · U`` with
+        Solves the matrix ODE ``dU/dt = -i f(params, t) H * U`` with
         ``U(0) = I`` using ``diffrax.diffeqsolve`` (Dopri5 adaptive RK),
         matching PennyLane's ``ParametrizedEvolution``.
 
@@ -227,7 +224,7 @@ class Yaqsi:
         different Hamiltonian matrices or parameters) reuse the same
         compiled XLA program.  This avoids O(n_gates) JIT compilations
         during pulse-mode tape recording.
-        * Pre-computes ``-i·H`` once instead of multiplying at every RHS
+        * Pre-computes ``-i*H`` once instead of multiplying at every RHS
         evaluation.
         * Avoids dynamic ``jnp.where`` branching for the time span.
 
@@ -241,7 +238,7 @@ class Yaqsi:
         wires = ph.wires
         dim = H_mat.shape[0]
 
-        # Pre-compute -i·H once (avoids repeated multiplication in RHS)
+        # Pre-compute -i*H once (avoids repeated multiplication in RHS)
         neg_iH = -1j * H_mat
 
         # Extract tolerances, default to PennyLane values
@@ -271,7 +268,7 @@ class Yaqsi:
 
             @jax.jit
             def _solve(neg_iH, params, t0, t1):
-                """Solve dU/dt = f(params,t) · (-iH) · U from t0 to t1."""
+                """Solve dU/dt = f(params,t) * (-iH) * U from t0 to t1."""
 
                 def rhs(t, y, args):
                     return coeff_fn(args, t) * (neg_iH @ y)
@@ -315,7 +312,7 @@ class Yaqsi:
                 An :class:`Operation` wrapping the computed unitary.
             """
             # PennyLane convention: coeff_args is a list of param-sets,
-            # one per term.  Single term → unpack the first.
+            # one per term.  Single term -> unpack the first.
             params = (
                 coeff_args[0] if isinstance(coeff_args, (list, tuple)) else coeff_args
             )
@@ -343,9 +340,6 @@ marginalize_probs = Yaqsi.marginalize_probs
 build_parity_observable = Yaqsi.build_parity_observable
 
 
-# ===================================================================
-# Script – circuit container & executor
-# ===================================================================
 class Script:
     """Circuit container and executor backed by pure JAX kernels.
 
@@ -474,9 +468,9 @@ class Script:
     def _simulate_mixed(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
         """Density-matrix simulation kernel.
 
-        Starts from ρ = |00…0⟩⟨00…0| and applies each gate in *tape* via
+        Starts from \rho  = |00…0⟩⟨00…0| and applies each gate in *tape* via
         :meth:`~qml_essentials.operations.Operation.apply_to_density`
-        (ρ → UρU† for unitaries, Σ_k K_k ρ K_k† for Kraus channels).
+        (\rho  -> U\rho U† for unitaries, \Sigma_k K_k \rho  K_k† for Kraus channels).
         Required for noisy circuits.
 
         Args:
@@ -512,10 +506,10 @@ class Script:
         **Pure-circuit density optimisation** — when ``type == "density"``
         but no noise channels are present on the tape, the density matrix
         is computed via statevector simulation followed by an outer product
-        ``ρ = |ψ⟩⟨ψ|`` instead of evolving the full ``2^n × 2^n`` matrix
+        ``\rho  = \vert\psi\rangle\langle\psi\vert`` instead of evolving the full ``2^n\times 2^n`` matrix
         gate by gate.  This reduces the per-gate cost from O(4^n) to
         O(2^n), giving a significant speed-up for medium qubit counts
-        (≈4× for 5 qubits).
+        (≈4x for 5 qubits).
 
         Args:
             tape: Ordered list of gate/channel operations to apply.
@@ -536,8 +530,8 @@ class Script:
                 rho = Script._simulate_mixed(tape, n_qubits)
             else:
                 # Pure circuit requesting density output: simulate the
-                # statevector (O(depth × 2^n)) and form ρ = |ψ⟩⟨ψ| once
-                # (O(4^n)).  This avoids the O(depth × 4^n) cost of
+                # statevector (O(depth\times 2^n)) and form \rho  = \vert\psi\rangle\langle\psi\vert once
+                # (O(4^n)).  This avoids the O(depth\times 4^n) cost of
                 # evolving the full density matrix gate by gate.
                 state = Script._simulate_pure(tape, n_qubits)
                 rho = jnp.outer(state, jnp.conj(state))
@@ -566,9 +560,9 @@ class Script:
         Returns:
             Measurement result whose shape depends on *type*:
 
-            - ``"state"``  → ``(2**n_qubits,)``
-            - ``"probs"``  → ``(2**n_qubits,)``
-            - ``"expval"`` → ``(len(obs),)``
+            - ``"state"``  -> ``(2**n_qubits,)``
+            - ``"probs"``  -> ``(2**n_qubits,)``
+            - ``"expval"`` -> ``(len(obs),)``
 
         Raises:
             ValueError: If *type* is not a recognised measurement type.
@@ -582,8 +576,8 @@ class Script:
         if type == "expval":
             # Fast path for single-qubit diagonal observables (PauliZ, etc.):
             # compute probabilities once, then derive each ⟨O_q⟩ as
-            #   ⟨O_q⟩ = d0 · P(q=0) + d1 · P(q=1)
-            # where d0, d1 are the diagonal elements of the 2×2 observable.
+            #   ⟨O_q⟩ = d0 * P(q=0) + d1 * P(q=1)
+            # where d0, d1 are the diagonal elements of the 2x2 observable.
             # This replaces n_obs tensor contractions with a single |ψ|²
             # and n_obs reductions over the probability vector.
             #
@@ -621,7 +615,7 @@ class Script:
             obs_mats = jnp.stack(
                 [ob.lifted_matrix(n_qubits) for ob in obs], axis=0
             )  # (n_obs, dim, dim)
-            # Batched matvec: (n_obs, dim, dim) @ (dim,) → (n_obs, dim)
+            # Batched matvec: (n_obs, dim, dim) @ (dim,) -> (n_obs, dim)
             O_states = jnp.einsum("oij,j->oi", obs_mats, state)
             return jnp.real(jnp.einsum("i,oi->o", jnp.conj(state), O_states))
 
@@ -646,9 +640,9 @@ class Script:
         Returns:
             Measurement result whose shape depends on *type*:
 
-            - ``"density"`` → ``(2**n_qubits, 2**n_qubits)``
-            - ``"probs"``   → ``(2**n_qubits,)``
-            - ``"expval"``  → ``(len(obs),)``
+            - ``"density"`` -> ``(2**n_qubits, 2**n_qubits)``
+            - ``"probs"``   -> ``(2**n_qubits,)``
+            - ``"expval"``  -> ``(len(obs),)``
 
         Raises:
             ValueError: If *type* is ``"state"`` (not valid for mixed circuits)
@@ -661,13 +655,13 @@ class Script:
             return jnp.real(jnp.diag(rho))
 
         if type == "expval":
-            # Tr(O ρ) = Σ_ij O_ij ρ_ji
+            # Tr(O \rho ) = \Sigma_ij O_ij \rho _ji
             # Stack all observable matrices and compute all traces in one
             # batched operation.
             obs_mats = jnp.stack(
                 [ob.lifted_matrix(n_qubits) for ob in obs], axis=0
             )  # (n_obs, dim, dim)
-            # einsum "oij,ji->o" computes Tr(O_o @ ρ) for each observable
+            # einsum "oij,ji->o" computes Tr(O_o @ \rho ) for each observable
             return jnp.real(jnp.einsum("oij,ji->o", obs_mats, rho))
 
         raise ValueError(
@@ -691,7 +685,7 @@ class Script:
         Args:
             type: Measurement type.  One of:
 
-                - ``"expval"``  — expectation value ⟨ψ|O|ψ⟩ / Tr(Oρ) for
+                - ``"expval"``  — expectation value ⟨ψ|O|ψ⟩ / Tr(O\rho ) for
                   each observable in *obs*.
                 - ``"probs"``   — probability vector of shape ``(2**n,)``.
                 - ``"state"``   — raw statevector of shape ``(2**n,)``.
@@ -721,7 +715,7 @@ class Script:
             Python *once* to record the tape and determine ``n_qubits`` and
             whether noise is present.  The pure JAX kernels
             (``_simulate_pure`` / ``_simulate_mixed``) are then vmapped, so
-            Python overhead is O(circuit_depth), not O(B x circuit_depth).
+            Python overhead is O(circuit_depth), not O(B\times circuit_depth).
 
             **shard_map migration** — the ``jax.vmap`` call in
             :meth:`_execute_batched` is the exact boundary to replace with
@@ -858,7 +852,7 @@ class Script:
         #
         # 2. **Compilation caching** — subsequent calls with the same input
         #    shapes reuse the compiled kernel and skip all Python-level
-        #    tracing, eliminating the O(B × circuit_depth) Python overhead.
+        #    tracing, eliminating the O(B\times circuit_depth) Python overhead.
         #
         # The compiled function is cached on this Script instance,
         # keyed on (type, in_axes, arg_shapes).  Repeated calls with the
@@ -902,16 +896,16 @@ class Script:
             **draw_kwargs: Extra options forwarded to the rendering backend:
 
                 - ``gate_values`` (bool): Show numeric gate angles instead of
-                  symbolic θ_i labels.  Default ``False``.
+                  symbolic \theta_i labels.  Default ``False``.
                 - ``inputs_symbols`` (str | list): Symbol(s) used for input
                   gates.  Default ``"x"``.
 
         Returns:
             Depends on *figure*:
 
-            - ``"text"``  → ``str``
-            - ``"mpl"``   → ``(matplotlib.figure.Figure, matplotlib.axes.Axes)``
-            - ``"tikz"``  → :class:`QuanTikz.TikzFigure`
+            - ``"text"``  -> ``str``
+            - ``"mpl"``   -> ``(matplotlib.figure.Figure, matplotlib.axes.Axes)``
+            - ``"tikz"``  -> :class:`QuanTikz.TikzFigure`
 
         Raises:
             ValueError: If *figure* is not one of the supported modes.

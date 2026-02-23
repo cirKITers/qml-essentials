@@ -165,10 +165,10 @@ def ghz_toffoli_3(*args, **kwargs):
     Alternative 3-qubit GHZ via a Toffoli gate.
 
     Start: |+⟩|0⟩|0⟩  (H on qubit 0)
-    Then CCX(0,1→2) doesn't flip anything useful yet, so we first create
+    Then CCX(0,1->2) doesn't flip anything useful yet, so we first create
     |11⟩ on qubits 0,1 with probability 0.5, then Toffoli flips qubit 2.
 
-    Circuit: H(0) → CX(0,1) → CCX(0,1,2)
+    Circuit: H(0) -> CX(0,1) -> CCX(0,1,2)
     State after H+CX:  (|00⟩+|11⟩)/√2 ⊗ |0⟩
     After CCX (flips q2 only when q0=q1=1):  (|000⟩+|111⟩)/√2
     """
@@ -708,7 +708,7 @@ def test_batched_expval_matches_sequential() -> None:
 @pytest.mark.unittest
 def test_batched_expval_values() -> None:
     """
-    RX(θ)|0⟩ → ⟨Z⟩ = cos(θ) must hold element-wise across a batch.
+    RX(θ)|0⟩ -> ⟨Z⟩ = cos(θ) must hold element-wise across a batch.
 
     Mirrors the B_P (parameter-batch) axis from model.py where params
     has shape (n_layers, n_params, B_P) and in_axes=(2, ...).

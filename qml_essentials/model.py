@@ -947,7 +947,7 @@ class Model:
         inputs = self._inputs_validation(inputs)
 
         # Temporarily clear noise_params to prevent _variational from
-        # picking them up (which would call _apply_general_noise →
+        # picking them up (which would call _apply_general_noise ->
         # _get_circuit_depth again, causing infinite recursion).
         saved_noise = self._noise_params
         self._noise_params = None
@@ -1010,9 +1010,9 @@ class Model:
         Returns:
             Depends on *figure*:
 
-            * ``"text"``  → ``str``
-            * ``"mpl"``   → ``(matplotlib.figure.Figure, matplotlib.axes.Axes)``
-            * ``"tikz"``  → :class:`QuanTikz.TikzFigure`
+            * ``"text"``  -> ``str``
+            * ``"mpl"``   -> ``(matplotlib.figure.Figure, matplotlib.axes.Axes)``
+            * ``"tikz"``  -> :class:`QuanTikz.TikzFigure`
 
         Raises:
             ValueError: If *figure* is not one of the supported modes.
