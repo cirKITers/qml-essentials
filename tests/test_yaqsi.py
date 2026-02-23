@@ -43,14 +43,51 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Shared fixtures / helpers
-# ---------------------------------------------------------------------------
+# Helpers
 
 
 def bell_circuit(*args, **kwargs):
     H(wires=0)
     CX(wires=[0, 1])
+
+
+def param_bell_circuit(theta):
+    """Simple 2-qubit circuit: H(0) CX(0,1) RZ(theta, 0)."""
+    H(wires=0)
+    CX(wires=[0, 1])
+    RZ(theta, wires=0)
+
+
+def ghz_circuit_3(*args, **kwargs):
+    """3-qubit GHZ: (|000⟩ + |111⟩) / √2  using H + CNOT chain."""
+    H(wires=0)
+    CX(wires=[0, 1])
+    CX(wires=[1, 2])
+
+
+def ghz_circuit_4(*args, **kwargs):
+    """4-qubit GHZ: (|0000⟩ + |1111⟩) / √2  using H + CNOT chain."""
+    H(wires=0)
+    CX(wires=[0, 1])
+    CX(wires=[1, 2])
+    CX(wires=[2, 3])
+
+
+def ghz_toffoli_3(*args, **kwargs):
+    """
+    Alternative 3-qubit GHZ via a Toffoli gate.
+
+    Start: |+⟩|0⟩|0⟩  (H on qubit 0)
+    Then CCX(0,1->2) doesn't flip anything useful yet, so we first create
+    |11⟩ on qubits 0,1 with probability 0.5, then Toffoli flips qubit 2.
+
+    Circuit: H(0) -> CX(0,1) -> CCX(0,1,2)
+    State after H+CX:  (|00⟩+|11⟩)/√2 ⊗ |0⟩
+    After CCX (flips q2 only when q0=q1=1):  (|000⟩+|111⟩)/√2
+    """
+    H(wires=0)
+    CX(wires=[0, 1])
+    CCX(wires=[0, 1, 2])
 
 
 def parameterized_circuit(theta):
@@ -68,9 +105,28 @@ def evol_circuit_plus(t):
     time_evol(t=t, wires=0)
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
+def _pennylane_probs(circuit_fn, n_qubits=2) -> np.ndarray:
+    """Run a PennyLane circuit and return the probability vector."""
+    dev = qml.device("default.qubit", wires=n_qubits)
+
+    @qml.qnode(dev)
+    def qnode():
+        circuit_fn()
+        return qml.probs(wires=list(range(n_qubits)))
+
+    return np.array(qnode())
+
+
+# Helper: run a 1-qubit circuit through PennyLane default.mixed and return ρ
+def _pennylane_density(circuit_fn, n_qubits=1) -> np.ndarray:
+    dev = qml.device("default.mixed", wires=n_qubits)
+
+    @qml.qnode(dev)
+    def qnode():
+        circuit_fn()
+        return qml.density_matrix(wires=list(range(n_qubits)))
+
+    return np.array(qnode())
 
 
 @pytest.mark.unittest
@@ -140,43 +196,6 @@ def test_evolve_from_plus() -> None:
     assert jnp.allclose(jnp.abs(res), jnp.cos(2 * t), atol=1e-6)
 
 
-# ---------------------------------------------------------------------------
-# GHZ state tests  (n-qubit, exercises arbitrary-wire tensor contraction)
-# ---------------------------------------------------------------------------
-
-
-def ghz_circuit_3(*args, **kwargs):
-    """3-qubit GHZ: (|000⟩ + |111⟩) / √2  using H + CNOT chain."""
-    H(wires=0)
-    CX(wires=[0, 1])
-    CX(wires=[1, 2])
-
-
-def ghz_circuit_4(*args, **kwargs):
-    """4-qubit GHZ: (|0000⟩ + |1111⟩) / √2  using H + CNOT chain."""
-    H(wires=0)
-    CX(wires=[0, 1])
-    CX(wires=[1, 2])
-    CX(wires=[2, 3])
-
-
-def ghz_toffoli_3(*args, **kwargs):
-    """
-    Alternative 3-qubit GHZ via a Toffoli gate.
-
-    Start: |+⟩|0⟩|0⟩  (H on qubit 0)
-    Then CCX(0,1->2) doesn't flip anything useful yet, so we first create
-    |11⟩ on qubits 0,1 with probability 0.5, then Toffoli flips qubit 2.
-
-    Circuit: H(0) -> CX(0,1) -> CCX(0,1,2)
-    State after H+CX:  (|00⟩+|11⟩)/√2 ⊗ |0⟩
-    After CCX (flips q2 only when q0=q1=1):  (|000⟩+|111⟩)/√2
-    """
-    H(wires=0)
-    CX(wires=[0, 1])
-    CCX(wires=[0, 1, 2])
-
-
 @pytest.mark.unittest
 def test_probs_ghz_3() -> None:
     """3-qubit GHZ state has prob 0.5 on |000⟩ and |111⟩, zero elsewhere."""
@@ -227,11 +246,6 @@ def test_state_ghz_3_non_adjacent_wires() -> None:
     # |000⟩ (index 0) and |101⟩ (index 5 = 0b101) each with prob 0.5
     expected = jnp.zeros(8).at[0].set(0.5).at[5].set(0.5)
     assert jnp.allclose(probs, expected, atol=1e-10)
-
-
-# ---------------------------------------------------------------------------
-# Density matrix tests
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.unittest
@@ -301,23 +315,6 @@ def test_density_expval_matches_statevector() -> None:
     ev_density = jnp.real(jnp.trace(Z_mat @ rho))
 
     assert jnp.allclose(ev_pure, ev_density, atol=1e-8)
-
-
-# ---------------------------------------------------------------------------
-# New gate tests  (CY, CZ, CRX, CRY, CRZ, Rot) — validated against PennyLane
-# ---------------------------------------------------------------------------
-
-
-def _pennylane_probs(circuit_fn, n_qubits=2) -> np.ndarray:
-    """Run a PennyLane circuit and return the probability vector."""
-    dev = qml.device("default.qubit", wires=n_qubits)
-
-    @qml.qnode(dev)
-    def qnode():
-        circuit_fn()
-        return qml.probs(wires=list(range(n_qubits)))
-
-    return np.array(qnode())
 
 
 @pytest.mark.unittest
@@ -478,23 +475,6 @@ def test_rot_decomposition_matches_individual_gates() -> None:
     assert np.allclose(
         state_rot, phase * state_dec, atol=1e-10
     ), f"Rot decomposition mismatch:\nrot = {state_rot}\ndec = {state_dec}"
-
-
-# ---------------------------------------------------------------------------
-# Noise channel tests  (validated against PennyLane default.mixed)
-# ---------------------------------------------------------------------------
-
-
-# Helper: run a 1-qubit circuit through PennyLane default.mixed and return ρ
-def _pennylane_density(circuit_fn, n_qubits=1) -> np.ndarray:
-    dev = qml.device("default.mixed", wires=n_qubits)
-
-    @qml.qnode(dev)
-    def qnode():
-        circuit_fn()
-        return qml.density_matrix(wires=list(range(n_qubits)))
-
-    return np.array(qnode())
 
 
 @pytest.mark.unittest
@@ -672,11 +652,6 @@ def test_noise_density_is_valid() -> None:
     assert purity < 1.0 - 1e-6, f"purity {purity} ≈ 1: channel had no effect?"
 
 
-# ---------------------------------------------------------------------------
-# Batched execution tests
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.unittest
 def test_batched_expval_matches_sequential() -> None:
     """
@@ -845,11 +820,6 @@ def test_batched_multi_qubit() -> None:
     assert jnp.allclose(results.sum(axis=1), jnp.ones(4), atol=1e-8)
 
 
-# ---------------------------------------------------------------------------
-# partial_trace tests
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.unittest
 def test_partial_trace_bell_keep_0() -> None:
     """Tracing out qubit 1 of the Bell state gives the maximally mixed state."""
@@ -912,11 +882,6 @@ def test_partial_trace_batched() -> None:
     assert jnp.allclose(rho_traced, rho_batch, atol=1e-10)
 
 
-# ---------------------------------------------------------------------------
-# marginalize_probs tests
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.unittest
 def test_marginalize_probs_bell_keep_0() -> None:
     """Marginalizing qubit 1 of the Bell state gives [0.5, 0.5]."""
@@ -955,11 +920,6 @@ def test_marginalize_probs_batched() -> None:
     assert jnp.allclose(marginal.sum(axis=1), jnp.ones(2), atol=1e-10)
 
 
-# ---------------------------------------------------------------------------
-# build_parity_observable tests
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.unittest
 def test_parity_observable_single_qubit() -> None:
     """Single-qubit parity observable is just Z."""
@@ -987,11 +947,6 @@ def test_parity_observable_not_on_tape() -> None:
     assert len(tape) == 0, "Parity observable should not record on the tape"
 
 
-# ---------------------------------------------------------------------------
-# Hermitian record=False tests
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.unittest
 def test_hermitian_record_false_not_on_tape() -> None:
     """Hermitian(record=False) must not appear on the tape."""
@@ -1010,11 +965,6 @@ def test_hermitian_record_true_on_tape() -> None:
     with recording() as tape:
         _ = Hermitian(matrix=PauliZ._matrix, wires=0)
     assert len(tape) == 1
-
-
-# ---------------------------------------------------------------------------
-# ParametrizedHamiltonian tests
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.unittest
@@ -1039,11 +989,6 @@ def test_parametrized_hamiltonian_non_callable_raises() -> None:
     herm = Hermitian(matrix=PauliZ._matrix, wires=0, record=False)
     with pytest.raises(TypeError, match="callable"):
         _ = 3.14 * herm
-
-
-# ---------------------------------------------------------------------------
-# Time-dependent evolve tests
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.unittest
@@ -1176,13 +1121,12 @@ def test_evolve_type_error() -> None:
         evolve("not a hamiltonian")
 
 
-@pytest.mark.expensive
 @pytest.mark.unittest
 @pytest.mark.limit_memory("1 GB")
 def test_memory() -> None:
     """
     Note, this test requires memray to be activated. Run with
-    .venv/bin/python -m pytest tests/test_yaqsi.py::test_memory -x -s --memray
+    pytest tests/test_yaqsi.py::test_memory -x -s --memray
     """
     n_qubits = 12
 
@@ -1197,14 +1141,13 @@ def test_memory() -> None:
         _ = Script(f=yaqsi_circuit).execute(type="density")
 
 
-@pytest.mark.expensive
 @pytest.mark.benchmark
 @pytest.mark.unittest
 @pytest.mark.parametrize("mode", ["probs", "expval", "state", "density"])
 def test_mode_performances(benchmark, mode) -> None:
     """
     Note, this test requires codspeed to be activated. Run with
-    .venv/bin/python -m pytest tests/test_yaqsi.py::test_mode_performances -x -s --codspeed
+    pytest tests/test_yaqsi.py::test_mode_performances -x -s --codspeed
     """
 
     n_qubits = 6
@@ -1300,4 +1243,184 @@ def test_mode_performances(benchmark, mode) -> None:
         res_pl_arr = res_pl_arr.T
 
     assert jnp.allclose(res_ys, res_pl_arr, atol=1e-10), "Results do not match"
-    print(f"Results match")
+    print("Results match")
+
+
+@pytest.mark.unittest
+def test_shots_probs_single():
+    """Shot-sampled probs should sum to 1 and have correct shape."""
+    script = Script(param_bell_circuit, n_qubits=2)
+    key = jax.random.PRNGKey(42)
+    result = script.execute(
+        type="probs",
+        args=(0.5,),
+        shots=4096,
+        key=key,
+    )
+    assert result.shape == (4,), f"Expected shape (4,), got {result.shape}"
+    assert jnp.allclose(result.sum(), 1.0, atol=1e-10), "Probs don't sum to 1"
+    # All probabilities should be non-negative
+    assert jnp.all(result >= 0), "Negative probability found"
+
+
+@pytest.mark.unittest
+def test_shots_probs_convergence():
+    """With many shots, shot-sampled probs should converge to exact."""
+    script = Script(param_bell_circuit, n_qubits=2)
+    key = jax.random.PRNGKey(123)
+    exact = script.execute(type="probs", args=(0.5,))
+    sampled = script.execute(type="probs", args=(0.5,), shots=100000, key=key)
+    assert jnp.allclose(exact, sampled, atol=0.02), (
+        f"Shot probs don't converge to exact.\n"
+        f"  exact:   {exact}\n"
+        f"  sampled: {sampled}"
+    )
+
+
+@pytest.mark.unittest
+def test_shots_expval_single():
+    """Shot-sampled expval should be close to exact for many shots."""
+    script = Script(param_bell_circuit, n_qubits=2)
+    key = jax.random.PRNGKey(7)
+    obs = [PauliZ(wires=0), PauliZ(wires=1)]
+    exact = script.execute(type="expval", obs=obs, args=(0.5,))
+    sampled = script.execute(type="expval", obs=obs, args=(0.5,), shots=100000, key=key)
+    assert (
+        sampled.shape == exact.shape
+    ), f"Shape mismatch: {sampled.shape} vs {exact.shape}"
+    assert jnp.allclose(exact, sampled, atol=0.02), (
+        f"Shot expval doesn't converge to exact.\n"
+        f"  exact:   {exact}\n"
+        f"  sampled: {sampled}"
+    )
+
+
+@pytest.mark.unittest
+def test_shots_expval_bounded():
+    """Shot-sampled expval for PauliZ should be in [-1, 1]."""
+    script = Script(param_bell_circuit, n_qubits=2)
+    key = jax.random.PRNGKey(99)
+    obs = [PauliZ(wires=0)]
+    for _ in range(10):
+        key, subkey = jax.random.split(key)
+        result = script.execute(
+            type="expval", obs=obs, args=(0.5,), shots=100, key=subkey
+        )
+        assert -1.0 <= float(result[0]) <= 1.0, f"Expval out of bounds: {result[0]}"
+
+
+@pytest.mark.unittest
+def test_shots_different_keys_give_different_results():
+    """Different PRNG keys should produce different shot samples."""
+    script = Script(param_bell_circuit, n_qubits=2)
+    r1 = script.execute(
+        type="probs",
+        args=(0.5,),
+        shots=100,
+        key=jax.random.PRNGKey(0),
+    )
+    r2 = script.execute(
+        type="probs",
+        args=(0.5,),
+        shots=100,
+        key=jax.random.PRNGKey(1),
+    )
+    # With only 100 shots, different keys should almost always differ
+    assert not jnp.allclose(r1, r2), "Different keys produced identical results"
+
+
+@pytest.mark.unittest
+def test_shots_probs_batched():
+    """Shot-sampled probs with batched execution."""
+    script = Script(param_bell_circuit, n_qubits=2)
+    thetas = jnp.array([0.1, 0.5, 1.0, 2.0])
+    key = jax.random.PRNGKey(42)
+    result = script.execute(
+        type="probs",
+        args=(thetas,),
+        in_axes=(0,),
+        shots=10000,
+        key=key,
+    )
+    assert result.shape == (4, 4), f"Expected shape (4, 4), got {result.shape}"
+    # Each row should sum to 1
+    row_sums = result.sum(axis=1)
+    assert jnp.allclose(
+        row_sums, 1.0, atol=1e-10
+    ), f"Batched probs don't sum to 1: {row_sums}"
+
+
+@pytest.mark.unittest
+def test_shots_expval_batched():
+    """Shot-sampled expval with batched execution converges to exact."""
+    script = Script(param_bell_circuit, n_qubits=2)
+    thetas = jnp.array([0.1, 0.5, 1.0])
+    obs = [PauliZ(wires=0)]
+    key = jax.random.PRNGKey(42)
+    exact = script.execute(
+        type="expval",
+        obs=obs,
+        args=(thetas,),
+        in_axes=(0,),
+    )
+    sampled = script.execute(
+        type="expval",
+        obs=obs,
+        args=(thetas,),
+        in_axes=(0,),
+        shots=100000,
+        key=key,
+    )
+    assert sampled.shape == exact.shape
+    assert jnp.allclose(exact, sampled, atol=0.02), (
+        f"Batched shot expval doesn't converge.\n"
+        f"  exact:   {exact}\n"
+        f"  sampled: {sampled}"
+    )
+
+
+@pytest.mark.unittest
+def test_shots_none_returns_exact():
+    """shots=None should return exact analytic results (no sampling)."""
+    script = Script(param_bell_circuit, n_qubits=2)
+    r1 = script.execute(type="probs", args=(0.5,))
+    r2 = script.execute(type="probs", args=(0.5,), shots=None)
+    assert jnp.allclose(r1, r2), "shots=None should match exact results"
+
+
+@pytest.mark.unittest
+def test_shots_state_type_ignored():
+    """shots parameter should be ignored for 'state' measurement type."""
+    script = Script(param_bell_circuit, n_qubits=2)
+    # For 'state' type, shots should have no effect (exact statevector)
+    exact = script.execute(type="state", args=(0.5,))
+    with_shots = script.execute(
+        type="state",
+        args=(0.5,),
+        shots=100,
+        key=jax.random.PRNGKey(0),
+    )
+    assert jnp.allclose(exact, with_shots), "shots should be ignored for 'state' type"
+
+
+@pytest.mark.unittest
+def test_dagger():
+    def circuit():
+        RX(0.5, wires=0)
+        RX(0.5, wires=0).dagger()
+
+    obs = [PauliZ(0)]
+    script = Script(circuit)
+    res = script.execute(type="expval", obs=obs)
+    assert jnp.allclose(res, 1), "Dagger should undo operation"
+
+
+@pytest.mark.unittest
+def test_power():
+    def circuit():
+        PauliX(wires=0).power(2)
+
+    obs = [PauliZ(0)]
+    script = Script(circuit)
+    res = script.execute(type="expval", obs=obs)
+    assert jnp.allclose(res, 1), "Dagger should undo operation"

@@ -333,7 +333,6 @@ def test_min_qubit_warning() -> None:
         )
 
 
-@pytest.mark.expensive
 @pytest.mark.unittest
 def test_pulse_params_ansaetze() -> None:
     test_cases = {
@@ -385,7 +384,7 @@ def test_pulse_benchmarks() -> None:
         circuit_type="Circuit_19",
         data_reupload=False,
     )
-    res = model(gate_mode="pulse")
+    _ = model(gate_mode="pulse")
     end = time.time()
     print(f"Time: {end - start}")
 

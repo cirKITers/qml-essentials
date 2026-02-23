@@ -287,6 +287,106 @@ def _tikz_param_str(val: float, op_name: str) -> str:
         return f"\\gate{{{op_name}({float(val):.2f})}}"
 
 
+def _tikz_align_wires(circuit_tikz: List[List[str]], wires: List[int]) -> None:
+    """Pad all *wires* to the same column length in-place."""
+    max_len = max(len(circuit_tikz[w]) for w in wires)
+    for w in wires:
+        circuit_tikz[w].extend("" for _ in range(max_len - len(circuit_tikz[w])))
+
+
+def _tikz_cell_controlled(
+    op: Operation,
+    circuit_tikz: List[List[str]],
+    param_index: int,
+    gate_values: bool,
+) -> int:
+    """Append cells for a 2-wire controlled gate; return updated param_index."""
+    ctrl_wire = op.wires[0]
+    targ_wire = op.wires[1]
+    distance = targ_wire - ctrl_wire
+    target_name = _ctrl_target_name(op.name)
+
+    # Build target cell
+    if op.parameters and target_name in ("RX", "RY", "RZ"):
+        if gate_values:
+            targ_cell = _tikz_param_str(float(op.parameters[0]), target_name)
+        else:
+            targ_cell = f"\\gate{{{target_name}(\\theta_{{{param_index}}})}}"
+        param_index += 1
+    elif target_name in ("X", "Y", "Z"):
+        targ_cell = "\\targ{}" if target_name == "X" else "\\control{}"
+    else:
+        targ_cell = f"\\gate{{{target_name}}}"
+
+    crossing = list(range(min(op.wires), max(op.wires) + 1))
+    _tikz_align_wires(circuit_tikz, crossing)
+
+    circuit_tikz[ctrl_wire].append(f"\\ctrl{{{distance}}}")
+    circuit_tikz[targ_wire].append(targ_cell)
+
+    # Pad intermediate wires
+    for w in crossing:
+        if w != ctrl_wire and w != targ_wire:
+            circuit_tikz[w].append("")
+
+    return param_index
+
+
+def _tikz_cell_single(
+    op: Operation,
+    circuit_tikz: List[List[str]],
+    param_index: int,
+    gate_values: bool,
+) -> int:
+    """Append a cell for a single-qubit gate; return updated param_index."""
+    w = op.wires[0]
+    name = op.name
+    if name == "Hadamard":
+        name = "H"
+
+    if gate_values and op.parameters:
+        cell = _tikz_param_str(float(op.parameters[0]), name)
+    elif op.parameters:
+        cell = f"\\gate{{{name}(\\theta_{{{param_index}}})}}"
+        param_index += 1
+    else:
+        cell = f"\\gate{{{name}}}"
+
+    circuit_tikz[w].append(cell)
+    return param_index
+
+
+def _tikz_cell_multiqubit(
+    op: Operation,
+    circuit_tikz: List[List[str]],
+) -> None:
+    """Append cells for a multi-qubit (>2 wire) gate."""
+    _tikz_align_wires(circuit_tikz, list(op.wires))
+    label = _gate_label(op)
+    for w in op.wires:
+        circuit_tikz[w].append(f"\\gate{{{label}}}")
+
+
+def _tikz_build_string(circuit_tikz: List[List[str]], n_qubits: int) -> str:
+    """Render the column grid to a quantikz LaTeX string."""
+    # Equalise wire lengths
+    max_len = max(len(wire) for wire in circuit_tikz)
+    for wire in circuit_tikz:
+        wire.extend("" for _ in range(max_len - len(wire)))
+
+    quantikz_str = ""
+    for wire_idx, wire_ops in enumerate(circuit_tikz):
+        for op_idx, cell in enumerate(wire_ops):
+            if op_idx < len(wire_ops) - 1:
+                quantikz_str += f"{cell} & "
+            else:
+                quantikz_str += f"{cell}"
+                if wire_idx < n_qubits - 1:
+                    quantikz_str += " \\\\\n"
+
+    return quantikz_str
+
+
 def draw_tikz(
     ops: List[Operation],
     n_qubits: int,
@@ -308,98 +408,17 @@ def draw_tikz(
     """
     from qml_essentials.utils import QuanTikz
 
-    # Build the per-wire column structure
     circuit_tikz: List[List[str]] = [["\\lstick{\\ket{0}}"] for _ in range(n_qubits)]
-
-    # # Prepare an input symbol iterator
-    # if isinstance(inputs_symbols, str):
-    #     sym_iter = cycle([inputs_symbols])
-    # else:
-    #     sym_iter = cycle(inputs_symbols)
-
     param_index = 0
 
     for op in ops:
         if op.is_controlled and len(op.wires) == 2:
-            ctrl_wire = op.wires[0]
-            targ_wire = op.wires[1]
-            distance = targ_wire - ctrl_wire
-            target_name = _ctrl_target_name(op.name)
-
-            # Build target cell
-            if op.parameters and target_name in ("RX", "RY", "RZ"):
-                if gate_values:
-                    targ_cell = _tikz_param_str(float(op.parameters[0]), target_name)
-                else:
-                    targ_cell = f"\\gate{{{target_name}(\\theta_{{{param_index}}})}}"
-                param_index += 1
-            elif target_name in ("X", "Y", "Z"):
-                if target_name == "X":
-                    targ_cell = "\\targ{}"
-                else:
-                    targ_cell = "\\control{}"
-            else:
-                targ_cell = f"\\gate{{{target_name}}}"
-
-            ctrl_cell = f"\\ctrl{{{distance}}}"
-
-            # Align columns for crossing wires
-            crossing = range(min(op.wires), max(op.wires) + 1)
-            max_len = max(len(circuit_tikz[w]) for w in crossing)
-            for w in crossing:
-                circuit_tikz[w].extend(
-                    "" for _ in range(max_len - len(circuit_tikz[w]))
-                )
-
-            circuit_tikz[ctrl_wire].append(ctrl_cell)
-            circuit_tikz[targ_wire].append(targ_cell)
-
-            # Pad intermediate wires
-            for w in crossing:
-                if w != ctrl_wire and w != targ_wire:
-                    circuit_tikz[w].append("")
-
+            param_index = _tikz_cell_controlled(
+                op, circuit_tikz, param_index, gate_values
+            )
         elif len(op.wires) == 1:
-            w = op.wires[0]
-            name = op.name
-            # Rename for display
-            if name == "Hadamard":
-                name = "H"
-
-            if gate_values and op.parameters:
-                cell = _tikz_param_str(float(op.parameters[0]), name)
-            elif op.parameters:
-                cell = f"\\gate{{{name}(\\theta_{{{param_index}}})}}"
-                param_index += 1
-            else:
-                cell = f"\\gate{{{name}}}"
-
-            circuit_tikz[w].append(cell)
+            param_index = _tikz_cell_single(op, circuit_tikz, param_index, gate_values)
         else:
-            # Multi-qubit gate (>2 wires) — render as a generic box
-            max_len = max(len(circuit_tikz[w]) for w in op.wires)
-            for w in op.wires:
-                circuit_tikz[w].extend(
-                    "" for _ in range(max_len - len(circuit_tikz[w]))
-                )
-            label = _gate_label(op)
-            for w in op.wires:
-                circuit_tikz[w].append(f"\\gate{{{label}}}")
+            _tikz_cell_multiqubit(op, circuit_tikz)
 
-    # Equalise wire lengths
-    max_len = max(len(wire) for wire in circuit_tikz)
-    for wire in circuit_tikz:
-        wire.extend("" for _ in range(max_len - len(wire)))
-
-    # Build the quantikz string
-    quantikz_str = ""
-    for wire_idx, wire_ops in enumerate(circuit_tikz):
-        for op_idx, cell in enumerate(wire_ops):
-            if op_idx < len(wire_ops) - 1:
-                quantikz_str += f"{cell} & "
-            else:
-                quantikz_str += f"{cell}"
-                if wire_idx < n_qubits - 1:
-                    quantikz_str += " \\\\\n"
-
-    return QuanTikz.TikzFigure(quantikz_str)
+    return QuanTikz.TikzFigure(_tikz_build_string(circuit_tikz, n_qubits))

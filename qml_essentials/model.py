@@ -1201,6 +1201,7 @@ class Model:
         gate_mode: str,
         meas_type: str,
         obs: List[op.Operation],
+        shots: Optional[int] = None,
     ) -> jnp.ndarray:
         """
         Execute circuit function with optional parallelization over batches.
@@ -1223,6 +1224,8 @@ class Model:
             gate_mode (str): Gate execution mode ("unitary" or "pulse").
             meas_type (str): Measurement type for yaqsi execute.
             obs (List[op.Operation]): Observable list for expval measurements.
+            shots (Optional[int]): Number of measurement shots for stochastic
+                sampling.  If ``None``, exact analytic results are returned.
 
         Returns:
             jnp.ndarray: Circuit execution results, post-processed for uniformity.
@@ -1235,6 +1238,11 @@ class Model:
             enc_params=enc_params,
             gate_mode=gate_mode,
         )
+
+        # Build a shot key from the random_key if shots are requested
+        shot_key = None
+        if shots is not None:
+            random_key, shot_key = safe_random_split(random_key)
 
         if B > 1:
             random_keys = safe_random_split(random_key, num=B)
@@ -1252,6 +1260,8 @@ class Model:
                 args=(params, inputs, pulse_params, random_keys),
                 kwargs=exec_kwargs,
                 in_axes=in_axes,
+                shots=shots,
+                key=shot_key,
             )
         else:
             result = self.script.execute(
@@ -1259,6 +1269,8 @@ class Model:
                 obs=obs,
                 args=(params, inputs, pulse_params, random_key),
                 kwargs=exec_kwargs,
+                shots=shots,
+                key=shot_key,
             )
 
         return self._postprocess_res(result)
@@ -1539,6 +1551,7 @@ class Model:
             gate_mode=gate_mode,
             meas_type=meas_type,
             obs=obs,
+            shots=self.shots,
         )
 
         # --- Post-processing for partial-qubit measurements ---------------

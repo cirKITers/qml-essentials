@@ -459,9 +459,10 @@ class Script:
     def _simulate_mixed(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
         """Density-matrix simulation kernel.
 
-        Starts from \rho  = |00…0⟩⟨00…0| and applies each gate in *tape* via
+        Starts from \\rho  = |00…0⟩⟨00…0| and applies each gate in *tape* via
         :meth:`~qml_essentials.operations.Operation.apply_to_density`
-        (\rho  -> U\rho U† for unitaries, \Sigma_k K_k \rho  K_k† for Kraus channels).
+        (\\rho  -> U\\rho U† for unitaries, \\Sigma_k K_k \\rho  K_k\\dagger
+        for Kraus channels).
         Required for noisy circuits.
 
         Args:
@@ -477,8 +478,6 @@ class Script:
             rho = op.apply_to_density(rho, n_qubits)
         return rho
 
-    # -- unified simulate-and-measure ------------------------------------
-
     @staticmethod
     def _simulate_and_measure(
         tape: List[Operation],
@@ -486,6 +485,8 @@ class Script:
         type: str,
         obs: List[Operation],
         use_density: bool,
+        shots: Optional[int] = None,
+        key: Optional[jnp.ndarray] = None,
     ) -> jnp.ndarray:
         """Run simulation and measurement in a single dispatch.
 
@@ -494,10 +495,16 @@ class Script:
         This eliminates duplicated branching logic in single-sample and
         batched execution paths.
 
+        When *shots* is not ``None``, the exact probability distribution is
+        first computed, then ``shots`` samples are drawn from it to produce
+        a noisy estimate of the requested measurement (``"probs"`` or
+        ``"expval"``).
+
         Pure-circuit density optimisation — when ``type == "density"``
         but no noise channels are present on the tape, the density matrix
         is computed via statevector simulation followed by an outer product
-        ``\rho  = \vert\psi\rangle\langle\psi\vert`` instead of evolving the full ``2^n\times 2^n`` matrix
+        ``\\rho  = \\vert\\psi\\rangle\\langle\\psi\\vert``
+        instead of evolving the full ``2^n\\times 2^n`` matrix
         gate by gate.  This reduces the per-gate cost from O(4^n) to
         O(2^n), giving a significant speed-up for medium qubit counts
         (≈4x for 5 qubits).
@@ -509,6 +516,10 @@ class Script:
                 ``"density"``).
             obs: Observables for ``"expval"`` measurements.
             use_density: If ``True``, use density-matrix simulation.
+            shots: Number of measurement shots.  If ``None`` (default),
+                exact analytic results are returned.
+            key: JAX PRNG key for shot sampling.  Required when *shots*
+                is not ``None``.
 
         Returns:
             Measurement result (shape depends on *type*).
@@ -521,16 +532,26 @@ class Script:
                 rho = Script._simulate_mixed(tape, n_qubits)
             else:
                 # Pure circuit requesting density output: simulate the
-                # statevector (O(depth\times 2^n)) and form \rho  = \vert\psi\rangle\langle\psi\vert once
-                # (O(4^n)).  This avoids the O(depth\times 4^n) cost of
+                # statevector (O(depth\times 2^n)) and form  # noqa: W605
+                # \rho  = \vert\psi\rangle\langle\psi\vert once  # noqa: W605
+                # (O(4^n)).  This avoids the O(depth\times 4^n) cost of  # noqa: W605
                 # evolving the full density matrix gate by gate.
                 state = Script._simulate_pure(tape, n_qubits)
                 rho = jnp.outer(state, jnp.conj(state))
-            return Script._measure_density(rho, n_qubits, type, obs)
-        state = Script._simulate_pure(tape, n_qubits)
-        return Script._measure_state(state, n_qubits, type, obs)
 
-    # -- measurement helpers --------------------------------------------
+            if shots is not None and type in ("probs", "expval"):
+                exact_probs = jnp.real(jnp.diag(rho))
+                return Script._sample_shots(
+                    exact_probs, n_qubits, type, obs, shots, key
+                )
+            return Script._measure_density(rho, n_qubits, type, obs)
+
+        state = Script._simulate_pure(tape, n_qubits)
+
+        if shots is not None and type in ("probs", "expval"):
+            exact_probs = jnp.abs(state) ** 2
+            return Script._sample_shots(exact_probs, n_qubits, type, obs, shots, key)
+        return Script._measure_state(state, n_qubits, type, obs)
 
     @staticmethod
     def _measure_state(
@@ -646,13 +667,13 @@ class Script:
             return jnp.real(jnp.diag(rho))
 
         if type == "expval":
-            # Tr(O \rho ) = \Sigma_ij O_ij \rho _ji
+            # Tr(O \\rho ) = \\Sigma_ij O_ij \\rho _ji
             # Stack all observable matrices and compute all traces in one
             # batched operation.
             obs_mats = jnp.stack(
                 [ob.lifted_matrix(n_qubits) for ob in obs], axis=0
             )  # (n_obs, dim, dim)
-            # einsum "oij,ji->o" computes Tr(O_o @ \rho ) for each observable
+            # einsum "oij,ji->o" computes Tr(O_o @ \\rho ) for each observable
             return jnp.real(jnp.einsum("oij,ji->o", obs_mats, rho))
 
         raise ValueError(
@@ -660,7 +681,66 @@ class Script:
             "Use 'density' instead."
         )
 
-    # -- core execution -------------------------------------------------
+    @staticmethod
+    def _sample_shots(
+        probs: jnp.ndarray,
+        n_qubits: int,
+        type: str,
+        obs: List[Operation],
+        shots: int,
+        key: jnp.ndarray,
+    ) -> jnp.ndarray:
+        """Convert exact probabilities into shot-sampled results.
+
+        Draws *shots* samples from the computational-basis probability
+        distribution and returns either estimated probabilities or
+        shot-based expectation values.
+
+        Args:
+            probs: Exact probability vector of shape ``(2**n_qubits,)``.
+            n_qubits: Total number of qubits.
+            type: Measurement type — ``"probs"`` or ``"expval"``.
+            obs: Observables used when *type* is ``"expval"``.
+            shots: Number of measurement shots.
+            key: JAX PRNG key for sampling.
+
+        Returns:
+            Shot-sampled measurement result:
+
+            - ``"probs"``  → ``(2**n_qubits,)`` estimated probabilities.
+            - ``"expval"`` → ``(len(obs),)`` estimated expectation values.
+        """
+        dim = 2**n_qubits
+
+        # Draw `shots` samples from the computational basis.
+        # Each sample is an integer in [0, dim) representing a basis state.
+        samples = jax.random.choice(key, dim, shape=(shots,), p=probs)
+
+        # Build a histogram of counts for each basis state.
+        counts = jnp.zeros(dim, dtype=jnp.int32)
+        counts = counts.at[samples].add(1)
+        estimated_probs = counts / shots
+
+        if type == "probs":
+            return estimated_probs
+
+        if type == "expval":
+            # For each observable, compute ⟨O⟩ from the shot-sampled
+            # probabilities.  For diagonal observables this is exact;
+            # for general observables we use Tr(O · diag(estimated_probs)).
+            results = []
+            for ob in obs:
+                O_mat = ob.lifted_matrix(n_qubits)
+                # ⟨O⟩ ≈ Σ_i p_i · O_ii  (diagonal approximation from
+                # computational basis measurements, which is exact for
+                # diagonal observables like PauliZ)
+                results.append(jnp.real(jnp.dot(jnp.diag(O_mat), estimated_probs)))
+            return jnp.array(results)
+
+        raise ValueError(
+            f"Shot simulation is only supported for 'probs' and 'expval', "
+            f"got {type!r}."
+        )
 
     def execute(
         self,
@@ -670,22 +750,24 @@ class Script:
         args: tuple = (),
         kwargs: Optional[dict] = None,
         in_axes: Optional[Tuple] = None,
+        shots: Optional[int] = None,
+        key: Optional[jnp.ndarray] = None,
     ) -> jnp.ndarray:
         """Execute the circuit and return measurement results.
 
         Args:
             type: Measurement type.  One of:
 
-                - ``"expval"``  — expectation value ⟨ψ|O|ψ⟩ / Tr(O\rho ) for
+                - ``"expval"``  — expectation value ⟨ψ|O|ψ⟩ / Tr(O\\rho ) for
                   each observable in *obs*.
                 - ``"probs"``   — probability vector of shape ``(2**n,)``.
                 - ``"state"``   — raw statevector of shape ``(2**n,)``.
                 - ``"density"`` — full density matrix of shape
                   ``(2**n, 2**n)``.
 
-            obs: Observables required when *type* is ``"expval"``.
-            args: Positional arguments forwarded to the circuit function *f*.
-            kwargs: Keyword arguments forwarded to *f*.
+            obs: Observables required when type is ``"expval"``.
+            args: Positional arguments forwarded to the circuit function f.
+            kwargs: Keyword arguments forwarded to f.
             in_axes: Batch axes for each element of *args*, following the same
                 convention as ``jax.vmap``:
 
@@ -696,22 +778,36 @@ class Script:
                 When provided, :meth:`execute` calls ``jax.vmap`` over the
                 pure simulation kernel and returns results with a leading
                 batch dimension.
+            shots: Number of measurement shots for stochastic sampling.
+                If ``None`` (default), exact analytic results are returned.
+                Only supported for ``"probs"`` and ``"expval"`` measurement
+                types.
+            key: JAX PRNG key for shot sampling.  If ``None`` and *shots*
+                is set, a default key ``jax.random.PRNGKey(0)`` is used.
 
         Returns:
-            Without *in_axes*: shape determined by *type*.
-            With *in_axes*: shape ``(B, ...)`` with a leading batch dimension.
+            Without in_axes: shape determined by type.
+            With in_axes: shape ``(B, ...)`` with a leading batch dimension.
         """
         if obs is None:
             obs = []
         if kwargs is None:
             kwargs = {}
+        if shots is not None and key is None:
+            key = jax.random.PRNGKey(0)
 
         # Split single/ parallel execution
         # TODO: we might want to unify the n_qubit stuff such that we can eliminate
         # the parameter to this method entirely
         if in_axes is not None:
             return self._execute_batched(
-                type=type, obs=obs, args=args, kwargs=kwargs, in_axes=in_axes
+                type=type,
+                obs=obs,
+                args=args,
+                kwargs=kwargs,
+                in_axes=in_axes,
+                shots=shots,
+                key=key,
             )
         else:
             tape = self._record(*args, **kwargs)
@@ -720,9 +816,15 @@ class Script:
             has_noise = any(isinstance(op, KrausChannel) for op in tape)
             use_density = type == "density" or has_noise
 
-            return self._simulate_and_measure(tape, n_qubits, type, obs, use_density)
-
-    # -- batched execution ----------------------------------------------
+            return self._simulate_and_measure(
+                tape,
+                n_qubits,
+                type,
+                obs,
+                use_density,
+                shots=shots,
+                key=key,
+            )
 
     def _execute_batched(
         self,
@@ -731,6 +833,8 @@ class Script:
         args: tuple,
         kwargs: dict,
         in_axes: Tuple,
+        shots: Optional[int] = None,
+        key: Optional[jnp.ndarray] = None,
     ) -> jnp.ndarray:
         """Vectorise :meth:`execute` over a batch axis using ``jax.vmap``.
 
@@ -744,8 +848,11 @@ class Script:
             obs: Observables (see :meth:`execute`).
             args: Positional arguments for the circuit function.
             kwargs: Keyword arguments for the circuit function.
-            in_axes: One entry per element of *args*.  Follows ``jax.vmap``
-                convention: an int gives the batch axis; ``None`` broadcasts.
+            in_axes: One entry per element of args.
+            Follows ``jax.vmap`` convention:
+            an int gives the batch axis; ``None`` broadcasts.
+            shots: Number of measurement shots.  If ``None``, exact results.
+            key: JAX PRNG key for shot sampling.
 
         Returns:
             Batched measurement results of shape ``(B, ...)`` where *B* is the
@@ -815,6 +922,47 @@ class Script:
         # (e.g. RX(theta) where theta is a JAX tracer).  jax.vmap traces
         # this function once and generates a single XLA computation for
         # the entire batch.
+        if shots is not None and type in ("probs", "expval"):
+            # Shot mode: compute exact probabilities, then sample.
+            # The shot key is appended as an extra vmapped argument.
+            def _single_execute_shots(*single_args_and_key):
+                *single_args, shot_key = single_args_and_key
+                single_tape = self._record(*single_args, **kwargs)
+                exact_result = self._simulate_and_measure(
+                    single_tape, n_qubits, "probs", obs, use_density
+                )
+                return Script._sample_shots(
+                    exact_result, n_qubits, type, obs, shots, shot_key
+                )
+
+            # Determine batch size from the first batched arg
+            batch_size = None
+            for a, ax in zip(args, in_axes):
+                if ax is not None:
+                    batch_size = a.shape[ax]
+                    break
+
+            shot_keys = jax.random.split(key, batch_size)
+            shot_in_axes = in_axes + (0,)  # key is batched over axis 0
+            shot_args = args + (shot_keys,)
+
+            # Shot-mode uses a separate cache key (includes shots)
+            shot_cache_key = (
+                type,
+                "shots",
+                shots,
+                in_axes,
+                arg_shapes,
+                UnitaryGates.batch_gate_error,
+            )
+            batched_fn = self._jit_cache.get(shot_cache_key)
+            if batched_fn is None:
+                batched_fn = jax.jit(
+                    jax.vmap(_single_execute_shots, in_axes=shot_in_axes)
+                )
+                self._jit_cache[shot_cache_key] = batched_fn
+            return batched_fn(*shot_args)
+
         def _single_execute(*single_args):
             single_tape = self._record(*single_args, **kwargs)
             return self._simulate_and_measure(
@@ -832,7 +980,7 @@ class Script:
         #
         # 2. Compilation caching — subsequent calls with the same input
         #    shapes reuse the compiled kernel and skip all Python-level
-        #    tracing, eliminating the O(B\times circuit_depth) Python overhead.
+        #    tracing, eliminating the O(B\\times circuit_depth) Python overhead.
         #
         # The compiled function is cached on this Script instance,
         # keyed on (type, in_axes, arg_shapes).  Repeated calls with the
@@ -871,7 +1019,7 @@ class Script:
             **draw_kwargs: Extra options forwarded to the rendering backend:
 
                 - ``gate_values`` (bool): Show numeric gate angles instead of
-                  symbolic \theta_i labels.  Default ``False``.
+                  symbolic \\theta_i labels.  Default ``False``.
                 - ``inputs_symbols`` (str | list): Symbol(s) used for input
                   gates.  Default ``"x"``.
 

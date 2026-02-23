@@ -109,7 +109,6 @@ def test_divergence() -> None:
 
 
 @pytest.mark.unittest
-@pytest.mark.expensive
 @pytest.mark.parametrize("layers", [1, 3])
 def test_expressibility(layers) -> None:
     circuits, results, skip_indices, tolerance = get_test_cases(layers)
@@ -197,7 +196,6 @@ def test_expressibility(layers) -> None:
 
 
 @pytest.mark.unittest
-@pytest.mark.expensive
 def test_scaling() -> None:
     model = Model(
         n_qubits=2,
