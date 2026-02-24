@@ -21,10 +21,13 @@ from qml_essentials.operations import (
 import logging
 
 logger = logging.getLogger(__name__)
-rng = jax.random.PRNGKey(1000)
+logger.setLevel(logging.INFO)
 
 identifier = datetime.now().strftime("%Y%m%d%H%M%S")
 logger.info(f"Identifier: {identifier}")
+
+
+rng = jax.random.PRNGKey(1000)
 
 LOAD_LATEST = False  # Set to True to skip computation and load the latest CSV instead
 WARMUP = True  # Does not produce meaningful results if False
@@ -33,7 +36,7 @@ qubit_sizes = list(range(2, 15))
 modes = ["probs", "expval", "state", "density"]
 n_iters = 100
 batch_size = 5
-precision = 1e-5
+precision = 1e-10
 
 
 def var_ghz_benchmark(mode, q) -> None:
