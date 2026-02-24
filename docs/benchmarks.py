@@ -29,14 +29,14 @@ logger.info(f"Identifier: {identifier}")
 
 rng = jax.random.PRNGKey(1000)
 
-LOAD_LATEST = False  # Set to True to skip computation and load the latest CSV instead
+LOAD_LATEST = True  # Set to True to skip computation and load the latest CSV instead
 WARMUP = True  # Does not produce meaningful results if False
 
-qubit_sizes = list(range(2, 10))
+qubit_sizes = list(range(2, 16))
 modes = ["probs", "expval", "state", "density"]
 n_iters = 100
-batch_size = 5
-precision = 1e-10
+batch_size = 2
+precision = 1e-8
 
 
 def var_ghz_benchmark(mode, q) -> None:
