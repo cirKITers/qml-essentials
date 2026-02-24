@@ -506,29 +506,29 @@ class Script:
         if full_est <= avail:
             return batch_size  # everything fits — no chunking
 
-        # Cost per single element (excludes shared obs matrices which are
-        # constant regardless of batch size)
-        per_elem = Script._estimate_peak_bytes(n_qubits, 1, type, use_density, n_obs=0)
-        # Shared overhead that does not scale with batch size
-        shared = Script._estimate_peak_bytes(n_qubits, 0, type, use_density, n_obs)
+        # Per-element cost: the memory that scales linearly with batch size.
+        # We compute this as estimate(batch=1) which includes both the
+        # per-element allocations AND the shared obs matrices.  This is
+        # the right number because each chunk execution independently
+        # allocates everything (the JIT kernel doesn't share buffers
+        # across chunks).
+        per_elem_with_shared = Script._estimate_peak_bytes(
+            n_qubits, 1, type, use_density, n_obs
+        )
 
-        if per_elem <= 0:
+        if per_elem_with_shared <= 0:
             return batch_size
 
-        usable = avail - shared
-        if usable <= 0:
-            log.info(
-                f"Computation requires ~{full_est/1024**3:.2f} GB which \
-                    does not fit in ~{avail/1024**3:.2f} GB.\
-                    However, no chunking is possible."
-            )
-            return 1
+        # How many elements fit in a single chunk?  Since each chunk
+        # call independently allocates the shared overhead (obs matrices
+        # etc.), we use the full single-element cost as the divisor.
+        chunk = avail // per_elem_with_shared
+        chunk = max(1, min(chunk, batch_size))
 
-        chunk = max(1, min(usable // per_elem, batch_size))
         log.info(
-            f"Computation requires ~{full_est/1024**3:.2f} GB which \
-                does not fit in ~{avail/1024**3:.2f} GB.\
-                Using chunk size {chunk}."
+            f"Computation requires ~{full_est / 1024**3:.2f} GB which "
+            f"does not fit in ~{avail / 1024**3:.2f} GB. "
+            f"Using chunk size {chunk}."
         )
         return chunk
 
