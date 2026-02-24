@@ -275,15 +275,13 @@ class Yaqsi:
                 def rhs(t, y, args):
                     return coeff_fn(args, t) * (neg_iH @ y)
 
-                y0 = jnp.eye(dim, dtype=jnp.complex128)
-
                 sol = diffrax.diffeqsolve(
                     diffrax.ODETerm(rhs),
                     solver,
                     t0=t0,
                     t1=t1,
                     dt0=None,  # let the controller choose the initial step
-                    y0=y0,
+                    y0=jnp.eye(dim, dtype=jnp.complex128),
                     args=params,
                     stepsize_controller=stepsize_controller,
                     max_steps=4096,
@@ -376,7 +374,7 @@ class Script:
         """
         self.f = f
         self._n_qubits = n_qubits
-        self._jit_cache: dict = {}  # keyed on (type, in_axes, arg_shapes)
+        self._jit_cache: dict = {}  # keyed on (type, in_axes, arg_shapes, gateError)
 
     def _record(self, *args, **kwargs) -> List[Operation]:
         """Run the circuit function and collect the recorded operations.
