@@ -242,7 +242,7 @@ class Model:
         log.info(f"Initialized pulse parameters with shape {self.pulse_params.shape}.")
 
         # Initialise the yaqsi Script that wraps _variational.
-        # No device selection needed — yaqsi auto-routes between statevector
+        # No device selection needed - yaqsi auto-routes between statevector
         # and density-matrix simulation based on whether noise channels are
         # present on the tape.
         self.script = ys.Script(f=self._variational, n_qubits=self.n_qubits)
@@ -696,8 +696,8 @@ class Model:
         variational ansatz layers with input encoding layers, and optional
         noise channels.
 
-        The first four parameters (after ``self``) — ``params``, ``inputs``,
-        ``pulse_params``, ``random_key`` — are the batchable positional
+        The first four parameters (after ``self``) - ``params``, ``inputs``,
+        ``pulse_params``, ``random_key`` - are the batchable positional
         arguments that ``_mp_executor`` passes via ``Script.execute``.
         The remaining keyword arguments are broadcast across the batch.
 
@@ -961,7 +961,7 @@ class Model:
 
         self._noise_params = saved_noise
 
-        # Filter out noise channels — only count unitary gates
+        # Filter out noise channels - only count unitary gates
         ops = [o for o in tape if not isinstance(o, KrausChannel)]
 
         if not ops:
@@ -999,23 +999,23 @@ class Model:
                 If ``None``, default zero inputs are used.
             figure (str): Rendering backend.  One of:
 
-                * ``"text"``  — ASCII art (returned as a ``str``).
-                * ``"mpl"``   — Matplotlib figure (returns ``(fig, ax)``).
-                * ``"tikz"``  — LaTeX/TikZ ``quantikz`` code (returns a
-                  :class:`~qml_essentials.utils.QuanTikz.TikzFigure`).
+                * ``"text"``  - ASCII art (returned as a ``str``).
+                * ``"mpl"``   - Matplotlib figure (returns ``(fig, ax)``).
+                * ``"tikz"``  - LaTeX/TikZ ``quantikz`` code (returns a
+                  :class:`QuanTikz.TikzFigure`).
 
             **kwargs: Extra options forwarded to the drawing backend
                 (e.g. ``gate_values=True``, ``inputs_symbols="x"``).
 
         Returns:
-            Depends on *figure*:
+            Depends on figure:
 
             * ``"text"``  -> ``str``
             * ``"mpl"``   -> ``(matplotlib.figure.Figure, matplotlib.axes.Axes)``
             * ``"tikz"``  -> :class:`QuanTikz.TikzFigure`
 
         Raises:
-            ValueError: If *figure* is not one of the supported modes.
+            ValueError: If figure is not one of the supported modes.
         """
         inputs = self._inputs_validation(inputs)
         params = self.params[:, :, 0] if self.params.ndim == 3 else self.params
@@ -1560,7 +1560,7 @@ class Model:
 
         if self.execution_type == "probs" and not self.all_qubit_measurement:
             if isinstance(self.output_qubit[0], (list, tuple)):
-                # list of qubit groups — marginalize each independently
+                # list of qubit groups - marginalize each independently
                 result = jnp.stack(
                     [
                         ys.marginalize_probs(result, self.n_qubits, list(group))

@@ -234,7 +234,8 @@ class Operation:
         """
         If ``self`` is already on the active tape (the typical case when
         chaining ``Gate(...).dagger()``), it is replaced by the daggered
-        operation so that only U\\dagger appears on the tape — not both U and ``U\\dagger``.
+        operation so that only U\\dagger appears on the tape —
+        not both U and ``U\\dagger``.
         Note that this should only be called immediately after the tape is updated.s
 
         Args:
@@ -580,7 +581,7 @@ class RandomUnitary(Operation):
             jax.random.PRNGKey: PRNGKey for randomization
             scale: Scale of the random unitary (default: 1.0)
         """
-        dim = 2**wires
+        dim = 2 ** len(wires)
         key_a, key_b = jax.random.split(key)
 
         A = (
@@ -931,7 +932,8 @@ class PauliRot(Operation):
 class KrausChannel(Operation):
     """Base class for noise channels defined by a set of Kraus operators.
 
-    A Kraus channel Φ(\\rho ) = \\sigma_k K_k \\rho  K_k\\dagger is the most general physical
+    A Kraus channel Φ(\\rho ) = \\sigma_k K_k \\rho  K_k\\dagger
+    is the most general physical
     operation on a quantum state.  For a pure unitary gate there is a single
     operator K_0 = U satisfying K_0\\daggerK_0 = I; for noisy channels there are
     multiple operators.
@@ -1385,7 +1387,8 @@ def evolve_pauli_with_clifford(
     pauli: Operation,
     adjoint_left: bool = True,
 ) -> Operation:
-    """Compute C\\dagger P C  (or  C P C\\dagger)  and return the result as an Operation.
+    """Compute C\\dagger P C  (or  C P C\\dagger)  and
+    return the result as an Operation.
 
     Both operators are first embedded into the full Hilbert space spanned by
     the union of their wire sets.  The result is wrapped in a
