@@ -580,7 +580,7 @@ class RandomUnitary(Operation):
             jax.random.PRNGKey: PRNGKey for randomization
             scale: Scale of the random unitary (default: 1.0)
         """
-        dim = 2**wires
+        dim = 2 ** len(wires)
         key_a, key_b = jax.random.split(key)
 
         A = (
