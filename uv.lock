@@ -1766,6 +1766,7 @@ dependencies = [
     { name = "jax" },
     { name = "jaxlib" },
     { name = "optax" },
+    { name = "psutil" },
 ]
 
 [package.dev-dependencies]
@@ -1798,6 +1799,7 @@ requires-dist = [
     { name = "jax", specifier = ">=0.9.0.1" },
     { name = "jaxlib", specifier = ">=0.9.0.1" },
     { name = "optax", specifier = ">=0.2.7" },
+    { name = "psutil", specifier = ">=7.2.2" },
 ]
 
 [package.metadata.requires-dev]
