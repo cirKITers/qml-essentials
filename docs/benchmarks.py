@@ -29,10 +29,10 @@ logger.info(f"Identifier: {identifier}")
 LOAD_LATEST = False  # Set to True to skip computation and load the latest CSV instead
 WARMUP = True  # Does not produce meaningful results if False
 
-qubit_sizes = list(range(2, 15))
+qubit_sizes = list(range(2, 10))
 modes = ["probs", "expval", "state", "density"]
 n_iters = 100
-batch_size = 5
+batch_size = 2
 precision = 1e-5
 
 
@@ -173,9 +173,9 @@ if LOAD_LATEST:
         qubit_sizes_seen = []
         rows = list(reader)
         for row in rows:
-            q = int(row["n_qubits"])
-            if q not in qubit_sizes_seen:
-                qubit_sizes_seen.append(q)
+            q_idx = int(row["n_qubits"])
+            if q_idx not in qubit_sizes_seen:
+                qubit_sizes_seen.append(q_idx)
         qubit_sizes = qubit_sizes_seen
 
         # Re-initialise results with the actual modes present in the file
@@ -191,16 +191,8 @@ if LOAD_LATEST:
             results[mode]["std_ys"] = [float(r["std_ys_ms"]) for r in mode_rows]
             results[mode]["std_pl"] = [float(r["std_pl_ms"]) for r in mode_rows]
 else:
-    for q in qubit_sizes:
-        for mode in modes:
-            t_ys, t_pl, std_ys, std_pl = var_ghz_benchmark(mode, q)
-            results[mode]["ys"].append(t_ys * 1000)  # convert to ms
-            results[mode]["pl"].append(t_pl * 1000)
-            results[mode]["std_ys"].append(std_ys * 1000)
-            results[mode]["std_pl"].append(std_pl * 1000)
+    logger.info(f"Preparing header in benchmarks-{identifier}.csv")
 
-    # --- CSV export ---
-    logger.info(f"Exporting results to benchmarks-{identifier}.csv")
     with open(f"benchmarks-{identifier}.csv", "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(
@@ -214,18 +206,30 @@ else:
                 "ratio_pl_ys",
             ]
         )
-        for q_idx, q in enumerate(qubit_sizes):
+
+    for q_idx in qubit_sizes:
+        for mode in modes:
+            t_ys, t_pl, std_ys, std_pl = var_ghz_benchmark(mode, q_idx)
+            results[mode]["ys"].append(t_ys * 1000)  # convert to ms
+            results[mode]["pl"].append(t_pl * 1000)
+            results[mode]["std_ys"].append(std_ys * 1000)
+            results[mode]["std_pl"].append(std_pl * 1000)
+
+        # --- CSV export ---
+        logger.info(f"Exporting results to benchmarks-{identifier}.csv")
+        with open(f"benchmarks-{identifier}.csv", "a", newline="") as f:
+            writer = csv.writer(f)
             for mode in modes:
-                t_ys_ms = results[mode]["ys"][q_idx]
-                t_pl_ms = results[mode]["pl"][q_idx]
+                t_ys_ms = results[mode]["ys"][-1]
+                t_pl_ms = results[mode]["pl"][-1]
                 writer.writerow(
                     [
-                        q,
+                        q_idx,
                         mode,
                         t_ys_ms,
                         t_pl_ms,
-                        results[mode]["std_ys"][q_idx],
-                        results[mode]["std_pl"][q_idx],
+                        results[mode]["std_ys"][-1],
+                        results[mode]["std_pl"][-1],
                         t_pl_ms / t_ys_ms,
                     ]
                 )
