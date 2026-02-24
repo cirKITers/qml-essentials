@@ -1009,7 +1009,7 @@ class Script:
                 - ``"text"``  — ASCII art (returned as a ``str``).
                 - ``"mpl"``   — Matplotlib figure (returns ``(fig, ax)``).
                 - ``"tikz"``  — LaTeX/TikZ code via ``quantikz``
-                  (returns a :class:`~qml_essentials.utils.QuanTikz.TikzFigure`).
+                  (returns a :class:`QuanTikz.TikzFigure`).
 
             args: Positional arguments forwarded to the circuit function
                 to record the tape.
