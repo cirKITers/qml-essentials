@@ -19,6 +19,10 @@ from qml_essentials.operations import (
 from qml_essentials.tape import recording
 from qml_essentials.drawing import draw_text, draw_mpl, draw_tikz
 
+import logging
+
+log = logging.getLogger(__name__)
+
 
 class Yaqsi:
     # TODO: generally, I would like to merge this into operations or vice-versa
@@ -148,12 +152,12 @@ class Yaqsi:
 
         Supports two modes:
 
-        **Static** — when *hamiltonian* is a :class:`Hermitian`::
+        Static — when *hamiltonian* is a :class:`Hermitian`::
 
             gate = evolve(Hermitian(H_mat, wires=0))
             gate(t=0.5)            # U = exp(-i*0.5*H)
 
-        **Time-dependent** — when *hamiltonian* is a
+        Time-dependent — when *hamiltonian* is a
         :class:`ParametrizedHamiltonian` (created via ``coeff_fn * Hermitian``)::
 
             H_td = coeff_fn * Hermitian(H_mat, wires=0)
@@ -178,8 +182,8 @@ class Yaqsi:
         Returns:
             A callable gate factory.  Signature depends on the mode:
 
-            * Static: ``(t, wires=0) -> Operation``
-            * Time-dependent: ``(coeff_args, T) -> Operation``
+            - Static: ``(t, wires=0) -> Operation``
+            - Time-dependent: ``(coeff_args, T) -> Operation``
 
         Raises:
             TypeError: If *hamiltonian* is neither ``Hermitian`` nor
@@ -376,6 +380,210 @@ class Script:
         self._n_qubits = n_qubits
         self._jit_cache: dict = {}  # keyed on (type, in_axes, arg_shapes, gateError)
 
+    @staticmethod
+    def _estimate_peak_bytes(
+        n_qubits: int,
+        batch_size: int,
+        type: str,
+        use_density: bool,
+        n_obs: int = 0,
+    ) -> int:
+        """Estimate peak memory (bytes) for a batched simulation.
+
+        The estimate accounts for:
+
+        - The output tensor (state / probs / density / expval).
+        - The intermediate statevector (always needed, even for density).
+        - One gate-tensor temporary per batch element (the einsum buffer).
+        - For density mode: the outer-product temporary.
+
+        A safety factor of 2x is applied to cover XLA compiler temporaries,
+        padding, and other allocations not directly visible to Python.
+
+        Args:
+            n_qubits: Number of qubits in the circuit.
+            batch_size: Number of batch elements.
+            type: Measurement type (``"state"``, ``"probs"``, ``"expval"``,
+                ``"density"``).
+            use_density: Whether density-matrix simulation is used.
+            n_obs: Number of observables (relevant for ``"expval"``).
+
+        Returns:
+            Estimated peak memory in bytes.
+        """
+        dim = 2**n_qubits
+        elem = 16  # complex128 = 16 bytes
+
+        # Statevector: always allocated during simulation
+        sv_bytes = batch_size * dim * elem
+
+        # Output tensor
+        if type == "density" or use_density:
+            out_bytes = batch_size * dim * dim * elem
+        elif type == "expval":
+            out_bytes = batch_size * max(n_obs, 1) * 8  # float64
+        else:  # state, probs
+            out_bytes = batch_size * dim * elem
+
+        # Gate temporaries: einsum creates one (2,)*n buffer per batch elem
+        gate_tmp = batch_size * dim * elem
+
+        # For density: the outer product ψ ⊗ ψ* is materialised
+        density_tmp = batch_size * dim * dim * elem if use_density else 0
+
+        # Observable lifted matrices (shared across batch, not per-element)
+        obs_bytes = n_obs * dim * dim * elem if n_obs > 0 else 0
+
+        raw = sv_bytes + out_bytes + gate_tmp + density_tmp + obs_bytes
+
+        # 2× safety factor for XLA temporaries, compiler buffers, etc.
+        return raw * 2
+
+    @staticmethod
+    def _available_memory_bytes() -> int:
+        """Return available system memory in bytes.
+
+        Uses ``psutil.virtual_memory().available`` for cross-platform
+        support (Linux, macOS, Windows).  Falls back to reading
+        ``/proc/meminfo`` on Linux, and finally to a conservative 4 GiB
+        default if neither approach succeeds.
+
+        Returns:
+            Available memory in bytes.
+        """
+        mem = 4 * 1024**3
+        # Primary: psutil (works on Linux, macOS, Windows)
+        try:
+            import psutil
+
+            mem = psutil.virtual_memory().available
+        except Exception:
+            log.debug("psutil not available. Fallback to /proc/meminfo")
+
+        # Fallback: /proc/meminfo (Linux only)
+        try:
+            with open("/proc/meminfo", "r") as f:
+                for line in f:
+                    if line.startswith("MemAvailable:"):
+                        mem = int(line.split()[1]) * 1024  # kB → bytes
+        except Exception:
+            log.debug("Failed to read /proc/meminfo. Falling back to 4 GiB")
+
+        log.debug("Available memory: %d bytes", mem)
+        return mem
+
+    @staticmethod
+    def _compute_chunk_size(
+        n_qubits: int,
+        batch_size: int,
+        type: str,
+        use_density: bool,
+        n_obs: int = 0,
+        memory_fraction: float = 0.8,
+    ) -> int:
+        """Determine the largest chunk size that fits in available memory.
+
+        If the full batch fits, returns *batch_size* (i.e. no chunking).
+        Otherwise, returns the largest chunk size such that
+        ``_estimate_peak_bytes(n_qubits, chunk, ...)`` fits within
+        ``memory_fraction`` of available RAM.
+
+        The minimum chunk size is 1 (fully serialised).
+
+        Args:
+            n_qubits: Number of qubits.
+            batch_size: Total batch size.
+            type: Measurement type.
+            use_density: Whether density-matrix simulation is used.
+            n_obs: Number of observables.
+            memory_fraction: Fraction of available memory to target
+                (default 0.8 = 80%).
+
+        Returns:
+            Chunk size (number of batch elements per sub-batch).
+        """
+        avail = int(Script._available_memory_bytes() * memory_fraction)
+        full_est = Script._estimate_peak_bytes(
+            n_qubits, batch_size, type, use_density, n_obs
+        )
+
+        if full_est <= avail:
+            return batch_size  # everything fits — no chunking
+
+        # Cost per single element (excludes shared obs matrices which are
+        # constant regardless of batch size)
+        per_elem = Script._estimate_peak_bytes(n_qubits, 1, type, use_density, n_obs=0)
+        # Shared overhead that does not scale with batch size
+        shared = Script._estimate_peak_bytes(n_qubits, 0, type, use_density, n_obs)
+
+        if per_elem <= 0:
+            return batch_size
+
+        usable = avail - shared
+        if usable <= 0:
+            return 1
+
+        chunk = usable // per_elem
+        return max(1, min(chunk, batch_size))
+
+    @staticmethod
+    def _execute_chunked(
+        batched_fn: Callable,
+        args: tuple,
+        in_axes: Tuple,
+        batch_size: int,
+        chunk_size: int,
+    ) -> jnp.ndarray:
+        """Execute a vmapped function in memory-safe chunks.
+
+        Splits the batch dimension into sub-batches of at most *chunk_size*
+        elements, runs each through the JIT-compiled *batched_fn*, and
+        concatenates the results along axis 0.
+
+        This method is only called when :meth:`_compute_chunk_size`
+        determines that the full batch would exceed available memory.
+
+        Args:
+            batched_fn: A JIT-compiled, vmapped callable.
+            args: Full-batch arguments (before slicing).
+            in_axes: Per-argument batch axis specification.
+            batch_size: Total number of batch elements.
+            chunk_size: Maximum elements per chunk.
+
+        Returns:
+            Concatenated results with the same leading dimension as the
+            full batch.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+        n_chunks = (batch_size + chunk_size - 1) // chunk_size
+        logger.info(
+            f"Memory-aware chunking: splitting batch of {batch_size} into "
+            f"{n_chunks} chunks of <={chunk_size} elements."
+        )
+
+        results = []
+        for chunk_idx in range(n_chunks):
+            start = chunk_idx * chunk_size
+            end = min(start + chunk_size, batch_size)
+            size = end - start
+
+            # Slice each batched argument along its batch axis
+            chunk_args = tuple(
+                (
+                    jax.lax.dynamic_slice_in_dim(a, start, size, axis=ax)
+                    if ax is not None
+                    else a
+                )
+                for a, ax in zip(args, in_axes)
+            )
+
+            chunk_result = batched_fn(*chunk_args)
+            results.append(chunk_result)
+
+        return jnp.concatenate(results, axis=0)
+
     def _record(self, *args, **kwargs) -> List[Operation]:
         """Run the circuit function and collect the recorded operations.
 
@@ -505,7 +713,7 @@ class Script:
         instead of evolving the full ``2^n\\times 2^n`` matrix
         gate by gate.  This reduces the per-gate cost from O(4^n) to
         O(2^n), giving a significant speed-up for medium qubit counts
-        (≈4x for 5 qubits).
+        (~4x for 5 qubits).
 
         Args:
             tape: Ordered list of gate/channel operations to apply.
@@ -584,9 +792,7 @@ class Script:
             return jnp.abs(state) ** 2
 
         if type == "expval":
-            # Fast path for single-qubit diagonal observables (PauliZ, etc.):
-            # compute probabilities once, then derive each ⟨O_q⟩ as
-            #   ⟨O_q⟩ = d0 * P(q=0) + d1 * P(q=1)
+            # Fast path for single-qubit diagonal observables (PauliZ, etc.)
             # where d0, d1 are the diagonal elements of the 2x2 observable.
             # This replaces n_obs tensor contractions with a single |ψ|²
             # and n_obs reductions over the probability vector.
@@ -723,13 +929,13 @@ class Script:
             return estimated_probs
 
         if type == "expval":
-            # For each observable, compute ⟨O⟩ from the shot-sampled
+            # For each observable, compute O from the shot-sampled
             # probabilities.  For diagonal observables this is exact;
             # for general observables we use Tr(O · diag(estimated_probs)).
             results = []
             for ob in obs:
                 O_mat = ob.lifted_matrix(n_qubits)
-                # ⟨O⟩ ≈ Σ_i p_i · O_ii  (diagonal approximation from
+                # diagonal approximation from
                 # computational basis measurements, which is exact for
                 # diagonal observables like PauliZ)
                 results.append(jnp.real(jnp.dot(jnp.diag(O_mat), estimated_probs)))
@@ -841,14 +1047,23 @@ class Script:
         resulting pure simulation kernel is then vmapped over the requested
         axes.
 
+        Memory-aware chunking — before launching the full vmap, the
+        method estimates peak memory usage.  If the full batch would exceed
+        available RAM (with a safety margin), the batch is automatically
+        split into sub-batches that fit.  Each chunk is vmapped independently
+        and the results are concatenated.  This trades a small amount of
+        wall-clock time for guaranteed execution without OOM.
+
+        When the full batch fits in memory, there is zero overhead — the
+        memory check is a pure Python arithmetic calculation (no JAX calls).
+
         Args:
             type: Measurement type (see :meth:`execute`).
             obs: Observables (see :meth:`execute`).
             args: Positional arguments for the circuit function.
             kwargs: Keyword arguments for the circuit function.
-            in_axes: One entry per element of args.
-            Follows ``jax.vmap`` convention:
-            an int gives the batch axis; ``None`` broadcasts.
+            in_axes: One entry per element of *args*.  Follows ``jax.vmap``
+                convention: an int gives the batch axis; ``None`` broadcasts.
             shots: Number of measurement shots.  If ``None``, exact results.
             key: JAX PRNG key for shot sampling.
 
@@ -877,6 +1092,13 @@ class Script:
                 "Provide one in_axes entry per positional argument."
             )
 
+        # Determine batch size from the first batched arg
+        batch_size = 1
+        for a, ax in zip(args, in_axes):
+            if ax is not None:
+                batch_size = a.shape[ax]
+                break
+
         # Fast-path: check the JIT cache *first* to skip all Python-level
         # tape recording, qubit inference, and noise detection on repeat
         # calls.  This eliminates a constant ~0.3–0.5 ms of pure Python
@@ -893,9 +1115,19 @@ class Script:
         from qml_essentials.gates import UnitaryGates
 
         cache_key = (type, in_axes, arg_shapes, UnitaryGates.batch_gate_error)
-        batched_fn = self._jit_cache.get(cache_key)
-        if batched_fn is not None:
-            return batched_fn(*args)
+
+        # --- Cache-hit fast path (no shots) ---
+        cached = self._jit_cache.get(cache_key)
+        if cached is not None and shots is None:
+            batched_fn, n_qubits, use_density = cached
+            chunk_size = self._compute_chunk_size(
+                n_qubits, batch_size, type, use_density, len(obs)
+            )
+            if chunk_size >= batch_size:
+                return batched_fn(*args)
+            return self._execute_chunked(
+                batched_fn, args, in_axes, batch_size, chunk_size
+            )
 
         # First, record the tape once using scalar slices of each arg.
         # This determines n_qubits and whether noise channels are present
@@ -913,6 +1145,10 @@ class Script:
         n_qubits = self._n_qubits or self._infer_n_qubits(tape, obs)
         has_noise = any(isinstance(op, KrausChannel) for op in tape)
         use_density = type == "density" or has_noise
+
+        chunk_size = self._compute_chunk_size(
+            n_qubits, batch_size, type, use_density, len(obs)
+        )
 
         # Second, define a pure single-sample function to vmap over.
         # Re-recording inside this function is necessary: the tape may
@@ -933,13 +1169,6 @@ class Script:
                     exact_result, n_qubits, type, obs, shots, shot_key
                 )
 
-            # Determine batch size from the first batched arg
-            batch_size = None
-            for a, ax in zip(args, in_axes):
-                if ax is not None:
-                    batch_size = a.shape[ax]
-                    break
-
             shot_keys = jax.random.split(key, batch_size)
             shot_in_axes = in_axes + (0,)  # key is batched over axis 0
             shot_args = args + (shot_keys,)
@@ -953,13 +1182,20 @@ class Script:
                 arg_shapes,
                 UnitaryGates.batch_gate_error,
             )
-            batched_fn = self._jit_cache.get(shot_cache_key)
-            if batched_fn is None:
+            cached_shot = self._jit_cache.get(shot_cache_key)
+            if cached_shot is not None:
+                batched_fn = cached_shot[0]
+            else:
                 batched_fn = jax.jit(
                     jax.vmap(_single_execute_shots, in_axes=shot_in_axes)
                 )
-                self._jit_cache[shot_cache_key] = batched_fn
-            return batched_fn(*shot_args)
+                self._jit_cache[shot_cache_key] = (batched_fn, n_qubits, use_density)
+
+            if chunk_size >= batch_size:
+                return batched_fn(*shot_args)
+            return self._execute_chunked(
+                batched_fn, shot_args, shot_in_axes, batch_size, chunk_size
+            )
 
         def _single_execute(*single_args):
             single_tape = self._record(*single_args, **kwargs)
@@ -988,8 +1224,13 @@ class Script:
 
         # TODO: we might want to rework the data_reupload mechanism at some point
         batched_fn = jax.jit(jax.vmap(_single_execute, in_axes=in_axes))
-        self._jit_cache[cache_key] = batched_fn
-        return batched_fn(*args)
+        # Cache the function together with metadata for fast-path memory
+        # checks on subsequent calls.
+        self._jit_cache[cache_key] = (batched_fn, n_qubits, use_density)
+
+        if chunk_size >= batch_size:
+            return batched_fn(*args)
+        return self._execute_chunked(batched_fn, args, in_axes, batch_size, chunk_size)
 
     def draw(
         self,

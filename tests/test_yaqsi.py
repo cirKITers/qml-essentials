@@ -1424,3 +1424,244 @@ def test_power():
     script = Script(circuit)
     res = script.execute(type="expval", obs=obs)
     assert jnp.allclose(res, 1), "Dagger should undo operation"
+
+
+# ---------------------------------------------------------------------------
+# Memory-aware chunking tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unittest
+def test_estimate_peak_bytes_basic():
+    """Memory estimates should be positive and scale with batch size."""
+    est1 = Script._estimate_peak_bytes(5, 1, "state", False)
+    est100 = Script._estimate_peak_bytes(5, 100, "state", False)
+    assert est1 > 0
+    assert est100 > est1
+    # Should scale roughly linearly (within safety factor tolerance)
+    assert est100 <= est1 * 200  # generous upper bound
+
+
+@pytest.mark.unittest
+def test_estimate_peak_bytes_density_larger():
+    """Density mode should estimate more memory than state mode."""
+    est_state = Script._estimate_peak_bytes(5, 100, "state", False)
+    est_density = Script._estimate_peak_bytes(5, 100, "density", True)
+    assert est_density > est_state
+
+
+@pytest.mark.unittest
+def test_estimate_peak_bytes_qubits_scaling():
+    """Memory should scale exponentially with qubit count."""
+    est4 = Script._estimate_peak_bytes(4, 10, "state", False)
+    est8 = Script._estimate_peak_bytes(8, 10, "state", False)
+    # 8 qubits: dim=256 vs 4 qubits: dim=16  → ~16× more
+    assert est8 > est4 * 10
+
+
+@pytest.mark.unittest
+def test_available_memory_bytes():
+    """Available memory should return a positive value."""
+    avail = Script._available_memory_bytes()
+    assert avail > 0
+    # Should be at least 2 GB on any reasonable system
+    assert avail >= 2 * 1024**3
+
+
+@pytest.mark.unittest
+def test_compute_chunk_size_fits():
+    """When everything fits, chunk_size == batch_size."""
+    # 2 qubits, 10 batch, state mode — tiny, always fits
+    chunk = Script._compute_chunk_size(2, 10, "state", False)
+    assert chunk == 10
+
+
+@pytest.mark.unittest
+def test_compute_chunk_size_too_large():
+    """When batch doesn't fit, chunk_size < batch_size."""
+    # Simulate a scenario that would exceed memory by using an absurd
+    # qubit count — 30 qubits × 1M batch × density mode
+    chunk = Script._compute_chunk_size(
+        n_qubits=30,
+        batch_size=1000000,
+        type="density",
+        use_density=True,
+        n_obs=0,
+    )
+    assert chunk < 1000000, f"Expected chunk < 1000000, got {chunk}"
+    assert chunk >= 1, f"Chunk size must be at least 1, got {chunk}"
+
+
+@pytest.mark.unittest
+def test_compute_chunk_size_minimum_one():
+    """Chunk size should never be less than 1."""
+    chunk = Script._compute_chunk_size(
+        n_qubits=30,
+        batch_size=100,
+        type="density",
+        use_density=True,
+        n_obs=0,
+        memory_fraction=0.00001,
+    )
+    assert chunk >= 1
+
+
+@pytest.mark.unittest
+def test_chunked_execution_matches_full():
+    """Chunked execution should produce the same results as full batch."""
+
+    def circuit(theta):
+        RX(theta, wires=0)
+        CX(wires=[0, 1])
+
+    script = Script(circuit, n_qubits=2)
+    thetas = jnp.linspace(0, jnp.pi, 20)
+    obs = [PauliZ(wires=0), PauliZ(wires=1)]
+
+    # Full batch execution (no chunking)
+    full_result = script.execute(
+        type="expval",
+        obs=obs,
+        args=(thetas,),
+        in_axes=(0,),
+    )
+
+    # Force chunked execution by calling _execute_chunked directly
+    # First, build the vmapped function
+    script2 = Script(circuit, n_qubits=2)
+    # Run once to populate cache
+    _ = script2.execute(
+        type="expval",
+        obs=obs,
+        args=(thetas,),
+        in_axes=(0,),
+    )
+
+    # Retrieve cached function
+    from qml_essentials.gates import UnitaryGates
+
+    arg_shapes = tuple(
+        (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
+    )
+    cache_key = ("expval", (0,), arg_shapes, UnitaryGates.batch_gate_error)
+    batched_fn, _, _ = script2._jit_cache[cache_key]
+
+    # Now execute with chunk_size=5 (4 chunks of 5)
+    chunked_result = Script._execute_chunked(
+        batched_fn, (thetas,), (0,), batch_size=20, chunk_size=5
+    )
+
+    assert jnp.allclose(full_result, chunked_result, atol=1e-10), (
+        f"Chunked results don't match full batch.\n"
+        f"  full:    {full_result}\n"
+        f"  chunked: {chunked_result}"
+    )
+
+
+@pytest.mark.unittest
+def test_chunked_probs_matches_full():
+    """Chunked probs execution should match full batch."""
+
+    def circuit(theta):
+        RX(theta, wires=0)
+        H(wires=1)
+
+    script = Script(circuit, n_qubits=2)
+    thetas = jnp.linspace(0, jnp.pi, 12)
+
+    # Full batch
+    full_result = script.execute(
+        type="probs",
+        args=(thetas,),
+        in_axes=(0,),
+    )
+
+    # Chunked
+    script2 = Script(circuit, n_qubits=2)
+    _ = script2.execute(type="probs", args=(thetas,), in_axes=(0,))
+
+    from qml_essentials.gates import UnitaryGates
+
+    arg_shapes = tuple(
+        (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
+    )
+    cache_key = ("probs", (0,), arg_shapes, UnitaryGates.batch_gate_error)
+    batched_fn, _, _ = script2._jit_cache[cache_key]
+
+    chunked_result = Script._execute_chunked(
+        batched_fn, (thetas,), (0,), batch_size=12, chunk_size=4
+    )
+
+    assert full_result.shape == chunked_result.shape
+    assert jnp.allclose(full_result, chunked_result, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_chunked_density_matches_full():
+    """Chunked density execution should match full batch."""
+
+    def circuit(theta):
+        RX(theta, wires=0)
+
+    script = Script(circuit, n_qubits=1)
+    thetas = jnp.array([0.0, 0.5, 1.0, 1.5, 2.0, 2.5])
+
+    full_result = script.execute(
+        type="density",
+        args=(thetas,),
+        in_axes=(0,),
+    )
+
+    script2 = Script(circuit, n_qubits=1)
+    _ = script2.execute(type="density", args=(thetas,), in_axes=(0,))
+
+    from qml_essentials.gates import UnitaryGates
+
+    arg_shapes = tuple(
+        (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
+    )
+    cache_key = ("density", (0,), arg_shapes, UnitaryGates.batch_gate_error)
+    batched_fn, _, _ = script2._jit_cache[cache_key]
+
+    chunked_result = Script._execute_chunked(
+        batched_fn, (thetas,), (0,), batch_size=6, chunk_size=2
+    )
+
+    assert full_result.shape == chunked_result.shape
+    assert jnp.allclose(full_result, chunked_result, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_chunked_uneven_batch():
+    """Chunking should work when batch_size is not divisible by chunk_size."""
+
+    def circuit(theta):
+        RX(theta, wires=0)
+
+    script = Script(circuit, n_qubits=1)
+    thetas = jnp.linspace(0, jnp.pi, 7)  # 7 elements
+
+    full_result = script.execute(
+        type="probs",
+        args=(thetas,),
+        in_axes=(0,),
+    )
+
+    script2 = Script(circuit, n_qubits=1)
+    _ = script2.execute(type="probs", args=(thetas,), in_axes=(0,))
+
+    from qml_essentials.gates import UnitaryGates
+
+    arg_shapes = tuple(
+        (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
+    )
+    cache_key = ("probs", (0,), arg_shapes, UnitaryGates.batch_gate_error)
+    batched_fn, _, _ = script2._jit_cache[cache_key]
+
+    # 7 elements, chunk_size=3 → chunks of [3, 3, 1]
+    chunked_result = Script._execute_chunked(
+        batched_fn, (thetas,), (0,), batch_size=7, chunk_size=3
+    )
+
+    assert chunked_result.shape == full_result.shape
+    assert jnp.allclose(full_result, chunked_result, atol=1e-10)
