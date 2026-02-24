@@ -1015,7 +1015,6 @@ def test_training_step() -> None:
     params, cost = opt.step_and_cost(cost, model.params)
 
 
-@pytest.mark.skip
 @pytest.mark.unittest
 def test_pauli_circuit_model() -> None:
     test_cases = [

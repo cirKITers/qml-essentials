@@ -323,7 +323,7 @@ class PauliCircuit:
         param_factor = float(jnp.real(_coeff))
 
         pauli_str, qubits = PauliCircuit._remove_identities_from_paulistr(
-            pauli_str, qubits
+            pauli_str, evolved_pauli_op.wires
         )
         new_pauli = PauliRot(param * param_factor, pauli_str, qubits)
 

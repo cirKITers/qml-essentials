@@ -1512,7 +1512,7 @@ def pauli_decompose(matrix: jnp.ndarray, wire_order: Optional[List[int]] = None)
     from functools import reduce as _reduce
 
     dim = matrix.shape[0]
-    n_qubits = int(jnp.log2(dim))
+    n_qubits = int(jnp.round(jnp.log2(dim)))
 
     if wire_order is None:
         wire_order = list(range(n_qubits))
