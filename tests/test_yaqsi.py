@@ -1143,8 +1143,10 @@ def test_memory() -> None:
 
 @pytest.mark.benchmark
 @pytest.mark.unittest
-@pytest.mark.parametrize("mode", ["probs", "expval", "state", "density"])
-def test_mode_performances(benchmark, mode) -> None:
+@pytest.mark.parametrize(
+    "mode,speedup", [("probs", 60), ("expval", 60), ("state", 50), ("density", 60)]
+)
+def test_mode_performances(benchmark, mode, speedup) -> None:
     """
     Note, this test requires codspeed to be activated. Run with
     pytest tests/test_yaqsi.py::test_mode_performances -x -s --codspeed
@@ -1152,7 +1154,7 @@ def test_mode_performances(benchmark, mode) -> None:
 
     n_qubits = 6
     n_iters = 100
-    batch_size = 100
+    batch_size = 10
     rng = jax.random.PRNGKey(1000)
     rng, subkey = jax.random.split(rng)
 
@@ -1236,7 +1238,11 @@ def test_mode_performances(benchmark, mode) -> None:
         f"PennyLane {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
         f"{t_pl*1000:.2f} ± {std_pl*1000:.2f} ms"
     )
-    print(f"Ratio pl/yaqsi: {t_pl/t_ys:.2f}x")
+    ratio = t_pl / t_ys
+    print(f"Ratio pl/yaqsi: {ratio:.2f}x")
+    assert (
+        ratio >= speedup
+    ), f"Yaqsi not significantly faster than PennyLane. {ratio:2f}x"
 
     res_pl_arr = jnp.array(res_pl)
     if res_pl_arr.shape != res_ys.shape:
