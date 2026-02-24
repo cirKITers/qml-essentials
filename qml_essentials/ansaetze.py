@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Any, Optional, List, Union, Callable, Tuple
 import jax.numpy as np
-import jax
 import logging
 import warnings
 

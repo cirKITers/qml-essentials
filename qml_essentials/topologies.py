@@ -1,5 +1,4 @@
 from typing import List, Callable, Union
-import jax
 import logging
 
 log = logging.getLogger(__name__)
