@@ -90,7 +90,7 @@ def ghz_toffoli_3(*args, **kwargs):
     CCX(wires=[0, 1, 2])
 
 
-def parameterized_circuit(theta):
+def parametrized_circuit(theta):
     RX(theta, wires=0)
 
 
@@ -154,9 +154,9 @@ def test_expval_bell_z() -> None:
 
 
 @pytest.mark.unittest
-def test_parameterized_expval() -> None:
+def test_parametrized_expval() -> None:
     """RX(θ)|0⟩ gives ⟨Z⟩ = cos(θ)."""
-    script = Script(f=parameterized_circuit)
+    script = Script(f=parametrized_circuit)
     theta_val = jnp.array(0.5)
 
     def cost(theta):
@@ -168,7 +168,7 @@ def test_parameterized_expval() -> None:
 @pytest.mark.unittest
 def test_jax_gradient() -> None:
     """Gradient of ⟨Z⟩ w.r.t. θ for RX(θ)|0⟩ equals -sin(θ)."""
-    script = Script(f=parameterized_circuit)
+    script = Script(f=parametrized_circuit)
     theta_val = jnp.array(0.5)
 
     def cost(theta):
@@ -304,7 +304,7 @@ def test_density_expval_matches_statevector() -> None:
     Tr(O ρ) via the density path must equal ⟨ψ|O|ψ⟩ from the statevector path
     for any observable and any pure circuit.
     """
-    script = Script(f=parameterized_circuit)
+    script = Script(f=parametrized_circuit)
     theta_val = jnp.array(0.7)
 
     ev_pure = script.execute(type="expval", obs=[PauliZ(0)], args=(theta_val,))[0]
@@ -661,7 +661,7 @@ def test_batched_expval_matches_sequential() -> None:
     This is the primary correctness check: jax.vmap must not introduce
     any numerical difference vs. the single-sample path.
     """
-    script = Script(f=parameterized_circuit)
+    script = Script(f=parametrized_circuit)
     thetas = jnp.array([0.1, 0.5, 1.0, 1.5, 2.0])
 
     sequential = jnp.stack(
@@ -688,7 +688,7 @@ def test_batched_expval_values() -> None:
     Mirrors the B_P (parameter-batch) axis from model.py where params
     has shape (n_layers, n_params, B_P) and in_axes=(2, ...).
     """
-    script = Script(f=parameterized_circuit)
+    script = Script(f=parametrized_circuit)
     thetas = jnp.linspace(0.0, jnp.pi, 9)
 
     results = script.execute(
@@ -708,7 +708,7 @@ def test_batched_probs() -> None:
     Batch over two extreme angles: RX(0)|0⟩ = |0⟩ and RX(π)|0⟩ ≈ i|1⟩.
     Probabilities must be [1,0] and [0,1] respectively.
     """
-    script = Script(f=parameterized_circuit)
+    script = Script(f=parametrized_circuit)
     thetas = jnp.array([0.0, jnp.pi])
 
     results = script.execute(type="probs", args=(thetas,), in_axes=(0,))
@@ -727,7 +727,7 @@ def test_batched_gradient() -> None:
     gradient flows through the batched path without breaking.
     This is the core requirement for training with batched parameters.
     """
-    script = Script(f=parameterized_circuit)
+    script = Script(f=parametrized_circuit)
     thetas = jnp.array([0.3, 0.7, 1.2])
 
     def loss(thetas):
@@ -783,7 +783,7 @@ def test_batched_broadcast_none_axis() -> None:
 @pytest.mark.unittest
 def test_batched_in_axes_mismatch_raises() -> None:
     """in_axes length != args length must raise a clear ValueError."""
-    script = Script(f=parameterized_circuit)
+    script = Script(f=parametrized_circuit)
     with pytest.raises(ValueError, match="in_axes has"):
         script.execute(
             type="expval",

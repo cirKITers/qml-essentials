@@ -401,7 +401,8 @@ def test_available_ansaetze() -> None:
 
 
 single_qubit_pulse_testdata = itertools.product(
-    ["RX", "RY", "RZ", "H"], [np.pi / 4, np.pi / 2, np.pi]
+    ["RX", "RY", "RZ", "H"],
+    [0.0, np.pi / 4, np.pi / 2, 3 * np.pi / 4, np.pi],
 )
 
 
@@ -419,6 +420,7 @@ def test_single_qubit_pulse_gate(gate, w):
     state_target = target_script.execute(type="state", args=(w,))
 
     fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
+    assert fidelity <= 1.0 + 1e-6, f"Fidelity of {gate} can't be larger 1 for w={w}"
     assert np.isclose(
         fidelity, 1.0, atol=1e-2
     ), f"Fidelity too low for w={w}: {fidelity}"
@@ -428,7 +430,7 @@ def test_single_qubit_pulse_gate(gate, w):
 
 
 two_qubit_pulse_testdata = itertools.product(
-    ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"], [np.pi / 4, np.pi / 2, np.pi]
+    ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"], [0.0, np.pi / 4, np.pi / 2, np.pi]
 )
 
 
@@ -446,6 +448,7 @@ def test_two_qubit_pulse_gate(gate, w):
     state_target = target_script.execute(type="state", args=(w,))
 
     fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
+    assert fidelity <= 1.0 + 1e-6, f"Fidelity of {gate} can't be larger 1 for w={w}"
     assert np.isclose(
         fidelity, 1.0, atol=1e-2
     ), f"Fidelity too low for w={w}: {fidelity}"
