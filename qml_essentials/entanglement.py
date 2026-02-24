@@ -39,8 +39,8 @@ class Entanglement:
         """
         if "noise_params" in kwargs:
             log.warning(
-                "Meyer-Wallach measure not suitable for noisy circuits.\
-                    Consider 'relative_entropy' instead."
+                "Meyer-Wallach measure not suitable for noisy circuits. "
+                "Consider 'concentratable entanglement' instead."
             )
 
         if scale:
@@ -135,7 +135,7 @@ class Entanglement:
         if "noise_params" in kwargs:
             log.warning(
                 "Bell Measurements not suitable for noisy circuits. "
-                "Consider 'relative_entropy' instead."
+                "Consider 'concentratable entanglement' instead."
             )
 
         if scale:
@@ -207,12 +207,14 @@ class Entanglement:
             result = bell_script.execute(
                 type="probs",
                 args=(params, inputs, model.pulse_params, random_keys),
+                kwargs=kwargs,
                 in_axes=(2, None, None, 0),
             )
         else:
             result = bell_script.execute(
                 type="probs",
                 args=(params, inputs, model.pulse_params, random_key),
+                kwargs=kwargs,
             )
 
         # Marginalize: for each qubit q, keep wires [q, q+n] from the 2n-qubit probs
@@ -601,11 +603,13 @@ class Entanglement:
                 type="probs",
                 args=(params, inputs, model.pulse_params, random_keys),
                 in_axes=(2, None, None, 0),
+                kwargs=kwargs,
             )
         else:
             probs = swap_script.execute(
                 type="probs",
                 args=(params, inputs, model.pulse_params, random_key),
+                kwargs=kwargs,
             )
 
         # Marginalize to the ancilla register (wires 0..n-1)
