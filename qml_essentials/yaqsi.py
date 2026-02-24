@@ -419,7 +419,7 @@ class Script:
 
         # Output tensor
         if type == "density" or use_density:
-            out_bytes = batch_size * dim * dim * elem
+            out_bytes = batch_size * dim * dim * elem * 2
         elif type == "expval":
             out_bytes = batch_size * max(n_obs, 1) * 8  # float64
         else:  # state, probs
@@ -428,16 +428,12 @@ class Script:
         # Gate temporaries: einsum creates one (2,)*n buffer per batch elem
         gate_tmp = batch_size * dim * elem
 
-        # For density: the outer product ψ ⊗ ψ* is materialised
-        density_tmp = batch_size * dim * dim * elem if use_density else 0
-
         # Observable lifted matrices (shared across batch, not per-element)
         obs_bytes = n_obs * dim * dim * elem if n_obs > 0 else 0
 
-        raw = sv_bytes + out_bytes + gate_tmp + density_tmp + obs_bytes
+        raw = sv_bytes + out_bytes + gate_tmp + obs_bytes
 
-        # 2× safety factor for XLA temporaries, compiler buffers, etc.
-        return raw * 2
+        return raw
 
     @staticmethod
     def _available_memory_bytes() -> int:
@@ -469,7 +465,7 @@ class Script:
         except Exception:
             log.debug("Failed to read /proc/meminfo. Falling back to 4 GiB")
 
-        log.debug("Available memory: %d bytes", mem)
+        log.debug(f"Available memory: {mem/1024**3:.1f} GB")
         return mem
 
     @staticmethod
@@ -523,8 +519,13 @@ class Script:
         if usable <= 0:
             return 1
 
-        chunk = usable // per_elem
-        return max(1, min(chunk, batch_size))
+        chunk = max(1, min(usable // per_elem, batch_size))
+        log.info(
+            f"Computation requires {full_est/1024**3:.2f} GB which \
+                does not fit in {avail/1024**3:.2f} GB.\
+                Using chunk size {chunk}."
+        )
+        return chunk
 
     @staticmethod
     def _execute_chunked(
@@ -554,11 +555,8 @@ class Script:
             Concatenated results with the same leading dimension as the
             full batch.
         """
-        import logging
-
-        logger = logging.getLogger(__name__)
         n_chunks = (batch_size + chunk_size - 1) // chunk_size
-        logger.info(
+        log.info(
             f"Memory-aware chunking: splitting batch of {batch_size} into "
             f"{n_chunks} chunks of <={chunk_size} elements."
         )
