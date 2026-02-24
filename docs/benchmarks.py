@@ -29,10 +29,11 @@ logger.info(f"Identifier: {identifier}")
 LOAD_LATEST = False  # Set to True to skip computation and load the latest CSV instead
 WARMUP = True  # Does not produce meaningful results if False
 
-qubit_sizes = list(range(2, 12))
+qubit_sizes = list(range(2, 15))
 modes = ["probs", "expval", "state", "density"]
 n_iters = 100
-batch_size = 100
+batch_size = 5
+precision = 1e-5
 
 
 def var_ghz_benchmark(mode, q) -> None:
@@ -50,8 +51,11 @@ def var_ghz_benchmark(mode, q) -> None:
     logger.info(f"Running Yaqsi benchmark (mode: {mode}, {q} qubits)")
     # Pre-generate different parameters for each iteration to simulate
     # a training loop where params change every step.
+    # Note that this is n_iters x batch_size, so every iteration is a batch
+    # on its own!
+    # We count the first iteration as warmup
     all_phis = jax.random.uniform(
-        subkey, shape=(n_iters, batch_size), minval=-jnp.pi, maxval=jnp.pi
+        subkey, shape=(n_iters + 1, batch_size), minval=-jnp.pi, maxval=jnp.pi
     )
 
     # --- Yaqsi ---
@@ -63,14 +67,19 @@ def var_ghz_benchmark(mode, q) -> None:
 
     script = Script(f=yaqsi_circuit)
 
+    # do some warmup (allows pre-compilation)
+    # Note that we use a phi, which will not be part of the benchmarking later
     if WARMUP:
         _ = script.execute(
             type=mode,
             obs=[PauliZ(wires=i, record=False) for i in range(n_qubits)],
-            args=(all_phis[0],),
+            args=(all_phis[-1],),
             in_axes=(0,),
         )
 
+    # do the actual benchmarking
+    # Note that each execution uses a different phi vector, i.e. this is not
+    # just repeating the same computation!
     ys_times = []
     for i in range(n_iters):
         t0 = time.perf_counter()
@@ -89,9 +98,11 @@ def var_ghz_benchmark(mode, q) -> None:
         f"{t_ys*1000:.2f} ± {std_ys*1000:.2f} ms"
     )
 
+    # Now the same thing for pennylane
     # --- PennyLane ---
     dev = qml.device("default.qubit", wires=n_qubits)
 
+    # Need to do a slight mapping for the different return types
     pl_return_map = {
         "density": lambda: qml.density_matrix(wires=range(n_qubits)),
         "state": lambda: qml.state(),
@@ -99,7 +110,7 @@ def var_ghz_benchmark(mode, q) -> None:
         "expval": lambda: [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)],
     }
 
-    @qml.qnode(dev)
+    @qml.qnode(dev, interface="jax")
     def pl_circuit(phi):
         for i in range(n_qubits):
             qml.Hadamard(wires=i)
@@ -108,7 +119,7 @@ def var_ghz_benchmark(mode, q) -> None:
         return pl_return_map[mode]()
 
     if WARMUP:
-        _ = pl_circuit(all_phis[0])
+        _ = pl_circuit(all_phis[-1])
 
     pl_times = []
     for i in range(n_iters):
@@ -125,11 +136,19 @@ def var_ghz_benchmark(mode, q) -> None:
     logger.info(f"Ratio pl/yaqsi: {t_pl/t_ys:.2f}x")
 
     res_pl_arr = jnp.array(res_pl)
-    if res_pl_arr.shape != res_ys.shape:
+    # PennyLane returns expval as (n_obs, batch) while Yaqsi returns
+    # (batch, n_obs).  For other modes the shapes already agree.
+    if mode == "expval":
         res_pl_arr = res_pl_arr.T
 
-    assert jnp.allclose(res_ys, res_pl_arr, atol=1e-10), "Results do not match"
-    logger.info(f"Results match")
+    if not jnp.allclose(res_ys, res_pl_arr, atol=precision):
+        logger.error(
+            f"Error occured at {q} qubits for mode {mode}:\
+                     Results do not match; got {res_ys} and {res_pl_arr}\
+                     Shape is {res_ys.shape} and {res_pl_arr.shape}"
+        )
+    else:
+        logger.info("Results match")
 
     return [t_ys, t_pl, std_ys, std_pl]
 

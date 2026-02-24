@@ -230,6 +230,57 @@ class Operation:
         else:
             self._wires = [wires]
 
+    def _update_tape_operation(self, op: "Operation") -> None:
+        """
+        If ``self`` is already on the active tape (the typical case when
+        chaining ``Gate(...).dagger()``), it is replaced by the daggered
+        operation so that only U\\dagger appears on the tape — not both U and ``U\\dagger``.
+        Note that this should only be called immediately after the tape is updated.s
+
+        Args:
+            op (Operation): New replaced operation on the tape
+        """
+        # If self was recorded on the tape, replace it with the daggered op.
+        tape = active_tape()
+        if tape is not None:
+            if tape and tape[-1] is self:
+                tape[-1] = op
+            else:
+                tape.append(op)
+
+    def dagger(self) -> "Operation":
+        """Return a new operation, the conjugate transpose (``U\\dagger``)
+        Usage inside a circuit function::
+
+            RX(0.5, wires=0).dagger()
+
+        Returns:
+            A new :class:`Operation` with matrix ``U\\dagger`` acting on the same wires.
+        """
+        mat = jnp.conj(self._matrix).T
+        op = Operation(wires=self.wires, matrix=mat, record=False)
+
+        self._update_tape_operation(op)
+
+        return op
+
+    def power(self, power) -> "Operation":
+        """Return a new operation, the power (``U^power``)
+        Usage inside a circuit function::
+
+            PauliX(wires=0).power(2)
+
+        Returns:
+            A new :class:`Operation` with matrix ``U\\dagger`` acting on the same wires.
+        """
+        # TODO: support fractional powers
+        mat = jnp.linalg.matrix_power(self._matrix, power)
+        op = Operation(wires=self.wires, matrix=mat, record=False)
+
+        self._update_tape_operation(op)
+
+        return op
+
     def lifted_matrix(self, n_qubits: int) -> jnp.ndarray:
         """Return the full ``2**n x 2**n`` matrix embedding this gate.
 
@@ -314,7 +365,7 @@ class Operation:
         return gt
 
     def apply_to_density(self, rho: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
-        """Apply this gate to a density matrix via \\rho -> U\\rho U†.
+        """Apply this gate to a density matrix via \\rho -> U\\rho U\\dagger.
 
         The density matrix (shape ``(2**n, 2**n)``) is treated as a rank-*2n*
         tensor with *n* "ket" axes (0..n-1) and *n* "bra" axes (n..2n-1).
@@ -335,7 +386,7 @@ class Operation:
 
         rho_t = rho.reshape((2,) * 2 * n_qubits)
 
-        # Apply U to ket axes, U† to bra axes
+        # Apply U to ket axes, U\\dagger to bra axes
         rho_t = _contract_and_restore(rho_t, U, k, self.wires)
         bra_wires = [w + n_qubits for w in self.wires]
         rho_t = _contract_and_restore(rho_t, U_conj, k, bra_wires)
@@ -518,6 +569,31 @@ class S(Operation):
         super().__init__(wires=wires)
 
 
+class RandomUnitary(Operation):
+    """Creates a random hermitian matrix and applies it as a gate."""
+
+    def __init__(self, wires, key, scale=1.0, record=True):
+        """Initialise a random unitary gate.
+
+        Args:
+            wires: Qubit index or list of qubit indices this gate acts on.
+            jax.random.PRNGKey: PRNGKey for randomization
+            scale: Scale of the random unitary (default: 1.0)
+        """
+        dim = 2**wires
+        key_a, key_b = jax.random.split(key)
+
+        A = (
+            jax.random.normal(key=key_a, shape=(dim, dim))
+            + 1j * jax.random.normal(key=key_b, shape=(dim, dim))
+        ).astype(jnp.complex128)
+        H = (A + A.conj().T) / 2.0
+
+        H *= scale / jnp.linalg.norm(H, ord="fro")
+
+        super().__init__(wires, matrix=H, record=record)
+
+
 class Barrier(Operation):
     """Barrier operation — a no-op used for visual circuit separation.
 
@@ -567,12 +643,14 @@ def _make_rotation_gate(pauli_class: type, name: str) -> type:
         _num_wires = 1
         _param_names = ("theta",)
 
-        def __init__(self, theta: float, wires: Union[int, List[int]] = 0) -> None:
+        def __init__(
+            self, theta: float, wires: Union[int, List[int]] = 0, **kwargs
+        ) -> None:
             self.theta = theta
             c = jnp.cos(theta / 2)
             s = jnp.sin(theta / 2)
             mat = c * Id._matrix - 1j * s * pauli_mat
-            super().__init__(wires=wires, matrix=mat)
+            super().__init__(wires=wires, matrix=mat, **kwargs)
 
         def generator(self) -> Operation:
             """Return the generator as the corresponding Pauli operation."""
@@ -853,9 +931,9 @@ class PauliRot(Operation):
 class KrausChannel(Operation):
     """Base class for noise channels defined by a set of Kraus operators.
 
-    A Kraus channel Φ(\\rho ) = \\sigma_k K_k \\rho  K_k† is the most general physical
+    A Kraus channel Φ(\\rho ) = \\sigma_k K_k \\rho  K_k\\dagger is the most general physical
     operation on a quantum state.  For a pure unitary gate there is a single
-    operator K_0 = U satisfying K_0†K_0 = I; for noisy channels there are
+    operator K_0 = U satisfying K_0\\daggerK_0 = I; for noisy channels there are
     multiple operators.
 
     Subclasses must implement :meth:`kraus_matrices` and return a list of JAX
@@ -911,7 +989,7 @@ class KrausChannel(Operation):
         )
 
     def apply_to_density(self, rho: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
-        """Apply Φ(\\rho ) = \\sigma_k K_k \\rho  K_k† using tensor-contraction.
+        """Apply Φ(\\rho ) = \\sigma_k K_k \\rho  K_k\\dagger using tensor-contraction.
 
         Uses the shared :func:`_contract_and_restore` helper, summing the
         result over all Kraus operators.
@@ -1259,7 +1337,7 @@ class QubitChannel(KrausChannel):
     """Generic Kraus channel from a user-supplied list of Kraus operators.
 
     This replaces PennyLane's ``qml.QubitChannel`` and accepts an arbitrary set
-    of Kraus matrices satisfying \\sigma_k K_k†K_k = I.
+    of Kraus matrices satisfying \\sigma_k K_k\\daggerK_k = I.
 
     Example::
 
@@ -1307,7 +1385,7 @@ def evolve_pauli_with_clifford(
     pauli: Operation,
     adjoint_left: bool = True,
 ) -> Operation:
-    """Compute C† P C  (or  C P C†)  and return the result as an Operation.
+    """Compute C\\dagger P C  (or  C P C\\dagger)  and return the result as an Operation.
 
     Both operators are first embedded into the full Hilbert space spanned by
     the union of their wire sets.  The result is wrapped in a
@@ -1316,7 +1394,7 @@ def evolve_pauli_with_clifford(
     Args:
         clifford: A Clifford gate.
         pauli: A Pauli / Hermitian operator.
-        adjoint_left: If ``True``, compute C† P C; otherwise C P C†.
+        adjoint_left: If ``True``, compute C\\dagger P C; otherwise C P C\\dagger.
 
     Returns:
         A :class:`Hermitian` wrapping the evolved matrix.
