@@ -19,9 +19,8 @@ from qml_essentials.operations import (
     pauli_decompose,
     pauli_string_from_operation,
 )
-from fractions import Fraction
-from itertools import cycle
 from scipy.linalg import logm
+from collections import defaultdict
 
 
 def safe_random_split(random_key: jax.random.PRNGKey, *args, **kwargs):
@@ -77,12 +76,14 @@ class PauliTape:
         return params
 
     def get_input_indices(self) -> list:
-        indices = []
+        indices = defaultdict(list)
+        all_indices = []
         ops_w_params = [o for o in self.operations if len(o.parameters) > 0]
         for i, op in enumerate(ops_w_params):
-            if op.marked:
-                indices.append(i)
-        return indices
+            if op.input_idx >= 0:
+                indices[op.input_idx].append(i)
+                all_indices.append(i)
+        return indices, all_indices
 
 
 class PauliCircuit:
@@ -341,8 +342,8 @@ class PauliCircuit:
         )
         new_pauli = PauliRot(param * param_factor, pauli_str, qubits)
 
-        if pauli.marked:
-            new_pauli.marked = True
+        if pauli.input_idx >= 0:
+            new_pauli.input_idx = pauli.input_idx
 
         return new_pauli, clifford
 

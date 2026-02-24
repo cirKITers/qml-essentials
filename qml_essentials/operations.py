@@ -116,7 +116,7 @@ class Operation:
         wires: Union[int, List[int]] = 0,
         matrix: Optional[jnp.ndarray] = None,
         record: bool = True,
-        marked: bool = False,
+        input_idx: int = -1,
     ) -> None:
         """Initialise the operation and optionally register it on the active tape.
 
@@ -129,16 +129,16 @@ class Operation:
                 auxiliary objects that should not appear in the circuit
                 (e.g. Hamiltonians used only to build time-dependent
                 evolutions).
-            marked: Marks the operation as special (e.g., as input operation),
-                which is useful for the analytical Fourier coefficients
-                computation, but has no effect otherwise.
+            input_idx: Marks the operation as input with the corresponding
+                input index, which is useful for the analytical Fourier
+                coefficients computation, but has no effect otherwise.
 
         Raises:
             ValueError: If ``_num_wires`` is set and the number of wires
                 doesn't match, or if duplicate wires are provided.
         """
         self.wires = list(wires) if isinstance(wires, (list, tuple)) else [wires]
-        self.marked = marked
+        self.input_idx = input_idx
 
         if self._num_wires is not None and len(self.wires) != self._num_wires:
             raise ValueError(
@@ -236,22 +236,22 @@ class Operation:
             self._wires = [wires]
 
     @property
-    def marked(self) -> bool:
-        """If the operation is marked
+    def input_idx(self) -> int:
+        """The index of an input
 
         Returns:
-            marked: If it is marked or not
+            input_idx: Index of the input
         """
-        return self._marked
+        return self._input_idx
 
-    @marked.setter
-    def marked(self, marked: bool) -> None:
-        """Setter for the marked flag
+    @input_idx.setter
+    def input_idx(self, input_idx: int) -> None:
+        """Setter for the input_idx flag
 
         Args:
-            marked: If it should be marked or not
+            input_idx: Index of the input
         """
-        self._marked = marked
+        self._input_idx = input_idx
 
     def _update_tape_operation(self, op: "Operation") -> None:
         """

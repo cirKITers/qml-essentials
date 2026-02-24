@@ -596,8 +596,7 @@ class FourierTree:
 
         self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
 
-        self.input_indices = quantum_tape.get_input_indices()
-        print(self.input_indices)
+        self.input_indices, self.all_input_indices = quantum_tape.get_input_indices()
 
         self.observables = self._encode_observables(quantum_tape.observables)
 
@@ -756,21 +755,24 @@ class FourierTree:
                   observable (root).
         """
         parameter_indices = [
-            i for i in range(len(self.parameters)) if i not in self.input_indices
+            i for i in range(len(self.parameters)) if i not in self.all_input_indices
         ]
 
         coeffs = []
         for leafs in self.leafs:
             freq_terms = defaultdict(np.complex128)
-            for leaf in leafs:
-                leaf_factor, s, c = self._compute_leaf_factors(leaf, parameter_indices)
+            for input_idx in self.input_indices:
+                for leaf in leafs:
+                    leaf_factor, s, c = self._compute_leaf_factors(
+                        leaf, parameter_indices, input_idx
+                    )
 
-                for a in range(s + 1):
-                    for b in range(c + 1):
-                        comb = math.comb(s, a) * math.comb(c, b) * (-1) ** (s - a)
-                        freq_terms[2 * a + 2 * b - s - c] += comb * leaf_factor
+                    for a in range(s + 1):
+                        for b in range(c + 1):
+                            comb = math.comb(s, a) * math.comb(c, b) * (-1) ** (s - a)
+                            freq_terms[2 * a + 2 * b - s - c] += comb * leaf_factor
 
-            coeffs.append(freq_terms)
+                coeffs.append(freq_terms)
 
         frequencies, coefficients = self._freq_terms_to_coeffs(coeffs, force_mean)
         return coefficients, frequencies
@@ -842,7 +844,10 @@ class FourierTree:
         return frequencies, coefficients
 
     def _compute_leaf_factors(
-        self, leaf: TreeLeaf, parameter_indices: List[int]
+        self,
+        leaf: TreeLeaf,
+        parameter_indices: List[int],
+        input_idx: int,
     ) -> Tuple[float, int, int]:
         """
         Computes the constant coefficient factor for each leaf.
@@ -869,8 +874,12 @@ class FourierTree:
             leaf_factor = leaf_factor * interm_factor
 
         # Get number of sine and cosine factors to which the input contributes
-        c = jnp.sum(jnp.array([leaf.cos_indices[k] for k in self.input_indices]))
-        s = jnp.sum(jnp.array([leaf.sin_indices[k] for k in self.input_indices]))
+        c = jnp.sum(
+            jnp.array([leaf.cos_indices[k] for k in self.input_indices[input_idx]])
+        )
+        s = jnp.sum(
+            jnp.array([leaf.sin_indices[k] for k in self.input_indices[input_idx]])
+        )
 
         leaf_factor = leaf.term * leaf_factor * 0.5 ** (s + c)
 
