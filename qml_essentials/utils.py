@@ -9,6 +9,7 @@ from qml_essentials.operations import (
     H,
     S,
     CX,
+    CZ,
     RX,
     RY,
     RZ,
@@ -74,6 +75,14 @@ class PauliTape:
         for op in self.operations:
             params.extend(op.parameters)
         return params
+
+    def get_input_indices(self) -> list:
+        indices = []
+        ops_w_params = [o for o in self.operations if len(o.parameters) > 0]
+        for i, op in enumerate(ops_w_params):
+            if op.marked:
+                indices.append(i)
+        return indices
 
 
 class PauliCircuit:
@@ -230,6 +239,11 @@ class PauliCircuit:
                 operations.append(RZ(-theta / 2, wires=t))
                 operations.append(CX(wires=[c, t]))
                 operations.append(RX(jnp.pi / 2, wires=t))
+            elif isinstance(operation, CZ):
+                c, t = operation.wires
+                operations.append(H(wires=c))
+                operations.append(CX(wires=[c, t]))
+                operations.append(H(wires=c))
             else:
                 raise NotImplementedError(
                     f"Gate {operation.name} cannot be decomposed into "
@@ -326,6 +340,9 @@ class PauliCircuit:
             pauli_str, evolved_pauli_op.wires
         )
         new_pauli = PauliRot(param * param_factor, pauli_str, qubits)
+
+        if pauli.marked:
+            new_pauli.marked = True
 
         return new_pauli, clifford
 

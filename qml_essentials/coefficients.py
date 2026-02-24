@@ -556,7 +556,7 @@ class FourierTree:
                 obs, phase=phase, n_qubits=obs.size, is_init=False, is_observable=True
             )
 
-    def __init__(self, model: Model, inputs: Optional[jnp.ndarray] = None):
+    def __init__(self, model: Model):
         """
         Tree initialisation, based on the Pauli-Clifford representation of a model.
         Currently, only one input feature is supported.
@@ -578,21 +578,11 @@ class FourierTree:
 
         Args:
             model (Model): The Model, for which to build the tree
-            inputs (bool, optional): Possible default inputs. Defaults to 1.0.
         """
         self.model = model
         self.tree_roots = None
 
-        inputs = (
-            self.model._inputs_validation(inputs)
-            if inputs is not None
-            else self.model._inputs_validation([1.0])
-        )
-
-        # TODO: duplicate the input to find out, where it is in the tape. Not
-        # really pretty.
-        if inputs.shape[0] == 1:
-            inputs = jnp.repeat(inputs, 2, axis=0)
+        inputs = self.model._inputs_validation([1.0])
 
         # Record the circuit tape using yaqsi's tape recording
         raw_tape = self.model.script._record(params=model.params, inputs=inputs)
@@ -606,9 +596,8 @@ class FourierTree:
 
         self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
 
-        self.input_indices = [
-            i for (i, p) in enumerate(self.parameters) if p.shape != ()
-        ]
+        self.input_indices = quantum_tape.get_input_indices()
+        print(self.input_indices)
 
         self.observables = self._encode_observables(quantum_tape.observables)
 
@@ -779,9 +768,7 @@ class FourierTree:
                 for a in range(s + 1):
                     for b in range(c + 1):
                         comb = math.comb(s, a) * math.comb(c, b) * (-1) ** (s - a)
-                        freq_terms[2 * a + 2 * b - s._value - c._value] += (
-                            comb * leaf_factor
-                        )
+                        freq_terms[2 * a + 2 * b - s - c] += comb * leaf_factor
 
             coeffs.append(freq_terms)
 
@@ -887,7 +874,7 @@ class FourierTree:
 
         leaf_factor = leaf.term * leaf_factor * 0.5 ** (s + c)
 
-        return leaf_factor, s, c
+        return leaf_factor, int(s), int(c)
 
     def _early_stopping_possible(
         self, pauli_rotation_idx: int, observable: FourierTree.PauliOperator
