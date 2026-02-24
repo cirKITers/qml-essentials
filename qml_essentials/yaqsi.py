@@ -517,12 +517,17 @@ class Script:
 
         usable = avail - shared
         if usable <= 0:
+            log.info(
+                f"Computation requires ~{full_est/1024**3:.2f} GB which \
+                    does not fit in ~{avail/1024**3:.2f} GB.\
+                    However, no chunking is possible."
+            )
             return 1
 
         chunk = max(1, min(usable // per_elem, batch_size))
         log.info(
-            f"Computation requires {full_est/1024**3:.2f} GB which \
-                does not fit in {avail/1024**3:.2f} GB.\
+            f"Computation requires ~{full_est/1024**3:.2f} GB which \
+                does not fit in ~{avail/1024**3:.2f} GB.\
                 Using chunk size {chunk}."
         )
         return chunk
@@ -556,7 +561,7 @@ class Script:
             full batch.
         """
         n_chunks = (batch_size + chunk_size - 1) // chunk_size
-        log.info(
+        log.debug(
             f"Memory-aware chunking: splitting batch of {batch_size} into "
             f"{n_chunks} chunks of <={chunk_size} elements."
         )
