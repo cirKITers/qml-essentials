@@ -52,53 +52,6 @@ def _einsum_subscript(
     return "".join(gate_idx) + "," + "".join(state_idx) + "->" + "".join(result_idx)
 
 
-# Qubit-count threshold for switching from einsum to tensordot.
-# einsum has lower Python overhead for small qubit counts because the
-# subscript string is cached and the contraction+permutation is fused
-# into a single XLA op.  For larger qubit counts (>= threshold) the
-# string-parsing overhead of einsum becomes significant and tensordot +
-# moveaxis is faster because it maps directly to XLA's dot_general.
-# Calibrated empirically; matches PennyLane's EINSUM_STATE_WIRECOUNT_PERF_THRESHOLD.
-_TENSORDOT_THRESHOLD = 10
-
-
-def _contract_tensordot(
-    tensor: jnp.ndarray,
-    gate: jnp.ndarray,
-    k: int,
-    target_axes: List[int],
-) -> jnp.ndarray:
-    """Contract *gate* against *target_axes* of *tensor* via tensordot + moveaxis.
-
-    Equivalent to :func:`_contract_and_restore` but avoids ``einsum``
-    subscript parsing overhead.  Preferred for tensors with rank >=
-    :data:`_TENSORDOT_THRESHOLD`.
-
-    ``jnp.tensordot`` contracts the last *k* axes of *gate* (the "input"
-    indices) against *target_axes* of *tensor*, producing a result where
-    the first *k* axes correspond to the "output" indices of the gate and
-    the remaining axes are the un-contracted tensor axes (in their
-    original relative order).  ``jnp.moveaxis`` then restores those *k*
-    output axes to the positions of *target_axes*.
-
-    Args:
-        tensor: Rank-*N* tensor (e.g. ``(2,)*n`` for states or ``(2,)*2n``
-            for density matrices).
-        gate: Reshaped gate tensor of shape ``(2,)*2k``.
-        k: Number of qubits the gate acts on (= ``len(target_axes)``).
-        target_axes: The *k* axes of *tensor* to contract against.
-
-    Returns:
-        Updated tensor with the same rank as *tensor*.
-    """
-    # Contract: last k axes of gate (inputs) against target_axes of tensor
-    contract_gate_axes = list(range(k, 2 * k))
-    tdot = jnp.tensordot(gate, tensor, axes=(contract_gate_axes, target_axes))
-    # tensordot places the k output axes at positions 0..k-1;
-    # move them back to their original positions.
-    return jnp.moveaxis(tdot, list(range(k)), target_axes)
-
-
 def _contract_and_restore(
     tensor: jnp.ndarray,
     gate: jnp.ndarray,
@@ -107,15 +60,13 @@ def _contract_and_restore(
 ) -> jnp.ndarray:
     """Contract *gate* against *target_axes* of *tensor* and restore axis order.
 
-    Adaptively selects between two strategies:
+    Uses a single ``jnp.einsum`` call that fuses the contraction and
+    permutation into one XLA dispatch, halving the per-gate Python overhead
+    compared to separate ``tensordot`` + ``transpose`` calls.
 
-    * **einsum** (rank < :data:`_TENSORDOT_THRESHOLD`): A single
-      ``jnp.einsum`` call with a cached subscript string that fuses the
-      contraction and permutation into one XLA dispatch.
-    * **tensordot** (rank >= :data:`_TENSORDOT_THRESHOLD`): Uses
-      ``jnp.tensordot`` + ``jnp.moveaxis``, which avoids the
-      string-parsing overhead of einsum and maps directly to XLA's
-      ``dot_general``.  ~1.5–2× faster at 16+ qubits.
+    The einsum subscript is cached via :func:`_einsum_subscript` so the
+    string construction only happens once per unique
+    ``(total, k, target_axes)`` combination.
 
     Args:
         tensor: Rank-*N* tensor (e.g. ``(2,)*n`` for states or ``(2,)*2n``
@@ -128,8 +79,6 @@ def _contract_and_restore(
         Updated tensor with the same rank as *tensor*, with the
         contracted axes restored to their original positions.
     """
-    if tensor.ndim >= _TENSORDOT_THRESHOLD:
-        return _contract_tensordot(tensor, gate, k, target_axes)
     subscript = _einsum_subscript(tensor.ndim, k, tuple(target_axes))
     return jnp.einsum(subscript, gate, tensor)
 
