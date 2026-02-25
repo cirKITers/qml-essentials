@@ -9,6 +9,8 @@ import matplotlib.ticker
 import csv
 import numpy as np
 
+jax.config.update("jax_enable_x64", True)
+
 from qml_essentials.yaqsi import (
     Script,
 )
@@ -52,7 +54,7 @@ def var_ghz_benchmark(mode, q) -> None:
     n_qubits = q
     rng, subkey = jax.random.split(rng)
 
-    logger.info(f"Running Yaqsi benchmark (mode: {mode}, {q} qubits)")
+    logger.info(f"Running Config (mode: {mode}, {q} qubits)")
     # Pre-generate different parameters for each iteration to simulate
     # a training loop where params change every step.
     # Note that this is n_iters x batch_size, so every iteration is a batch
@@ -61,6 +63,8 @@ def var_ghz_benchmark(mode, q) -> None:
     all_phis = jax.random.uniform(
         subkey, shape=(n_iters + 1, batch_size), minval=-jnp.pi, maxval=jnp.pi
     )
+
+    logger.info("Running Yaqsi benchmark")
 
     # --- Yaqsi ---
     def yaqsi_circuit(phi):
@@ -103,6 +107,7 @@ def var_ghz_benchmark(mode, q) -> None:
     )
 
     # Now the same thing for pennylane
+    logger.info("Running Pennylane benchmark")
     # --- PennyLane ---
     dev = qml.device("default.qubit", wires=n_qubits)
 
