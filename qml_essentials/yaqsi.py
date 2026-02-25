@@ -506,29 +506,29 @@ class Script:
         if full_est <= avail:
             return batch_size  # everything fits — no chunking
 
-        # Cost per single element (excludes shared obs matrices which are
-        # constant regardless of batch size)
-        per_elem = Script._estimate_peak_bytes(n_qubits, 1, type, use_density, n_obs=0)
-        # Shared overhead that does not scale with batch size
-        shared = Script._estimate_peak_bytes(n_qubits, 0, type, use_density, n_obs)
+        # Per-element cost: the memory that scales linearly with batch size.
+        # We compute this as estimate(batch=1) which includes both the
+        # per-element allocations AND the shared obs matrices.  This is
+        # the right number because each chunk execution independently
+        # allocates everything (the JIT kernel doesn't share buffers
+        # across chunks).
+        per_elem_with_shared = Script._estimate_peak_bytes(
+            n_qubits, 1, type, use_density, n_obs
+        )
 
-        if per_elem <= 0:
+        if per_elem_with_shared <= 0:
             return batch_size
 
-        usable = avail - shared
-        if usable <= 0:
-            log.info(
-                f"Computation requires ~{full_est/1024**3:.2f} GB which \
-                    does not fit in ~{avail/1024**3:.2f} GB.\
-                    However, no chunking is possible."
-            )
-            return 1
+        # How many elements fit in a single chunk?  Since each chunk
+        # call independently allocates the shared overhead (obs matrices
+        # etc.), we use the full single-element cost as the divisor.
+        chunk = avail // per_elem_with_shared
+        chunk = max(1, min(chunk, batch_size))
 
-        chunk = max(1, min(usable // per_elem, batch_size))
         log.info(
-            f"Computation requires ~{full_est/1024**3:.2f} GB which \
-                does not fit in ~{avail/1024**3:.2f} GB.\
-                Using chunk size {chunk}."
+            f"Computation requires ~{full_est / 1024**3:.2f} GB which "
+            f"does not fit in ~{avail / 1024**3:.2f} GB. "
+            f"Using chunk size {chunk}."
         )
         return chunk
 
@@ -959,6 +959,7 @@ class Script:
         in_axes: Optional[Tuple] = None,
         shots: Optional[int] = None,
         key: Optional[jnp.ndarray] = None,
+        memory_limit: bool = True,
     ) -> jnp.ndarray:
         """Execute the circuit and return measurement results.
 
@@ -991,6 +992,11 @@ class Script:
                 types.
             key: JAX PRNG key for shot sampling.  If ``None`` and *shots*
                 is set, a default key ``jax.random.PRNGKey(0)`` is used.
+            memory_limit: Controls memory-aware chunking for batched
+                execution.  When ``True`` (default), the method estimates
+                peak memory and automatically chunks the batch if it would
+                exceed available RAM.  Set to ``False`` to disable the
+                memory check entirely (zero overhead on the hot path).
 
         Returns:
             Without in_axes: shape determined by type.
@@ -1015,6 +1021,7 @@ class Script:
                 in_axes=in_axes,
                 shots=shots,
                 key=key,
+                memory_limit=memory_limit,
             )
         else:
             tape = self._record(*args, **kwargs)
@@ -1042,6 +1049,7 @@ class Script:
         in_axes: Tuple,
         shots: Optional[int] = None,
         key: Optional[jnp.ndarray] = None,
+        memory_limit: bool = True,
     ) -> jnp.ndarray:
         """Vectorise :meth:`execute` over a batch axis using ``jax.vmap``.
 
@@ -1069,6 +1077,9 @@ class Script:
                 convention: an int gives the batch axis; ``None`` broadcasts.
             shots: Number of measurement shots.  If ``None``, exact results.
             key: JAX PRNG key for shot sampling.
+            memory_limit: If ``True``, estimate peak memory and chunk
+                the batch if it would exceed available RAM.  If ``False``,
+                skip the memory check entirely (zero overhead).
 
         Returns:
             Batched measurement results of shape ``(B, ...)`` where *B* is the
@@ -1123,9 +1134,22 @@ class Script:
         cached = self._jit_cache.get(cache_key)
         if cached is not None and shots is None:
             batched_fn, n_qubits, use_density = cached
+            if not memory_limit:
+                return batched_fn(*args)
+            # Check if we already determined the chunk size for this
+            # exact batch_size (avoids repeated psutil syscalls).
+            mem_key = ("_mem", cache_key, batch_size)
+            cached_chunk = self._jit_cache.get(mem_key)
+            if cached_chunk is not None:
+                if cached_chunk >= batch_size:
+                    return batched_fn(*args)
+                return self._execute_chunked(
+                    batched_fn, args, in_axes, batch_size, cached_chunk
+                )
             chunk_size = self._compute_chunk_size(
                 n_qubits, batch_size, type, use_density, len(obs)
             )
+            self._jit_cache[mem_key] = chunk_size
             if chunk_size >= batch_size:
                 return batched_fn(*args)
             return self._execute_chunked(
@@ -1149,9 +1173,12 @@ class Script:
         has_noise = any(isinstance(op, KrausChannel) for op in tape)
         use_density = type == "density" or has_noise
 
-        chunk_size = self._compute_chunk_size(
-            n_qubits, batch_size, type, use_density, len(obs)
-        )
+        if memory_limit:
+            chunk_size = self._compute_chunk_size(
+                n_qubits, batch_size, type, use_density, len(obs)
+            )
+        else:
+            chunk_size = batch_size  # no chunking
 
         # Second, define a pure single-sample function to vmap over.
         # Re-recording inside this function is necessary: the tape may

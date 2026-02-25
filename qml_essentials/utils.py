@@ -9,6 +9,7 @@ from qml_essentials.operations import (
     H,
     S,
     CX,
+    CZ,
     RX,
     RY,
     RZ,
@@ -18,9 +19,8 @@ from qml_essentials.operations import (
     pauli_decompose,
     pauli_string_from_operation,
 )
-from fractions import Fraction
-from itertools import cycle
 from scipy.linalg import logm
+from collections import defaultdict
 
 
 def safe_random_split(random_key: jax.random.PRNGKey, *args, **kwargs):
@@ -74,6 +74,16 @@ class PauliTape:
         for op in self.operations:
             params.extend(op.parameters)
         return params
+
+    def get_input_indices(self) -> list:
+        indices = defaultdict(list)
+        all_indices = []
+        ops_w_params = [o for o in self.operations if len(o.parameters) > 0]
+        for i, op in enumerate(ops_w_params):
+            if op.input_idx >= 0:
+                indices[op.input_idx].append(i)
+                all_indices.append(i)
+        return indices, all_indices
 
 
 class PauliCircuit:
@@ -230,6 +240,11 @@ class PauliCircuit:
                 operations.append(RZ(-theta / 2, wires=t))
                 operations.append(CX(wires=[c, t]))
                 operations.append(RX(jnp.pi / 2, wires=t))
+            elif isinstance(operation, CZ):
+                c, t = operation.wires
+                operations.append(H(wires=c))
+                operations.append(CX(wires=[c, t]))
+                operations.append(H(wires=c))
             else:
                 raise NotImplementedError(
                     f"Gate {operation.name} cannot be decomposed into "
@@ -326,6 +341,9 @@ class PauliCircuit:
             pauli_str, evolved_pauli_op.wires
         )
         new_pauli = PauliRot(param * param_factor, pauli_str, qubits)
+
+        if pauli.input_idx >= 0:
+            new_pauli.input_idx = pauli.input_idx
 
         return new_pauli, clifford
 
