@@ -690,7 +690,8 @@ class Script:
     def _simulate_mixed(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
         """Density-matrix simulation kernel.
 
-        Starts from \\rho  = |00…0⟩⟨00…0| and applies each gate in *tape* via
+        Starts from \\rho  = \\vert 0\\rangle\\langle 0\\vert and
+        applies each gate in *tape* via
         :meth:`~qml_essentials.operations.Operation.apply_to_density`
         (\\rho  -> U\\rho U† for unitaries, \\Sigma_k K_k \\rho  K_k\\dagger
         for Kraus channels).

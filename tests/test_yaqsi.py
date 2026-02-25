@@ -1,12 +1,11 @@
 import pytest
 import jax
 
-jax.config.update("jax_enable_x64", True)  # tests use atol=1e-10
-
 import jax.numpy as jnp
 import pennylane as qml
 import numpy as np
 import time
+
 
 from qml_essentials.yaqsi import (
     Script,
@@ -45,8 +44,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
-# Helpers
+jax.config.update("jax_enable_x64", True)  # tests use atol=1e-10
 
 
 def bell_circuit(*args, **kwargs):
@@ -1200,7 +1198,7 @@ def test_mode_performances(benchmark, mode, speedup) -> None:
     t_ys = float(np.mean(ys_times))
     std_ys = float(np.std(ys_times))
 
-    print(
+    logger.info(
         f"Yaqsi {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
         f"{t_ys*1000:.2f} ± {std_ys*1000:.2f} ms"
     )
@@ -1237,12 +1235,12 @@ def test_mode_performances(benchmark, mode, speedup) -> None:
 
     t_pl, std_pl, res_pl = pl_benchmark()
 
-    print(
+    logger.info(
         f"PennyLane {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
         f"{t_pl*1000:.2f} ± {std_pl*1000:.2f} ms"
     )
     ratio = t_pl / t_ys
-    print(f"Ratio pl/yaqsi: {ratio:.2f}x")
+    logger.info(f"Ratio pl/yaqsi: {ratio:.2f}x")
     assert (
         ratio >= speedup
     ), f"Yaqsi not significantly faster than PennyLane. {ratio:2f}x"
@@ -1252,7 +1250,7 @@ def test_mode_performances(benchmark, mode, speedup) -> None:
         res_pl_arr = res_pl_arr.T
 
     assert jnp.allclose(res_ys, res_pl_arr, atol=1e-10), "Results do not match"
-    print("Results match")
+    logger.info("Results match")
 
 
 @pytest.mark.unittest

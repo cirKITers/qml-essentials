@@ -10,7 +10,9 @@ from qml_essentials.tape import active_tape, recording  # noqa: F401 (re-export)
 
 
 def _cdtype():
-    """Return the active JAX complex dtype (complex128 if x64 enabled, else complex64)."""
+    """Return the active JAX complex dtype
+    (complex128 if x64 enabled, else complex64).
+    """
     return jnp.complex128 if jax.config.x64_enabled else jnp.complex64
 
 
@@ -22,20 +24,11 @@ def _einsum_subscript(
 ) -> str:
     """Build an ``einsum`` subscript that fuses contraction + axis restore.
 
-    Given an *n*-axis state tensor and a ``(2,)*2k`` gate tensor acting on
-    *target_axes*, returns a subscript string equivalent to::
-
-        tensordot(gate, state, axes=(contract_axes, target_axes))
-        transpose(result, perm)
-
-    but executed as a single ``jnp.einsum`` call, halving JAX dispatch
-    overhead per gate.
-
     Args:
         n: Total rank of the state tensor (number of qubits for statevectors,
             ``2 * n_qubits`` for density matrices).
         k: Number of qubits the gate acts on.
-        target_axes: Tuple of *k* axis indices in the state tensor that the
+        target_axes: Tuple of k axis indices in the state tensor that the
             gate contracts against.
 
     Returns:
@@ -63,25 +56,21 @@ def _contract_and_restore(
     k: int,
     target_axes: List[int],
 ) -> jnp.ndarray:
-    """Contract *gate* against *target_axes* of *tensor* and restore axis order.
-
-    Uses a single ``jnp.einsum`` call that fuses the contraction and
-    permutation into one XLA dispatch, halving the per-gate Python overhead
-    compared to separate ``tensordot`` + ``transpose`` calls.
+    """Contract gate against target_axes of tensor and restore axis order.
 
     The einsum subscript is cached via :func:`_einsum_subscript` so the
     string construction only happens once per unique
     ``(total, k, target_axes)`` combination.
 
     Args:
-        tensor: Rank-*N* tensor (e.g. ``(2,)*n`` for states or ``(2,)*2n``
+        tensor: Rank-N tensor (e.g. ``(2,)*n`` for states or ``(2,)*2n``
             for density matrices).
         gate: Reshaped gate tensor of shape ``(2,)*2k``.
         k: Number of qubits the gate acts on (= ``len(target_axes)``).
-        target_axes: The *k* axes of *tensor* to contract against.
+        target_axes: The k axes of tensor to contract against.
 
     Returns:
-        Updated tensor with the same rank as *tensor*, with the
+        Updated tensor with the same rank as tensor, with the
         contracted axes restored to their original positions.
     """
     subscript = _einsum_subscript(tensor.ndim, k, tuple(target_axes))
@@ -334,9 +323,9 @@ class Operation:
 
         The statevector (shape ``(2**n,)``) is reshaped into a rank-*n* tensor
         of shape ``(2,)*n``.  The gate (shape ``(2**k, 2**k)``) is reshaped to
-        ``(2,)*2k`` and contracted against the *k* target wire axes.
+        ``(2,)*2k`` and contracted against the k target wire axes.
 
-        Memory footprint is O(2**n) and the operation supports arbitrary *k*.
+        Memory footprint is O(2**n) and the operation supports arbitrary k.
         The implementation is fully differentiable through JAX.
 
         Args:
@@ -976,7 +965,7 @@ class KrausChannel(Operation):
         """Return the list of Kraus operators for this channel.
 
         Returns:
-            List of 2-D JAX arrays, each of shape ``(2**k, 2**k)`` where *k*
+            List of 2-D JAX arrays, each of shape ``(2**k, 2**k)`` where k
             is the number of target qubits.
 
         Raises:
@@ -1382,7 +1371,7 @@ class QubitChannel(KrausChannel):
 
         Args:
             kraus_ops: List of Kraus matrices.  Each must be a square 2D array
-                of dimension ``2**k x 2**k`` where *k* = ``len(wires)``.
+                of dimension ``2**k x 2**k`` where k = ``len(wires)``.
             wires: Qubit index or list of qubit indices this channel acts on.
         """
         self._kraus_ops = [jnp.asarray(K, dtype=_cdtype()) for K in kraus_ops]
@@ -1396,13 +1385,6 @@ class QubitChannel(KrausChannel):
         """
         return self._kraus_ops
 
-
-# ===================================================================
-# Pauli algebra helpers
-# TODO: all of this below
-# needs refactoring and can be potentially merged into the
-# codebase above
-# ===================================================================
 
 # Single-qubit Pauli matrices (plain arrays, no Operation overhead)
 _PAULI_MATS = [Id._matrix, PauliX._matrix, PauliY._matrix, PauliZ._matrix]
