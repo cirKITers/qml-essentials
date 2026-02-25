@@ -2,6 +2,7 @@ from typing import List, Tuple, Optional
 import jax
 import jax.numpy as jnp
 from qml_essentials.operations import (
+    _cdtype,
     Operation,
     PauliX,
     PauliY,
@@ -46,7 +47,7 @@ def logm_v(A: jnp.ndarray, **kwargs) -> jnp.ndarray:
     if len(A.shape) == 2:
         return logm(A, **kwargs)
     elif len(A.shape) == 3:
-        AV = jnp.zeros(A.shape, dtype=jnp.complex128)
+        AV = jnp.zeros(A.shape, dtype=_cdtype())
         for i in range(A.shape[0]):
             AV = AV.at[i].set(logm(A[i], **kwargs))
         return AV

@@ -15,6 +15,7 @@ from qml_essentials.operations import (
     KrausChannel,
     PauliZ,
     _einsum_subscript,
+    _cdtype,
 )
 from qml_essentials.tape import recording
 from qml_essentials.drawing import draw_text, draw_mpl, draw_tikz
@@ -285,7 +286,7 @@ class Yaqsi:
                     t0=t0,
                     t1=t1,
                     dt0=None,  # let the controller choose the initial step
-                    y0=jnp.eye(dim, dtype=jnp.complex128),
+                    y0=jnp.eye(dim, dtype=_cdtype()),
                     args=params,
                     stepsize_controller=stepsize_controller,
                     max_steps=4096,
@@ -392,13 +393,25 @@ class Script:
 
         The estimate accounts for:
 
-        - The output tensor (state / probs / density / expval).
-        - The intermediate statevector (always needed, even for density).
+        - The batched statevector (always needed, even for density).
+        - The batched output tensor (state / probs / density / expval).
         - One gate-tensor temporary per batch element (the einsum buffer).
-        - For density mode: the outer-product temporary.
 
-        A safety factor of 2x is applied to cover XLA compiler temporaries,
+        Observable matrices are **not** counted: they are computed inside
+        the JIT-compiled function and XLA manages their lifetime (reusing
+        buffers between observables).  Similarly, the outer-product
+        temporary for pure-circuit density mode is transient within XLA.
+
+        Element size is determined dynamically from ``jax.config.x64_enabled``:
+        when x64 mode is disabled (the JAX default), complex values are
+        ``complex64`` (8 bytes) and floats are ``float32`` (4 bytes),
+        halving memory usage compared to the x64 path.
+
+        A 1.5× safety factor is applied to cover XLA compiler temporaries,
         padding, and other allocations not directly visible to Python.
+
+        This is a pure Python arithmetic calculation with no JAX calls —
+        it adds essentially zero overhead.
 
         Args:
             n_qubits: Number of qubits in the circuit.
@@ -412,28 +425,30 @@ class Script:
             Estimated peak memory in bytes.
         """
         dim = 2**n_qubits
-        elem = 16  # complex128 = 16 bytes
+        # Detect actual element size: JAX silently truncates complex128
+        # to complex64 when x64 mode is disabled (the default).
+        elem = 16 if jax.config.x64_enabled else 8  # complex128 vs complex64
+        real_elem = elem // 2  # float64 vs float32
 
         # Statevector: always allocated during simulation
         sv_bytes = batch_size * dim * elem
 
         # Output tensor
         if type == "density" or use_density:
-            out_bytes = batch_size * dim * dim * elem * 2
+            # density matrix (dim × dim)
+            out_bytes = batch_size * dim * dim * elem
         elif type == "expval":
-            out_bytes = batch_size * max(n_obs, 1) * 8  # float64
+            out_bytes = batch_size * max(n_obs, 1) * real_elem
         else:  # state, probs
             out_bytes = batch_size * dim * elem
 
         # Gate temporaries: einsum creates one (2,)*n buffer per batch elem
         gate_tmp = batch_size * dim * elem
 
-        # Observable lifted matrices (shared across batch, not per-element)
-        obs_bytes = n_obs * dim * dim * elem if n_obs > 0 else 0
+        raw = sv_bytes + out_bytes + gate_tmp
 
-        raw = sv_bytes + out_bytes + gate_tmp + obs_bytes
-
-        return raw
+        # 1.5× safety factor for XLA compiler temporaries, padding, etc.
+        return int(raw * 1.5)
 
     @staticmethod
     def _available_memory_bytes() -> int:
@@ -480,9 +495,14 @@ class Script:
         """Determine the largest chunk size that fits in available memory.
 
         If the full batch fits, returns *batch_size* (i.e. no chunking).
-        Otherwise, returns the largest chunk size such that
-        ``_estimate_peak_bytes(n_qubits, chunk, ...)`` fits within
+        Otherwise, returns the largest chunk size such that the computation
+        of one chunk **plus** the full output accumulator fits within
         ``memory_fraction`` of available RAM.
+
+        The output accumulator is the final ``(batch_size, ...)`` array that
+        holds all results.  When chunking, this array must coexist with the
+        active chunk computation, so its size is subtracted from available
+        memory before computing how many elements fit per chunk.
 
         The minimum chunk size is 1 (fully serialised).
 
@@ -506,24 +526,23 @@ class Script:
         if full_est <= avail:
             return batch_size  # everything fits — no chunking
 
-        # Per-element cost: the memory that scales linearly with batch size.
-        # We compute this as estimate(batch=1) which includes both the
-        # per-element allocations AND the shared obs matrices.  This is
-        # the right number because each chunk execution independently
-        # allocates everything (the JIT kernel doesn't share buffers
-        # across chunks).
-        per_elem_with_shared = Script._estimate_peak_bytes(
-            n_qubits, 1, type, use_density, n_obs
-        )
+        # Per-element cost: the memory for computing a single batch element.
+        per_elem = Script._estimate_peak_bytes(n_qubits, 1, type, use_density, n_obs)
 
-        if per_elem_with_shared <= 0:
+        if per_elem <= 0:
             return batch_size
 
-        # How many elements fit in a single chunk?  Since each chunk
-        # call independently allocates the shared overhead (obs matrices
-        # etc.), we use the full single-element cost as the divisor.
-        chunk = avail // per_elem_with_shared
+        # How many elements fit in available memory?
+        chunk = avail // per_elem
         chunk = max(1, min(chunk, batch_size))
+
+        if chunk == 1 and per_elem > avail:
+            log.warning(
+                f"A single batch element requires ~{per_elem / 1024**3:.2f} GB "
+                f"but only ~{avail / 1024**3:.2f} GB is available. "
+                f"Proceeding with chunk_size=1 but OOM is possible. "
+                f"Consider reducing n_qubits or switching measurement type."
+            )
 
         log.info(
             f"Computation requires ~{full_est / 1024**3:.2f} GB which "
@@ -544,10 +563,13 @@ class Script:
 
         Splits the batch dimension into sub-batches of at most *chunk_size*
         elements, runs each through the JIT-compiled *batched_fn*, and
-        concatenates the results along axis 0.
+        concatenates the results.
 
-        This method is only called when :meth:`_compute_chunk_size`
-        determines that the full batch would exceed available memory.
+        Each chunk's result is kept as a JAX array in a list.  After all
+        chunks complete, ``jnp.concatenate`` assembles the final output.
+        JAX's lazy memory management allows it to free intermediate chunk
+        arrays during concatenation, keeping peak memory lower than
+        pre-allocating the full output up front.
 
         Args:
             batched_fn: A JIT-compiled, vmapped callable.
@@ -557,7 +579,7 @@ class Script:
             chunk_size: Maximum elements per chunk.
 
         Returns:
-            Concatenated results with the same leading dimension as the
+            Batched results with the same leading dimension as the
             full batch.
         """
         n_chunks = (batch_size + chunk_size - 1) // chunk_size
@@ -658,7 +680,7 @@ class Script:
             sub = _einsum_subscript(n_qubits, k, tuple(op.wires))
             compiled.append((gt, sub))
 
-        state = jnp.zeros(dim, dtype=jnp.complex128).at[0].set(1.0)
+        state = jnp.zeros(dim, dtype=_cdtype()).at[0].set(1.0)
         psi = state.reshape((2,) * n_qubits)
         for gt, sub in compiled:
             psi = jnp.einsum(sub, gt, psi)
@@ -682,7 +704,7 @@ class Script:
             Density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
         """
         dim = 2**n_qubits
-        rho = jnp.zeros((dim, dim), dtype=jnp.complex128).at[0, 0].set(1.0)
+        rho = jnp.zeros((dim, dim), dtype=_cdtype()).at[0, 0].set(1.0)
         for op in tape:
             rho = op.apply_to_density(rho, n_qubits)
         return rho

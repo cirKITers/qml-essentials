@@ -9,6 +9,11 @@ import jax.numpy as jnp
 from qml_essentials.tape import active_tape, recording  # noqa: F401 (re-export)
 
 
+def _cdtype():
+    """Return the active JAX complex dtype (complex128 if x64 enabled, else complex64)."""
+    return jnp.complex128 if jax.config.x64_enabled else jnp.complex64
+
+
 @lru_cache(maxsize=256)
 def _einsum_subscript(
     n: int,
@@ -321,7 +326,7 @@ class Operation:
         dim = 2**n_qubits
         # Apply the gate to each basis vector (column of identity)
         return jax.vmap(lambda col: self.apply_to_state(col, n_qubits))(
-            jnp.eye(dim, dtype=jnp.complex128)
+            jnp.eye(dim, dtype=_cdtype())
         ).T
 
     def apply_to_state(self, state: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
@@ -442,7 +447,7 @@ class Hermitian(Operation):
         """
         super().__init__(
             wires=wires,
-            matrix=jnp.asarray(matrix, dtype=jnp.complex128),
+            matrix=jnp.asarray(matrix, dtype=_cdtype()),
             record=record,
         )
 
@@ -502,7 +507,7 @@ class ParametrizedHamiltonian:
 class Id(Operation):
     """Identity gate."""
 
-    _matrix = jnp.eye(2, dtype=jnp.complex128)
+    _matrix = jnp.eye(2, dtype=_cdtype())
     _num_wires = 1
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
@@ -517,7 +522,7 @@ class Id(Operation):
 class PauliX(Operation):
     """Pauli-X gate / observable (bit-flip, \\sigma_x)."""
 
-    _matrix = jnp.array([[0, 1], [1, 0]], dtype=jnp.complex128)
+    _matrix = jnp.array([[0, 1], [1, 0]], dtype=_cdtype())
     _num_wires = 1
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
@@ -532,7 +537,7 @@ class PauliX(Operation):
 class PauliY(Operation):
     """Pauli-Y gate / observable (\\sigma_y)."""
 
-    _matrix = jnp.array([[0, -1j], [1j, 0]], dtype=jnp.complex128)
+    _matrix = jnp.array([[0, -1j], [1j, 0]], dtype=_cdtype())
     _num_wires = 1
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
@@ -547,7 +552,7 @@ class PauliY(Operation):
 class PauliZ(Operation):
     """Pauli-Z gate / observable (phase-flip, \\sigma_z)."""
 
-    _matrix = jnp.array([[1, 0], [0, -1]], dtype=jnp.complex128)
+    _matrix = jnp.array([[1, 0], [0, -1]], dtype=_cdtype())
     _num_wires = 1
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
@@ -562,7 +567,7 @@ class PauliZ(Operation):
 class H(Operation):
     """Hadamard gate."""
 
-    _matrix = jnp.array([[1, 1], [1, -1]], dtype=jnp.complex128) / jnp.sqrt(2)
+    _matrix = jnp.array([[1, 1], [1, -1]], dtype=_cdtype()) / jnp.sqrt(2)
     _num_wires = 1
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
@@ -581,7 +586,7 @@ class S(Operation):
         S = \\begin{pmatrix}1 & 0\\ 0 & i\\end{pmatrix}
     """
 
-    _matrix = jnp.array([[1, 0], [0, 1j]], dtype=jnp.complex128)
+    _matrix = jnp.array([[1, 0], [0, 1j]], dtype=_cdtype())
     _num_wires = 1
 
     def __init__(self, wires: Union[int, List[int]] = 0) -> None:
@@ -610,7 +615,7 @@ class RandomUnitary(Operation):
         A = (
             jax.random.normal(key=key_a, shape=(dim, dim))
             + 1j * jax.random.normal(key=key_b, shape=(dim, dim))
-        ).astype(jnp.complex128)
+        ).astype(_cdtype())
         H = (A + A.conj().T) / 2.0
 
         H *= scale / jnp.linalg.norm(H, ord="fro")
@@ -691,8 +696,8 @@ RZ = _make_rotation_gate(PauliZ, "RZ")
 
 
 # Projectors used by controlled-gate factories
-_P0 = jnp.array([[1, 0], [0, 0]], dtype=jnp.complex128)  # |0><0|
-_P1 = jnp.array([[0, 0], [0, 1]], dtype=jnp.complex128)  # |1><1|
+_P0 = jnp.array([[1, 0], [0, 0]], dtype=_cdtype())  # |0><0|
+_P1 = jnp.array([[0, 0], [0, 1]], dtype=_cdtype())  # |1><1|
 
 
 def _make_controlled_gate(target_class: type, name: str) -> type:
@@ -752,7 +757,7 @@ class CCX(Operation):
             [0, 0, 0, 0, 0, 0, 0, 1],
             [0, 0, 0, 0, 0, 0, 1, 0],
         ],
-        dtype=jnp.complex128,
+        dtype=_cdtype(),
     )
     is_controlled = True
     _num_wires = 3
@@ -786,7 +791,7 @@ class CSWAP(Operation):
             [0, 0, 0, 0, 0, 1, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 1],
         ],
-        dtype=jnp.complex128,
+        dtype=_cdtype(),
     )
     is_controlled = True
     _num_wires = 3
@@ -930,7 +935,7 @@ class PauliRot(Operation):
         P = _reduce(jnp.kron, pauli_matrices)
         dim = P.shape[0]
         mat = (
-            jnp.cos(theta / 2) * jnp.eye(dim, dtype=jnp.complex128)
+            jnp.cos(theta / 2) * jnp.eye(dim, dtype=_cdtype())
             - 1j * jnp.sin(theta / 2) * P
         )
         super().__init__(wires=wires, matrix=mat, **kwargs)
@@ -1197,8 +1202,8 @@ class AmplitudeDamping(KrausChannel):
             List ``[K0, K1]`` as defined in the class docstring.
         """
         g = self.gamma
-        K0 = jnp.array([[1.0, 0.0], [0.0, jnp.sqrt(1 - g)]], dtype=jnp.complex128)
-        K1 = jnp.array([[0.0, jnp.sqrt(g)], [0.0, 0.0]], dtype=jnp.complex128)
+        K0 = jnp.array([[1.0, 0.0], [0.0, jnp.sqrt(1 - g)]], dtype=_cdtype())
+        K1 = jnp.array([[0.0, jnp.sqrt(g)], [0.0, 0.0]], dtype=_cdtype())
         return [K0, K1]
 
 
@@ -1237,8 +1242,8 @@ class PhaseDamping(KrausChannel):
             List ``[K0, K1]`` as defined in the class docstring.
         """
         g = self.gamma
-        K0 = jnp.array([[1.0, 0.0], [0.0, jnp.sqrt(1 - g)]], dtype=jnp.complex128)
-        K1 = jnp.array([[0.0, 0.0], [0.0, jnp.sqrt(g)]], dtype=jnp.complex128)
+        K0 = jnp.array([[1.0, 0.0], [0.0, jnp.sqrt(1 - g)]], dtype=_cdtype())
+        K1 = jnp.array([[0.0, 0.0], [0.0, jnp.sqrt(g)]], dtype=_cdtype())
         return [K0, K1]
 
 
@@ -1327,12 +1332,12 @@ class ThermalRelaxationError(KrausChannel):
             pr1 = pe * p_reset
             pid = 1.0 - pz - pr0 - pr1
 
-            K0 = jnp.sqrt(pid) * jnp.eye(2, dtype=jnp.complex128)
-            K1 = jnp.sqrt(pz) * jnp.array([[1, 0], [0, -1]], dtype=jnp.complex128)
-            K2 = jnp.sqrt(pr0) * jnp.array([[1, 0], [0, 0]], dtype=jnp.complex128)
-            K3 = jnp.sqrt(pr0) * jnp.array([[0, 1], [0, 0]], dtype=jnp.complex128)
-            K4 = jnp.sqrt(pr1) * jnp.array([[0, 0], [1, 0]], dtype=jnp.complex128)
-            K5 = jnp.sqrt(pr1) * jnp.array([[0, 0], [0, 1]], dtype=jnp.complex128)
+            K0 = jnp.sqrt(pid) * jnp.eye(2, dtype=_cdtype())
+            K1 = jnp.sqrt(pz) * jnp.array([[1, 0], [0, -1]], dtype=_cdtype())
+            K2 = jnp.sqrt(pr0) * jnp.array([[1, 0], [0, 0]], dtype=_cdtype())
+            K3 = jnp.sqrt(pr0) * jnp.array([[0, 1], [0, 0]], dtype=_cdtype())
+            K4 = jnp.sqrt(pr1) * jnp.array([[0, 0], [1, 0]], dtype=_cdtype())
+            K5 = jnp.sqrt(pr1) * jnp.array([[0, 0], [0, 1]], dtype=_cdtype())
             return [K0, K1, K2, K3, K4, K5]
 
         else:
@@ -1345,7 +1350,7 @@ class ThermalRelaxationError(KrausChannel):
                     [0, 0, (1 - pe) * p_reset, 0],
                     [eT2, 0, 0, 1 - (1 - pe) * p_reset],
                 ],
-                dtype=jnp.complex128,
+                dtype=_cdtype(),
             )
             eigenvalues, eigenvectors = jnp.linalg.eigh(choi)
             # Each eigenvector (column of eigenvectors) reshaped as 2x2 -> one Kraus op
@@ -1354,7 +1359,7 @@ class ThermalRelaxationError(KrausChannel):
                 lam = eigenvalues[i]
                 vec = eigenvectors[:, i]
                 mat = jnp.sqrt(jnp.abs(lam)) * vec.reshape(2, 2, order="F")
-                kraus.append(mat.astype(jnp.complex128))
+                kraus.append(mat.astype(_cdtype()))
             return kraus
 
 
@@ -1380,7 +1385,7 @@ class QubitChannel(KrausChannel):
                 of dimension ``2**k x 2**k`` where *k* = ``len(wires)``.
             wires: Qubit index or list of qubit indices this channel acts on.
         """
-        self._kraus_ops = [jnp.asarray(K, dtype=jnp.complex128) for K in kraus_ops]
+        self._kraus_ops = [jnp.asarray(K, dtype=_cdtype()) for K in kraus_ops]
         super().__init__(wires=wires)
 
     def kraus_matrices(self) -> List[jnp.ndarray]:
@@ -1473,7 +1478,7 @@ def _embed_matrix(
     # Full matrix = mat ⊗ I_{missing}
     full_mat = mat
     for _ in missing:
-        full_mat = jnp.kron(full_mat, jnp.eye(2, dtype=jnp.complex128))
+        full_mat = jnp.kron(full_mat, jnp.eye(2, dtype=_cdtype()))
 
     # The current ordering is [op_wires..., missing...]
     # We need to permute to match all_wires ordering

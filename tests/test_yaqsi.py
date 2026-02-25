@@ -1,5 +1,8 @@
 import pytest
 import jax
+
+jax.config.update("jax_enable_x64", True)  # tests use atol=1e-10
+
 import jax.numpy as jnp
 import pennylane as qml
 import numpy as np
