@@ -150,49 +150,6 @@ def test_repeat_batch_axis() -> None:
     ), f"Shape of repeat_batch_axis is not correct. Got {res_a.shape}"
 
 
-@pytest.mark.skip(reason="Multiprocessing speedup negligible at small scale")
-@pytest.mark.unittest
-def test_multiprocessing_density() -> None:
-    # use n_samples that is not a multiple of the threshold
-    n_samples = 1000
-
-    model = Model(
-        n_qubits=3,
-        n_layers=1,
-        circuit_type="Circuit_19",
-        use_multithreading=True,
-    )
-
-    model.initialize_params(random.key(1000), repeat=n_samples)
-    params = model.params
-
-    start = time.time()
-    res_parallel = model(params=params, execution_type="density")
-    t_parallel = time.time() - start
-
-    model = Model(
-        n_qubits=3,
-        n_layers=1,
-        circuit_type="Circuit_19",
-    )
-
-    model.initialize_params(random.key(1000), repeat=n_samples)
-    params = model.params
-
-    start = time.time()
-    res_single = model(params=params, execution_type="density")
-    t_single = time.time() - start
-    # assert (
-    #     t_parallel < t_single
-    # ), "Time required for multiprocessing larger than single process"
-    print(f"Diff: {t_parallel - t_single}")
-
-    assert (
-        res_parallel.shape == res_single.shape
-    ), "Shape of multiprocessing is not correct"
-    assert (res_parallel == res_single).all(), "Content of multiprocessing is not equal"
-
-
 @pytest.mark.unittest
 def test_multiprocessing_expval() -> None:
     n_samples = 40000  # expval requires more samples for advantage
