@@ -166,8 +166,8 @@ class Yaqsi:
             gate([A, sigma], T)    # U via ODE: dU/dt = -i f(p,t) H * U
 
         The time-dependent case solves the Schrödinger equation numerically
-        using ``diffrax.diffeqsolve`` with a Dopri5 adaptive Runge-Kutta
-        solver, matching PennyLane's ``ParametrizedEvolution`` implementation.
+        using ``diffrax.diffeqsolve`` with a Tsit5 adaptive Runge-Kutta
+        solver
 
         All computations are pure JAX and fully differentiable with
         ``jax.grad``.
@@ -218,22 +218,21 @@ class Yaqsi:
         """Gate factory for time-dependent Hamiltonian evolution.
 
         Solves the matrix ODE ``dU/dt = -i f(params, t) H * U`` with
-        ``U(0) = I`` using ``diffrax.diffeqsolve`` (Dopri5 adaptive RK),
-        matching PennyLane's ``ParametrizedEvolution``.
+        ``U(0) = I`` using ``diffrax.diffeqsolve`` (Tsit5 adaptive RK).
 
         Performance improvements over the previous ``jax.experimental.ode``
         implementation:
 
-        * Uses diffrax — a modern, well-maintained JAX ODE library with
+        Uses diffrax — a modern, well-maintained JAX ODE library with
         better XLA compilation, adjoint methods, and step-size control.
-        * The JIT-compiled solver is cached per coefficient function so
+        The JIT-compiled solver is cached per coefficient function so
         that multiple ``evolve()`` calls with the same pulse shape (but
         different Hamiltonian matrices or parameters) reuse the same
         compiled XLA program.  This avoids O(n_gates) JIT compilations
         during pulse-mode tape recording.
-        * Pre-computes ``-i*H`` once instead of multiplying at every RHS
+        Pre-computes ``-i*H`` once instead of multiplying at every RHS
         evaluation.
-        * Avoids dynamic ``jnp.where`` branching for the time span.
+        Avoids dynamic ``jnp.where`` branching for the time span.
 
         Args:
             ph: A :class:`ParametrizedHamiltonian` holding the coefficient
@@ -248,7 +247,6 @@ class Yaqsi:
         # Pre-compute -i*H once (avoids repeated multiplication in RHS)
         neg_iH = -1j * H_mat
 
-        # Extract tolerances, default to PennyLane values
         atol = odeint_kwargs.pop("atol", 1.4e-8)
         rtol = odeint_kwargs.pop("rtol", 1.4e-8)
 
@@ -270,7 +268,7 @@ class Yaqsi:
             _solve = cls._evolve_solver_cache.get(cache_key)
 
         if _solve is None:
-            solver = diffrax.Dopri5()
+            solver = diffrax.Tsit5()
             stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
 
             @jax.jit
@@ -308,7 +306,7 @@ class Yaqsi:
 
             Args:
                 coeff_args: List of parameter sets, one per Hamiltonian term.
-                    Following PennyLane convention, ``coeff_args[0]`` is
+                    For static Hamiltonians, ``coeff_args[0]`` is
                     forwarded to ``coeff_fn(params, t)`` as the first argument.
                 T: Total evolution time.  If scalar, the ODE is solved on
                     ``[0, T]``.  If a 2-element array, on ``[T[0], T[1]]``.
