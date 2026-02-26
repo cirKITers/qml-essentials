@@ -251,14 +251,12 @@ For more details:
 
 ## Multithreading (using JAX)
 
-Our framework can parallelise the execution of the model setting the `use_multithreading` flag (defaults to False).
-In our framework, JAX then automatically handles the number and distribution of the workers depending on the batch sizes and available CPUs.
+In our framework, JAX automatically handles the number and distribution of the workers depending on the batch sizes and available CPUs.
 ```
 model = Model(
     n_qubits=2,
     n_layers=1,
     circuit_type="Circuit_19",
-    use_multithreading=True,
 )
 ```
 
@@ -285,7 +283,7 @@ model = Model(
     n_layers=1,
     circuit_type="Circuit_19",
     repeat_batch_axis=[False, True, True],
-    use_multithreading=True,
+    ,
 )
 
 key = jax.random.key(1000)

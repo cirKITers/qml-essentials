@@ -541,7 +541,6 @@ def test_fcc() -> None:
             circuit_type=test_case["circuit_type"],
             output_qubit=-1,
             encoding=["RY"],
-            use_multithreading=True,
         )
         fcc = FCC.get_fcc(
             model=model,
@@ -618,7 +617,6 @@ def test_fcc_2d() -> None:
             circuit_type=test_case["circuit_type"],
             output_qubit=-1,
             encoding=["RX", "RY"],
-            use_multithreading=True,
         )
         fcc = FCC.get_fcc(
             model=model,
@@ -658,7 +656,6 @@ def test_weighting() -> None:
             circuit_type=test_case["circuit_type"],
             output_qubit=-1,
             encoding=["RY"],
-            use_multithreading=True,
         )
         fcc = FCC.get_fcc(
             model=model,

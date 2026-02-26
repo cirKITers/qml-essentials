@@ -158,7 +158,6 @@ def test_multiprocessing_expval() -> None:
         n_qubits=6,  # .. and larger circuits
         n_layers=6,
         circuit_type="Circuit_19",
-        use_multithreading=True,
     )
 
     model.initialize_params(random.key(1000), repeat=n_samples)

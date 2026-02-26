@@ -40,7 +40,6 @@ class Model:
         shots: Optional[int] = None,
         random_seed: int = 1000,
         remove_zero_encoding: bool = True,
-        use_multithreading: bool = False,
         repeat_batch_axis: List[bool] = [True, True, True],
     ) -> None:
         """
@@ -88,8 +87,6 @@ class Model:
                 Defaults to 1000.
             remove_zero_encoding (bool, optional): whether to
                 remove the zero encoding from the circuit. Defaults to True.
-            use_multithreading (bool, optional): whether to use JAX
-                multithreading to parallelise over batch dimension.
 
         Returns:
             None
@@ -101,7 +98,6 @@ class Model:
         self.noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None
         self.shots = shots
         self.remove_zero_encoding = remove_zero_encoding
-        self.use_multithreading = use_multithreading
         self.trainable_frequencies: bool = trainable_frequencies
         self.execution_type: str = "expval"
         self.repeat_batch_axis: List[bool] = repeat_batch_axis

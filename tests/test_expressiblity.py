@@ -135,7 +135,6 @@ def test_expressibility(layers) -> None:
             circuit_type=test_case["circuit_type"],
             initialization_domain=[0, 4 * jnp.pi],
             data_reupload=False,
-            use_multithreading=True,
         )
 
         _, _, z = Expressibility.state_fidelities(
@@ -201,7 +200,6 @@ def test_scaling() -> None:
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_1",
-        use_multithreading=True,
     )
 
     _, _, z = Expressibility.state_fidelities(
