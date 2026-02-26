@@ -595,27 +595,29 @@ class Entanglement:
         inputs = model._inputs_validation(kwargs.get("inputs", None))
         n_batch = params.shape[-1]
 
+        def postprocess(probs):
+            probs = ys.marginalize_probs(probs, 3 * n, list(range(n)))
+            ent = 1 - probs[..., 0]
+            return ent
+
         if n_batch > 1:
             from qml_essentials.utils import safe_random_split
 
             random_keys = safe_random_split(random_key, num=n_batch)
-            probs = swap_script.execute(
+            ent = swap_script.execute(
                 type="probs",
                 args=(params, inputs, model.pulse_params, random_keys),
                 in_axes=(2, None, None, 0),
+                postproc_fn=postprocess,
                 kwargs=kwargs,
             )
         else:
-            probs = swap_script.execute(
+            ent = swap_script.execute(
                 type="probs",
                 args=(params, inputs, model.pulse_params, random_key),
+                postproc_fn=postprocess,
                 kwargs=kwargs,
             )
-
-        # Marginalize to the ancilla register (wires 0..n-1)
-        probs = ys.marginalize_probs(probs, 3 * n, list(range(n)))
-
-        ent = 1 - probs[..., 0]
 
         log.debug(f"Variance of measure: {ent.var()}")
 

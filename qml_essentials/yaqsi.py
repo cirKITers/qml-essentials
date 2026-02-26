@@ -556,6 +556,7 @@ class Script:
         in_axes: Tuple,
         batch_size: int,
         chunk_size: int,
+        postproc_fn: Callable,
     ) -> jnp.ndarray:
         """Execute a vmapped function in memory-safe chunks.
 
@@ -603,6 +604,8 @@ class Script:
             )
 
             chunk_result = batched_fn(*chunk_args)
+            if postproc_fn:
+                chunk_result = postproc_fn(chunk_result)
             results.append(chunk_result)
 
         return jnp.concatenate(results, axis=0)
@@ -981,6 +984,7 @@ class Script:
         shots: Optional[int] = None,
         key: Optional[jnp.ndarray] = None,
         memory_limit: bool = True,
+        postproc_fn: Optional[Callable] = None,
     ) -> jnp.ndarray:
         """Execute the circuit and return measurement results.
 
@@ -1043,6 +1047,7 @@ class Script:
                 shots=shots,
                 key=key,
                 memory_limit=memory_limit,
+                postproc_fn=postproc_fn,
             )
         else:
             tape = self._record(*args, **kwargs)
@@ -1071,6 +1076,7 @@ class Script:
         shots: Optional[int] = None,
         key: Optional[jnp.ndarray] = None,
         memory_limit: bool = True,
+        postproc_fn: Optional[Callable] = None,
     ) -> jnp.ndarray:
         """Vectorise :meth:`execute` over a batch axis using ``jax.vmap``.
 
@@ -1165,7 +1171,7 @@ class Script:
                 if cached_chunk >= batch_size:
                     return batched_fn(*args)
                 return self._execute_chunked(
-                    batched_fn, args, in_axes, batch_size, cached_chunk
+                    batched_fn, args, in_axes, batch_size, cached_chunk, postproc_fn
                 )
             chunk_size = self._compute_chunk_size(
                 n_qubits, batch_size, type, use_density, len(obs)
@@ -1174,7 +1180,7 @@ class Script:
             if chunk_size >= batch_size:
                 return batched_fn(*args)
             return self._execute_chunked(
-                batched_fn, args, in_axes, batch_size, chunk_size
+                batched_fn, args, in_axes, batch_size, chunk_size, postproc_fn
             )
 
         # First, record the tape once using scalar slices of each arg.
@@ -1245,7 +1251,7 @@ class Script:
             if chunk_size >= batch_size:
                 return batched_fn(*shot_args)
             return self._execute_chunked(
-                batched_fn, shot_args, shot_in_axes, batch_size, chunk_size
+                batched_fn, shot_args, shot_in_axes, batch_size, chunk_size, postproc_fn
             )
 
         def _single_execute(*single_args):
@@ -1281,7 +1287,9 @@ class Script:
 
         if chunk_size >= batch_size:
             return batched_fn(*args)
-        return self._execute_chunked(batched_fn, args, in_axes, batch_size, chunk_size)
+        return self._execute_chunked(
+            batched_fn, args, in_axes, batch_size, chunk_size, postproc_fn
+        )
 
     def draw(
         self,
