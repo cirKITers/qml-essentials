@@ -1158,21 +1158,13 @@ class Script:
                 batch_size = a.shape[ax]
                 break
 
-        # Fast-path: check the JIT cache *first* to skip all Python-level
-        # tape recording, qubit inference, and noise detection on repeat
-        # calls.  This eliminates a constant ~0.3–0.5 ms of pure Python
-        # overhead per call that is negligible for density (large XLA
-        # payload) but significant for state/probs/expval (small XLA
-        # payload).
         arg_shapes = tuple(
             (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in args
         )
         cache_kwargs = tuple(
             (k, v) for k, v in kwargs.items() if not isinstance(v, jnp.ndarray)
         )
-        # Include batch_gate_error in the cache key so that toggling it
-        # invalidates the cached JIT-compiled function (the if/else branch
-        # inside GateError is resolved at trace time and baked into XLA).
+
         # TODO: we need to fix the dirty class-level `batch_gate_error` hack
         from qml_essentials.gates import UnitaryGates
 
@@ -1208,11 +1200,12 @@ class Script:
                 batched_fn, args, in_axes, batch_size, chunk_size
             )
 
-        # First, record the tape once using scalar slices of each arg.
+        # Record the tape once using scalar slices of each arg.
         # This determines n_qubits and whether noise channels are present
         # without running the full batch.
         # Note, that we use lax.index_in_dim instead of jnp.take because JAX
         # random key arrays do not support jnp.take.
+        # TODO: fix once that is available in JAX
         def _slice_first(a, ax):
             """Take the first element along axis *ax*."""
             return jax.lax.index_in_dim(a, 0, axis=ax, keepdims=False)
@@ -1229,7 +1222,6 @@ class Script:
             n_qubits, batch_size, type, use_density, len(obs)
         )
 
-        # Second, define a pure single-sample function to vmap over.
         # Re-recording inside this function is necessary: the tape may
         # contain operations whose matrices depend on the batched argument
         # (e.g. RX(theta) where theta is a JAX tracer).  jax.vmap traces
@@ -1282,15 +1274,11 @@ class Script:
                 single_tape, n_qubits, type, obs, use_density
             )
 
-        # Third, vmap + jit over the requested axes.
-        #
         # Wrapping the vmapped function in jax.jit has two effects:
-        #
         # 1. Multi-core utilisation — the JIT-compiled XLA program can
         #    use intra-op parallelism to distribute independent SIMD lanes
         #    across CPU threads, unlike an eager vmap which runs
         #    single-threaded.
-        #
         # 2. Compilation caching — subsequent calls with the same input
         #    shapes reuse the compiled kernel and skip all Python-level
         #    tracing, eliminating the O(B\\times circuit_depth) Python overhead.
@@ -1300,7 +1288,7 @@ class Script:
         # same structure (e.g. training iterations) skip both Python-level
         # tracing and XLA compilation entirely — they jump straight to the
         # cache check at the top of this method.
-
+        # NOTE: when altering properties of the model, this might not get re-compiled
         # TODO: we might want to rework the data_reupload mechanism at some point
         batched_fn = jax.jit(jax.vmap(_single_execute, in_axes=in_axes))
         # Cache the function together with metadata for fast-path memory
