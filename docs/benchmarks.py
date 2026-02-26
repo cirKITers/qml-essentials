@@ -32,12 +32,12 @@ logger.info(f"Identifier: {identifier}")
 
 rng = jax.random.PRNGKey(1000)
 
-LOAD_LATEST = False  # Set to True to skip computation and load the latest CSV instead
+LOAD_LATEST = True  # Set to True to skip computation and load the latest CSV instead
 WARMUP = True  # Does not produce meaningful results if False
 
-qubit_sizes = list(range(2, 15))
+qubit_sizes = list(range(2, 17))
 modes = ["probs", "expval", "state", "density"]
-n_iters = 100
+n_iters = 50
 batch_size = 1
 precision = 1e-8
 
@@ -294,7 +294,7 @@ ax.set_title(
 )
 # ax.set_xscale("log")
 ax.set_yscale("log")
-ax.set_ylim(bottom=1.0)
+# ax.set_ylim(bottom=1.0)
 ax.set_xticks(qubit_sizes)
 ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
 ax.grid(True, linestyle=":", alpha=0.6)
