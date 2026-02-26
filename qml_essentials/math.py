@@ -196,4 +196,4 @@ def phase_difference(
     target = "a" if (batched0 or batched1) else ""
 
     inner = jnp.einsum(f"{idx0},{idx1}->{target}", jnp.conj(state0), state1)
-    return jnp.abs(1.0 - jnp.angle(inner))
+    return jnp.angle(inner)
