@@ -676,6 +676,63 @@ class Script:
 
         return output
 
+    @staticmethod
+    def _execute_sequential(
+        scalar_fn: Callable,
+        args: tuple,
+        in_axes: Tuple,
+        batch_size: int,
+    ) -> jnp.ndarray:
+        """Execute a JIT-compiled scalar function in a Python loop.
+
+        Unlike :meth:`_execute_chunked` which runs a vmapped function on
+        sub-batches, this method calls *scalar_fn* once per sample with no
+        ``vmap`` at all.  Peak device memory is therefore limited to a
+        single sample's intermediates (e.g. one density matrix) plus the
+        output accumulator.
+
+        This is the safest execution mode for very large per-element costs
+        (e.g. density-matrix simulation on ≥10 qubits) where even a small
+        vmap chunk would exceed available memory.
+
+        Args:
+            scalar_fn: A ``jax.jit``-compiled callable that takes un-batched
+                arguments and returns one sample's result.
+            args: Full-batch arguments (before slicing).
+            in_axes: Per-argument batch axis specification.
+            batch_size: Total number of batch elements.
+
+        Returns:
+            Batched results of shape ``(batch_size, ...)``.
+        """
+        log.info(
+            f"Using sequential (non-vmapped) execution for {batch_size} samples "
+            f"to stay within memory limits."
+        )
+
+        output = None
+        for i in range(batch_size):
+            # Slice each batched argument to get a single sample
+            sample_args = tuple(
+                (
+                    jax.lax.index_in_dim(a, i, axis=ax, keepdims=False)
+                    if ax is not None
+                    else a
+                )
+                for a, ax in zip(args, in_axes)
+            )
+
+            sample_result = scalar_fn(*sample_args)
+
+            if output is None:
+                out_shape = (batch_size,) + sample_result.shape
+                output = jnp.zeros(out_shape, dtype=sample_result.dtype)
+
+            output = output.at[i].set(sample_result)
+            del sample_result, sample_args
+
+        return output
+
     def _record(self, *args, **kwargs) -> List[Operation]:
         """Run the circuit function and collect the recorded operations.
 
@@ -1221,6 +1278,12 @@ class Script:
             if cached_chunk is not None:
                 if cached_chunk >= batch_size:
                     return batched_fn(*args)
+                if cached_chunk <= 1 and use_density:
+                    scalar_fn = self._jit_cache.get(("_scalar", cache_key))
+                    if scalar_fn is not None:
+                        return self._execute_sequential(
+                            scalar_fn, args, in_axes, batch_size
+                        )
                 return self._execute_chunked(
                     batched_fn, args, in_axes, batch_size, cached_chunk
                 )
@@ -1230,6 +1293,12 @@ class Script:
             self._jit_cache[mem_key] = chunk_size
             if chunk_size >= batch_size:
                 return batched_fn(*args)
+            if chunk_size <= 1 and use_density:
+                scalar_fn = self._jit_cache.get(("_scalar", cache_key))
+                if scalar_fn is not None:
+                    return self._execute_sequential(
+                        scalar_fn, args, in_axes, batch_size
+                    )
             return self._execute_chunked(
                 batched_fn, args, in_axes, batch_size, chunk_size
             )
@@ -1331,6 +1400,23 @@ class Script:
 
         if chunk_size >= batch_size:
             return batched_fn(*args)
+
+        # When chunk_size is very small (especially 1), vmap over a tiny
+        # batch still compiles an XLA graph that materialises all per-
+        # element intermediates for the chunk.  For expensive density-
+        # matrix simulations this can still OOM because the compiled
+        # graph's peak memory is chunk_size × per-element cost (dominated
+        # by the dim×dim density matrix), plus XLA overhead.
+        #
+        # Fall back to a scalar JIT loop: compile _single_execute once
+        # (no vmap) and call it in a Python loop, slicing one sample at
+        # a time.  Peak memory is then a single density matrix plus the
+        # accumulator — the absolute minimum.
+        if chunk_size <= 1 and use_density:
+            scalar_fn = jax.jit(_single_execute)
+            self._jit_cache[("_scalar", cache_key)] = scalar_fn
+            return self._execute_sequential(scalar_fn, args, in_axes, batch_size)
+
         return self._execute_chunked(batched_fn, args, in_axes, batch_size, chunk_size)
 
     def draw(
