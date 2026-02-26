@@ -431,19 +431,37 @@ class Script:
         # Statevector: always allocated during simulation
         sv_bytes = batch_size * dim * elem
 
-        # Output tensor
-        if type == "density" or use_density:
-            # density matrix (dim × dim)
+        # Simulation intermediate: when density-matrix simulation is used,
+        # the full rho (dim × dim) must be held during gate evolution —
+        # even if the final output is only probs or expval.
+        if use_density:
+            sim_bytes = batch_size * dim * dim * elem
+        else:
+            sim_bytes = 0  # statevector is already counted above
+
+        # Output tensor: this is the *returned* array, not the simulation
+        # intermediate.  For probs/expval with density simulation the
+        # density matrix is reduced to a small output *before* returning,
+        # so only the reduced output coexists with the next chunk.
+        if type == "density":
             out_bytes = batch_size * dim * dim * elem
         elif type == "expval":
             out_bytes = batch_size * max(n_obs, 1) * real_elem
-        else:  # state, probs
+        elif type == "probs":
+            out_bytes = batch_size * dim * real_elem
+        else:  # state
             out_bytes = batch_size * dim * elem
 
         # Gate temporaries: einsum creates one (2,)*n buffer per batch elem
         gate_tmp = batch_size * dim * elem
 
-        raw = sv_bytes + out_bytes + gate_tmp
+        # Peak = max(simulation phase, output phase).  During simulation
+        # the intermediate + statevector + gate temps are alive.  After
+        # measurement, only the output survives.  So peak is whichever
+        # phase is larger.
+        sim_peak = sv_bytes + sim_bytes + gate_tmp
+        out_peak = out_bytes
+        raw = max(sim_peak, out_peak)
 
         # 1.5× safety factor for XLA compiler temporaries, padding, etc.
         return int(raw * 1.5)
@@ -561,13 +579,14 @@ class Script:
 
         Splits the batch dimension into sub-batches of at most *chunk_size*
         elements, runs each through the JIT-compiled *batched_fn*, and
-        concatenates the results.
+        writes results into a pre-allocated output array.
 
-        Each chunk's result is kept as a JAX array in a list.  After all
-        chunks complete, ``jnp.concatenate`` assembles the final output.
-        JAX's lazy memory management allows it to free intermediate chunk
-        arrays during concatenation, keeping peak memory lower than
-        pre-allocating the full output up front.
+        Only one chunk's intermediate result is alive at a time: each
+        chunk is computed, copied into the output buffer, and then its
+        reference is dropped — allowing JAX/XLA to reclaim the memory
+        before the next chunk starts.  This keeps peak memory at roughly
+        ``output_buffer + one_chunk_computation`` rather than the sum of
+        all chunk outputs.
 
         Args:
             batched_fn: A JIT-compiled, vmapped callable.
@@ -586,7 +605,7 @@ class Script:
             f"{n_chunks} chunks of <={chunk_size} elements."
         )
 
-        results = []
+        output = None
         for chunk_idx in range(n_chunks):
             start = chunk_idx * chunk_size
             end = min(start + chunk_size, batch_size)
@@ -603,9 +622,25 @@ class Script:
             )
 
             chunk_result = batched_fn(*chunk_args)
-            results.append(chunk_result)
 
-        return jnp.concatenate(results, axis=0)
+            if output is None:
+                # Pre-allocate the full output buffer on first chunk
+                out_shape = (batch_size,) + chunk_result.shape[1:]
+                output = jnp.zeros(out_shape, dtype=chunk_result.dtype)
+
+            # Copy chunk into the output buffer; the slice assignment
+            # creates a new array (JAX arrays are immutable) but the old
+            # `output` reference is immediately replaced, letting XLA
+            # reclaim it.
+            output = output.at[start:end].set(chunk_result)
+
+            # Explicitly drop the chunk reference so XLA can free the
+            # chunk's device memory before computing the next one.
+            del chunk_result, chunk_args
+            # Trigger garbage collection to release device buffers
+            jax.clear_caches()
+
+        return output
 
     def _record(self, *args, **kwargs) -> List[Operation]:
         """Run the circuit function and collect the recorded operations.

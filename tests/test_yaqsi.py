@@ -1143,6 +1143,130 @@ def test_memory() -> None:
         _ = Script(f=yaqsi_circuit).execute(type="density")
 
 
+@pytest.mark.unittest
+@pytest.mark.limit_memory("200 MB")
+def test_memory_statevector_probs() -> None:
+    """Statevector probs for 12 qubits should stay well under 200 MB.
+
+    Pure statevector simulation scales as O(2^n), so 12 qubits (dim=4096)
+    with a batch of 10 should use only a few MB, not the O(4^n) that
+    density-matrix simulation would require.
+
+    Run with: pytest tests/test_yaqsi.py::test_memory_statevector_probs -x -s --memray
+    """
+    n_qubits = 12
+
+    def circuit(theta):
+        for i in range(n_qubits):
+            H(wires=i)
+        RX(theta, wires=0)
+
+    script = Script(circuit, n_qubits=n_qubits)
+    thetas = jnp.linspace(0, jnp.pi, 10)
+    for _ in range(10):
+        _ = script.execute(type="probs", args=(thetas,), in_axes=(0,))
+
+
+@pytest.mark.unittest
+@pytest.mark.limit_memory("200 MB")
+def test_memory_noisy_probs() -> None:
+    """Noisy probs (density-matrix sim) for 8 qubits should stay under 200 MB.
+
+    Even though density-matrix simulation is needed internally (O(4^n)),
+    the returned output is only probabilities (O(2^n)).  This validates
+    that intermediate density matrices are freed after measurement.
+
+    Run with: pytest tests/test_yaqsi.py::test_memory_noisy_probs -x -s --memray
+    """
+    n_qubits = 8
+
+    def circuit(theta):
+        for i in range(n_qubits):
+            H(wires=i)
+        RX(theta, wires=0)
+        BitFlip(0.01, wires=0)
+
+    script = Script(circuit, n_qubits=n_qubits)
+    thetas = jnp.linspace(0, jnp.pi, 5)
+    for _ in range(5):
+        result = script.execute(type="probs", args=(thetas,), in_axes=(0,))
+        # Output should be probabilities, not density matrices
+        assert result.shape == (5, 2**n_qubits)
+
+
+@pytest.mark.unittest
+@pytest.mark.limit_memory("200 MB")
+def test_memory_expval_scales_small() -> None:
+    """Expval output should be tiny regardless of qubit count.
+
+    For 12 qubits with 2 observables and batch=10, the output is only
+    (10, 2) floats.  This validates that no density matrix is retained
+    when computing expectation values on a pure circuit.
+
+    Run with: pytest tests/test_yaqsi.py::test_memory_expval_scales_small -x -s --memray
+    """
+    n_qubits = 12
+
+    def circuit(theta):
+        for i in range(n_qubits):
+            H(wires=i)
+        RX(theta, wires=0)
+
+    script = Script(circuit, n_qubits=n_qubits)
+    obs = [PauliZ(wires=0, record=False), PauliZ(wires=1, record=False)]
+    thetas = jnp.linspace(0, jnp.pi, 10)
+    for _ in range(10):
+        result = script.execute(type="expval", obs=obs, args=(thetas,), in_axes=(0,))
+        assert result.shape == (10, 2)
+
+
+@pytest.mark.unittest
+@pytest.mark.limit_memory("1 GB")
+def test_memory_chunked_stays_bounded() -> None:
+    """Chunked execution should not accumulate memory across chunks.
+
+    Runs a 10-qubit density simulation with batch=20 chunked into
+    size-5 sub-batches.  If chunk results were accumulated in a list,
+    peak memory would be ~4× higher than a single chunk.  The
+    pre-allocated output buffer approach should keep it bounded.
+
+    We use a small initial batch (size=2) to populate the JIT cache
+    without consuming much memory, then run the larger batch chunked.
+
+    Run with: pytest tests/test_yaqsi.py::test_memory_chunked_stays_bounded -x -s --memray
+    """
+    n_qubits = 10
+
+    def circuit(theta):
+        for i in range(n_qubits):
+            H(wires=i)
+        RX(theta, wires=0)
+
+    script = Script(circuit, n_qubits=n_qubits)
+
+    # Populate the JIT cache with a small batch to avoid the large
+    # full-batch allocation counting against our memory limit.
+    small_thetas = jnp.array([0.0, 1.0])
+    _ = script.execute(type="density", args=(small_thetas,), in_axes=(0,))
+
+    # Retrieve the cached batched function
+    from qml_essentials.gates import UnitaryGates
+
+    arg_shapes = tuple(
+        (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (small_thetas,)
+    )
+    cache_key = ("density", (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
+    batched_fn, _, _ = script._jit_cache[cache_key]
+
+    # Now execute a larger batch in chunks of 5 (4 chunks total).
+    # The JIT kernel is already compiled so no re-tracing occurs.
+    thetas = jnp.linspace(0, jnp.pi, 20)
+    result = Script._execute_chunked(
+        batched_fn, (thetas,), (0,), batch_size=20, chunk_size=5
+    )
+    assert result.shape == (20, 2**n_qubits, 2**n_qubits)
+
+
 @pytest.mark.benchmark
 @pytest.mark.unittest
 @pytest.mark.parametrize(
