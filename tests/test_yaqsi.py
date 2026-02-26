@@ -39,6 +39,7 @@ from qml_essentials.operations import (
     PhaseDamping,
     ThermalRelaxationError,
 )
+from qml_essentials.math import fidelity, trace_distance
 
 import logging
 
@@ -1672,3 +1673,204 @@ def test_chunked_uneven_batch():
 
     assert chunked_result.shape == full_result.shape
     assert jnp.allclose(full_result, chunked_result, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_fidelity_statevector_identical():
+    """Fidelity of identical state vectors should be 1."""
+    sv = jnp.array([1.0, 0.0])
+    result = fidelity(sv, sv)
+    expected = qml.math.fidelity_statevector(np.array(sv), np.array(sv))
+    assert jnp.allclose(result, expected, atol=1e-10)
+    assert jnp.allclose(result, 1.0, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_fidelity_statevector_orthogonal():
+    """Fidelity of orthogonal state vectors should be 0."""
+    sv0 = jnp.array([1.0, 0.0])
+    sv1 = jnp.array([0.0, 1.0])
+    result = fidelity(sv0, sv1)
+    expected = qml.math.fidelity_statevector(np.array(sv0), np.array(sv1))
+    assert jnp.allclose(result, expected, atol=1e-10)
+    assert jnp.allclose(result, 0.0, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_fidelity_statevector_overlap():
+    """Fidelity of two arbitrary pure states should match PennyLane."""
+    sv0 = jnp.array([0.98753537 - 0.14925137j, 0.00746879 - 0.04941796j])
+    sv1 = jnp.array([0.99500417 + 0.0j, 0.09983342 + 0.0j])
+    result = fidelity(sv0, sv1)
+    expected = qml.math.fidelity_statevector(np.array(sv0), np.array(sv1))
+    assert jnp.allclose(result, expected, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_fidelity_statevector_batched():
+    """Batched state-vector fidelity should match element-wise PennyLane results."""
+    sv0_batch = jnp.array([[1.0, 0.0], [0.0, 1.0], [1 / jnp.sqrt(2), 1 / jnp.sqrt(2)]])
+    sv1_batch = jnp.array([[1.0, 0.0], [1.0, 0.0], [1 / jnp.sqrt(2), -1 / jnp.sqrt(2)]])
+    result = fidelity(sv0_batch, sv1_batch)
+    for i in range(3):
+        expected_i = qml.math.fidelity_statevector(
+            np.array(sv0_batch[i]), np.array(sv1_batch[i])
+        )
+        assert jnp.allclose(result[i], expected_i, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_fidelity_dm_identical():
+    """Fidelity of identical density matrices should be 1."""
+    rho = jnp.array([[1, 0], [0, 0]], dtype=jnp.complex128)
+    result = fidelity(rho, rho)
+    expected = qml.math.fidelity(np.array(rho), np.array(rho))
+    assert jnp.allclose(result, expected, atol=1e-10)
+    assert jnp.allclose(result, 1.0, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_fidelity_dm_orthogonal():
+    """Fidelity of orthogonal pure-state density matrices should be 0."""
+    rho0 = jnp.array([[1, 0], [0, 0]], dtype=jnp.complex128)
+    rho1 = jnp.array([[0, 0], [0, 1]], dtype=jnp.complex128)
+    result = fidelity(rho0, rho1)
+    expected = qml.math.fidelity(np.array(rho0), np.array(rho1))
+    assert jnp.allclose(result, expected, atol=1e-10)
+    assert jnp.allclose(result, 0.0, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_fidelity_dm_mixed():
+    """Fidelity between a pure state and the maximally mixed state."""
+    rho0 = jnp.array([[1, 0], [0, 0]], dtype=jnp.complex128)
+    rho_mixed = jnp.eye(2, dtype=jnp.complex128) / 2
+    result = fidelity(rho0, rho_mixed)
+    expected = qml.math.fidelity(np.array(rho0), np.array(rho_mixed))
+    assert jnp.allclose(result, expected, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_fidelity_dm_batched():
+    """Batched density-matrix fidelity should match element-wise PennyLane."""
+    rho0_batch = jnp.array(
+        [
+            [[1, 0], [0, 0]],
+            [[0.5, 0.5], [0.5, 0.5]],
+            jnp.eye(2) / 2,
+        ],
+        dtype=jnp.complex128,
+    )
+    rho1_batch = jnp.array(
+        [
+            [[0, 0], [0, 1]],
+            [[0.5, 0.5], [0.5, 0.5]],
+            jnp.eye(2) / 2,
+        ],
+        dtype=jnp.complex128,
+    )
+    result = fidelity(rho0_batch, rho1_batch)
+    for i in range(3):
+        expected_i = qml.math.fidelity(np.array(rho0_batch[i]), np.array(rho1_batch[i]))
+        assert jnp.allclose(result[i], expected_i, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_fidelity_dm_matches_statevector():
+    """Density-matrix fidelity of pure states should equal state-vector fidelity."""
+    sv0 = jnp.array([0.98753537 - 0.14925137j, 0.00746879 - 0.04941796j])
+    sv1 = jnp.array([0.99500417 + 0.0j, 0.09983342 + 0.0j])
+    rho0 = jnp.outer(sv0, jnp.conj(sv0))
+    rho1 = jnp.outer(sv1, jnp.conj(sv1))
+    f_sv = fidelity(sv0, sv1)
+    f_dm = fidelity(rho0, rho1)
+    assert jnp.allclose(f_sv, f_dm, atol=1e-8)
+
+
+@pytest.mark.unittest
+def test_fidelity_mismatched_raises():
+    """Passing a vector and a matrix should raise ValueError."""
+    sv = jnp.array([1.0, 0.0])
+    dm = jnp.eye(2, dtype=jnp.complex128)
+    with pytest.raises(ValueError, match="same kind"):
+        fidelity(sv, dm)
+
+
+@pytest.mark.unittest
+def test_trace_distance_identical():
+    """Trace distance of identical states should be 0."""
+    rho = jnp.array([[1, 0], [0, 0]], dtype=jnp.complex128)
+    result = trace_distance(rho, rho)
+    expected = qml.math.trace_distance(np.array(rho), np.array(rho))
+    assert jnp.allclose(result, expected, atol=1e-10)
+    assert jnp.allclose(result, 0.0, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_trace_distance_orthogonal():
+    """Trace distance of orthogonal pure states should be 1."""
+    rho0 = jnp.array([[1, 0], [0, 0]], dtype=jnp.complex128)
+    rho1 = jnp.array([[0, 0], [0, 1]], dtype=jnp.complex128)
+    result = trace_distance(rho0, rho1)
+    expected = qml.math.trace_distance(np.array(rho0), np.array(rho1))
+    assert jnp.allclose(result, expected, atol=1e-10)
+    assert jnp.allclose(result, 1.0, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_trace_distance_mixed():
+    """Trace distance between a pure state and the maximally mixed state."""
+    rho0 = jnp.array([[1, 0], [0, 0]], dtype=jnp.complex128)
+    rho_mixed = jnp.eye(2, dtype=jnp.complex128) / 2
+    result = trace_distance(rho0, rho_mixed)
+    expected = qml.math.trace_distance(np.array(rho0), np.array(rho_mixed))
+    assert jnp.allclose(result, expected, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_trace_distance_batched():
+    """Batched trace distance should match element-wise PennyLane."""
+    batch0 = jnp.array(
+        [jnp.eye(2) / 2, jnp.ones((2, 2)) / 2, jnp.array([[1, 0], [0, 0]])],
+        dtype=jnp.complex128,
+    )
+    batch1 = jnp.array(
+        [jnp.ones((2, 2)) / 2, jnp.ones((2, 2)) / 2, jnp.array([[1, 0], [0, 0]])],
+        dtype=jnp.complex128,
+    )
+    result = trace_distance(batch0, batch1)
+    expected = qml.math.trace_distance(np.array(batch0), np.array(batch1))
+    assert jnp.allclose(result, expected, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_trace_distance_from_statevectors():
+    """Trace distance computed from outer-product DMs should match PennyLane."""
+    sv0 = jnp.array([0.2, jnp.sqrt(0.96)])
+    sv1 = jnp.array([1.0, 0.0])
+    rho0 = jnp.outer(sv0, jnp.conj(sv0))
+    rho1 = jnp.outer(sv1, jnp.conj(sv1))
+    result = trace_distance(rho0, rho1)
+    expected = qml.math.trace_distance(np.array(rho0), np.array(rho1))
+    assert jnp.allclose(result, expected, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_fidelity_2qubit_statevector():
+    """Fidelity of 2-qubit state vectors should match PennyLane."""
+    sv0 = jnp.array([1 / jnp.sqrt(2), 0, 0, 1 / jnp.sqrt(2)])  # Bell state
+    sv1 = jnp.array([1, 0, 0, 0], dtype=jnp.complex128)  # |00⟩
+    result = fidelity(sv0, sv1)
+    expected = qml.math.fidelity_statevector(np.array(sv0), np.array(sv1))
+    assert jnp.allclose(result, expected, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_trace_distance_2qubit():
+    """Trace distance of 2-qubit density matrices should match PennyLane."""
+    bell = jnp.array([1 / jnp.sqrt(2), 0, 0, 1 / jnp.sqrt(2)])
+    rho0 = jnp.outer(bell, jnp.conj(bell))
+    rho1 = jnp.eye(4, dtype=jnp.complex128) / 4  # maximally mixed
+    result = trace_distance(rho0, rho1)
+    expected = qml.math.trace_distance(np.array(rho0), np.array(rho1))
+    assert jnp.allclose(result, expected, atol=1e-10)
