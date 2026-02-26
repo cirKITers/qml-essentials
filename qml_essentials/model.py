@@ -693,9 +693,10 @@ class Model:
         variational ansatz layers with input encoding layers, and optional
         noise channels.
 
-        The first four parameters (after ``self``) - ``params``, ``inputs``,
-        ``pulse_params``, ``random_key`` - are the batchable positional
-        arguments that ``_mp_executor`` passes via ``Script.execute``.
+        The first five parameters (after ``self``) - ``params``, ``inputs``,
+        ``pulse_params``, ``random_key``, ``enc_params`` - are the batchable
+        positional arguments that ``_mp_executor`` passes via
+        ``Script.execute``.
         The remaining keyword arguments are broadcast across the batch.
 
         Args:
@@ -1232,7 +1233,6 @@ class Model:
         # kwargs are broadcast (not vmapped over)
         exec_kwargs = dict(
             noise_params=noise_params,
-            enc_params=enc_params,
             gate_mode=gate_mode,
         )
 
@@ -1249,12 +1249,13 @@ class Model:
                 0 if self.batch_shape[0] > 1 else None,  # inputs
                 2 if self.batch_shape[2] > 1 else None,  # pulse_params
                 0,  # random_keys
+                None,  # enc_params (broadcast, not batched)
             )
 
             result = self.script.execute(
                 type=meas_type,
                 obs=obs,
-                args=(params, inputs, pulse_params, random_keys),
+                args=(params, inputs, pulse_params, random_keys, enc_params),
                 kwargs=exec_kwargs,
                 in_axes=in_axes,
                 shots=shots,
@@ -1264,7 +1265,7 @@ class Model:
             result = self.script.execute(
                 type=meas_type,
                 obs=obs,
-                args=(params, inputs, pulse_params, random_key),
+                args=(params, inputs, pulse_params, random_key, enc_params),
                 kwargs=exec_kwargs,
                 shots=shots,
                 key=shot_key,

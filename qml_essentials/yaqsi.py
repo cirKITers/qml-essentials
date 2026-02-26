@@ -1143,13 +1143,22 @@ class Script:
         arg_shapes = tuple(
             (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in args
         )
+        cache_kwargs = tuple(
+            (k, v) for k, v in kwargs.items() if not isinstance(v, jnp.ndarray)
+        )
         # Include batch_gate_error in the cache key so that toggling it
         # invalidates the cached JIT-compiled function (the if/else branch
         # inside GateError is resolved at trace time and baked into XLA).
         # TODO: we need to fix the dirty class-level `batch_gate_error` hack
         from qml_essentials.gates import UnitaryGates
 
-        cache_key = (type, in_axes, arg_shapes, UnitaryGates.batch_gate_error)
+        cache_key = (
+            type,
+            in_axes,
+            arg_shapes,
+            cache_kwargs,
+            UnitaryGates.batch_gate_error,
+        )
 
         # --- Cache-hit fast path (no shots) ---
         cached = self._jit_cache.get(cache_key)
