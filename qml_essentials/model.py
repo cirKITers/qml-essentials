@@ -132,7 +132,7 @@ class Model:
         log.debug(f"Number of input features: {self.n_input_feat}")
 
         # Trainable frequencies, default initialization as in arXiv:2309.03279v2
-        self.enc_params = jnp.ones((self.n_qubits, self.n_input_feat))
+        self.enc_params = jnp.ones((self.n_layers, self.n_qubits, self.n_input_feat))
 
         self._zero_inputs = False
 
@@ -798,7 +798,7 @@ class Model:
                 inputs,
                 data_reupload=self.data_reupload[layer],
                 enc=self._enc,
-                enc_params=enc_params,
+                enc_params=enc_params[layer],
                 noise_params=noise_params,
                 random_key=sub_key,
             )
