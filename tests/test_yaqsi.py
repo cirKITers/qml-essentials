@@ -1546,7 +1546,7 @@ def test_chunked_execution_matches_full():
     arg_shapes = tuple(
         (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
     )
-    cache_key = ("expval", (0,), arg_shapes, UnitaryGates.batch_gate_error)
+    cache_key = ("expval", (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
     batched_fn, _, _ = script2._jit_cache[cache_key]
 
     # Now execute with chunk_size=5 (4 chunks of 5)
@@ -1588,7 +1588,7 @@ def test_chunked_probs_matches_full():
     arg_shapes = tuple(
         (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
     )
-    cache_key = ("probs", (0,), arg_shapes, UnitaryGates.batch_gate_error)
+    cache_key = ("probs", (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
     batched_fn, _, _ = script2._jit_cache[cache_key]
 
     chunked_result = Script._execute_chunked(
@@ -1623,7 +1623,7 @@ def test_chunked_density_matches_full():
     arg_shapes = tuple(
         (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
     )
-    cache_key = ("density", (0,), arg_shapes, UnitaryGates.batch_gate_error)
+    cache_key = ("density", (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
     batched_fn, _, _ = script2._jit_cache[cache_key]
 
     chunked_result = Script._execute_chunked(
@@ -1658,7 +1658,7 @@ def test_chunked_uneven_batch():
     arg_shapes = tuple(
         (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
     )
-    cache_key = ("probs", (0,), arg_shapes, UnitaryGates.batch_gate_error)
+    cache_key = ("probs", (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
     batched_fn, _, _ = script2._jit_cache[cache_key]
 
     # 7 elements, chunk_size=3 → chunks of [3, 3, 1]

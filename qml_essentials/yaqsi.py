@@ -980,7 +980,6 @@ class Script:
         in_axes: Optional[Tuple] = None,
         shots: Optional[int] = None,
         key: Optional[jnp.ndarray] = None,
-        memory_limit: bool = True,
     ) -> jnp.ndarray:
         """Execute the circuit and return measurement results.
 
@@ -1013,11 +1012,6 @@ class Script:
                 types.
             key: JAX PRNG key for shot sampling.  If ``None`` and *shots*
                 is set, a default key ``jax.random.PRNGKey(0)`` is used.
-            memory_limit: Controls memory-aware chunking for batched
-                execution.  When ``True`` (default), the method estimates
-                peak memory and automatically chunks the batch if it would
-                exceed available RAM.  Set to ``False`` to disable the
-                memory check entirely (zero overhead on the hot path).
 
         Returns:
             Without in_axes: shape determined by type.
@@ -1042,7 +1036,6 @@ class Script:
                 in_axes=in_axes,
                 shots=shots,
                 key=key,
-                memory_limit=memory_limit,
             )
         else:
             tape = self._record(*args, **kwargs)
@@ -1070,7 +1063,6 @@ class Script:
         in_axes: Tuple,
         shots: Optional[int] = None,
         key: Optional[jnp.ndarray] = None,
-        memory_limit: bool = True,
     ) -> jnp.ndarray:
         """Vectorise :meth:`execute` over a batch axis using ``jax.vmap``.
 
@@ -1098,9 +1090,6 @@ class Script:
                 convention: an int gives the batch axis; ``None`` broadcasts.
             shots: Number of measurement shots.  If ``None``, exact results.
             key: JAX PRNG key for shot sampling.
-            memory_limit: If ``True``, estimate peak memory and chunk
-                the batch if it would exceed available RAM.  If ``False``,
-                skip the memory check entirely (zero overhead).
 
         Returns:
             Batched measurement results of shape ``(B, ...)`` where *B* is the
@@ -1164,8 +1153,6 @@ class Script:
         cached = self._jit_cache.get(cache_key)
         if cached is not None and shots is None:
             batched_fn, n_qubits, use_density = cached
-            if not memory_limit:
-                return batched_fn(*args)
             # Check if we already determined the chunk size for this
             # exact batch_size (avoids repeated psutil syscalls).
             mem_key = ("_mem", cache_key, batch_size)
@@ -1203,12 +1190,9 @@ class Script:
         has_noise = any(isinstance(op, KrausChannel) for op in tape)
         use_density = type == "density" or has_noise
 
-        if memory_limit:
-            chunk_size = self._compute_chunk_size(
-                n_qubits, batch_size, type, use_density, len(obs)
-            )
-        else:
-            chunk_size = batch_size  # no chunking
+        chunk_size = self._compute_chunk_size(
+            n_qubits, batch_size, type, use_density, len(obs)
+        )
 
         # Second, define a pure single-sample function to vmap over.
         # Re-recording inside this function is necessary: the tape may
