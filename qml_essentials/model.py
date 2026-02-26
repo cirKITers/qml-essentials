@@ -390,11 +390,11 @@ class Model:
             # in case this is a list of parities,
             # each pair has 2^len(qubits) probabilities
             n_parity = (
-                2 ** len(self.output_qubit[0])
-                if isinstance(self.output_qubit[0], Tuple)
+                2 ** len(self.output_qubit)
+                if isinstance(self.output_qubit, (Tuple, List))
                 else 2
             )
-            self._result_shape = (len(self.output_qubit), n_parity)
+            self._result_shape = (n_parity,)
         elif value == "state":
             self._result_shape = (2 ** len(self.output_qubit),)
         else:
