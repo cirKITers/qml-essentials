@@ -31,30 +31,6 @@ def safe_random_split(random_key: jax.random.PRNGKey, *args, **kwargs):
         return jax.random.split(random_key, *args, **kwargs)
 
 
-def logm_v(A: jnp.ndarray, **kwargs) -> jnp.ndarray:
-    """
-    Compute the logarithm of a matrix. If the provided matrix has an additional
-    batch dimension, the logarithm of each matrix is computed.
-
-    Args:
-        A (jnp.ndarray): The (potentially batched) matrices of which to compute
-        the logarithm.
-
-    Returns:
-        jnp.ndarray: The log matrices
-    """
-    # TODO: check warnings
-    if len(A.shape) == 2:
-        return logm(A, **kwargs)
-    elif len(A.shape) == 3:
-        AV = jnp.zeros(A.shape, dtype=_cdtype())
-        for i in range(A.shape[0]):
-            AV = AV.at[i].set(logm(A[i], **kwargs))
-        return AV
-    else:
-        raise NotImplementedError("Unsupported shape of input matrix")
-
-
 class PauliTape:
     """Simple tape wrapper with ``operations``, ``observables``, and
     ``get_parameters`` — replacing PennyLane's ``Script`` for the

@@ -166,7 +166,7 @@ class Yaqsi:
             gate([A, sigma], T)    # U via ODE: dU/dt = -i f(p,t) H * U
 
         The time-dependent case solves the Schrödinger equation numerically
-        using ``diffrax.diffeqsolve`` with a Tsit5 adaptive Runge-Kutta
+        using ``diffrax.diffeqsolve`` with a Dopri8 adaptive Runge-Kutta
         solver
 
         All computations are pure JAX and fully differentiable with
@@ -218,7 +218,7 @@ class Yaqsi:
         """Gate factory for time-dependent Hamiltonian evolution.
 
         Solves the matrix ODE ``dU/dt = -i f(params, t) H * U`` with
-        ``U(0) = I`` using ``diffrax.diffeqsolve`` (Tsit5 adaptive RK).
+        ``U(0) = I`` using ``diffrax.diffeqsolve`` (Dopri8 adaptive RK).
 
         Performance improvements over the previous ``jax.experimental.ode``
         implementation:
@@ -268,7 +268,7 @@ class Yaqsi:
             _solve = cls._evolve_solver_cache.get(cache_key)
 
         if _solve is None:
-            solver = diffrax.Tsit5()
+            solver = diffrax.Dopri8()
             stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
 
             @jax.jit
