@@ -39,7 +39,7 @@ from qml_essentials.operations import (
     PhaseDamping,
     ThermalRelaxationError,
 )
-from qml_essentials.math import fidelity, trace_distance
+from qml_essentials.math import fidelity, trace_distance, phase_difference
 
 import logging
 
@@ -1434,11 +1434,6 @@ def test_power():
     assert jnp.allclose(res, 1), "Dagger should undo operation"
 
 
-# ---------------------------------------------------------------------------
-# Memory-aware chunking tests
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.unittest
 def test_estimate_peak_bytes_basic():
     """Memory estimates should be positive and scale with batch size."""
@@ -1873,4 +1868,81 @@ def test_trace_distance_2qubit():
     rho1 = jnp.eye(4, dtype=jnp.complex128) / 4  # maximally mixed
     result = trace_distance(rho0, rho1)
     expected = qml.math.trace_distance(np.array(rho0), np.array(rho1))
+    assert jnp.allclose(result, expected, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_phase_difference_identical():
+    """Phase difference of identical states should be |1 - 0| = 1."""
+    sv = jnp.array([1.0, 0.0])
+    result = phase_difference(sv, sv)
+    # angle(⟨ψ|ψ⟩) = angle(1) = 0, so |1 - 0| = 1
+    expected = jnp.abs(1.0 - jnp.angle(jnp.vdot(sv, sv)))
+    assert jnp.allclose(result, expected, atol=1e-10)
+    assert jnp.allclose(result, 1.0, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_phase_difference_global_phase():
+    """A global phase of pi should give |1 - pi|."""
+    sv0 = jnp.array([1.0, 0.0])
+    sv1 = jnp.array([-1.0, 0.0])  # global phase of pi
+    result = phase_difference(sv0, sv1)
+    expected = jnp.abs(1.0 - jnp.angle(jnp.vdot(sv0, sv1)))
+    assert jnp.allclose(result, expected, atol=1e-10)
+    assert jnp.allclose(result, jnp.abs(1.0 - jnp.pi), atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_phase_difference_half_pi():
+    """A global phase of pi/2 should give |1 - pi/2|."""
+    sv0 = jnp.array([1.0, 0.0])
+    sv1 = jnp.array([1j, 0.0])  # global phase of pi/2
+    result = phase_difference(sv0, sv1)
+    expected = jnp.abs(1.0 - jnp.angle(jnp.vdot(sv0, sv1)))
+    assert jnp.allclose(result, expected, atol=1e-10)
+    assert jnp.allclose(result, jnp.abs(1.0 - jnp.pi / 2), atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_phase_difference_arbitrary():
+    """Phase difference of two arbitrary states should match the vdot formula."""
+    sv0 = jnp.array([0.98753537 - 0.14925137j, 0.00746879 - 0.04941796j])
+    sv1 = jnp.array([0.99500417 + 0.0j, 0.09983342 + 0.0j])
+    result = phase_difference(sv0, sv1)
+    expected = float(jnp.abs(1.0 - jnp.angle(jnp.vdot(sv0, sv1))))
+    assert jnp.allclose(result, expected, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_phase_difference_batched():
+    """Batched phase difference should match element-wise computation."""
+    sv0_batch = jnp.array(
+        [
+            [1.0, 0.0],
+            [1.0, 0.0],
+            [1 / jnp.sqrt(2), 1 / jnp.sqrt(2)],
+        ]
+    )
+    sv1_batch = jnp.array(
+        [
+            [1.0, 0.0],
+            [-1.0, 0.0],
+            [1 / jnp.sqrt(2), -1 / jnp.sqrt(2)],
+        ]
+    )
+    result = phase_difference(sv0_batch, sv1_batch)
+    for i in range(3):
+        inner = jnp.sum(jnp.conj(sv0_batch[i]) * sv1_batch[i])
+        expected_i = float(jnp.abs(1.0 - jnp.angle(inner)))
+        assert jnp.allclose(result[i], expected_i, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_phase_difference_2qubit():
+    """Phase difference of 2-qubit states should match the vdot formula."""
+    sv0 = jnp.array([1 / jnp.sqrt(2), 0, 0, 1 / jnp.sqrt(2)])  # Bell |Φ+⟩
+    sv1 = jnp.array([1 / jnp.sqrt(2), 0, 0, 1j / jnp.sqrt(2)])  # phase on |11⟩
+    result = phase_difference(sv0, sv1)
+    expected = float(jnp.abs(1.0 - jnp.angle(jnp.vdot(sv0, sv1))))
     assert jnp.allclose(result, expected, atol=1e-10)

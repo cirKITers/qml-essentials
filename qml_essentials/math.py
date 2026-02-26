@@ -82,12 +82,7 @@ def _fidelity_dm(
     state0: jnp.ndarray,
     state1: jnp.ndarray,
 ) -> jnp.ndarray:
-    r"""Fidelity between two mixed states (density matrices).
-
-    .. math::
-
-        F(\rho, \sigma) = \left(\text{Tr}\sqrt{\sqrt{\rho}\,\sigma\,\sqrt{\rho}}\right)^2
-    """
+    r"""Fidelity between two mixed states (density matrices)."""
     sqrt_state0 = _sqrt_matrix(state0)
     product = sqrt_state0 @ state1 @ sqrt_state0
 
@@ -104,23 +99,7 @@ def fidelity(
 ) -> jnp.ndarray:
     r"""Compute the fidelity between two quantum states.
 
-    Accepts **either** state vectors or density matrices and automatically
-    dispatches to the appropriate formula:
-
-    * **State vectors** — shape ``(2**N,)`` or ``(B, 2**N)``:
-
-      .. math::
-
-          F(\ket{\psi}, \ket{\phi}) = \left|\braket{\psi | \phi}\right|^2
-
-    * **Density matrices** — shape ``(2**N, 2**N)`` or ``(B, 2**N, 2**N)``:
-
-      .. math::
-
-          F(\rho, \sigma)
-          = \left(\operatorname{Tr}\!\sqrt{\sqrt{\rho}\,\sigma\,\sqrt{\rho}}\right)^2
-
-    Both states must be of the same kind (both vectors or both matrices).
+    Accepts either state vectors or density matrices.
 
     Args:
         state0: State vector or density matrix.
@@ -163,16 +142,6 @@ def trace_distance(
 ) -> jnp.ndarray:
     r"""Compute the trace distance between two quantum states.
 
-    .. math::
-
-        T(\rho, \sigma) = \frac{1}{2}\|\rho - \sigma\|_1
-        = \frac{1}{2}\text{Tr}\!\left(
-            \sqrt{(\rho - \sigma)^\dagger (\rho - \sigma)}\right)
-
-    For Hermitian inputs this simplifies to
-    :math:`T = \frac{1}{2}\sum_i |\lambda_i|` where :math:`\lambda_i` are
-    the eigenvalues of :math:`\rho - \sigma`.
-
     Supports single density matrices of shape ``(2**N, 2**N)`` and batched
     density matrices of shape ``(B, 2**N, 2**N)``.
 
@@ -191,3 +160,40 @@ def trace_distance(
 
     eigvals = jnp.abs(jnp.linalg.eigvalsh(state0 - state1))
     return jnp.sum(eigvals, axis=-1) / 2
+
+
+def phase_difference(
+    state0: jnp.ndarray,
+    state1: jnp.ndarray,
+) -> jnp.ndarray:
+    r"""Compute the phase difference between two state vectors.
+
+    A value of zero indicates the two states are related by at most a
+    real global factor (i.e. no relative phase).  The result lies in
+    :math:`[0, 1 + \pi]`.
+
+    Supports single state vectors of shape ``(2**N,)`` and batched state
+    vectors of shape ``(B, 2**N)``.
+
+    Args:
+        state0: State vector of shape ``(2**N,)`` or ``(B, 2**N)``.
+        state1: State vector of shape ``(2**N,)`` or ``(B, 2**N)``.
+
+    Returns:
+        Phase difference (scalar or shape ``(B,)``).
+    """
+    state0 = jnp.asarray(state0, dtype=_cdtype())
+    state1 = jnp.asarray(state1, dtype=_cdtype())
+
+    if state0.shape[-1] != state1.shape[-1]:
+        raise ValueError("The two states must have the same number of wires.")
+
+    batched0 = state0.ndim > 1
+    batched1 = state1.ndim > 1
+
+    idx0 = "ab" if batched0 else "b"
+    idx1 = "ab" if batched1 else "b"
+    target = "a" if (batched0 or batched1) else ""
+
+    inner = jnp.einsum(f"{idx0},{idx1}->{target}", jnp.conj(state0), state1)
+    return jnp.abs(1.0 - jnp.angle(inner))
