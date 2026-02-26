@@ -5,7 +5,7 @@ import numpy as np
 
 from qml_essentials import yaqsi as ys
 from qml_essentials import operations as op
-from qml_essentials.utils import logm_v
+from qml_essentials.math import logm_v
 from qml_essentials.model import Model
 import logging
 
