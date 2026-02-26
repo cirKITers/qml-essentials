@@ -1877,9 +1877,9 @@ def test_phase_difference_identical():
     sv = jnp.array([1.0, 0.0])
     result = phase_difference(sv, sv)
     # angle(⟨ψ|ψ⟩) = angle(1) = 0, so |1 - 0| = 1
-    expected = jnp.abs(1.0 - jnp.angle(jnp.vdot(sv, sv)))
+    expected = jnp.angle(jnp.vdot(sv, sv))
     assert jnp.allclose(result, expected, atol=1e-10)
-    assert jnp.allclose(result, 1.0, atol=1e-10)
+    assert jnp.allclose(result, 0.0, atol=1e-10)
 
 
 @pytest.mark.unittest
@@ -1888,9 +1888,9 @@ def test_phase_difference_global_phase():
     sv0 = jnp.array([1.0, 0.0])
     sv1 = jnp.array([-1.0, 0.0])  # global phase of pi
     result = phase_difference(sv0, sv1)
-    expected = jnp.abs(1.0 - jnp.angle(jnp.vdot(sv0, sv1)))
+    expected = jnp.angle(jnp.vdot(sv0, sv1))
     assert jnp.allclose(result, expected, atol=1e-10)
-    assert jnp.allclose(result, jnp.abs(1.0 - jnp.pi), atol=1e-10)
+    assert jnp.allclose(result, jnp.pi, atol=1e-10)
 
 
 @pytest.mark.unittest
@@ -1899,9 +1899,9 @@ def test_phase_difference_half_pi():
     sv0 = jnp.array([1.0, 0.0])
     sv1 = jnp.array([1j, 0.0])  # global phase of pi/2
     result = phase_difference(sv0, sv1)
-    expected = jnp.abs(1.0 - jnp.angle(jnp.vdot(sv0, sv1)))
+    expected = jnp.angle(jnp.vdot(sv0, sv1))
     assert jnp.allclose(result, expected, atol=1e-10)
-    assert jnp.allclose(result, jnp.abs(1.0 - jnp.pi / 2), atol=1e-10)
+    assert jnp.allclose(result, jnp.pi / 2, atol=1e-10)
 
 
 @pytest.mark.unittest
@@ -1910,7 +1910,7 @@ def test_phase_difference_arbitrary():
     sv0 = jnp.array([0.98753537 - 0.14925137j, 0.00746879 - 0.04941796j])
     sv1 = jnp.array([0.99500417 + 0.0j, 0.09983342 + 0.0j])
     result = phase_difference(sv0, sv1)
-    expected = float(jnp.abs(1.0 - jnp.angle(jnp.vdot(sv0, sv1))))
+    expected = jnp.angle(jnp.vdot(sv0, sv1))
     assert jnp.allclose(result, expected, atol=1e-10)
 
 
@@ -1934,7 +1934,7 @@ def test_phase_difference_batched():
     result = phase_difference(sv0_batch, sv1_batch)
     for i in range(3):
         inner = jnp.sum(jnp.conj(sv0_batch[i]) * sv1_batch[i])
-        expected_i = float(jnp.abs(1.0 - jnp.angle(inner)))
+        expected_i = jnp.angle(inner)
         assert jnp.allclose(result[i], expected_i, atol=1e-10)
 
 
@@ -1944,5 +1944,5 @@ def test_phase_difference_2qubit():
     sv0 = jnp.array([1 / jnp.sqrt(2), 0, 0, 1 / jnp.sqrt(2)])  # Bell |Φ+⟩
     sv1 = jnp.array([1 / jnp.sqrt(2), 0, 0, 1j / jnp.sqrt(2)])  # phase on |11⟩
     result = phase_difference(sv0, sv1)
-    expected = float(jnp.abs(1.0 - jnp.angle(jnp.vdot(sv0, sv1))))
+    expected = jnp.angle(jnp.vdot(sv0, sv1))
     assert jnp.allclose(result, expected, atol=1e-10)
