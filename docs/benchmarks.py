@@ -9,7 +9,7 @@ import matplotlib.ticker
 import csv
 import numpy as np
 
-jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", False)
 
 from qml_essentials.yaqsi import (
     Script,
@@ -35,10 +35,10 @@ rng = jax.random.PRNGKey(1000)
 LOAD_LATEST = False  # Set to True to skip computation and load the latest CSV instead
 WARMUP = True  # Does not produce meaningful results if False
 
-qubit_sizes = list(range(14, 16))
+qubit_sizes = list(range(2, 15))
 modes = ["probs", "expval", "state", "density"]
 n_iters = 100
-batch_size = 10
+batch_size = 1
 precision = 1e-8
 
 
