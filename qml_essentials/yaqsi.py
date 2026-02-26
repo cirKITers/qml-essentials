@@ -25,6 +25,23 @@ import logging
 log = logging.getLogger(__name__)
 
 
+def _make_hashable(obj):
+    """Recursively convert an object into a hashable form for cache keys.
+
+    - ``dict``  → sorted tuple of ``(key, _make_hashable(value))`` pairs
+    - ``list``  → tuple of ``_make_hashable(element)``
+    - ``set``   → frozenset of ``_make_hashable(element)``
+    - everything else is returned as-is (assumed hashable)
+    """
+    if isinstance(obj, dict):
+        return tuple(sorted((k, _make_hashable(v)) for k, v in obj.items()))
+    if isinstance(obj, (list, tuple)):
+        return tuple(_make_hashable(x) for x in obj)
+    if isinstance(obj, set):
+        return frozenset(_make_hashable(x) for x in obj)
+    return obj
+
+
 class Yaqsi:
     # TODO: generally, I would like to merge this into operations or vice-versa
     # and only keep Script here.  It's not clear how to do this though.
@@ -434,8 +451,10 @@ class Script:
         # Simulation intermediate: when density-matrix simulation is used,
         # the full rho (dim × dim) must be held during gate evolution —
         # even if the final output is only probs or expval.
+        # apply_to_density contracts both U and U* against rho, so at least
+        # two intermediate (dim × dim) buffers are alive simultaneously.
         if use_density:
-            sim_bytes = batch_size * dim * dim * elem
+            sim_bytes = 2 * batch_size * dim * dim * elem
         else:
             sim_bytes = 0  # statevector is already counted above
 
@@ -542,14 +561,29 @@ class Script:
         if full_est <= avail:
             return batch_size  # everything fits — no chunking
 
+        # The output accumulator (the final (batch_size, ...) result array)
+        # must coexist with each chunk's computation, so subtract its size
+        # from available memory before sizing chunks.
+        dim = 2**n_qubits
+        elem = 16 if jax.config.x64_enabled else 8
+        real_elem = elem // 2
+        if type == "density":
+            accum_bytes = batch_size * dim * dim * elem
+        elif type == "expval":
+            accum_bytes = batch_size * max(n_obs, 1) * real_elem
+        elif type == "probs":
+            accum_bytes = batch_size * dim * real_elem
+        else:
+            accum_bytes = batch_size * dim * elem
+        avail_for_chunks = max(avail - accum_bytes, elem)  # at least 1 element
+
         # Per-element cost: the memory for computing a single batch element.
         per_elem = Script._estimate_peak_bytes(n_qubits, 1, type, use_density, n_obs)
 
         if per_elem <= 0:
             return batch_size
 
-        # How many elements fit in available memory?
-        chunk = avail // per_elem
+        chunk = avail_for_chunks // per_elem
         chunk = max(1, min(chunk, batch_size))
 
         if chunk == 1 and per_elem > avail:
@@ -1161,8 +1195,8 @@ class Script:
         arg_shapes = tuple(
             (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in args
         )
-        cache_kwargs = tuple(
-            (k, v) for k, v in kwargs.items() if not isinstance(v, jnp.ndarray)
+        cache_kwargs = _make_hashable(
+            {k: v for k, v in kwargs.items() if not isinstance(v, jnp.ndarray)}
         )
 
         # TODO: we need to fix the dirty class-level `batch_gate_error` hack
