@@ -1151,8 +1151,6 @@ def test_memory_statevector_probs() -> None:
     Pure statevector simulation scales as O(2^n), so 12 qubits (dim=4096)
     with a batch of 10 should use only a few MB, not the O(4^n) that
     density-matrix simulation would require.
-
-    Run with: pytest tests/test_yaqsi.py::test_memory_statevector_probs -x -s --memray
     """
     n_qubits = 12
 
@@ -1175,8 +1173,6 @@ def test_memory_noisy_probs() -> None:
     Even though density-matrix simulation is needed internally (O(4^n)),
     the returned output is only probabilities (O(2^n)).  This validates
     that intermediate density matrices are freed after measurement.
-
-    Run with: pytest tests/test_yaqsi.py::test_memory_noisy_probs -x -s --memray
     """
     n_qubits = 8
 
@@ -1202,8 +1198,6 @@ def test_memory_expval_scales_small() -> None:
     For 12 qubits with 2 observables and batch=10, the output is only
     (10, 2) floats.  This validates that no density matrix is retained
     when computing expectation values on a pure circuit.
-
-    Run with: pytest tests/test_yaqsi.py::test_memory_expval_scales_small -x -s --memray
     """
     n_qubits = 12
 
@@ -1232,8 +1226,6 @@ def test_memory_chunked_stays_bounded() -> None:
 
     We use a small initial batch (size=2) to populate the JIT cache
     without consuming much memory, then run the larger batch chunked.
-
-    Run with: pytest tests/test_yaqsi.py::test_memory_chunked_stays_bounded -x -s --memray
     """
     n_qubits = 10
 

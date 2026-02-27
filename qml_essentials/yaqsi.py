@@ -889,10 +889,6 @@ class Script:
             # where d0, d1 are the diagonal elements of the 2x2 observable.
             # This replaces n_obs tensor contractions with a single |ψ|²
             # and n_obs reductions over the probability vector.
-            #
-            # The diagonal check uses the class-level _matrix attribute
-            # (always a concrete constant) and plain NumPy operations to
-            # avoid TracerBoolConversionError inside jit/vmap.
 
             def _is_single_qubit_diag(ob):
                 m = ob.__class__._matrix
