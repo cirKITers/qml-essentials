@@ -214,6 +214,39 @@ class UnitaryGates:
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
+    def PauliRot(
+        pauli: str,
+        theta: float,
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+        input_idx: int = -1,
+    ) -> None:
+        """
+        Apply general rotation gate with optional noise.
+
+        Applies a three-angle rotation Rot(phi, theta, omega) with optional
+        gate errors and noise channels.
+
+        Args:
+            phi (Union[float, jnp.ndarray, List[float]]): First rotation angle.
+            theta (Union[float, jnp.ndarray, List[float]]): Second rotation angle.
+            omega (Union[float, jnp.ndarray, List[float]]): Third rotation angle.
+            wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+                Supports BitFlip, PhaseFlip, Depolarizing, and GateError.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
+            input_idx (int): Flag for the tape to track inputs
+
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
+        """
+        if noise_params is not None and "GateError" in noise_params:
+            theta, random_key = UnitaryGates.GateError(theta, noise_params, random_key)
+        op.PauliRot(pauli, theta, wires=wires, input_idx=input_idx)
+        UnitaryGates.Noise(wires, noise_params)
+
+    @staticmethod
     def RX(
         w: Union[float, jnp.ndarray, List[float]],
         wires: Union[int, List[int]],
@@ -936,6 +969,32 @@ class PulseGates:
         PulseGates.RZ(phi, wires=wires, pulse_params=params_RZ_1)
         PulseGates.RY(theta, wires=wires, pulse_params=params_RY)
         PulseGates.RZ(omega, wires=wires, pulse_params=params_RZ_2)
+
+    @staticmethod
+    def PauliRot(
+        pauli: str,
+        theta: float,
+        wires: Union[int, List[int]],
+        pulse_params: Optional[jnp.ndarray] = None,
+    ) -> None:
+        """
+        Apply Pauli rotation using pulse-level implementation.
+
+        Implements Pauli rotation using a shaped Gaussian pulse with optimized
+        envelope parameters.
+
+        Args:
+            pauli (str): Pauli string (X, Y, Z).
+            theta (float): Rotation angle in radians.
+            wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
+            pulse_params (Optional[jnp.ndarray]): Array containing pulse parameters
+                [A, sigma, t] for the Gaussian envelope. If None, uses optimized
+                parameters.
+
+        Returns:
+            None: Gate is applied in-place to the circuit.
+        """
+        raise NotImplementedError("PauliRot gate is not implemented as PulseGate")
 
     @staticmethod
     def RX(
