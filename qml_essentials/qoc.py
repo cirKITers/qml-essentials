@@ -15,6 +15,8 @@ import logging
 
 log = logging.getLogger(__name__)
 
+jax.config.update("jax_enable_x64", True)
+
 
 class QOC:
     def __init__(
@@ -26,6 +28,7 @@ class QOC:
         learning_rate: float = 0.01,
         log_interval: int = 50,
         skip_on_fidelity: bool = True,
+        file_dir: str = "./",
     ):
         """
         Initialize Quantum Optimal Control with Pulse-level Gates.
@@ -49,7 +52,7 @@ class QOC:
         self.learning_rate = learning_rate
         self.log_interval = log_interval
         self.skip_on_fidelity = skip_on_fidelity
-
+        self.file_dir = file_dir
         self.current_gate = None
 
     def save_results(self, gate, fidelity, pulse_params):
