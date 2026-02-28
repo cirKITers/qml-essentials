@@ -390,7 +390,7 @@ class Model:
             # in case this is a list of parities,
             # each pair has 2^len(qubits) probabilities
             n_parity = (
-                2 ** len(self.output_qubit)
+                (2,) * len(self.output_qubit)
                 if isinstance(self.output_qubit, (Tuple, List))
                 else 2
             )
