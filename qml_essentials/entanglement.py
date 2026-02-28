@@ -577,6 +577,8 @@ class Entanglement:
         inputs = model._inputs_validation(kwargs.get("inputs", None))
         n_batch = params.shape[-1]
 
+        marg_probs = jax.jit(ys.marginalize_probs, static_argnums=(1, 2))
+
         if n_batch > 1:
             from qml_essentials.utils import safe_random_split
 
@@ -595,7 +597,7 @@ class Entanglement:
             )
 
         # Marginalize to the ancilla register (wires 0..n-1)
-        probs = ys.marginalize_probs(probs, 3 * n, list(range(n)))
+        probs = marg_probs(probs, 3 * n, tuple(range(n)))
 
         ent = 1 - probs[..., 0]
 

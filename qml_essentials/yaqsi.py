@@ -104,13 +104,12 @@ class Yaqsi:
     @staticmethod
     def _marginalize_probs_single(
         probs: jnp.ndarray,
-        n_qubits: int,
-        keep: List[int],
+        target_shape: Tuple[int],
+        trace_out: Tuple[int],
     ) -> jnp.ndarray:
         """Marginalize a single probability vector (no batch dimension)."""
-        probs_t = probs.reshape((2,) * n_qubits)
+        probs_t = probs.reshape(target_shape)
 
-        trace_out = sorted(set(range(n_qubits)) - set(keep), reverse=True)
         for q in trace_out:
             probs_t = probs_t.sum(axis=q)
 
@@ -121,7 +120,7 @@ class Yaqsi:
         cls,
         probs: jnp.ndarray,
         n_qubits: int,
-        keep: List[int],
+        keep: Tuple[int],
     ) -> jnp.ndarray:
         """Marginalize a probability vector to keep only the specified qubits.
 
@@ -139,12 +138,12 @@ class Yaqsi:
         """
 
         dim = 2**n_qubits
-        if probs.shape == (dim,):
-            return Yaqsi._marginalize_probs_single(probs, n_qubits, keep)
-        # Batched: shape (B, dim)
-        return jax.vmap(lambda p: Yaqsi._marginalize_probs_single(p, n_qubits, keep))(
-            probs
-        )
+        trace_out = tuple(q for q in range(n_qubits - 1, -1, -1) if q not in keep)
+        target_shape = (2,) * n_qubits
+
+        return jax.vmap(
+            lambda p: Yaqsi._marginalize_probs_single(p, target_shape, trace_out)
+        )(probs.reshape(-1, dim))
 
     @classmethod
     def build_parity_observable(
