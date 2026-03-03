@@ -1,22 +1,23 @@
 # qa: disable
+import argparse
+from functools import partial
+from typing import List, Callable, Union
 
 import os
 import csv
 import jax
 from jax import numpy as jnp
 import optax
+
+jax.config.update("jax_enable_x64", True)
+
 from qml_essentials.gates import Gates, PulseInformation
 from qml_essentials import operations as op
 from qml_essentials import yaqsi as ys
 from qml_essentials.math import phase_difference, fidelity
-import argparse
-from functools import partial
-from typing import List, Callable, Union
 import logging
 
 log = logging.getLogger(__name__)
-
-jax.config.update("jax_enable_x64", True)
 
 
 class QOC:
@@ -134,10 +135,10 @@ class QOC:
             # dot_prod = jnp.vdot(target_state, pulse_state)
             # abs_diff += 1 - jnp.abs(dot_prod) ** 2  # one if no diff
             # phase_diff += jnp.abs(jnp.angle(dot_prod)) / jnp.pi  # zero if no diff
-            abs_diff = jnp.array(1.0, dtype=jnp.float64) - fidelity(
+            abs_diff += jnp.array(1.0, dtype=jnp.float64) - fidelity(
                 pulse_state, target_state
             )
-            phase_diff = phase_difference(pulse_state, target_state)
+            phase_diff += jnp.abs(phase_difference(pulse_state, target_state))
 
         abs_diff /= self.n_samples
         phase_diff /= self.n_samples
@@ -495,7 +496,7 @@ class QOC:
         # random_key = jax.random.key(seed=1000)
         # PulseInformation.shuffle_params(random_key)
         for loop in range(self.n_loops):
-            log.info("Reading back optimized pulse parameters")
+            # log.info("Reading back optimized pulse parameters")
             # PulseInformation.update_params()
 
             log.info(f"Optimization loop {loop+1} of {self.n_loops}")
