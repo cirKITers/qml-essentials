@@ -229,9 +229,8 @@ class UnitaryGates:
         gate errors and noise channels.
 
         Args:
-            phi (Union[float, jnp.ndarray, List[float]]): First rotation angle.
+            pauli (str): Pauli operator to apply. Must be "X", "Y", or "Z".
             theta (Union[float, jnp.ndarray, List[float]]): Second rotation angle.
-            omega (Union[float, jnp.ndarray, List[float]]): Third rotation angle.
             wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
                 Supports BitFlip, PhaseFlip, Depolarizing, and GateError.
