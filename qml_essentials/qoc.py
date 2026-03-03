@@ -1,4 +1,4 @@
-# qa: disable
+# flake8: noqa: E402
 import argparse
 from functools import partial
 from typing import List, Callable, Union
