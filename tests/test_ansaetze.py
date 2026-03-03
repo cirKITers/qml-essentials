@@ -413,7 +413,7 @@ def test_pulse_params_ansaetze_4q() -> None:
         )
 
         try:
-            res = model(gate_mode="pulse")
+            _ = model(gate_mode="pulse")
             # TODO: calculate values and enable again
             # assert np.allclose(
             #     res, res, atol=1e-6
