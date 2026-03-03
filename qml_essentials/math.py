@@ -66,7 +66,15 @@ def _fidelity_statevector(
     .. math::
 
         F(\ket{\psi}, \ket{\phi}) = \left|\braket{\psi | \phi}\right|^2
+    The inputs are normalised before the overlap is computed so that
+    the result is always in :math:`[0, 1]`.
     """
+    # Normalise so that unnormalised inputs don't produce F > 1.
+    norm0 = jnp.linalg.norm(state0, axis=-1, keepdims=True)
+    norm1 = jnp.linalg.norm(state1, axis=-1, keepdims=True)
+    state0 = state0 / jnp.where(norm0 > 0, norm0, 1.0)
+    state1 = state1 / jnp.where(norm1 > 0, norm1, 1.0)
+
     batched0 = state0.ndim > 1
     batched1 = state1.ndim > 1
 
@@ -74,7 +82,7 @@ def _fidelity_statevector(
     idx1 = "ab" if batched1 else "b"
     target = "a" if (batched0 or batched1) else ""
 
-    overlap = jnp.einsum(f"{idx0},{idx1}->{target}", state0, jnp.conj(state1))
+    overlap = jnp.einsum(f"{idx0},{idx1}->{target}", jnp.conj(state0), state1)
     return jnp.abs(overlap) ** 2
 
 
@@ -170,7 +178,7 @@ def phase_difference(
 
     A value of zero indicates the two states are related by at most a
     real global factor (i.e. no relative phase).  The result lies in
-    :math:`[0, 1 + \pi]`.
+    :math:`[-\pi, 1 + \pi]`.
 
     Supports single state vectors of shape ``(2**N,)`` and batched state
     vectors of shape ``(B, 2**N)``.
