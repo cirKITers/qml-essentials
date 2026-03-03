@@ -1820,7 +1820,7 @@ dev = [
 docs = [
     { name = "ipykernel", specifier = ">=6.31.0" },
     { name = "markdown-include", specifier = ">=0.8.1" },
-    { name = "mkdocs", specifier = ">=1.6.1" },
+    { name = "mkdocs", specifier = "<2.0.0" },
     { name = "mkdocs-glightbox", specifier = ">=0.4.0" },
     { name = "mkdocs-material", specifier = ">=9.7.1" },
     { name = "mkdocstrings-python", specifier = ">=1.19.0" },
