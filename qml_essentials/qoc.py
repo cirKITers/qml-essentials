@@ -8,6 +8,7 @@ import optax
 from qml_essentials.gates import Gates, PulseInformation
 from qml_essentials import operations as op
 from qml_essentials import yaqsi as ys
+from qml_essentials.math import phase_difference, fidelity
 import argparse
 from functools import partial
 from typing import List, Callable, Union
@@ -24,8 +25,8 @@ class QOC:
         observable: Union[Callable, List[Callable], str] = "state",
         n_steps: int = 1000,
         n_loops: int = 1,
-        n_samples: int = 8,
-        learning_rate: float = 0.01,
+        n_samples: int = 12,
+        learning_rate: float = 0.001,
         log_interval: int = 50,
         skip_on_fidelity: bool = True,
         file_dir: str = "./",
@@ -130,9 +131,13 @@ class QOC:
         for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / self.n_samples):
             pulse_state = pulse_script.execute(type="state", args=(w, pulse_params))
             target_state = target_script.execute(type="state", args=(w,))
-            dot_prod = jnp.vdot(target_state, pulse_state)
-            abs_diff += 1 - jnp.abs(dot_prod) ** 2  # one if no diff
-            phase_diff += jnp.abs(jnp.angle(dot_prod)) / jnp.pi  # zero if no diff
+            # dot_prod = jnp.vdot(target_state, pulse_state)
+            # abs_diff += 1 - jnp.abs(dot_prod) ** 2  # one if no diff
+            # phase_diff += jnp.abs(jnp.angle(dot_prod)) / jnp.pi  # zero if no diff
+            abs_diff = jnp.array(1.0, dtype=jnp.float64) - fidelity(
+                pulse_state, target_state
+            )
+            phase_diff = phase_difference(pulse_state, target_state)
 
         abs_diff /= self.n_samples
         phase_diff /= self.n_samples
