@@ -172,7 +172,7 @@ class DeclarativeCircuit(Circuit):
 
     @classmethod
     def n_params_per_layer(cls, n_qubits: int) -> int:
-        return sum(block.n_pulse_params(n_qubits) for block in cls.structure())
+        return sum(block.n_params(n_qubits) for block in cls.structure())
 
     @classmethod
     def n_pulse_params_per_layer(cls, n_qubits: int) -> int:
