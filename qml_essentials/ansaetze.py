@@ -172,20 +172,11 @@ class DeclarativeCircuit(Circuit):
 
     @classmethod
     def n_params_per_layer(cls, n_qubits: int) -> int:
-        structure = cls.structure()
-        n_params = 0
-        for block in structure:
-            # we can rely on n_params only returning a valid number
-            _n_params = block.n_params(n_qubits)
-
-            n_params += _n_params
-
-        return n_params
+        return sum(block.n_pulse_params(n_qubits) for block in cls.structure())
 
     @classmethod
     def n_pulse_params_per_layer(cls, n_qubits: int) -> int:
-        structure = cls.structure()
-        return sum(block.n_pulse_params(n_qubits) for block in structure)
+        return sum(block.n_pulse_params(n_qubits) for block in cls.structure())
 
     @classmethod
     def get_control_indices(cls, n_qubits: int) -> Optional[List]:
@@ -311,7 +302,22 @@ class Block:
         return 0
 
     def n_pulse_params(self, n_qubits: int) -> int:
-        return PulseInformation.num_params(self.gate) * n_qubits
+        assert n_qubits > 0, "Number of qubits must be positive"
+
+        n_pulse_params = PulseInformation.num_params(self.gate)
+        if self.is_entangling:
+            if not self.enough_qubits(n_qubits):
+                warnings.warn(
+                    f"Skipping {self.topology.__name__} with n_qubits={n_qubits} "
+                    f"as there are not enough qubits"
+                    f"for this topology."
+                )
+                return 0
+            else:
+                return n_pulse_params * len(
+                    self.topology(n_qubits=n_qubits, **self.kwargs)
+                )
+        return n_pulse_params * n_qubits
 
     def apply(self, w: np.ndarray, w_idx: int, n_qubits: int, **kwargs) -> int:
         assert n_qubits > 0, "Number of qubits must be positive"
