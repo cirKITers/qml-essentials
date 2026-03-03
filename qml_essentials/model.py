@@ -392,9 +392,9 @@ class Model:
             n_parity = (
                 (2,) * len(self.output_qubit)
                 if isinstance(self.output_qubit, (Tuple, List))
-                else 2
+                else (2,)
             )
-            self._result_shape = (n_parity,)
+            self._result_shape = n_parity
         elif value == "state":
             self._result_shape = (2 ** len(self.output_qubit),)
         else:
