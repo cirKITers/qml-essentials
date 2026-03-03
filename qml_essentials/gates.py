@@ -751,14 +751,14 @@ class PulseInformation:
 
     RX = PulseParams(
         name="RX",
-        params=jnp.array([15.924619674682617, 29.728796005249023, 0.7552413940429688]),
+        params=jnp.array([15.920483589172363, 29.724414825439453, 0.755191445350647]),
     )
     RY = PulseParams(
         name="RY",
         params=jnp.array([7.857588768005371, 21.96442413330078, 1.1011087894439697]),
     )
-    RZ = PulseParams(name="RZ", params=jnp.array([0.5070644021034241]))
-    CZ = PulseParams(name="CZ", params=jnp.array([0.32830920815467834]))
+    RZ = PulseParams(name="RZ", params=jnp.array([0.5]))
+    CZ = PulseParams(name="CZ", params=jnp.array([0.2694517970085144]))
     H = PulseParams(
         name="H",
         pulse_obj=[RZ, RY],
