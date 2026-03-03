@@ -9,7 +9,7 @@ import matplotlib.ticker
 import csv
 import numpy as np
 
-jax.config.update("jax_enable_x64", False)
+jax.config.update("jax_enable_x64", True)
 
 from qml_essentials.yaqsi import (
     Script,
@@ -153,9 +153,11 @@ def var_ghz_benchmark(mode, q) -> None:
     if not jnp.allclose(res_ys, res_pl_arr, atol=precision):
         logger.error(
             f"Error occured at {q} qubits for mode {mode}:\
-                     Results do not match; got {res_ys} and {res_pl_arr}\
-                     Shape is {res_ys.shape} and {res_pl_arr.shape}"
+                    Results do not match; got Yaqsi: {res_ys}\
+                    and Pennylane: {res_pl_arr}\
+                    Shape is {res_ys.shape} and {res_pl_arr.shape}"
         )
+        raise RuntimeError("Results mismatch")
     else:
         logger.info("Results match")
 
