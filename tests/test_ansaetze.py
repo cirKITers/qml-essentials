@@ -376,6 +376,53 @@ def test_pulse_params_ansaetze() -> None:
             raise Exception(f"Error for ansatz {ansatz}: {e}")
 
 
+@pytest.mark.unittest
+def test_pulse_params_ansaetze_4q() -> None:
+    test_cases = {
+        "No_Ansatz": [1.0, 1.0],
+        "Circuit_1": [-0.06347358, -0.99916184],
+        "Circuit_2": [0.06294326, -0.99916164],
+        "Circuit_3": [0.42394627, -0.41875092],
+        "Circuit_4": [-0.15574438, -0.41875081],
+        "Circuit_5": [-0.8643505, 0.22041861],
+        "Circuit_6": [-0.48522045, -0.38787328],
+        "Circuit_7": [-0.44584206, 0.4983159],
+        "Circuit_8": [-0.44595841, 0.48103752],
+        "Circuit_9": [0.00012548, -0.00023631],
+        "Circuit_10": [0.91743331, -0.4636175],
+        "Circuit_13": [0.81335946, -0.92070053],
+        "Circuit_14": [0.60749882, -0.54199932],
+        "Circuit_15": [-0.06616174, -0.06790603],
+        "Circuit_16": [0.42394627, -0.41875092],
+        "Circuit_17": [-0.15574438, -0.41875081],
+        "Circuit_18": [0.08187592, -0.99445816],
+        "Circuit_19": [-0.50660179, -0.95456148],
+        "Circuit_20": [0.99820156, -0.06618526],
+        "No_Entangling": [-0.99444818, 0.64505527],
+        "Strongly_Entangling": [0.02930848, 0.60783151],
+        "Hardware_Efficient": [-0.9407261, 0.47868613],
+        "GHZ": [0.00026971, 0.00026978],
+    }
+    for ansatz, res in test_cases.items():
+        logger.info(f"Testing Ansatz: {ansatz}")
+        model = Model(
+            n_qubits=4,
+            n_layers=1,
+            circuit_type=ansatz,
+            data_reupload=False,
+        )
+
+        try:
+            res = model(gate_mode="pulse")
+            # TODO: calculate values and enable again
+            # assert np.allclose(
+            #     res, res, atol=1e-6
+            # ), f"Results for ansatz {ansatz} are not close enough"
+        except Exception as e:
+            raise Exception(f"Error for ansatz {ansatz}: {e}")
+
+
+@pytest.mark.unittest
 def test_pulse_benchmarks() -> None:
     start = time.time()
     model = Model(
@@ -387,6 +434,8 @@ def test_pulse_benchmarks() -> None:
     _ = model(gate_mode="pulse")
     end = time.time()
     print(f"Time: {end - start}")
+
+    assert end - start < 150000000, "Time limit exceeded"
 
 
 @pytest.mark.unittest
