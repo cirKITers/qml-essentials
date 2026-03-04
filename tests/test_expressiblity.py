@@ -8,6 +8,7 @@ import math
 import pytest
 
 logger = logging.getLogger(__name__)
+
 jax.config.update("jax_enable_x64", True)
 
 

@@ -4,11 +4,13 @@ from qml_essentials.entanglement import Entanglement
 import logging
 import math
 import pytest
-import numpy as np
+import jax
 
 from copy import deepcopy
 
 logger = logging.getLogger(__name__)
+
+jax.config.update("jax_enable_x64", True)
 
 
 def get_test_cases():
@@ -394,7 +396,8 @@ def test_relative_entropy_order() -> None:
 
     assert all(
         entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
-    ), f"Order of entanglement should be {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."
+    ), f"Order of entanglement should be\
+        {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."
 
 
 @pytest.mark.smoketest
@@ -454,7 +457,8 @@ def test_entanglement_of_formation_order() -> None:
 
     assert all(
         entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
-    ), f"Order of entanglement should be {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."
+    ), f"Order of entanglement should be\
+        {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."
 
 
 @pytest.mark.smoketest
@@ -512,4 +516,5 @@ def test_concentratable_entanglement_order() -> None:
 
     assert all(
         entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
-    ), f"Order of entanglement should be {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."
+    ), f"Order of entanglement should be\
+        {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."

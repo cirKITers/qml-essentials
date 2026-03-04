@@ -6,7 +6,7 @@ from pennylane.fourier import coefficients as pcoefficients
 import traceback
 import numpy as np
 import jax.numpy as jnp
-from jax import random
+import jax
 import logging
 import pytest
 from scipy.stats import pearsonr, spearmanr
@@ -15,6 +15,8 @@ from functools import partial
 
 
 logger = logging.getLogger(__name__)
+
+jax.config.update("jax_enable_x64", True)
 
 
 @pytest.mark.unittest
@@ -179,10 +181,10 @@ def test_batch() -> None:
         output_qubit=-1,
     )
 
-    random_key = random.key(1000)
+    random_key = jax.random.key(1000)
 
     model.initialize_params(random_key, repeat=n_samples)
-    random_key, _ = random.split(random_key)
+    random_key, _ = jax.random.split(random_key)
     params = model.params
     coeffs_parallel, _ = Coefficients.get_spectrum(model, shift=True, trim=True)
 
@@ -686,7 +688,7 @@ def test_fourier_series_dataset() -> None:
     seed = 1000
 
     for test_case in test_cases:
-        random_key = random.key(seed)
+        random_key = jax.random.key(seed)
 
         n_input_feat = test_case.pop("n_input_feat", 1)
         coefficients_min = test_case.get("coefficients_min", 0.0)
@@ -717,7 +719,7 @@ def test_fourier_series_dataset() -> None:
                         **test_case,
                     )
                 )
-                random_key, _ = random.split(random_key)
+                random_key, _ = jax.random.split(random_key)
             except Exception as e:
                 tb = traceback.format_exc()
                 raise Exception(
