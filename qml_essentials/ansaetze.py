@@ -791,6 +791,7 @@ class Encoding:
     def get_n_freqs(self, omegas):
         """
         Returns the number of frequencies required for the encoding strategy.
+        This includes positive and negative side.
 
         Parameters
         ----------
