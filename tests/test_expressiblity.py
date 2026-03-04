@@ -2,11 +2,13 @@ from qml_essentials.model import Model
 from qml_essentials.expressibility import Expressibility
 
 import jax.numpy as jnp
+import jax
 import logging
 import math
 import pytest
 
 logger = logging.getLogger(__name__)
+jax.config.update("jax_enable_x64", True)
 
 
 def get_test_cases(layers):
@@ -137,23 +139,14 @@ def test_expressibility(layers) -> None:
             data_reupload=False,
         )
 
-        _, _, z = Expressibility.state_fidelities(
+        # Calculate the mean (over all inputs, if required)
+        kl_dist = Expressibility.kl_divergence_to_haar(
             seed=1000,
             n_bins=75,
             n_samples=5000,
             model=model,
             scale=False,
-        )
-
-        _, y_haar = Expressibility.haar_integral(
-            n_qubits=test_case["n_qubits"],
-            n_bins=75,
-            cache=True,
-            scale=False,
-        )
-
-        # Calculate the mean (over all inputs, if required)
-        kl_dist = Expressibility.kullback_leibler_divergence(z, y_haar).mean()
+        ).mean()
 
         circuit_number = int(test_case["circuit_type"].split("_")[1])
         kl_distances.append((circuit_number, kl_dist.item()))
@@ -167,13 +160,13 @@ def test_expressibility(layers) -> None:
         print(
             f"KL Divergence: {kl_dist},\t"
             + f"Expected Result: {test_case['result']},\t"
-            + f"Error: {(error*100):.1f}%"
+            + f"Error: {(error * 100):.1f}%"
         )
         assert (
             error < tolerance
         ), f"Expressibility of circuit {test_case['circuit_type']} is not\
             {test_case['result']} but {kl_dist} instead.\
-            Deviation {(error*100):.1f}% > {tolerance*100}%"
+            Deviation {(error * 100):.1f}% > {tolerance * 100}%"
 
     references = sorted(
         [
@@ -202,12 +195,10 @@ def test_scaling() -> None:
         circuit_type="Circuit_1",
     )
 
-    _, _, z = Expressibility.state_fidelities(
+    _, z = Expressibility.state_fidelities(
         seed=1000,
         n_bins=4,
         n_samples=10,
-        n_input_samples=0,
-        input_domain=[0, 4 * jnp.pi],
         model=model,
         scale=True,
     )
