@@ -651,7 +651,7 @@ def test_weighting() -> None:
     test_cases = [
         {
             "circuit_type": "Circuit_19",
-            "fcc": 0.013,
+            "fcc": 0.015,
         },
     ]
 

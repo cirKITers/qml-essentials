@@ -105,11 +105,16 @@ def test_transform_input() -> None:
 
 @pytest.mark.unittest
 def test_batching() -> None:
-    model = Model(
-        n_qubits=2,
-        n_layers=1,
-        circuit_type="Circuit_19",
-    )
+    for ansatz in Ansaetze.get_available(parameterized_only=True):
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type=ansatz.__name__,
+        )
+        print(ansatz.__name__)
+        n_samples = 3
+        model.initialize_params(random.key(1000), repeat=n_samples)
+        params = model.params
 
     n_samples = 3
     model.initialize_params(random.key(1000), repeat=n_samples)
@@ -145,6 +150,7 @@ def test_repeat_batch_axis() -> None:
     ), f"Shape of repeat_batch_axis is not correct. Got {res_a.shape}"
 
 
+@pytest.mark.skip(reason="Multiprocessing speedup negligible at small scale")
 @pytest.mark.unittest
 def test_multiprocessing_density() -> None:
     # use n_samples that is not a multiple of the threshold

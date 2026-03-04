@@ -468,13 +468,13 @@ def test_entanglement_of_formation() -> None:
 
     separable_ent = Entanglement.entanglement_of_formation(
         separable_model,
-        n_samples=10,
+        n_samples=500,
         seed=1000,
         noise_params={"Depolarizing": 0.01},
     )
     entangled_ent = Entanglement.entanglement_of_formation(
         entangled_model,
-        n_samples=10,
+        n_samples=500,
         seed=1000,
         noise_params={"Depolarizing": 0.01},
     )
