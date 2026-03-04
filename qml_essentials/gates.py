@@ -215,8 +215,8 @@ class UnitaryGates:
 
     @staticmethod
     def PauliRot(
-        pauli: str,
         theta: float,
+        pauli: str,
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
@@ -229,8 +229,8 @@ class UnitaryGates:
         gate errors and noise channels.
 
         Args:
-            pauli (str): Pauli operator to apply. Must be "X", "Y", or "Z".
             theta (Union[float, jnp.ndarray, List[float]]): Second rotation angle.
+            pauli (str): Pauli operator to apply. Must be "X", "Y", or "Z".
             wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
                 Supports BitFlip, PhaseFlip, Depolarizing, and GateError.
@@ -242,7 +242,7 @@ class UnitaryGates:
         """
         if noise_params is not None and "GateError" in noise_params:
             theta, random_key = UnitaryGates.GateError(theta, noise_params, random_key)
-        op.PauliRot(pauli, theta, wires=wires, input_idx=input_idx)
+        op.PauliRot(theta, pauli, wires=wires, input_idx=input_idx)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
