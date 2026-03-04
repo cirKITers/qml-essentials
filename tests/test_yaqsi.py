@@ -40,6 +40,12 @@ from qml_essentials.operations import (
     ThermalRelaxationError,
 )
 from qml_essentials.math import fidelity, trace_distance, phase_difference
+from qml_essentials.gates import (
+    PulseEnvelope,
+    PulseInformation,
+    PulseGates,
+    PulseParams,
+)
 
 import logging
 
@@ -2062,3 +2068,274 @@ def test_phase_difference_2qubit():
     result = phase_difference(sv0, sv1)
     expected = jnp.angle(jnp.vdot(sv0, sv1))
     assert jnp.allclose(result, expected, atol=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# Pulse envelope tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unittest
+def test_pulse_envelope_available():
+    """All expected envelope names are registered."""
+    names = PulseEnvelope.available()
+    for expected in ["gaussian", "square", "cosine", "drag", "sech"]:
+        assert expected in names, f"'{expected}' missing from PulseEnvelope.available()"
+
+
+@pytest.mark.unittest
+def test_pulse_envelope_get_valid():
+    """get() returns metadata dict with required keys."""
+    for name in PulseEnvelope.available():
+        info = PulseEnvelope.get(name)
+        assert "fn" in info
+        assert "n_envelope_params" in info
+        assert "defaults" in info
+        assert callable(info["fn"])
+        for gate in ["RX", "RY", "RZ", "CZ"]:
+            assert gate in info["defaults"], (
+                f"Missing default for gate '{gate}' in envelope '{name}'"
+            )
+
+
+@pytest.mark.unittest
+def test_pulse_envelope_get_invalid():
+    """get() raises ValueError for unknown envelope names."""
+    with pytest.raises(ValueError, match="Unknown pulse envelope"):
+        PulseEnvelope.get("nonexistent_envelope")
+
+
+@pytest.mark.unittest
+def test_pulse_envelope_functions_callable():
+    """Each envelope function runs without error for typical inputs."""
+    t = 0.5
+    t_c = 0.25
+    test_args = {
+        "gaussian": jnp.array([1.0, 0.5]),
+        "square": jnp.array([1.0, 0.5]),
+        "cosine": jnp.array([1.0, 0.5]),
+        "drag": jnp.array([1.0, 0.5, 0.1]),
+        "sech": jnp.array([1.0, 0.5]),
+    }
+    for name, p in test_args.items():
+        fn = PulseEnvelope.get(name)["fn"]
+        result = fn(p, t, t_c)
+        assert jnp.isfinite(result), f"Envelope '{name}' returned non-finite value"
+
+
+@pytest.mark.unittest
+def test_pulse_envelope_gaussian_peak():
+    """Gaussian envelope peaks at t == t_c."""
+    A, sigma = 2.0, 1.0
+    p = jnp.array([A, sigma])
+    t_c = 0.5
+    val_at_center = PulseEnvelope.gaussian(p, t_c, t_c)
+    val_off_center = PulseEnvelope.gaussian(p, t_c + 2 * sigma, t_c)
+    assert jnp.isclose(val_at_center, A, atol=1e-10)
+    assert val_off_center < val_at_center
+
+
+@pytest.mark.unittest
+def test_pulse_envelope_sech_peak():
+    """Sech envelope peaks at t == t_c."""
+    A, sigma = 3.0, 1.0
+    p = jnp.array([A, sigma])
+    t_c = 0.5
+    val_at_center = PulseEnvelope.sech(p, t_c, t_c)
+    val_off_center = PulseEnvelope.sech(p, t_c + 2 * sigma, t_c)
+    assert jnp.isclose(val_at_center, A, atol=1e-10)
+    assert val_off_center < val_at_center
+
+
+@pytest.mark.unittest
+def test_pulse_envelope_drag_reduces_to_gaussian():
+    """DRAG with beta=0 reduces to Gaussian."""
+    A, sigma = 2.0, 1.0
+    p_gauss = jnp.array([A, sigma])
+    p_drag = jnp.array([A, sigma, 0.0])
+    t, t_c = 0.3, 0.5
+    g = PulseEnvelope.gaussian(p_gauss, t, t_c)
+    d = PulseEnvelope.drag(p_drag, t, t_c)
+    assert jnp.isclose(g, d, atol=1e-10)
+
+
+@pytest.mark.unittest
+def test_build_coeff_fns_unique_code():
+    """build_coeff_fns for different envelopes produces different outputs."""
+    omega_c = PulseGates.omega_c
+    sx_g, sy_g = PulseEnvelope.build_coeff_fns(PulseEnvelope.gaussian, omega_c)
+    sx_d, sy_d = PulseEnvelope.build_coeff_fns(PulseEnvelope.drag, omega_c)
+    # Pick t where neither carrier cos(ω·t+π) nor cos(ω·t-π/2) vanishes.
+    # ω_c = 10π, so avoid t = k/20 ± 1/40 (carrier zeros).
+    p_gauss = jnp.array([1.0, 1.0, 1.0])  # [A, sigma, w]
+    p_drag = jnp.array([1.0, 1.0, 0.5, 1.0])  # [A, sigma, beta, w]
+    t = 0.123
+    # Different envelopes → different coefficient values
+    assert not jnp.allclose(sx_g(p_gauss, t), sx_d(p_drag, t))
+    assert not jnp.allclose(sy_g(p_gauss, t), sy_d(p_drag, t))
+    # Sx and Sy from the same build differ (different carrier phases)
+    assert not jnp.allclose(sx_g(p_gauss, t), sy_g(p_gauss, t))
+
+
+@pytest.mark.unittest
+def test_pulse_information_set_envelope():
+    """set_envelope updates PulseInformation and PulseGates state."""
+    # Save original state
+    original_envelope = PulseInformation.get_envelope()
+
+    try:
+        PulseInformation.set_envelope("drag")
+        assert PulseInformation.get_envelope() == "drag"
+        assert PulseGates._active_envelope == "drag"
+        # DRAG has 3 envelope params → RX defaults should have 4 elements
+        # (3 env + 1 time)
+        assert len(PulseInformation.RX.params) == 4
+
+        PulseInformation.set_envelope("gaussian")
+        assert PulseInformation.get_envelope() == "gaussian"
+        assert PulseGates._active_envelope == "gaussian"
+        # Gaussian has 2 envelope params → RX defaults should have 3 elements
+        assert len(PulseInformation.RX.params) == 3
+    finally:
+        # Restore
+        PulseInformation.set_envelope(original_envelope)
+
+
+@pytest.mark.unittest
+def test_pulse_information_set_envelope_invalid():
+    """set_envelope raises ValueError for unknown names."""
+    with pytest.raises(ValueError, match="Unknown pulse envelope"):
+        PulseInformation.set_envelope("banana")
+
+
+@pytest.mark.unittest
+def test_pulse_information_param_counts_per_envelope():
+    """Parameter counts for composite gates update when envelope changes."""
+    original = PulseInformation.get_envelope()
+    try:
+        for name in PulseEnvelope.available():
+            PulseInformation.set_envelope(name)
+            info = PulseEnvelope.get(name)
+            # RX params = n_envelope_params + 1 (time)
+            expected_rx = info["n_envelope_params"] + 1
+            assert len(PulseInformation.RX.params) == expected_rx, (
+                f"RX param count wrong for envelope '{name}': "
+                f"expected {expected_rx}, got {len(PulseInformation.RX.params)}"
+            )
+            # H = RZ + RY → sum of their param counts
+            expected_h = len(PulseInformation.RZ.params) + len(
+                PulseInformation.RY.params
+            )
+            assert PulseInformation.H.size == expected_h, (
+                f"H param count wrong for envelope '{name}'"
+            )
+    finally:
+        PulseInformation.set_envelope(original)
+
+
+@pytest.mark.unittest
+def test_pulse_rx_gaussian_fidelity():
+    """PulseGates.RX with gaussian envelope produces correct state."""
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope("gaussian")
+        w = jnp.pi / 4
+
+        def pulse_circuit(w, pp):
+            PulseGates.RX(w, wires=0, pulse_params=pp)
+
+        def target_circuit(w):
+            from qml_essentials.operations import RX as OpRX
+
+            OpRX(w, wires=0)
+
+        pulse_script = Script(pulse_circuit, n_qubits=1)
+        target_script = Script(target_circuit, n_qubits=1)
+
+        state_pulse = pulse_script.execute(
+            type="state", args=(w, PulseInformation.RX.params)
+        )
+        state_target = target_script.execute(type="state", args=(w,))
+
+        f = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
+        assert f <= 1.0 + 1e-6
+        assert np.isclose(f, 1.0, atol=1e-2), f"Fidelity too low: {f}"
+    finally:
+        PulseInformation.set_envelope(original)
+
+
+@pytest.mark.unittest
+@pytest.mark.parametrize("envelope", PulseEnvelope.available())
+def test_pulse_rz_all_envelopes(envelope):
+    """PulseGates.RZ produces correct state for every registered envelope.
+
+    RZ is a virtual-Z gate (no physical pulse), so it should work
+    identically regardless of envelope.
+    """
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope(envelope)
+        w = jnp.pi / 3
+
+        def pulse_circuit(w, pp):
+            PulseGates.RZ(w, wires=0, pulse_params=pp)
+
+        def target_circuit(w):
+            from qml_essentials.operations import RZ as OpRZ
+
+            OpRZ(w, wires=0)
+
+        pulse_script = Script(pulse_circuit, n_qubits=1)
+        target_script = Script(target_circuit, n_qubits=1)
+
+        state_pulse = pulse_script.execute(
+            type="state", args=(w, PulseInformation.RZ.params)
+        )
+        state_target = target_script.execute(type="state", args=(w,))
+
+        f = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
+        assert np.isclose(f, 1.0, atol=1e-2), (
+            f"RZ fidelity too low for envelope '{envelope}': {f}"
+        )
+    finally:
+        PulseInformation.set_envelope(original)
+
+
+@pytest.mark.unittest
+def test_set_envelope_updates_coeff_fns():
+    """Switching envelope actually changes the coefficient function outputs."""
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope("gaussian")
+        sx_gaussian = PulseGates._coeff_Sx
+
+        PulseInformation.set_envelope("sech")
+        sx_sech = PulseGates._coeff_Sx
+
+        # The coefficient functions must be different objects
+        assert sx_gaussian is not sx_sech
+        # And produce different numerical results
+        p = jnp.array([1.0, 1.0, 1.0])  # [A, sigma, w]
+        t = 0.3
+        assert not jnp.allclose(sx_gaussian(p, t), sx_sech(p, t))
+    finally:
+        PulseInformation.set_envelope(original)
+
+
+@pytest.mark.unittest
+def test_set_envelope_roundtrip():
+    """Switching away and back restores the same parameter values."""
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope("gaussian")
+        rx_params_before = PulseInformation.RX.params.copy()
+        rx_len_before = len(rx_params_before)
+
+        PulseInformation.set_envelope("drag")
+        # DRAG has different param count, so length must differ
+        assert len(PulseInformation.RX.params) != rx_len_before
+
+        PulseInformation.set_envelope("gaussian")
+        assert jnp.allclose(PulseInformation.RX.params, rx_params_before)
+    finally:
+        PulseInformation.set_envelope(original)

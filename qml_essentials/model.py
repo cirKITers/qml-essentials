@@ -41,6 +41,7 @@ class Model:
         random_seed: int = 1000,
         remove_zero_encoding: bool = True,
         repeat_batch_axis: List[bool] = [True, True, True],
+        pulse_shape: str = "gaussian",
     ) -> None:
         """
         Initialize the quantum circuit model.
@@ -87,6 +88,9 @@ class Model:
                 Defaults to 1000.
             remove_zero_encoding (bool, optional): whether to
                 remove the zero encoding from the circuit. Defaults to True.
+            pulse_shape (str, optional): Pulse envelope shape for pulse-level
+                simulation. One of ``PulseEnvelope.available()``.
+                Defaults to ``"gaussian"``.
 
         Returns:
             None
@@ -101,6 +105,9 @@ class Model:
         self.trainable_frequencies: bool = trainable_frequencies
         self.execution_type: str = "expval"
         self.repeat_batch_axis: List[bool] = repeat_batch_axis
+
+        # --- Pulse envelope ---
+        pinfo.set_envelope(pulse_shape)
 
         # --- State Preparation ---
         try:

@@ -743,42 +743,229 @@ class PulseParams:
             return s_params
 
 
+class PulseEnvelope:
+    """Registry of pulse envelope shapes.
+
+    Each envelope is a pure function ``(p, t, t_c) -> amplitude`` that
+    computes the pulse envelope *without* carrier modulation.  The carrier
+    ``cos(omega_c * t + phi_c)`` is applied separately in the coefficient
+    functions built by :meth:`build_coeff_fns`.
+
+    Attributes:
+        REGISTRY: Mapping from envelope name to metadata dict containing
+            ``fn`` (callable), ``n_envelope_params`` (int), and per-gate
+            default parameter arrays.
+    """
+
+    @staticmethod
+    def gaussian(p, t, t_c):
+        """Gaussian envelope. ``p = [A, sigma]``."""
+        A, sigma = p[0], p[1]
+        return A * jnp.exp(-0.5 * ((t - t_c) / sigma) ** 2)
+
+    @staticmethod
+    def square(p, t, t_c):
+        """Rectangular envelope. ``p = [A, width]``."""
+        A, width = p[0], p[1]
+        return A * (jnp.abs(t - t_c) <= width / 2)
+
+    @staticmethod
+    def cosine(p, t, t_c):
+        """Raised cosine envelope. ``p = [A, width]``."""
+        A, width = p[0], p[1]
+        x = jnp.clip((t - t_c) / width, -0.5, 0.5)
+        return A * jnp.cos(jnp.pi * x)
+
+    @staticmethod
+    def drag(p, t, t_c):
+        """DRAG (Derivative Removal by Adiabatic Gate). ``p = [A, sigma, beta]``."""
+        A, sigma, beta = p[0], p[1], p[2]
+        g = A * jnp.exp(-0.5 * ((t - t_c) / sigma) ** 2)
+        dg = g * (-(t - t_c) / sigma**2)
+        return g + beta * dg
+
+    @staticmethod
+    def sech(p, t, t_c):
+        """Hyperbolic secant envelope. ``p = [A, sigma]``."""
+        A, sigma = p[0], p[1]
+        return A / jnp.cosh((t - t_c) / sigma)
+
+    # ``n_envelope_params`` counts only the envelope parameters (excluding
+    # the evolution time ``t`` which is always the last element of the full
+    # pulse parameter vector).
+    REGISTRY = {
+        "gaussian": {
+            "fn": gaussian.__func__,
+            "n_envelope_params": 2,
+            "defaults": {
+                "RX": jnp.array(
+                    [15.917705975121452, 29.72253135127928, 0.7551576189610215]
+                ),
+                "RY": jnp.array(
+                    [7.855362198639627, 21.96253607741858, 1.100281557726808]
+                ),
+                "RZ": jnp.array([0.49999999899901876]),
+                "CZ": jnp.array([0.3182752540123598]),
+            },
+        },
+        "square": {
+            "fn": square.__func__,
+            "n_envelope_params": 2,
+            "defaults": {
+                "RX": jnp.array([1.0, 1.0, 1.0]),
+                "RY": jnp.array([1.0, 1.0, 1.0]),
+                "RZ": jnp.array([0.5]),
+                "CZ": jnp.array([0.318]),
+            },
+        },
+        "cosine": {
+            "fn": cosine.__func__,
+            "n_envelope_params": 2,
+            "defaults": {
+                "RX": jnp.array([1.0, 1.0, 1.0]),
+                "RY": jnp.array([1.0, 1.0, 1.0]),
+                "RZ": jnp.array([0.5]),
+                "CZ": jnp.array([0.318]),
+            },
+        },
+        "drag": {
+            "fn": drag.__func__,
+            "n_envelope_params": 3,
+            "defaults": {
+                "RX": jnp.array([1.0, 1.0, 0.1, 1.0]),
+                "RY": jnp.array([1.0, 1.0, 0.1, 1.0]),
+                "RZ": jnp.array([0.5]),
+                "CZ": jnp.array([0.318]),
+            },
+        },
+        "sech": {
+            "fn": sech.__func__,
+            "n_envelope_params": 2,
+            "defaults": {
+                "RX": jnp.array([1.0, 1.0, 1.0]),
+                "RY": jnp.array([1.0, 1.0, 1.0]),
+                "RZ": jnp.array([0.5]),
+                "CZ": jnp.array([0.318]),
+            },
+        },
+    }
+
+    @staticmethod
+    def available() -> List[str]:
+        """Return list of registered envelope names."""
+        return list(PulseEnvelope.REGISTRY.keys())
+
+    @staticmethod
+    def get(name: str) -> dict:
+        """Look up envelope metadata by name.
+
+        Raises:
+            ValueError: If *name* is not registered.
+        """
+        if name not in PulseEnvelope.REGISTRY:
+            raise ValueError(
+                f"Unknown pulse envelope '{name}'. "
+                f"Available: {PulseEnvelope.available()}"
+            )
+        return PulseEnvelope.REGISTRY[name]
+
+    @staticmethod
+    def build_coeff_fns(envelope_fn, omega_c):
+        """Build ``(coeff_Sx, coeff_Sy)`` for a given envelope function.
+
+        Each returned function has a unique ``__code__`` object so that
+        the yaqsi JIT solver cache (keyed on ``id(coeff_fn.__code__)``)
+        assigns a separate compiled XLA program per envelope shape.
+
+        The rotation angle ``w`` is expected as the **last** element of the
+        parameter array ``p`` (i.e. ``p[-1]``).  Envelope parameters occupy
+        ``p[:-1]`` (excluding the evolution-time element that is passed
+        separately to ``ys.evolve``).
+
+        Args:
+            envelope_fn: Pure envelope function ``(p, t, t_c) -> scalar``.
+            omega_c: Carrier frequency.
+
+        Returns:
+            Tuple of ``(coeff_Sx, coeff_Sy)``.
+        """
+
+        def _coeff_Sx(p, t):
+            t_c = t / 2
+            env = envelope_fn(p, t, t_c)
+            carrier = jnp.cos(omega_c * t + jnp.pi)
+            return env * carrier * p[-1]
+
+        def _coeff_Sy(p, t):
+            t_c = t / 2
+            env = envelope_fn(p, t, t_c)
+            carrier = jnp.cos(omega_c * t - jnp.pi / 2)
+            return env * carrier * p[-1]
+
+        return _coeff_Sx, _coeff_Sy
+
+
 class PulseInformation:
+    """Stores pulse parameter counts and optimized pulse parameters.
+
+    Call :meth:`set_envelope` to switch the active pulse shape.  This
+    rebuilds all :class:`PulseParams` trees so that parameter counts
+    and defaults match the selected envelope.
     """
-    Stores pulse parameter counts and optimized pulse parameters for quantum Gates.
-    """
 
-    RX = PulseParams(
-        name="RX",
-        params=jnp.array([15.917705975121452, 29.72253135127928, 0.7551576189610215]),
-    )
-    RY = PulseParams(
-        name="RY",
-        params=jnp.array([7.855362198639627, 21.96253607741858, 1.100281557726808]),
-    )
-    RZ = PulseParams(name="RZ", params=jnp.array([0.49999999899901876]))
-    CZ = PulseParams(name="CZ", params=jnp.array([0.3182752540123598]))
-    H = PulseParams(
-        name="H",
-        pulse_obj=[RZ, RY],
-    )
+    _envelope: str = "gaussian"
 
-    # Rot = PulseParams(name=Gates.Rot, pulse_obj=[RZ, RY, RZ])
-    CX = PulseParams(name="CX", pulse_obj=[H, CZ, H])
-    CY = PulseParams(name="CY", pulse_obj=[RZ, CX, RZ])
+    @classmethod
+    def _build_leaf_gates(cls):
+        """(Re-)create leaf PulseParams from the active envelope defaults."""
+        defaults = PulseEnvelope.get(cls._envelope)["defaults"]
+        cls.RX = PulseParams(name="RX", params=defaults["RX"])
+        cls.RY = PulseParams(name="RY", params=defaults["RY"])
+        cls.RZ = PulseParams(name="RZ", params=defaults["RZ"])
+        cls.CZ = PulseParams(name="CZ", params=defaults["CZ"])
 
-    CRX = PulseParams(name="CRX", pulse_obj=[RZ, RY, CX, RY, CX, RZ])
-    CRY = PulseParams(name="CRY", pulse_obj=[RY, CX, RY, CX])
-    CRZ = PulseParams(name="CRZ", pulse_obj=[RZ, CX, RZ, CX])
+    @classmethod
+    def _build_composite_gates(cls):
+        """(Re-)create composite PulseParams trees from current leaves."""
+        cls.H = PulseParams(name="H", pulse_obj=[cls.RZ, cls.RY])
+        cls.CX = PulseParams(name="CX", pulse_obj=[cls.H, cls.CZ, cls.H])
+        cls.CY = PulseParams(name="CY", pulse_obj=[cls.RZ, cls.CX, cls.RZ])
+        cls.CRX = PulseParams(
+            name="CRX", pulse_obj=[cls.RZ, cls.RY, cls.CX, cls.RY, cls.CX, cls.RZ]
+        )
+        cls.CRY = PulseParams(name="CRY", pulse_obj=[cls.RY, cls.CX, cls.RY, cls.CX])
+        cls.CRZ = PulseParams(name="CRZ", pulse_obj=[cls.RZ, cls.CX, cls.RZ, cls.CX])
+        cls.Rot = PulseParams(name="Rot", pulse_obj=[cls.RZ, cls.RY, cls.RZ])
+        cls.unique_gate_set = [cls.RX, cls.RY, cls.RZ, cls.CZ]
 
-    Rot = PulseParams(name="Rot", pulse_obj=[RZ, RY, RZ])
+    @classmethod
+    def set_envelope(cls, name: str) -> None:
+        """Switch pulse envelope and rebuild all PulseParams trees.
 
-    unique_gate_set = [
-        RX,
-        RY,
-        RZ,
-        CZ,
-    ]
+        Also updates the coefficient functions used by :class:`PulseGates`.
+
+        Args:
+            name: One of :meth:`PulseEnvelope.available`.
+        """
+        info = PulseEnvelope.get(name)  # validates name
+        cls._envelope = name
+        cls._build_leaf_gates()
+        cls._build_composite_gates()
+
+        # Rebuild coefficient functions on PulseGates
+        coeff_Sx, coeff_Sy = PulseEnvelope.build_coeff_fns(
+            info["fn"], PulseGates.omega_c
+        )
+        PulseGates._coeff_Sx = staticmethod(coeff_Sx)
+        PulseGates._coeff_Sy = staticmethod(coeff_Sy)
+        PulseGates._active_envelope = name
+
+        log.info(f"Pulse envelope set to '{name}'")
+
+    @classmethod
+    def get_envelope(cls) -> str:
+        """Return the name of the active pulse envelope."""
+        return cls._envelope
 
     @staticmethod
     def gate_by_name(gate):
@@ -820,30 +1007,27 @@ class PulseInformation:
             gate.params = jax.random.uniform(sub_key, (len(gate),))
 
 
+# Initialise PulseInformation with default (gaussian) envelope
+PulseInformation._build_leaf_gates()
+PulseInformation._build_composite_gates()
+
+
 class PulseGates:
-    """
-    Pulse-level implementations of quantum gates.
+    """Pulse-level implementations of quantum gates.
 
     Implements quantum gates using time-dependent Hamiltonians and pulse
     sequences, following the approach from https://doi.org/10.5445/IR/1000184129.
-    Gates are decomposed using shaped Gaussian pulses with carrier modulation.
-
-    .. warning::
-        PulseGates currently rely on PennyLane's time-dependent ``evolve`` API
-        (``qml.evolve``) which has not been migrated to the yaqsi simulator
-        yet. Pulse mode is **not functional** until a time-dependent
-        Hamiltonian solver is implemented in yaqsi.
+    The active pulse envelope is selected via
+    :meth:`PulseInformation.set_envelope`.
 
     Attributes:
-        omega_q (float): Qubit frequency (10π).
-        omega_c (float): Carrier frequency (10π).
-        H_static (jnp.ndarray): Static Hamiltonian in qubit rotating frame.
-        Id, X, Y, Z (jnp.ndarray): Pauli matrices for gate construction.
+        omega_q: Qubit frequency (10π).
+        omega_c: Carrier frequency (10π).
+        _active_envelope: Name of the currently active envelope shape.
     """
 
     # NOTE: Implementation of S, RX, RY, RZ, CZ, CNOT/CX and H pulse level
     #   gates closely follow https://doi.org/10.5445/IR/1000184129
-    # TODO: Mention deviations from the above?
     omega_q = 10 * jnp.pi
     omega_c = 10 * jnp.pi
 
@@ -857,8 +1041,6 @@ class PulseGates:
     Z = jnp.array([[1, 0], [0, -1]])
 
     # Pre-computed interaction-picture Hamiltonians (H_static† @ P @ H_static).
-    # These are constants reused by every RX/RY call — computing them once
-    # avoids two JAX matmul dispatches per primitive pulse gate.
     _H_X = H_static.conj().T @ X @ H_static
     _H_Y = H_static.conj().T @ Y @ H_static
 
@@ -870,25 +1052,23 @@ class PulseGates:
     # Pre-computed H correction Hamiltonian: (π/2) I
     _H_corr = jnp.pi / 2 * jnp.eye(2, dtype=jnp.complex64)
 
-    # -- Module-level coefficient functions for pulse shapes ---------------
-    # Defining these as static methods (rather than nested closures) ensures
-    # that all gates of the same type share the same function object.  This
-    # enables the JIT solver cache in _evolve_parametrized to reuse a single
-    # compiled XLA program across all RX/RY/RZ/etc. calls, avoiding
-    # O(n_gates) JIT compilations.
-    #
-    # Rotation angle `w` is passed as the third element of `p` (the params
-    # tuple) instead of being captured in a closure.
+    _active_envelope: str = "gaussian"
 
     @staticmethod
     def _coeff_Sx(p, t):
-        """Coefficient function for RX pulse: Sx(p,t) * w."""
-        return PulseGates._S(p, t, phi_c=jnp.pi) * p[2]
+        """Coefficient function for RX pulse (active envelope)."""
+        t_c = t / 2
+        env = PulseEnvelope.gaussian(p, t, t_c)
+        carrier = jnp.cos(PulseGates.omega_c * t + jnp.pi)
+        return env * carrier * p[-1]
 
     @staticmethod
     def _coeff_Sy(p, t):
-        """Coefficient function for RY pulse: Sy(p,t) * w."""
-        return PulseGates._S(p, t, phi_c=-jnp.pi / 2) * p[2]
+        """Coefficient function for RY pulse (active envelope)."""
+        t_c = t / 2
+        env = PulseEnvelope.gaussian(p, t, t_c)
+        carrier = jnp.cos(PulseGates.omega_c * t - jnp.pi / 2)
+        return env * carrier * p[-1]
 
     @staticmethod
     def _coeff_Sz(p, t):
@@ -904,37 +1084,6 @@ class PulseGates:
     def _coeff_Scz(p, t):
         """Coefficient function for CZ pulse."""
         return p * jnp.pi
-
-    @staticmethod
-    def _S(
-        p: Union[List[float], jnp.ndarray],
-        t: Union[float, List[float], jnp.ndarray],
-        phi_c: float,
-    ) -> jnp.ndarray:
-        """
-        Generate shaped Gaussian pulse envelope with carrier modulation.
-
-        Internal helper function for creating time-dependent pulse shapes
-        used in rotation gates. Not intended for direct circuit use.
-
-        Args:
-            p (Union[List[float], jnp.ndarray]): Pulse parameters [A, sigma]:
-                - A (float): Amplitude of the Gaussian envelope
-                - sigma (float): Width (standard deviation) of the Gaussian
-            t (Union[float, List[float], jnp.ndarray]): Time or time interval
-                for pulse application. If sequence, center is computed as midpoint.
-            phi_c (float): Phase offset for the cosine carrier.
-
-        Returns:
-            jnp.ndarray: Shaped pulse amplitude at time(s) t.
-        """
-        A, sigma = p[0], p[1]
-        t_c = (t[0] + t[1]) / 2 if isinstance(t, (list, tuple)) else t / 2
-
-        f = A * jnp.exp(-0.5 * ((t - t_c) / sigma) ** 2)
-        x = jnp.cos(PulseGates.omega_c * t + phi_c)
-
-        return f * x
 
     @staticmethod
     def Rot(
@@ -1001,32 +1150,23 @@ class PulseGates:
         wires: Union[int, List[int]],
         pulse_params: Optional[jnp.ndarray] = None,
     ) -> None:
-        """
-        Apply X-axis rotation using pulse-level implementation.
-
-        Implements RX rotation using a shaped Gaussian pulse with optimized
-        envelope parameters.
+        """Apply X-axis rotation using the active pulse envelope.
 
         Args:
-            w (float): Rotation angle in radians.
-            wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
-            pulse_params (Optional[jnp.ndarray]): Array containing pulse parameters
-                [A, sigma, t] for the Gaussian envelope. If None, uses optimized
-                parameters.
-
-        Returns:
-            None: Gate is applied in-place to the circuit.
+            w: Rotation angle in radians.
+            wires: Qubit index or indices.
+            pulse_params: Envelope parameters ``[env_0, ..., env_n, t]``.
+                If ``None``, uses optimized defaults.
         """
         pulse_params = PulseInformation.RX.split_params(pulse_params)
 
         _H = op.Hermitian(PulseGates._H_X, wires=wires, record=False)
         H_eff = PulseGates._coeff_Sx * _H
 
-        # Pack w into the params so the coefficient function doesn't need
-        # a closure — this enables JIT solver cache sharing across all RX calls.
-        ys.evolve(H_eff)(
-            [jnp.array([pulse_params[0], pulse_params[1], w])], pulse_params[2]
-        )
+        # Pack: [envelope_params..., w] — evolution time is the last element
+        # of pulse_params (pulse_params[-1]).
+        env_params = jnp.array([*pulse_params[:-1], w])
+        ys.evolve(H_eff)([env_params], pulse_params[-1])
 
     @staticmethod
     def RY(
@@ -1034,21 +1174,13 @@ class PulseGates:
         wires: Union[int, List[int]],
         pulse_params: Optional[jnp.ndarray] = None,
     ) -> None:
-        """
-        Apply Y-axis rotation using pulse-level implementation.
-
-        Implements RY rotation using a shaped Gaussian pulse with optimized
-        envelope parameters.
+        """Apply Y-axis rotation using the active pulse envelope.
 
         Args:
-            w (float): Rotation angle in radians.
-            wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
-            pulse_params (Optional[jnp.ndarray]): Array containing pulse parameters
-                [A, sigma, t] for the Gaussian envelope. If None, uses optimized
-                parameters.
-
-        Returns:
-            None: Gate is applied in-place to the circuit.
+            w: Rotation angle in radians.
+            wires: Qubit index or indices.
+            pulse_params: Envelope parameters ``[env_0, ..., env_n, t]``.
+                If ``None``, uses optimized defaults.
         """
         pulse_params = PulseInformation.RY.split_params(pulse_params)
 
@@ -1057,9 +1189,8 @@ class PulseGates:
 
         # Pack w into the params so the coefficient function doesn't need
         # a closure — this enables JIT solver cache sharing across all RY calls.
-        ys.evolve(H_eff)(
-            [jnp.array([pulse_params[0], pulse_params[1], w])], pulse_params[2]
-        )
+        env_params = jnp.array([*pulse_params[:-1], w])
+        ys.evolve(H_eff)([env_params], pulse_params[-1])
 
     @staticmethod
     def RZ(
