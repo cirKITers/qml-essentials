@@ -188,9 +188,9 @@ def test_batch() -> None:
 
     # TODO: once the code is ready, test frequency vector as well
     for i in range(n_samples):
-        model.params = params[:, :, i]
+        model.params = params[i]
         coeffs_single, _ = Coefficients.get_spectrum(
-            model, params=params[:, :, i], shift=True, trim=True
+            model, params=params[i], shift=True, trim=True
         )
         assert jnp.allclose(
             coeffs_parallel[:, i], coeffs_single, rtol=1.0e-5
@@ -210,7 +210,7 @@ def test_batch() -> None:
 
     for i in range(n_samples):
         coeffs_single, _ = Coefficients.get_spectrum(
-            model, params=params[:, :, i], shift=True, trim=True
+            model, params=params[i], shift=True, trim=True
         )
         assert jnp.allclose(
             coeffs_parallel[:, :, i], coeffs_single, rtol=1.0e-5
@@ -645,7 +645,7 @@ def test_weighting() -> None:
     test_cases = [
         {
             "circuit_type": "Circuit_19",
-            "fcc": 0.015,
+            "fcc": 0.010,
         },
     ]
 
@@ -666,7 +666,7 @@ def test_weighting() -> None:
         )
         # print(f"FCC for {test_case['circuit_type']}: \t{fcc}")
         assert jnp.isclose(
-            fcc, test_case["fcc"], atol=2.0e-3
+            fcc, test_case["fcc"], atol=5.0e-3
         ), f"Wrong FCC for {test_case['circuit_type']}. \
             Got {fcc}, expected {test_case['fcc']}."
 

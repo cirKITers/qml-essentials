@@ -447,7 +447,7 @@ def test_entanglement_of_formation_order() -> None:
 
         ent = Entanglement.entanglement_of_formation(
             model,
-            n_samples=100,
+            n_samples=500,
             seed=1000,
         )
         entanglement.append(ent)
@@ -505,7 +505,7 @@ def test_concentratable_entanglement_order() -> None:
 
         ent = Entanglement.concentratable_entanglement(
             model,
-            n_samples=100,
+            n_samples=500,
             seed=1000,
         )
         entanglement.append(ent)

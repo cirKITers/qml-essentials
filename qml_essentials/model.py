@@ -240,7 +240,7 @@ class Model:
         self.random_key = self.initialize_params(random.key(random_seed))
 
         # Initializing pulse params
-        self.pulse_params: jnp.ndarray = jnp.ones((*self._pulse_params_shape, 1))
+        self.pulse_params: jnp.ndarray = jnp.ones((1, *self._pulse_params_shape))
 
         log.info(f"Initialized pulse parameters with shape {self.pulse_params.shape}.")
 
@@ -460,7 +460,7 @@ class Model:
     def params(self, value: jnp.ndarray) -> None:
         """Set the variational parameters, ensuring batch dimension exists."""
         if len(value.shape) == 2:
-            value = value.reshape(*value.shape, 1)
+            value = value.reshape(1, *value.shape)
 
         self._params = value
 
@@ -545,7 +545,7 @@ class Model:
             Exception: If an invalid initialization method is specified.
         """
         # Initializing params
-        params_shape = (*self._params_shape, repeat)
+        params_shape = (repeat, *self._params_shape)
 
         # use existing strategy if not specified
         initialization = initialization or self._inialization_strategy
@@ -566,8 +566,8 @@ class Model:
                 )
             else:
                 np_params = np.array(params)
-                np_params[:, indices[0] : indices[1] : indices[2]] = (
-                    np.ones_like(params[:, indices[0] : indices[1] : indices[2]])
+                np_params[:, :, indices[0] : indices[1] : indices[2]] = (
+                    np.ones_like(params[:, :, indices[0] : indices[1] : indices[2]])
                     * value
                 )
                 params = jnp.array(np_params)
@@ -730,8 +730,8 @@ class Model:
             that would normally be passed through the forward method.
         """
         # TODO: rework and double check params shape
-        if len(params.shape) > 2 and params.shape[2] == 1:
-            params = params[:, :, 0]
+        if len(params.shape) > 2 and params.shape[0] == 1:
+            params = params[0]
 
         if len(inputs.shape) > 1 and inputs.shape[0] == 1:
             inputs = inputs[0]
@@ -755,6 +755,10 @@ class Model:
                     RuntimeWarning,
                 )
             pulse_params = self.pulse_params
+
+        # Squeeze batch dimension for pulse_params (batch-first convention)
+        if len(pulse_params.shape) > 2 and pulse_params.shape[0] == 1:
+            pulse_params = pulse_params[0]
 
         if noise_params is None:
             if self.noise_params is not None:
@@ -959,7 +963,7 @@ class Model:
 
         with recording() as tape:
             self._variational(
-                self.params[:, :, 0] if self.params.ndim == 3 else self.params,
+                self.params[0] if self.params.ndim == 3 else self.params,
                 inputs[0] if inputs.ndim == 2 else inputs,
                 noise_params=None,
             )
@@ -1023,7 +1027,7 @@ class Model:
             ValueError: If figure is not one of the supported modes.
         """
         inputs = self._inputs_validation(inputs)
-        params = self.params[:, :, 0] if self.params.ndim == 3 else self.params
+        params = self.params[0] if self.params.ndim == 3 else self.params
         inp = inputs[0] if inputs.ndim == 2 else inputs
 
         # Record without noise to get a clean circuit
@@ -1062,12 +1066,12 @@ class Model:
 
         Returns:
             jnp.ndarray: Validated parameters with shape
-                (n_layers, n_params_per_layer, batch_size).
+                (batch_size, n_layers, n_params_per_layer).
         """
         # append batch axis if not provided
         if params is not None:
             if len(params.shape) == 2:
-                params = np.expand_dims(params, axis=-1)
+                params = np.expand_dims(params, axis=0)
 
             self.params = params
         else:
@@ -1089,11 +1093,14 @@ class Model:
 
         Returns:
             jnp.ndarray: Validated pulse parameters with shape
-                (n_layers, n_pulse_params_per_layer, batch_size).
+                (batch_size, n_layers, n_pulse_params_per_layer).
         """
         if pulse_params is None:
             pulse_params = self.pulse_params
         else:
+            # ensure batch dimension exists (batch-first convention)
+            if len(pulse_params.shape) == 2:
+                pulse_params = jnp.expand_dims(pulse_params, axis=0)
             self.pulse_params = pulse_params
 
         return pulse_params
@@ -1217,9 +1224,9 @@ class Model:
 
         Args:
             params (jnp.ndarray): Variational parameters of shape
-                (n_layers, n_params_per_layer, batch_size).
+                (batch_size, n_layers, n_params_per_layer).
             pulse_params (jnp.ndarray): Pulse parameters of shape
-                (n_layers, n_pulse_params_per_layer, batch_size).
+                (batch_size, n_layers, n_pulse_params_per_layer).
             inputs (jnp.ndarray): Input data of shape (batch_size, n_input_feat).
             enc_params (jnp.ndarray): Encoding parameters of shape
                 (n_qubits, n_input_feat).
@@ -1252,9 +1259,9 @@ class Model:
             random_keys = safe_random_split(random_key, num=B)
 
             in_axes = (
-                2 if self.batch_shape[1] > 1 else None,  # params
+                0 if self.batch_shape[1] > 1 else None,  # params
                 0 if self.batch_shape[0] > 1 else None,  # inputs
-                2 if self.batch_shape[2] > 1 else None,  # pulse_params
+                0 if self.batch_shape[2] > 1 else None,  # pulse_params
                 0,  # random_keys
                 None,  # enc_params (broadcast, not batched)
             )
@@ -1317,14 +1324,14 @@ class Model:
 
         Args:
             inputs (jnp.ndarray): Input data of shape (B_I, n_input_feat).
-            params (jnp.ndarray): Parameters of shape (n_layers, n_params, B_P).
-            pulse_params (jnp.ndarray): Pulse params of shape (n_layers, n_pulse, B_R).
+            params (jnp.ndarray): Parameters of shape (B_P, n_layers, n_params).
+            pulse_params (jnp.ndarray): Pulse params of shape (B_R, n_layers, n_pulse).
 
         Returns:
             Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]: Tuple containing:
                 - inputs: Reshaped to (B, n_input_feat) where B = B_I * B_P * B_R
-                - params: Reshaped to (n_layers, n_params, B)
-                - pulse_params: Reshaped to (n_layers, n_pulse, B)
+                - params: Reshaped to (B, n_layers, n_params)
+                - pulse_params: Reshaped to (B, n_layers, n_pulse)
 
         Note:
             The effective batch shape depends on repeat_batch_axis configuration.
@@ -1333,8 +1340,8 @@ class Model:
         B_I = inputs.shape[0]
         # we check for the product because there is a chance that
         # there are no params. In this case we want B_P to be 1
-        B_P = 1 if 0 in params.shape else params.shape[-1]
-        B_R = pulse_params.shape[-1]
+        B_P = 1 if 0 in params.shape else params.shape[0]
+        B_R = pulse_params.shape[0]
 
         # THIS is the only place where we set the batch shape
         self._batch_shape = (B_I, B_P, B_R)
@@ -1348,31 +1355,29 @@ class Model:
                 inputs = jnp.repeat(inputs, B_R, axis=2)
             inputs = inputs.reshape(B, *inputs.shape[3:])
 
-        # [..., ..., B_P] -> [..., ..., B_I, B_P, B_R] -> [..., ..., B]
+        # [B_P, ..., ...] -> [B_I, B_P, B_R, ..., ...] -> [B, ..., ...]
         if B_P > 1 and self.repeat_batch_axis[1]:
-            # add B_I axis before last, and B_R axis after last
-            params = params[..., None, :, None]  # [..., B_I(=1), B_P, B_R(=1)]
+            # add B_I axis before first, and B_R axis after first batch dim
+            params = params[None, :, None, ...]  # [B_I(=1), B_P, B_R(=1), ...]
             if self.repeat_batch_axis[0]:
-                params = jnp.repeat(params, B_I, axis=-3)  # [..., B_I, B_P, 1]
+                params = jnp.repeat(params, B_I, axis=0)  # [B_I, B_P, 1, ...]
             if self.repeat_batch_axis[2]:
-                params = jnp.repeat(params, B_R, axis=-1)  # [..., B_I, B_P, B_R]
-            params = params.reshape(*params.shape[:-3], B)
+                params = jnp.repeat(params, B_R, axis=2)  # [B_I, B_P, B_R, ...]
+            params = params.reshape(B, *params.shape[3:])
 
-        # [..., ..., B_R] -> [..., ..., B_I, B_P, B_R] -> [..., ..., B]
+        # [B_R, ..., ...] -> [B_I, B_P, B_R, ..., ...] -> [B, ..., ...]
         if B_R > 1 and self.repeat_batch_axis[2]:
-            # add B_I axis before last, and B_P axis before last (after adding B_I)
-            pulse_params = pulse_params[
-                ..., None, None, :
-            ]  # [..., B_I(=1), B_P(=1), B_R]
+            # add B_I axis and B_P axis before B_R
+            pulse_params = pulse_params[None, None, ...]  # [B_I(=1), B_P(=1), B_R, ...]
             if self.repeat_batch_axis[0]:
                 pulse_params = jnp.repeat(
-                    pulse_params, B_I, axis=-3
-                )  # [..., B_I, 1, B_R]
+                    pulse_params, B_I, axis=0
+                )  # [B_I, 1, B_R, ...]
             if self.repeat_batch_axis[1]:
                 pulse_params = jnp.repeat(
-                    pulse_params, B_P, axis=-2
-                )  # [..., B_I, B_P, B_R]
-            pulse_params = pulse_params.reshape(*pulse_params.shape[:-3], B)
+                    pulse_params, B_P, axis=1
+                )  # [B_I, B_P, B_R, ...]
+            pulse_params = pulse_params.reshape(B, *pulse_params.shape[3:])
 
         return inputs, params, pulse_params
 
@@ -1422,7 +1427,7 @@ class Model:
 
         Args:
             params (Optional[jnp.ndarray]): Variational parameters of shape
-                (n_layers, n_params_per_layer) or (n_layers, n_params_per_layer, batch).
+                (n_layers, n_params_per_layer) or (batch, n_layers, n_params_per_layer).
                 If None, uses model's internal parameters.
             inputs (Optional[jnp.ndarray]): Input data of shape
                 (batch_size, n_input_feat). If None, uses zero inputs.
@@ -1478,7 +1483,7 @@ class Model:
         Args:
             params (Optional[jnp.ndarray]): Variational parameters of shape
                 (n_layers, n_params_per_layer) or
-                (n_layers, n_params_per_layer, batch).
+                (batch, n_layers, n_params_per_layer).
                 If None, uses model's internal parameters.
             inputs (Optional[jnp.ndarray]): Input data of shape
                 (batch_size, n_input_feat).

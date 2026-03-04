@@ -694,7 +694,7 @@ def test_batched_expval_values() -> None:
     RX(θ)|0⟩ -> ⟨Z⟩ = cos(θ) must hold element-wise across a batch.
 
     Mirrors the B_P (parameter-batch) axis from model.py where params
-    has shape (n_layers, n_params, B_P) and in_axes=(2, ...).
+    has shape (B_P, n_layers, n_params) and in_axes=(0, ...).
     """
     script = Script(f=parametrized_circuit)
     thetas = jnp.linspace(0.0, jnp.pi, 9)
@@ -2093,9 +2093,9 @@ def test_pulse_envelope_get_valid():
         assert "defaults" in info
         assert callable(info["fn"])
         for gate in ["RX", "RY", "RZ", "CZ"]:
-            assert gate in info["defaults"], (
-                f"Missing default for gate '{gate}' in envelope '{name}'"
-            )
+            assert (
+                gate in info["defaults"]
+            ), f"Missing default for gate '{gate}' in envelope '{name}'"
 
 
 @pytest.mark.unittest
@@ -2226,9 +2226,9 @@ def test_pulse_information_param_counts_per_envelope():
             expected_h = len(PulseInformation.RZ.params) + len(
                 PulseInformation.RY.params
             )
-            assert PulseInformation.H.size == expected_h, (
-                f"H param count wrong for envelope '{name}'"
-            )
+            assert (
+                PulseInformation.H.size == expected_h
+            ), f"H param count wrong for envelope '{name}'"
     finally:
         PulseInformation.set_envelope(original)
 
@@ -2294,9 +2294,9 @@ def test_pulse_rz_all_envelopes(envelope):
         state_target = target_script.execute(type="state", args=(w,))
 
         f = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
-        assert np.isclose(f, 1.0, atol=1e-2), (
-            f"RZ fidelity too low for envelope '{envelope}': {f}"
-        )
+        assert np.isclose(
+            f, 1.0, atol=1e-2
+        ), f"RZ fidelity too low for envelope '{envelope}': {f}"
     finally:
         PulseInformation.set_envelope(original)
 

@@ -122,7 +122,7 @@ def test_batching() -> None:
 
     res = np.zeros((n_samples, 4, 4), dtype=jnp.complex128)
     for i in range(n_samples):
-        res[i] = model(params=params[:, :, i], execution_type="density")
+        res[i] = model(params=params[i], execution_type="density")
 
     assert res.shape == (n_samples, 4, 4), "Shape of batching is not correct"
     assert jnp.allclose(
@@ -588,7 +588,7 @@ def test_pulse_model_batching():
 
     # test pulse params batching
     res_b = model(
-        pulse_params=jnp.repeat(model.pulse_params, 2, axis=-1), gate_mode="pulse"
+        pulse_params=jnp.repeat(model.pulse_params, 2, axis=0), gate_mode="pulse"
     )
 
     # two qubits -> two expvals with batch size 2

@@ -183,15 +183,15 @@ class Entanglement:
                 log.warning("Seed is ignored when samples is 0")
 
             if len(model.params.shape) <= 2:
-                params = model.params.reshape(*model.params.shape, 1)
+                params = model.params.reshape(1, *model.params.shape)
             else:
-                log.info(f"Using sample size of model params: {model.params.shape[-1]}")
+                log.info(f"Using sample size of model params: {model.params.shape[0]}")
                 params = model.params
 
-        n_samples = params.shape[-1]
+        n_samples = params.shape[0]
         inputs = model._inputs_validation(kwargs.get("inputs", None))
 
-        # Execute: vmap over batch dimension of params (axis 2)
+        # Execute: vmap over batch dimension of params (axis 0)
         if n_samples > 1:
             from qml_essentials.utils import safe_random_split
 
@@ -200,7 +200,7 @@ class Entanglement:
                 type="probs",
                 args=(params, inputs, model.pulse_params, random_keys),
                 kwargs=kwargs,
-                in_axes=(2, None, None, 0),
+                in_axes=(0, None, None, 0),
             )
         else:
             result = bell_script.execute(
@@ -288,13 +288,13 @@ class Entanglement:
                 log.warning("Seed is ignored when samples is 0")
 
             if len(model.params.shape) <= 2:
-                model.params = model.params.reshape(*model.params.shape, 1)
+                model.params = model.params.reshape(1, *model.params.shape)
             else:
-                log.info(f"Using sample size of model params: {model.params.shape[-1]}")
+                log.info(f"Using sample size of model params: {model.params.shape[0]}")
 
         rhos, log_rhos = Entanglement._compute_log_density(model, **kwargs)
 
-        rel_entropies = jnp.zeros((n_sigmas, model.params.shape[-1]))
+        rel_entropies = jnp.zeros((n_sigmas, model.params.shape[0]))
 
         for i, log_sigma in enumerate(log_sigmas):
             rel_entropies = rel_entropies.at[i].set(
@@ -433,9 +433,9 @@ class Entanglement:
                 log.warning("Seed is ignored when samples is 0")
 
             if len(model.params.shape) <= 2:
-                model.params = model.params.reshape(*model.params.shape, 1)
+                model.params = model.params.reshape(1, *model.params.shape)
             else:
-                log.info(f"Using sample size of model params: {model.params.shape[-1]}")
+                log.info(f"Using sample size of model params: {model.params.shape[0]}")
 
         # implicitly set input to none in case it's not needed
         kwargs.setdefault("inputs", None)
@@ -569,13 +569,13 @@ class Entanglement:
                 log.warning("Seed is ignored when samples is 0")
 
             if len(model.params.shape) <= 2:
-                model.params = model.params.reshape(*model.params.shape, 1)
+                model.params = model.params.reshape(1, *model.params.shape)
             else:
-                log.info(f"Using sample size of model params: {model.params.shape[-1]}")
+                log.info(f"Using sample size of model params: {model.params.shape[0]}")
 
         params = model.params
         inputs = model._inputs_validation(kwargs.get("inputs", None))
-        n_batch = params.shape[-1]
+        n_batch = params.shape[0]
 
         marg_probs = jax.jit(ys.marginalize_probs, static_argnums=(1, 2))
 
@@ -586,7 +586,7 @@ class Entanglement:
             probs = swap_script.execute(
                 type="probs",
                 args=(params, inputs, model.pulse_params, random_keys),
-                in_axes=(2, None, None, 0),
+                in_axes=(0, None, None, 0),
                 kwargs=kwargs,
             )
         else:
