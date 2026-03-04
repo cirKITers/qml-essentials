@@ -2076,6 +2076,163 @@ def test_phase_difference_2qubit():
 
 
 @pytest.mark.unittest
+def test_collect_pulse_events_rx():
+    """collect_pulse_events for RX returns a single physical pulse event."""
+    from qml_essentials.drawing import collect_pulse_events
+
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope("gaussian")
+        events = collect_pulse_events("RX", jnp.pi / 4, wires=0)
+        assert len(events) == 1
+        ev = events[0]
+        assert ev.gate == "RX"
+        assert ev.wires == [0]
+        assert ev.envelope_fn is not None
+        assert ev.duration > 0
+        assert np.isclose(ev.w, jnp.pi / 4)
+    finally:
+        PulseInformation.set_envelope(original)
+
+
+@pytest.mark.unittest
+def test_collect_pulse_events_rz():
+    """collect_pulse_events for RZ returns a virtual-Z event (no envelope_fn)."""
+    from qml_essentials.drawing import collect_pulse_events
+
+    events = collect_pulse_events("RZ", jnp.pi / 3, wires=1)
+    assert len(events) == 1
+    assert events[0].gate == "RZ"
+    assert events[0].envelope_fn is None
+
+
+@pytest.mark.unittest
+def test_collect_pulse_events_h_decomposes():
+    """H decomposes into RZ + RY (2 leaf events)."""
+    from qml_essentials.drawing import collect_pulse_events
+
+    events = collect_pulse_events("H", 0.0, wires=0)
+    gate_names = [ev.gate for ev in events]
+    assert gate_names == ["RZ", "RY"]
+    for ev in events:
+        assert ev.parent == "H"
+
+
+@pytest.mark.unittest
+def test_collect_pulse_events_cx_decomposes():
+    """CX decomposes into H-CZ-H which further decomposes to leaf events."""
+    from qml_essentials.drawing import collect_pulse_events
+
+    events = collect_pulse_events("CX", 0.0, wires=[0, 1])
+    # CX = H(target) + CZ + H(target)
+    # H = RZ + RY, so CX = RZ + RY + CZ + RZ + RY
+    gate_names = [ev.gate for ev in events]
+    assert gate_names == ["RZ", "RY", "CZ", "RZ", "RY"]
+
+
+@pytest.mark.unittest
+def test_collect_pulse_events_invalid_gate():
+    """Unknown gate name raises ValueError."""
+    from qml_essentials.drawing import collect_pulse_events
+
+    with pytest.raises(ValueError, match="Unknown pulse gate"):
+        collect_pulse_events("INVALID", 0.0, wires=0)
+
+
+@pytest.mark.unittest
+def test_draw_pulse_schedule_returns_figure():
+    """draw_pulse_schedule returns a matplotlib (fig, axes) tuple."""
+    from qml_essentials.drawing import collect_pulse_events, draw_pulse_schedule
+
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope("gaussian")
+        events = collect_pulse_events("RX", jnp.pi / 2, wires=0)
+        fig, axes = draw_pulse_schedule(events, n_qubits=1)
+
+        import matplotlib.pyplot as plt
+
+        assert fig is not None
+        assert len(axes) == 1
+        plt.close(fig)
+    finally:
+        PulseInformation.set_envelope(original)
+
+
+@pytest.mark.unittest
+def test_draw_pulse_schedule_multi_qubit():
+    """Pulse schedule with CX renders subplots for both qubits."""
+    from qml_essentials.drawing import collect_pulse_events, draw_pulse_schedule
+
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope("gaussian")
+        events = collect_pulse_events("CX", 0.0, wires=[0, 1])
+        fig, axes = draw_pulse_schedule(events, n_qubits=2)
+
+        import matplotlib.pyplot as plt
+
+        assert len(axes) == 2
+        plt.close(fig)
+    finally:
+        PulseInformation.set_envelope(original)
+
+
+@pytest.mark.unittest
+def test_draw_pulse_schedule_show_carrier():
+    """show_carrier=True should not raise."""
+    from qml_essentials.drawing import collect_pulse_events, draw_pulse_schedule
+
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope("gaussian")
+        events = collect_pulse_events("RY", jnp.pi / 4, wires=0)
+        fig, axes = draw_pulse_schedule(events, n_qubits=1, show_carrier=True)
+
+        import matplotlib.pyplot as plt
+
+        plt.close(fig)
+    finally:
+        PulseInformation.set_envelope(original)
+
+
+@pytest.mark.unittest
+@pytest.mark.parametrize("envelope", PulseEnvelope.available())
+def test_draw_pulse_schedule_all_envelopes(envelope):
+    """Pulse schedule renders without error for every envelope."""
+    from qml_essentials.drawing import collect_pulse_events, draw_pulse_schedule
+
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope(envelope)
+        events = collect_pulse_events("RX", jnp.pi / 3, wires=0)
+        fig, axes = draw_pulse_schedule(events, n_qubits=1)
+
+        import matplotlib.pyplot as plt
+
+        plt.close(fig)
+    finally:
+        PulseInformation.set_envelope(original)
+
+
+@pytest.mark.unittest
+def test_collect_pulse_events_rot_decomposes():
+    """Rot decomposes into RZ + RY + RZ (3 leaf events)."""
+    from qml_essentials.drawing import collect_pulse_events
+
+    events = collect_pulse_events("Rot", [jnp.pi / 4, jnp.pi / 2, jnp.pi / 3], wires=0)
+    gate_names = [ev.gate for ev in events]
+    assert gate_names == ["RZ", "RY", "RZ"]
+    for ev in events:
+        assert ev.parent == "Rot"
+
+
+# ---------------------------------------------------------------------------
+# PulseEnvelope / PulseInformation unit tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unittest
 def test_pulse_envelope_available():
     """All expected envelope names are registered."""
     names = PulseEnvelope.available()
@@ -2180,7 +2337,6 @@ def test_build_coeff_fns_unique_code():
 @pytest.mark.unittest
 def test_pulse_information_set_envelope():
     """set_envelope updates PulseInformation and PulseGates state."""
-    # Save original state
     original_envelope = PulseInformation.get_envelope()
 
     try:
@@ -2188,7 +2344,6 @@ def test_pulse_information_set_envelope():
         assert PulseInformation.get_envelope() == "drag"
         assert PulseGates._active_envelope == "drag"
         # DRAG has 3 envelope params → RX defaults should have 4 elements
-        # (3 env + 1 time)
         assert len(PulseInformation.RX.params) == 4
 
         PulseInformation.set_envelope("gaussian")
@@ -2197,7 +2352,6 @@ def test_pulse_information_set_envelope():
         # Gaussian has 2 envelope params → RX defaults should have 3 elements
         assert len(PulseInformation.RX.params) == 3
     finally:
-        # Restore
         PulseInformation.set_envelope(original_envelope)
 
 

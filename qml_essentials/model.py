@@ -1012,6 +1012,8 @@ class Model:
                 * ``"mpl"``   - Matplotlib figure (returns ``(fig, ax)``).
                 * ``"tikz"``  - LaTeX/TikZ ``quantikz`` code (returns a
                   :class:`QuanTikz.TikzFigure`).
+                * ``"pulse"`` - Pulse schedule (returns ``(fig, axes)``).
+                  Only meaningful for pulse-mode models.
 
             **kwargs: Extra options forwarded to the drawing backend
                 (e.g. ``gate_values=True``, ``inputs_symbols="x"``).
@@ -1030,6 +1032,9 @@ class Model:
         params = self.params[0] if self.params.ndim == 3 else self.params
         inp = inputs[0] if inputs.ndim == 2 else inputs
 
+        if figure == "pulse":
+            return self.draw_pulse(inputs=inputs, **kwargs)
+
         # Record without noise to get a clean circuit
         saved_noise = self._noise_params
         self._noise_params = None
@@ -1044,6 +1049,82 @@ class Model:
 
         self._noise_params = saved_noise
         return result
+
+    def draw_pulse(
+        self,
+        inputs: Optional[jnp.ndarray] = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Visualize the pulse schedule for the circuit.
+
+        Walks the ansatz block structure and collects pulse envelope
+        events for every gate, then renders them as a Matplotlib figure.
+
+        Args:
+            inputs: Input data (unused for pulse drawing but kept for API
+                consistency).  If ``None``, default zero inputs are used.
+            **kwargs: Forwarded to
+                :func:`~qml_essentials.drawing.draw_pulse_schedule`
+                (e.g. ``show_carrier=True``, ``n_samples=300``).
+
+        Returns:
+            ``(fig, axes)`` — Matplotlib Figure and array of Axes.
+        """
+        from qml_essentials.drawing import collect_pulse_events, draw_pulse_schedule
+
+        params = self.params[0] if self.params.ndim == 3 else self.params
+        pulse_params = self.pulse_params
+        if pulse_params.ndim > 2 and pulse_params.shape[0] == 1:
+            pulse_params = pulse_params[0]
+
+        events = []
+        structure = self.pqc.structure()
+
+        for layer in range(self.n_layers):
+            w = params[layer]
+            w_idx = 0
+            pp_layer = pulse_params[layer]
+            pp_idx = 0
+
+            for block in structure:
+                gate_name = block.gate.__name__
+
+                iterator = (
+                    block.topology(n_qubits=self.n_qubits, **block.kwargs)
+                    if block.is_entangling
+                    else list(range(self.n_qubits))
+                )
+
+                for wires in iterator:
+                    if block.is_entangling and not block.enough_qubits(self.n_qubits):
+                        continue
+
+                    # Determine rotation angle(s)
+                    if block.is_rotational:
+                        if gate_name == "Rot":
+                            angle = [
+                                float(w[w_idx]),
+                                float(w[w_idx + 1]),
+                                float(w[w_idx + 2]),
+                            ]
+                            w_idx += 3
+                        else:
+                            angle = float(w[w_idx])
+                            w_idx += 1
+                    else:
+                        angle = 0.0
+
+                    # Slice pulse params for this gate
+                    n_pp = pinfo.gate_by_name(gate_name).size
+                    gate_pp = pp_layer[pp_idx : pp_idx + n_pp]
+                    # Scale by the base params (same as PulseParamManager)
+                    base = pinfo.gate_by_name(gate_name).params
+                    scaled_pp = base * gate_pp
+                    pp_idx += n_pp
+
+                    events += collect_pulse_events(gate_name, angle, wires, scaled_pp)
+
+        return draw_pulse_schedule(events, self.n_qubits, **kwargs)
 
     def __repr__(self) -> str:
         """Return text representation of the quantum circuit model."""

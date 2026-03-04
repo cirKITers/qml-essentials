@@ -815,3 +815,470 @@ def draw_tikz(
             _tikz_cell_multiqubit(op, circuit_tikz)
 
     return QuanTikz.TikzFigure(_tikz_build_string(circuit_tikz, n_qubits))
+
+
+# -- Pulse schedule drawing ----------------------------------------------
+
+from dataclasses import dataclass, field
+from typing import Optional
+import numpy as np
+
+
+@dataclass
+class PulseEvent:
+    """Single pulse applied to one or more wires.
+
+    Attributes:
+        gate: Gate label, e.g. ``"RX"``, ``"CZ"``.
+        wires: Target qubit wire(s).
+        envelope_fn: Pure envelope function ``(p, t, t_c) -> amplitude``.
+        envelope_params: Envelope-shape parameters (excluding ``w`` and ``t``).
+        w: Rotation angle passed to the gate.
+        duration: Pulse duration (evolution time).
+        carrier_phase: Phase offset for the carrier cosine.
+        parent: Optional high-level gate name that decomposed into this event.
+    """
+
+    gate: str
+    wires: List[int]
+    envelope_fn: Any  # (p, t, t_c) -> scalar
+    envelope_params: Any  # jnp array of envelope shape params
+    w: float  # rotation angle
+    duration: float  # evolution time
+    carrier_phase: float = 0.0  # phi_c in cos(omega_c * t + phi_c)
+    parent: Optional[str] = None  # composite gate that owns this pulse
+
+
+def collect_pulse_events(
+    gate_name: str,
+    w: Union[float, List[float]],
+    wires: Union[int, List[int]],
+    pulse_params: Any = None,
+    parent: Optional[str] = None,
+) -> List[PulseEvent]:
+    """Decompose a (possibly composite) pulse gate into leaf PulseEvents.
+
+    This mirrors the decomposition logic in :class:`PulseGates` but does
+    not apply any quantum operations — it only collects timing and
+    envelope information for drawing.
+
+    Args:
+        gate_name: Name of the gate (``"RX"``, ``"H"``, ``"CX"``, etc.).
+        w: Rotation angle(s).  Scalar for single-param gates, list for
+            ``Rot`` (``[phi, theta, omega]``).
+        wires: Qubit index or ``[control, target]`` for two-qubit gates.
+        pulse_params: Pulse parameters (``jnp.ndarray`` or ``None`` for
+            defaults).
+        parent: Label of the enclosing composite gate (used for nested
+            decompositions).
+
+    Returns:
+        Ordered list of :class:`PulseEvent` objects.
+    """
+    from qml_essentials.gates import PulseInformation, PulseEnvelope, PulseGates
+
+    info = PulseEnvelope.get(PulseInformation.get_envelope())
+    envelope_fn = info["fn"]
+    n_env = info["n_envelope_params"]
+
+    if isinstance(wires, int):
+        wires_list = [wires]
+    else:
+        wires_list = list(wires)
+
+    parent_label = parent or gate_name
+
+    # -- Leaf gates -------------------------------------------------------
+
+    if gate_name == "RX":
+        pp = PulseInformation.RX.split_params(pulse_params)
+        env_p = pp[:-1]  # envelope params
+        dur = float(pp[-1])
+        return [
+            PulseEvent(
+                gate="RX",
+                wires=wires_list,
+                envelope_fn=envelope_fn,
+                envelope_params=jnp.array(env_p),
+                w=float(w),
+                duration=dur,
+                carrier_phase=float(jnp.pi),  # cos(omega_c * t + pi)
+                parent=parent_label,
+            )
+        ]
+
+    if gate_name == "RY":
+        pp = PulseInformation.RY.split_params(pulse_params)
+        env_p = pp[:-1]
+        dur = float(pp[-1])
+        return [
+            PulseEvent(
+                gate="RY",
+                wires=wires_list,
+                envelope_fn=envelope_fn,
+                envelope_params=jnp.array(env_p),
+                w=float(w),
+                duration=dur,
+                carrier_phase=float(-jnp.pi / 2),  # cos(omega_c * t - pi/2)
+                parent=parent_label,
+            )
+        ]
+
+    if gate_name == "RZ":
+        pp = PulseInformation.RZ.split_params(pulse_params)
+        dur_val = float(jnp.ravel(jnp.asarray(pp))[0])
+        return [
+            PulseEvent(
+                gate="RZ",
+                wires=wires_list,
+                envelope_fn=None,  # virtual-Z, no physical pulse
+                envelope_params=jnp.array([dur_val]),
+                w=float(w),
+                duration=1.0,  # unit time
+                carrier_phase=0.0,
+                parent=parent_label,
+            )
+        ]
+
+    if gate_name == "CZ":
+        if pulse_params is None:
+            pp = PulseInformation.CZ.params
+        else:
+            pp = pulse_params
+        return [
+            PulseEvent(
+                gate="CZ",
+                wires=wires_list,
+                envelope_fn=None,  # constant coefficient
+                envelope_params=jnp.ravel(jnp.asarray(pp)),
+                w=0.0,
+                duration=1.0,
+                carrier_phase=0.0,
+                parent=parent_label,
+            )
+        ]
+
+    # -- Composite gates ---------------------------------------------------
+
+    if gate_name == "H":
+        parts = PulseInformation.H.split_params(pulse_params)
+        pp_rz, pp_ry = parts
+        events = []
+        events += collect_pulse_events("RZ", jnp.pi, wires, pp_rz, parent=parent_label)
+        events += collect_pulse_events(
+            "RY", jnp.pi / 2, wires, pp_ry, parent=parent_label
+        )
+        return events
+
+    if gate_name == "Rot":
+        parts = PulseInformation.Rot.split_params(pulse_params)
+        pp_rz1, pp_ry, pp_rz2 = parts
+        phi, theta, omega = w  # Rot takes 3 angles
+        events = []
+        events += collect_pulse_events("RZ", phi, wires, pp_rz1, parent=parent_label)
+        events += collect_pulse_events("RY", theta, wires, pp_ry, parent=parent_label)
+        events += collect_pulse_events("RZ", omega, wires, pp_rz2, parent=parent_label)
+        return events
+
+    if gate_name == "CX":
+        parts = PulseInformation.CX.split_params(pulse_params)
+        pp_h1, pp_cz, pp_h2 = parts
+        target = wires_list[1]
+        events = []
+        events += collect_pulse_events("H", 0.0, target, pp_h1, parent=parent_label)
+        events += collect_pulse_events("CZ", 0.0, wires, pp_cz, parent=parent_label)
+        events += collect_pulse_events("H", 0.0, target, pp_h2, parent=parent_label)
+        return events
+
+    if gate_name == "CY":
+        parts = PulseInformation.CY.split_params(pulse_params)
+        pp_rz1, pp_cx, pp_rz2 = parts
+        target = wires_list[1]
+        events = []
+        events += collect_pulse_events(
+            "RZ", -jnp.pi / 2, target, pp_rz1, parent=parent_label
+        )
+        events += collect_pulse_events("CX", 0.0, wires, pp_cx, parent=parent_label)
+        events += collect_pulse_events(
+            "RZ", jnp.pi / 2, target, pp_rz2, parent=parent_label
+        )
+        return events
+
+    if gate_name == "CRX":
+        parts = PulseInformation.CRX.split_params(pulse_params)
+        pp_rz1, pp_ry1, pp_cx1, pp_ry2, pp_cx2, pp_rz2 = parts
+        target = wires_list[1]
+        events = []
+        events += collect_pulse_events(
+            "RZ", jnp.pi / 2, target, pp_rz1, parent=parent_label
+        )
+        events += collect_pulse_events("RY", w / 2, target, pp_ry1, parent=parent_label)
+        events += collect_pulse_events("CX", 0.0, wires, pp_cx1, parent=parent_label)
+        events += collect_pulse_events(
+            "RY", -w / 2, target, pp_ry2, parent=parent_label
+        )
+        events += collect_pulse_events("CX", 0.0, wires, pp_cx2, parent=parent_label)
+        events += collect_pulse_events(
+            "RZ", -jnp.pi / 2, target, pp_rz2, parent=parent_label
+        )
+        return events
+
+    if gate_name == "CRY":
+        parts = PulseInformation.CRY.split_params(pulse_params)
+        pp_ry1, pp_cx1, pp_ry2, pp_cx2 = parts
+        target = wires_list[1]
+        events = []
+        events += collect_pulse_events("RY", w / 2, target, pp_ry1, parent=parent_label)
+        events += collect_pulse_events("CX", 0.0, wires, pp_cx1, parent=parent_label)
+        events += collect_pulse_events(
+            "RY", -w / 2, target, pp_ry2, parent=parent_label
+        )
+        events += collect_pulse_events("CX", 0.0, wires, pp_cx2, parent=parent_label)
+        return events
+
+    if gate_name == "CRZ":
+        parts = PulseInformation.CRZ.split_params(pulse_params)
+        pp_rz1, pp_cx1, pp_rz2, pp_cx2 = parts
+        target = wires_list[1]
+        events = []
+        events += collect_pulse_events("RZ", w / 2, target, pp_rz1, parent=parent_label)
+        events += collect_pulse_events("CX", 0.0, wires, pp_cx1, parent=parent_label)
+        events += collect_pulse_events(
+            "RZ", -w / 2, target, pp_rz2, parent=parent_label
+        )
+        events += collect_pulse_events("CX", 0.0, wires, pp_cx2, parent=parent_label)
+        return events
+
+    raise ValueError(f"Unknown pulse gate: {gate_name!r}")
+
+
+def draw_pulse_schedule(
+    events: List[PulseEvent],
+    n_qubits: int,
+    n_samples: int = 200,
+    show_carrier: bool = False,
+    **kwargs: Any,
+) -> Tuple:
+    """Render a pulse schedule as a Matplotlib figure.
+
+    Each qubit gets its own subplot row.  Physical pulses (RX, RY) are
+    drawn as filled envelope shapes; virtual-Z gates are shown as thin
+    vertical lines; CZ gates appear as shaded rectangles spanning both
+    wires.
+
+    Args:
+        events: Ordered list of :class:`PulseEvent` from
+            :func:`collect_pulse_events`.
+        n_qubits: Total number of qubits.
+        n_samples: Number of time samples per pulse envelope.
+        show_carrier: If ``True``, overlay the carrier-modulated waveform
+            (envelope × cos) as a thin line.
+        **kwargs: Forwarded to ``plt.subplots``.
+
+    Returns:
+        ``(fig, axes)`` — Matplotlib Figure and array of Axes.
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+
+    from qml_essentials.gates import PulseGates, PulseInformation
+
+    omega_c = float(PulseGates.omega_c)
+
+    # -- Assign start times per wire (sequential, no parallelism) ---------
+    wire_cursor: Dict[int, float] = {q: 0.0 for q in range(n_qubits)}
+    scheduled: List[Tuple[PulseEvent, float]] = []  # (event, t_start)
+
+    for ev in events:
+        # Multi-wire gates (CZ) synchronise on the latest wire
+        t_start = max(wire_cursor[w] for w in ev.wires)
+        scheduled.append((ev, t_start))
+        for w in ev.wires:
+            wire_cursor[w] = t_start + ev.duration
+
+    t_total = max(wire_cursor.values()) if wire_cursor else 1.0
+
+    # -- Colour palette per gate type -------------------------------------
+    gate_colors = {
+        "RX": "#4e79a7",
+        "RY": "#f28e2b",
+        "RZ": "#76b7b2",
+        "CZ": "#e15759",
+        "H": "#59a14f",
+    }
+
+    # -- Create figure ----------------------------------------------------
+    fig, axes = plt.subplots(
+        n_qubits,
+        1,
+        figsize=kwargs.pop("figsize", (max(8, t_total * 2.5), 1.8 * n_qubits)),
+        sharex=True,
+        squeeze=False,
+    )
+    axes = axes.ravel()
+
+    for q in range(n_qubits):
+        ax = axes[q]
+        ax.set_ylabel(f"q{q}", rotation=0, labelpad=20, fontsize=11, va="center")
+        ax.set_xlim(-0.05 * t_total, t_total * 1.05)
+        ax.axhline(0, color="grey", linewidth=0.4, zorder=0)
+        ax.set_yticks([])
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_visible(False)
+
+    axes[-1].set_xlabel("Time", fontsize=11)
+
+    # -- Global amplitude range (for consistent y-scaling) ----------------
+    amp_max = 1.0
+    for ev, t_start in scheduled:
+        if ev.envelope_fn is not None and ev.gate in ("RX", "RY"):
+            t_arr = np.linspace(0, ev.duration, n_samples)
+            t_c = ev.duration / 2
+            env = np.array(
+                [float(ev.envelope_fn(ev.envelope_params, ti, t_c)) for ti in t_arr]
+            )
+            amp_max = max(amp_max, np.max(np.abs(env)) * abs(ev.w) * 1.1)
+
+    for q in range(n_qubits):
+        axes[q].set_ylim(-amp_max, amp_max)
+
+    # -- Draw events ------------------------------------------------------
+    for ev, t_start in scheduled:
+        color = gate_colors.get(ev.gate, "#bab0ac")
+
+        if ev.gate in ("RX", "RY") and ev.envelope_fn is not None:
+            # Physical pulse — draw filled envelope
+            t_arr = np.linspace(0, ev.duration, n_samples)
+            t_c = ev.duration / 2
+            env = np.array(
+                [float(ev.envelope_fn(ev.envelope_params, ti, t_c)) for ti in t_arr]
+            )
+            signal = env * ev.w  # scale by rotation angle
+
+            for wire in ev.wires:
+                ax = axes[wire]
+                ax.fill_between(
+                    t_arr + t_start,
+                    signal,
+                    alpha=0.35,
+                    color=color,
+                    zorder=2,
+                )
+                ax.plot(
+                    t_arr + t_start,
+                    signal,
+                    color=color,
+                    linewidth=1.2,
+                    zorder=3,
+                )
+
+                if show_carrier:
+                    carrier = np.cos(omega_c * t_arr + ev.carrier_phase)
+                    modulated = signal * carrier
+                    ax.plot(
+                        t_arr + t_start,
+                        modulated,
+                        color=color,
+                        linewidth=0.5,
+                        alpha=0.5,
+                        zorder=2,
+                    )
+
+                # Label at the peak
+                peak_idx = np.argmax(np.abs(signal))
+                label = ev.gate
+                if ev.parent and ev.parent != ev.gate:
+                    label = f"{ev.gate} ({ev.parent})"
+                ax.annotate(
+                    label,
+                    xy=(t_arr[peak_idx] + t_start, signal[peak_idx]),
+                    fontsize=7,
+                    ha="center",
+                    va="bottom" if signal[peak_idx] >= 0 else "top",
+                    color=color,
+                    fontweight="bold",
+                    zorder=5,
+                )
+
+        elif ev.gate == "RZ":
+            # Virtual-Z — thin dashed vertical line
+            for wire in ev.wires:
+                ax = axes[wire]
+                t_mid = t_start + ev.duration / 2
+                ax.axvline(
+                    t_mid,
+                    color=color,
+                    linestyle="--",
+                    linewidth=1.0,
+                    alpha=0.7,
+                    zorder=2,
+                )
+                label = "RZ"
+                if ev.parent and ev.parent != "RZ":
+                    label = f"RZ ({ev.parent})"
+                ax.annotate(
+                    label,
+                    xy=(t_mid, amp_max * 0.85),
+                    fontsize=6,
+                    ha="center",
+                    va="bottom",
+                    color=color,
+                    fontstyle="italic",
+                    zorder=5,
+                )
+
+        elif ev.gate == "CZ":
+            # CZ — shaded rectangle spanning both wires
+            for wire in ev.wires:
+                ax = axes[wire]
+                rect = mpatches.Rectangle(
+                    (t_start, -amp_max * 0.6),
+                    ev.duration,
+                    amp_max * 1.2,
+                    alpha=0.2,
+                    facecolor=color,
+                    edgecolor=color,
+                    linewidth=1.0,
+                    zorder=1,
+                )
+                ax.add_patch(rect)
+
+            # Label on the first wire only
+            ax = axes[ev.wires[0]]
+            t_mid = t_start + ev.duration / 2
+            label = "CZ"
+            if ev.parent and ev.parent != "CZ":
+                label = f"CZ ({ev.parent})"
+            ax.annotate(
+                label,
+                xy=(t_mid, amp_max * 0.7),
+                fontsize=7,
+                ha="center",
+                va="bottom",
+                color=color,
+                fontweight="bold",
+                zorder=5,
+            )
+
+    # -- Legend ------------------------------------------------------------
+    handles = []
+    used_gates = {ev.gate for ev, _ in scheduled}
+    for gate, color in gate_colors.items():
+        if gate in used_gates:
+            handles.append(mpatches.Patch(color=color, alpha=0.5, label=gate))
+    if handles:
+        axes[0].legend(
+            handles=handles,
+            loc="upper right",
+            fontsize=8,
+            framealpha=0.7,
+        )
+
+    fig.suptitle(
+        f"Pulse Schedule ({PulseInformation.get_envelope()} envelope)",
+        fontsize=12,
+        fontweight="bold",
+    )
+    fig.tight_layout()
+    return fig, axes
