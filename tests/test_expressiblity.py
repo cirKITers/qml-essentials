@@ -2,11 +2,13 @@ from qml_essentials.model import Model
 from qml_essentials.expressibility import Expressibility
 
 import jax.numpy as jnp
+import jax
 import logging
 import math
 import pytest
 
 logger = logging.getLogger(__name__)
+jax.config.update("jax_enable_x64", True)
 
 
 def get_test_cases(layers):
@@ -193,12 +195,10 @@ def test_scaling() -> None:
         circuit_type="Circuit_1",
     )
 
-    _, _, z = Expressibility.state_fidelities(
+    _, z = Expressibility.state_fidelities(
         seed=1000,
         n_bins=4,
         n_samples=10,
-        n_input_samples=0,
-        input_domain=[0, 4 * jnp.pi],
         model=model,
         scale=True,
     )
