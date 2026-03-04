@@ -374,7 +374,7 @@ def test_relative_entropy_order() -> None:
         data_reupload=False,
     )
 
-    entanglement = [0.0]
+    entanglement = []
     for circuit in circuits:
         model = Model(
             n_qubits=3,
@@ -394,7 +394,7 @@ def test_relative_entropy_order() -> None:
 
     assert all(
         entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
-    ), f"Order of entanglement should be {circuits}."
+    ), f"Order of entanglement should be {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."
 
 
 @pytest.mark.smoketest
@@ -441,7 +441,7 @@ def test_entanglement_of_formation_order() -> None:
         "Strongly_Entangling",
     ]
 
-    entanglement = [0.0]
+    entanglement = []
     for circuit in circuits:
         model = Model(n_qubits=3, n_layers=1, circuit_type=circuit)
 
@@ -454,7 +454,7 @@ def test_entanglement_of_formation_order() -> None:
 
     assert all(
         entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
-    ), f"Order of entanglement should be {circuits}."
+    ), f"Order of entanglement should be {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."
 
 
 @pytest.mark.smoketest
@@ -499,7 +499,7 @@ def test_concentratable_entanglement_order() -> None:
         "Strongly_Entangling",
     ]
 
-    entanglement = [0.0]
+    entanglement = []
     for circuit in circuits:
         model = Model(n_qubits=3, n_layers=1, circuit_type=circuit)
 
@@ -512,4 +512,4 @@ def test_concentratable_entanglement_order() -> None:
 
     assert all(
         entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
-    ), f"Order of entanglement should be {circuits}."
+    ), f"Order of entanglement should be {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."
