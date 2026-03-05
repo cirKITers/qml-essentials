@@ -1,7 +1,8 @@
 from fractions import Fraction
 from itertools import cycle
 from typing import Any, Dict, List, Tuple, Union
-
+from dataclasses import dataclass
+from typing import Optional
 import jax.numpy as jnp
 
 from qml_essentials.operations import (
@@ -410,7 +411,7 @@ def _ctrl_target_name(name: str) -> str:
     return name.replace("C", "")
 
 
-# -- Text drawing -------------------------------------------------------
+# Text drawing
 
 
 def _format_param(val: float) -> str:
@@ -521,7 +522,7 @@ def draw_text(ops: List[Operation], n_qubits: int) -> str:
     return "\n".join(lines)
 
 
-# -- Matplotlib drawing -------------------------------------------------
+# Matplotlib drawing
 
 
 def draw_mpl(
@@ -653,7 +654,7 @@ def draw_mpl(
     return fig, ax
 
 
-# -- TikZ drawing -------------------------------------------------------
+# TikZ drawing
 
 
 def _tikz_param_str(val: float, op_name: str) -> str:
@@ -817,13 +818,6 @@ def draw_tikz(
     return QuanTikz.TikzFigure(_tikz_build_string(circuit_tikz, n_qubits))
 
 
-# -- Pulse schedule drawing ----------------------------------------------
-
-from dataclasses import dataclass, field
-from typing import Optional
-import numpy as np
-
-
 @dataclass
 class PulseEvent:
     """Single pulse applied to one or more wires.
@@ -888,7 +882,7 @@ def collect_pulse_events(
 
     parent_label = parent or gate_name
 
-    # -- Leaf gates -------------------------------------------------------
+    # Leaf gates
 
     if gate_name == "RX":
         pp = PulseInformation.RX.split_params(pulse_params)
@@ -958,7 +952,7 @@ def collect_pulse_events(
             )
         ]
 
-    # -- Composite gates ---------------------------------------------------
+    # Composite gates
 
     if gate_name == "H":
         parts = PulseInformation.H.split_params(pulse_params)
@@ -1072,7 +1066,7 @@ def draw_pulse_schedule(
         n_qubits: Total number of qubits.
         n_samples: Number of time samples per pulse envelope.
         show_carrier: If ``True``, overlay the carrier-modulated waveform
-            (envelope × cos) as a thin line.
+            (envelope x cos) as a thin line.
         **kwargs: Forwarded to ``plt.subplots``.
 
     Returns:
@@ -1085,7 +1079,7 @@ def draw_pulse_schedule(
 
     omega_c = float(PulseGates.omega_c)
 
-    # -- Assign start times per wire (sequential, no parallelism) ---------
+    # Assign start times per wire (sequential, no parallelism)
     wire_cursor: Dict[int, float] = {q: 0.0 for q in range(n_qubits)}
     scheduled: List[Tuple[PulseEvent, float]] = []  # (event, t_start)
 
@@ -1098,7 +1092,7 @@ def draw_pulse_schedule(
 
     t_total = max(wire_cursor.values()) if wire_cursor else 1.0
 
-    # -- Colour palette per gate type -------------------------------------
+    # Colour palette per gate type
     gate_colors = {
         "RX": "#4e79a7",
         "RY": "#f28e2b",
@@ -1107,7 +1101,7 @@ def draw_pulse_schedule(
         "H": "#59a14f",
     }
 
-    # -- Create figure ----------------------------------------------------
+    # Create figure
     fig, axes = plt.subplots(
         n_qubits,
         1,
@@ -1129,29 +1123,29 @@ def draw_pulse_schedule(
 
     axes[-1].set_xlabel("Time", fontsize=11)
 
-    # -- Global amplitude range (for consistent y-scaling) ----------------
+    # Global amplitude range (for consistent y-scaling)
     amp_max = 1.0
     for ev, t_start in scheduled:
         if ev.envelope_fn is not None and ev.gate in ("RX", "RY"):
-            t_arr = np.linspace(0, ev.duration, n_samples)
+            t_arr = jnp.linspace(0, ev.duration, n_samples)
             t_c = ev.duration / 2
-            env = np.array(
+            env = jnp.array(
                 [float(ev.envelope_fn(ev.envelope_params, ti, t_c)) for ti in t_arr]
             )
-            amp_max = max(amp_max, np.max(np.abs(env)) * abs(ev.w) * 1.1)
+            amp_max = max(amp_max, jnp.max(jnp.abs(env)) * abs(ev.w) * 1.1)
 
     for q in range(n_qubits):
         axes[q].set_ylim(-amp_max, amp_max)
 
-    # -- Draw events ------------------------------------------------------
+    # Draw events
     for ev, t_start in scheduled:
         color = gate_colors.get(ev.gate, "#bab0ac")
 
         if ev.gate in ("RX", "RY") and ev.envelope_fn is not None:
             # Physical pulse — draw filled envelope
-            t_arr = np.linspace(0, ev.duration, n_samples)
+            t_arr = jnp.linspace(0, ev.duration, n_samples)
             t_c = ev.duration / 2
-            env = np.array(
+            env = jnp.array(
                 [float(ev.envelope_fn(ev.envelope_params, ti, t_c)) for ti in t_arr]
             )
             signal = env * ev.w  # scale by rotation angle
@@ -1261,7 +1255,7 @@ def draw_pulse_schedule(
                 zorder=5,
             )
 
-    # -- Legend ------------------------------------------------------------
+    # Legend
     handles = []
     used_gates = {ev.gate for ev, _ in scheduled}
     for gate, color in gate_colors.items():
