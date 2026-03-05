@@ -961,39 +961,45 @@ def _make_event_label(gate: str, parent: Optional[str]) -> str:
 def _compute_display_window(
     ev: PulseEvent,
     n_samples: int,
-    max_display_mult: float = 6.0,
+    threshold: float = 0.05,
 ) -> Tuple[float, float, float]:
     """Compute the (t_lo, t_hi, amp_max) display window for a physical pulse.
 
-    Widens the window beyond the evolution duration when the envelope is
-    nearly flat (sigma >> duration), capped at *max_display_mult* × duration.
+    Uses binary search to find the half-width where the envelope drops
+    to *threshold* of its peak, so the displayed window always shows the
+    characteristic envelope shape regardless of the ratio between sigma
+    and gate duration.
 
     Returns:
         ``(t_lo, t_hi, amp_max)`` — local time bounds and peak amplitude.
     """
     t_c = ev.duration / 2
     val_center = float(ev.envelope_fn(ev.envelope_params, t_c, t_c))
-    val_edge = float(ev.envelope_fn(ev.envelope_params, 0.0, t_c))
 
-    if abs(val_center) > 1e-12 and abs(val_edge / val_center) > 0.95:
-        max_span = ev.duration * max_display_mult
-        display_span = ev.duration
-        for mult in [2, 3, 4, 5, 6, 8, 10, 20, 50]:
-            test_span = ev.duration * mult
-            if test_span > max_span:
-                display_span = max_span
-                break
-            val_far = float(ev.envelope_fn(ev.envelope_params, t_c + test_span, t_c))
-            if abs(val_far / val_center) < 0.05:
-                display_span = test_span * 2
-                break
-        else:
-            display_span = max_span
-        display_span = min(display_span, max_span)
-        t_lo = t_c - display_span / 2
-        t_hi = t_c + display_span / 2
-    else:
+    if abs(val_center) < 1e-12:
+        # Envelope is zero at center — just show the evolution window
         t_lo, t_hi = 0.0, ev.duration
+    else:
+        val_edge = float(ev.envelope_fn(ev.envelope_params, 0.0, t_c))
+
+        if abs(val_edge / val_center) < (1.0 - threshold):
+            # Envelope already decays visibly within the evolution window
+            t_lo, t_hi = 0.0, ev.duration
+        else:
+            # Envelope is nearly flat over the evolution window (e.g.
+            # sigma >> duration).  Binary-search for the half-width where
+            # the envelope drops to `threshold` of its peak.
+            lo, hi = ev.duration / 2, ev.duration * 200
+            for _ in range(40):
+                mid = (lo + hi) / 2
+                val = float(ev.envelope_fn(ev.envelope_params, t_c + mid, t_c))
+                if abs(val / val_center) > threshold:
+                    lo = mid
+                else:
+                    hi = mid
+            half_width = hi * 1.1  # small padding
+            t_lo = t_c - half_width
+            t_hi = t_c + half_width
 
     t_arr = jnp.linspace(t_lo, t_hi, n_samples)
     env = jnp.array(
