@@ -711,7 +711,7 @@ class Script:
             List of :class:`~qml_essentials.drawing.PulseEvent`.
         """
         with pulse_recording() as events:
-            with recording() as _tape:
+            with recording():
                 self.f(*args, **kwargs)
         return events
 

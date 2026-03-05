@@ -4,6 +4,9 @@ from typing import Any, Dict, List, Tuple, Union
 from dataclasses import dataclass
 from typing import Optional
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from qml_essentials.gates import PulseGates, PulseInformation, PulseEnvelope
 
 from qml_essentials.operations import (
     Operation,
@@ -540,8 +543,6 @@ def draw_mpl(
     Returns:
         Tuple ``(fig, ax)`` — a Matplotlib ``Figure`` and ``Axes``.
     """
-    import matplotlib.pyplot as plt
-    import matplotlib.patches as mpatches
 
     # Schedule into columns (same logic as text)
     columns: List[Dict[int, str]] = []
@@ -887,7 +888,6 @@ def collect_pulse_events(
     Returns:
         Ordered list of :class:`PulseEvent` objects.
     """
-    from qml_essentials.gates import PulseInformation, PulseEnvelope
 
     pp_obj = PulseInformation.gate_by_name(gate_name)
     if pp_obj is None:
@@ -951,6 +951,159 @@ def collect_pulse_events(
     return events
 
 
+def _make_event_label(gate: str, parent: Optional[str]) -> str:
+    """Build a display label, appending the parent gate if different."""
+    if parent and parent != gate:
+        return f"{gate} ({parent})"
+    return gate
+
+
+def _compute_display_window(
+    ev: PulseEvent,
+    n_samples: int,
+    max_display_mult: float = 6.0,
+) -> Tuple[float, float, float]:
+    """Compute the (t_lo, t_hi, amp_max) display window for a physical pulse.
+
+    Widens the window beyond the evolution duration when the envelope is
+    nearly flat (sigma >> duration), capped at *max_display_mult* × duration.
+
+    Returns:
+        ``(t_lo, t_hi, amp_max)`` — local time bounds and peak amplitude.
+    """
+    t_c = ev.duration / 2
+    val_center = float(ev.envelope_fn(ev.envelope_params, t_c, t_c))
+    val_edge = float(ev.envelope_fn(ev.envelope_params, 0.0, t_c))
+
+    if abs(val_center) > 1e-12 and abs(val_edge / val_center) > 0.95:
+        max_span = ev.duration * max_display_mult
+        display_span = ev.duration
+        for mult in [2, 3, 4, 5, 6, 8, 10, 20, 50]:
+            test_span = ev.duration * mult
+            if test_span > max_span:
+                display_span = max_span
+                break
+            val_far = float(ev.envelope_fn(ev.envelope_params, t_c + test_span, t_c))
+            if abs(val_far / val_center) < 0.05:
+                display_span = test_span * 2
+                break
+        else:
+            display_span = max_span
+        display_span = min(display_span, max_span)
+        t_lo = t_c - display_span / 2
+        t_hi = t_c + display_span / 2
+    else:
+        t_lo, t_hi = 0.0, ev.duration
+
+    t_arr = jnp.linspace(t_lo, t_hi, n_samples)
+    env = jnp.array(
+        [float(ev.envelope_fn(ev.envelope_params, ti, t_c)) for ti in t_arr]
+    )
+    amp = float(jnp.max(jnp.abs(env)) * abs(ev.w) * 1.1)
+    return t_lo, t_hi, amp
+
+
+def _draw_physical_pulse(
+    ev: PulseEvent,
+    t_start: float,
+    t_lo: float,
+    t_hi: float,
+    axes,
+    color: str,
+    n_samples: int,
+    omega_c: float,
+    show_carrier: bool,
+) -> None:
+    """Draw a physical (RX/RY) pulse envelope on the given axes."""
+    t_c = ev.duration / 2
+    t_arr = jnp.linspace(t_lo, t_hi, n_samples)
+    env = jnp.array(
+        [float(ev.envelope_fn(ev.envelope_params, ti, t_c)) for ti in t_arr]
+    )
+    signal = env * ev.w
+    t_display = t_arr - t_c + t_start + ev.duration / 2
+
+    for wire in ev.wires:
+        ax = axes[wire]
+        ax.fill_between(t_display, signal, alpha=0.2, color=color, zorder=2)
+        ax.plot(t_display, signal, color=color, linewidth=1.2, alpha=0.8, zorder=3)
+
+        # Mark evolution window boundaries
+        for t_edge in (t_start, t_start + ev.duration):
+            ax.axvline(
+                t_edge, color=color, linestyle=":", linewidth=0.6, alpha=0.4, zorder=1
+            )
+
+        if show_carrier:
+            modulated = signal * jnp.cos(omega_c * t_arr + ev.carrier_phase)
+            ax.plot(
+                t_display, modulated, color=color, linewidth=0.5, alpha=0.4, zorder=2
+            )
+
+        peak_idx = jnp.argmax(jnp.abs(signal))
+        ax.annotate(
+            _make_event_label(ev.gate, ev.parent),
+            xy=(float(t_display[peak_idx]), float(signal[peak_idx])),
+            fontsize=7,
+            ha="center",
+            va="bottom" if signal[peak_idx] >= 0 else "top",
+            color=color,
+            fontweight="bold",
+            zorder=5,
+        )
+
+
+def _draw_virtual_z(
+    ev: PulseEvent, t_start: float, axes, color: str, amp_max: float
+) -> None:
+    """Draw a virtual-Z gate as a dashed vertical line."""
+    t_mid = t_start + ev.duration / 2
+    for wire in ev.wires:
+        ax = axes[wire]
+        ax.axvline(
+            t_mid, color=color, linestyle="--", linewidth=1.0, alpha=0.7, zorder=2
+        )
+        ax.annotate(
+            _make_event_label(ev.gate, ev.parent),
+            xy=(t_mid, amp_max * 0.85),
+            fontsize=6,
+            ha="center",
+            va="bottom",
+            color=color,
+            fontstyle="italic",
+            zorder=5,
+        )
+
+
+def _draw_cz(ev: PulseEvent, t_start: float, axes, color: str, amp_max: float) -> None:
+    """Draw a CZ gate as a shaded rectangle spanning its wires."""
+    for wire in ev.wires:
+        ax = axes[wire]
+        rect = mpatches.Rectangle(
+            (t_start, -amp_max * 0.6),
+            ev.duration,
+            amp_max * 1.2,
+            alpha=0.2,
+            facecolor=color,
+            edgecolor=color,
+            linewidth=1.0,
+            zorder=1,
+        )
+        ax.add_patch(rect)
+
+    ax = axes[ev.wires[0]]
+    ax.annotate(
+        _make_event_label(ev.gate, ev.parent),
+        xy=(t_start + ev.duration / 2, amp_max * 0.7),
+        fontsize=7,
+        ha="center",
+        va="bottom",
+        color=color,
+        fontweight="bold",
+        zorder=5,
+    )
+
+
 def draw_pulse_schedule(
     events: List[PulseEvent],
     n_qubits: int,
@@ -977,11 +1130,6 @@ def draw_pulse_schedule(
     Returns:
         ``(fig, axes)`` — Matplotlib Figure and array of Axes.
     """
-    import matplotlib.pyplot as plt
-    import matplotlib.patches as mpatches
-
-    from qml_essentials.gates import PulseGates, PulseInformation
-
     omega_c = float(PulseGates.omega_c)
 
     # Assign start times per wire (sequential, no parallelism)
@@ -989,7 +1137,6 @@ def draw_pulse_schedule(
     scheduled: List[Tuple[PulseEvent, float]] = []  # (event, t_start)
 
     for ev in events:
-        # Multi-wire gates (CZ) synchronise on the latest wire
         t_start = max(wire_cursor[w] for w in ev.wires)
         scheduled.append((ev, t_start))
         for w in ev.wires:
@@ -997,7 +1144,6 @@ def draw_pulse_schedule(
 
     t_total = max(wire_cursor.values()) if wire_cursor else 1.0
 
-    # Colour palette per gate type
     gate_colors = {
         "RX": "#4e79a7",
         "RY": "#f28e2b",
@@ -1006,7 +1152,6 @@ def draw_pulse_schedule(
         "H": "#59a14f",
     }
 
-    # Create figure
     fig, axes = plt.subplots(
         n_qubits,
         1,
@@ -1027,52 +1172,14 @@ def draw_pulse_schedule(
 
     axes[-1].set_xlabel("Time", fontsize=11)
 
-    # Compute display windows for physical pulses.
-    # The optimized envelope params can have sigma >> duration, making
-    # the envelope appear flat within the evolution window.  We widen
-    # the display range so that the envelope shape is visible, but cap
-    # at a reasonable multiple of the duration to avoid unrealistically
-    # wide plots.
-    MAX_DISPLAY_MULT = 6  # show at most ±3× the duration around t_c
-    display_windows: Dict[int, Tuple[float, float]] = {}  # event index -> (t_lo, t_hi)
+    # Pre-compute display windows and amplitude range for physical pulses
+    display_windows: Dict[int, Tuple[float, float]] = {}
     amp_max = 1.0
-    for idx, (ev, t_start) in enumerate(scheduled):
+    for idx, (ev, _) in enumerate(scheduled):
         if ev.envelope_fn is not None and ev.gate in ("RX", "RY"):
-            t_c = ev.duration / 2
-            val_center = float(ev.envelope_fn(ev.envelope_params, t_c, t_c))
-            val_edge = float(ev.envelope_fn(ev.envelope_params, 0.0, t_c))
-
-            if abs(val_center) > 1e-12 and abs(val_edge / val_center) > 0.95:
-                # Envelope barely decays — widen until it drops to ~5%,
-                # but never exceed MAX_DISPLAY_MULT × duration.
-                max_span = ev.duration * MAX_DISPLAY_MULT
-                display_span = ev.duration
-                for mult in [2, 3, 4, 5, 6, 8, 10, 20, 50]:
-                    test_span = ev.duration * mult
-                    if test_span > max_span:
-                        display_span = max_span
-                        break
-                    val_far = float(
-                        ev.envelope_fn(ev.envelope_params, t_c + test_span, t_c)
-                    )
-                    if abs(val_far / val_center) < 0.05:
-                        display_span = test_span * 2
-                        break
-                else:
-                    display_span = max_span
-                # Clamp to the max
-                display_span = min(display_span, max_span)
-                t_lo = t_c - display_span / 2
-                t_hi = t_c + display_span / 2
-            else:
-                t_lo, t_hi = 0.0, ev.duration
-
+            t_lo, t_hi, amp = _compute_display_window(ev, n_samples)
             display_windows[idx] = (t_lo, t_hi)
-            t_arr = jnp.linspace(t_lo, t_hi, n_samples)
-            env = jnp.array(
-                [float(ev.envelope_fn(ev.envelope_params, ti, t_c)) for ti in t_arr]
-            )
-            amp_max = max(amp_max, jnp.max(jnp.abs(env)) * abs(ev.w) * 1.1)
+            amp_max = max(amp_max, amp)
 
     # Compute effective x-limits accounting for widened display windows
     x_lo, x_hi = 0.0, t_total
@@ -1080,11 +1187,8 @@ def draw_pulse_schedule(
         if idx in display_windows:
             t_c = ev.duration / 2
             dw_lo, dw_hi = display_windows[idx]
-            # Map local display coords to global timeline
-            global_lo = dw_lo - t_c + t_start + ev.duration / 2
-            global_hi = dw_hi - t_c + t_start + ev.duration / 2
-            x_lo = min(x_lo, global_lo)
-            x_hi = max(x_hi, global_hi)
+            x_lo = min(x_lo, dw_lo - t_c + t_start + ev.duration / 2)
+            x_hi = max(x_hi, dw_hi - t_c + t_start + ev.duration / 2)
     x_margin = (x_hi - x_lo) * 0.05
     for q in range(n_qubits):
         axes[q].set_xlim(x_lo - x_margin, x_hi + x_margin)
@@ -1095,143 +1199,22 @@ def draw_pulse_schedule(
         color = gate_colors.get(ev.gate, "#bab0ac")
 
         if ev.gate in ("RX", "RY") and ev.envelope_fn is not None:
-            # Physical pulse — use the pre-computed display window so the
-            # envelope shape is visible even when sigma >> duration.
-            t_c = ev.duration / 2
             t_lo, t_hi = display_windows.get(idx, (0.0, ev.duration))
-            t_arr = jnp.linspace(t_lo, t_hi, n_samples)
-            env = jnp.array(
-                [float(ev.envelope_fn(ev.envelope_params, ti, t_c)) for ti in t_arr]
+            _draw_physical_pulse(
+                ev,
+                t_start,
+                t_lo,
+                t_hi,
+                axes,
+                color,
+                n_samples,
+                omega_c,
+                show_carrier,
             )
-            signal = env * ev.w  # scale by rotation angle
-            # Shift the display time so t_c aligns with the scheduled center
-            t_display = t_arr - t_c + t_start + ev.duration / 2
-
-            for wire in ev.wires:
-                ax = axes[wire]
-                ax.fill_between(
-                    t_display,
-                    signal,
-                    alpha=0.2,
-                    color=color,
-                    zorder=2,
-                )
-                ax.plot(
-                    t_display,
-                    signal,
-                    color=color,
-                    linewidth=1.2,
-                    alpha=0.8,
-                    zorder=3,
-                )
-
-                # Mark the actual evolution window boundaries
-                evo_lo = t_start
-                evo_hi = t_start + ev.duration
-                ax.axvline(
-                    evo_lo,
-                    color=color,
-                    linestyle=":",
-                    linewidth=0.6,
-                    alpha=0.4,
-                    zorder=1,
-                )
-                ax.axvline(
-                    evo_hi,
-                    color=color,
-                    linestyle=":",
-                    linewidth=0.6,
-                    alpha=0.4,
-                    zorder=1,
-                )
-
-                if show_carrier:
-                    carrier = jnp.cos(omega_c * t_arr + ev.carrier_phase)
-                    modulated = signal * carrier
-                    ax.plot(
-                        t_display,
-                        modulated,
-                        color=color,
-                        linewidth=0.5,
-                        alpha=0.4,
-                        zorder=2,
-                    )
-
-                # Label at the peak
-                peak_idx = jnp.argmax(jnp.abs(signal))
-                label = ev.gate
-                if ev.parent and ev.parent != ev.gate:
-                    label = f"{ev.gate} ({ev.parent})"
-                ax.annotate(
-                    label,
-                    xy=(float(t_display[peak_idx]), float(signal[peak_idx])),
-                    fontsize=7,
-                    ha="center",
-                    va="bottom" if signal[peak_idx] >= 0 else "top",
-                    color=color,
-                    fontweight="bold",
-                    zorder=5,
-                )
-
         elif ev.gate == "RZ":
-            # Virtual-Z — thin dashed vertical line
-            for wire in ev.wires:
-                ax = axes[wire]
-                t_mid = t_start + ev.duration / 2
-                ax.axvline(
-                    t_mid,
-                    color=color,
-                    linestyle="--",
-                    linewidth=1.0,
-                    alpha=0.7,
-                    zorder=2,
-                )
-                label = "RZ"
-                if ev.parent and ev.parent != "RZ":
-                    label = f"RZ ({ev.parent})"
-                ax.annotate(
-                    label,
-                    xy=(t_mid, amp_max * 0.85),
-                    fontsize=6,
-                    ha="center",
-                    va="bottom",
-                    color=color,
-                    fontstyle="italic",
-                    zorder=5,
-                )
-
+            _draw_virtual_z(ev, t_start, axes, color, amp_max)
         elif ev.gate == "CZ":
-            # CZ — shaded rectangle spanning both wires
-            for wire in ev.wires:
-                ax = axes[wire]
-                rect = mpatches.Rectangle(
-                    (t_start, -amp_max * 0.6),
-                    ev.duration,
-                    amp_max * 1.2,
-                    alpha=0.2,
-                    facecolor=color,
-                    edgecolor=color,
-                    linewidth=1.0,
-                    zorder=1,
-                )
-                ax.add_patch(rect)
-
-            # Label on the first wire only
-            ax = axes[ev.wires[0]]
-            t_mid = t_start + ev.duration / 2
-            label = "CZ"
-            if ev.parent and ev.parent != "CZ":
-                label = f"CZ ({ev.parent})"
-            ax.annotate(
-                label,
-                xy=(t_mid, amp_max * 0.7),
-                fontsize=7,
-                ha="center",
-                va="bottom",
-                color=color,
-                fontweight="bold",
-                zorder=5,
-            )
+            _draw_cz(ev, t_start, axes, color, amp_max)
 
     # Legend
     handles = []
@@ -1240,12 +1223,7 @@ def draw_pulse_schedule(
         if gate in used_gates:
             handles.append(mpatches.Patch(color=color, alpha=0.5, label=gate))
     if handles:
-        axes[0].legend(
-            handles=handles,
-            loc="upper right",
-            fontsize=8,
-            framealpha=0.7,
-        )
+        axes[0].legend(handles=handles, loc="upper right", fontsize=8, framealpha=0.7)
 
     fig.suptitle(
         f"Pulse Schedule ({PulseInformation.get_envelope()} envelope)",
