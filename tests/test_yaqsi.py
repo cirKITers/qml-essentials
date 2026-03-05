@@ -2579,7 +2579,7 @@ def test_pulse_recording_context_direct():
         PulseInformation.set_envelope("gaussian")
 
         with pulse_recording() as events:
-            with recording() as _tape:
+            with recording():
                 PulseGates.RY(jnp.pi / 2, wires=0)
 
         assert len(events) == 1
@@ -2599,7 +2599,7 @@ def test_pulse_recording_no_events_outside_context():
 
         assert active_pulse_tape() is None
 
-        with recording() as _tape:
+        with recording():
             PulseGates.RX(jnp.pi, wires=0)
         # No crash, no events captured
     finally:
