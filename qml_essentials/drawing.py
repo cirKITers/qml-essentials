@@ -1030,7 +1030,10 @@ def draw_pulse_schedule(
     # Compute display windows for physical pulses.
     # The optimized envelope params can have sigma >> duration, making
     # the envelope appear flat within the evolution window.  We widen
-    # the display range so that the envelope shape is visible.
+    # the display range so that the envelope shape is visible, but cap
+    # at a reasonable multiple of the duration to avoid unrealistically
+    # wide plots.
+    MAX_DISPLAY_MULT = 6  # show at most ±3× the duration around t_c
     display_windows: Dict[int, Tuple[float, float]] = {}  # event index -> (t_lo, t_hi)
     amp_max = 1.0
     for idx, (ev, t_start) in enumerate(scheduled):
@@ -1040,10 +1043,15 @@ def draw_pulse_schedule(
             val_edge = float(ev.envelope_fn(ev.envelope_params, 0.0, t_c))
 
             if abs(val_center) > 1e-12 and abs(val_edge / val_center) > 0.95:
-                # Envelope barely decays — widen until it drops to ~5%
+                # Envelope barely decays — widen until it drops to ~5%,
+                # but never exceed MAX_DISPLAY_MULT × duration.
+                max_span = ev.duration * MAX_DISPLAY_MULT
                 display_span = ev.duration
-                for mult in [5, 10, 20, 50, 100]:
+                for mult in [2, 3, 4, 5, 6, 8, 10, 20, 50]:
                     test_span = ev.duration * mult
+                    if test_span > max_span:
+                        display_span = max_span
+                        break
                     val_far = float(
                         ev.envelope_fn(ev.envelope_params, t_c + test_span, t_c)
                     )
@@ -1051,7 +1059,9 @@ def draw_pulse_schedule(
                         display_span = test_span * 2
                         break
                 else:
-                    display_span = ev.duration * 200
+                    display_span = max_span
+                # Clamp to the max
+                display_span = min(display_span, max_span)
                 t_lo = t_c - display_span / 2
                 t_hi = t_c + display_span / 2
             else:
@@ -1102,7 +1112,7 @@ def draw_pulse_schedule(
                 ax.fill_between(
                     t_display,
                     signal,
-                    alpha=0.35,
+                    alpha=0.2,
                     color=color,
                     zorder=2,
                 )
@@ -1111,7 +1121,28 @@ def draw_pulse_schedule(
                     signal,
                     color=color,
                     linewidth=1.2,
+                    alpha=0.8,
                     zorder=3,
+                )
+
+                # Mark the actual evolution window boundaries
+                evo_lo = t_start
+                evo_hi = t_start + ev.duration
+                ax.axvline(
+                    evo_lo,
+                    color=color,
+                    linestyle=":",
+                    linewidth=0.6,
+                    alpha=0.4,
+                    zorder=1,
+                )
+                ax.axvline(
+                    evo_hi,
+                    color=color,
+                    linestyle=":",
+                    linewidth=0.6,
+                    alpha=0.4,
+                    zorder=1,
                 )
 
                 if show_carrier:
@@ -1122,7 +1153,7 @@ def draw_pulse_schedule(
                         modulated,
                         color=color,
                         linewidth=0.5,
-                        alpha=0.5,
+                        alpha=0.4,
                         zorder=2,
                     )
 
