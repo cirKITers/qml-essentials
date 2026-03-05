@@ -1019,7 +1019,6 @@ def draw_pulse_schedule(
     for q in range(n_qubits):
         ax = axes[q]
         ax.set_ylabel(f"q{q}", rotation=0, labelpad=20, fontsize=11, va="center")
-        ax.set_xlim(-0.05 * t_total, t_total * 1.05)
         ax.axhline(0, color="grey", linewidth=0.4, zorder=0)
         ax.set_yticks([])
         ax.spines["top"].set_visible(False)
@@ -1028,44 +1027,87 @@ def draw_pulse_schedule(
 
     axes[-1].set_xlabel("Time", fontsize=11)
 
-    # Global amplitude range (for consistent y-scaling)
+    # Compute display windows for physical pulses.
+    # The optimized envelope params can have sigma >> duration, making
+    # the envelope appear flat within the evolution window.  We widen
+    # the display range so that the envelope shape is visible.
+    display_windows: Dict[int, Tuple[float, float]] = {}  # event index -> (t_lo, t_hi)
     amp_max = 1.0
-    for ev, t_start in scheduled:
+    for idx, (ev, t_start) in enumerate(scheduled):
         if ev.envelope_fn is not None and ev.gate in ("RX", "RY"):
-            t_arr = jnp.linspace(0, ev.duration, n_samples)
             t_c = ev.duration / 2
+            val_center = float(ev.envelope_fn(ev.envelope_params, t_c, t_c))
+            val_edge = float(ev.envelope_fn(ev.envelope_params, 0.0, t_c))
+
+            if abs(val_center) > 1e-12 and abs(val_edge / val_center) > 0.95:
+                # Envelope barely decays — widen until it drops to ~5%
+                display_span = ev.duration
+                for mult in [5, 10, 20, 50, 100]:
+                    test_span = ev.duration * mult
+                    val_far = float(
+                        ev.envelope_fn(ev.envelope_params, t_c + test_span, t_c)
+                    )
+                    if abs(val_far / val_center) < 0.05:
+                        display_span = test_span * 2
+                        break
+                else:
+                    display_span = ev.duration * 200
+                t_lo = t_c - display_span / 2
+                t_hi = t_c + display_span / 2
+            else:
+                t_lo, t_hi = 0.0, ev.duration
+
+            display_windows[idx] = (t_lo, t_hi)
+            t_arr = jnp.linspace(t_lo, t_hi, n_samples)
             env = jnp.array(
                 [float(ev.envelope_fn(ev.envelope_params, ti, t_c)) for ti in t_arr]
             )
             amp_max = max(amp_max, jnp.max(jnp.abs(env)) * abs(ev.w) * 1.1)
 
+    # Compute effective x-limits accounting for widened display windows
+    x_lo, x_hi = 0.0, t_total
+    for idx, (ev, t_start) in enumerate(scheduled):
+        if idx in display_windows:
+            t_c = ev.duration / 2
+            dw_lo, dw_hi = display_windows[idx]
+            # Map local display coords to global timeline
+            global_lo = dw_lo - t_c + t_start + ev.duration / 2
+            global_hi = dw_hi - t_c + t_start + ev.duration / 2
+            x_lo = min(x_lo, global_lo)
+            x_hi = max(x_hi, global_hi)
+    x_margin = (x_hi - x_lo) * 0.05
     for q in range(n_qubits):
+        axes[q].set_xlim(x_lo - x_margin, x_hi + x_margin)
         axes[q].set_ylim(-amp_max, amp_max)
 
     # Draw events
-    for ev, t_start in scheduled:
+    for idx, (ev, t_start) in enumerate(scheduled):
         color = gate_colors.get(ev.gate, "#bab0ac")
 
         if ev.gate in ("RX", "RY") and ev.envelope_fn is not None:
-            # Physical pulse — draw filled envelope
-            t_arr = jnp.linspace(0, ev.duration, n_samples)
+            # Physical pulse — use the pre-computed display window so the
+            # envelope shape is visible even when sigma >> duration.
             t_c = ev.duration / 2
+            t_lo, t_hi = display_windows.get(idx, (0.0, ev.duration))
+            t_arr = jnp.linspace(t_lo, t_hi, n_samples)
             env = jnp.array(
                 [float(ev.envelope_fn(ev.envelope_params, ti, t_c)) for ti in t_arr]
             )
             signal = env * ev.w  # scale by rotation angle
+            # Shift the display time so t_c aligns with the scheduled center
+            t_display = t_arr - t_c + t_start + ev.duration / 2
 
             for wire in ev.wires:
                 ax = axes[wire]
                 ax.fill_between(
-                    t_arr + t_start,
+                    t_display,
                     signal,
                     alpha=0.35,
                     color=color,
                     zorder=2,
                 )
                 ax.plot(
-                    t_arr + t_start,
+                    t_display,
                     signal,
                     color=color,
                     linewidth=1.2,
@@ -1076,7 +1118,7 @@ def draw_pulse_schedule(
                     carrier = jnp.cos(omega_c * t_arr + ev.carrier_phase)
                     modulated = signal * carrier
                     ax.plot(
-                        t_arr + t_start,
+                        t_display,
                         modulated,
                         color=color,
                         linewidth=0.5,
@@ -1091,7 +1133,7 @@ def draw_pulse_schedule(
                     label = f"{ev.gate} ({ev.parent})"
                 ax.annotate(
                     label,
-                    xy=(t_arr[peak_idx] + t_start, signal[peak_idx]),
+                    xy=(float(t_display[peak_idx]), float(signal[peak_idx])),
                     fontsize=7,
                     ha="center",
                     va="bottom" if signal[peak_idx] >= 0 else "top",
