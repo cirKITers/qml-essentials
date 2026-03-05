@@ -1168,7 +1168,7 @@ def draw_pulse_schedule(
                 )
 
                 if show_carrier:
-                    carrier = np.cos(omega_c * t_arr + ev.carrier_phase)
+                    carrier = jnp.cos(omega_c * t_arr + ev.carrier_phase)
                     modulated = signal * carrier
                     ax.plot(
                         t_arr + t_start,
@@ -1180,7 +1180,7 @@ def draw_pulse_schedule(
                     )
 
                 # Label at the peak
-                peak_idx = np.argmax(np.abs(signal))
+                peak_idx = jnp.argmax(jnp.abs(signal))
                 label = ev.gate
                 if ev.parent and ev.parent != ev.gate:
                     label = f"{ev.gate} ({ev.parent})"
