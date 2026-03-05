@@ -1607,12 +1607,6 @@ class Model:
                 "Either switch gate_mode='pulse' or do not pass pulse_params."
             )
 
-        if noise_params is not None and gate_mode == "pulse":
-            raise ValueError(
-                "Noise is not supported in 'pulse' gate_mode. "
-                "Either remove noise_params or use gate_mode='unitary'."
-            )
-
         params = self._params_validation(params)
         pulse_params = self._pulse_params_validation(pulse_params)
         inputs = self._inputs_validation(inputs)

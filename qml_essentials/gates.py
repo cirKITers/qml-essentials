@@ -1156,9 +1156,31 @@ class PulseGates:
         omega: float,
         wires: Union[int, List[int]],
         pulse_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
     ) -> None:
-        """Apply general rotation via decomposition: RZ(phi) · RY(theta) · RZ(omega)."""
+        """
+        Apply general rotation via decomposition: RZ(phi) · RY(theta) · RZ(omega).
+
+        Args:
+            phi (float): First rotation angle.
+            theta (float): Second rotation angle.
+            omega (float): Third rotation angle.
+            wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
+
+        Returns:
+            None: Gates are applied in-place to the circuit.
+        """
+        if noise_params is not None and "GateError" in noise_params:
+            phi, random_key = UnitaryGates.GateError(phi, noise_params, random_key)
+            theta, random_key = UnitaryGates.GateError(theta, noise_params, random_key)
+            omega, random_key = UnitaryGates.GateError(omega, noise_params, random_key)
         PulseGates._execute_composite("Rot", [phi, theta, omega], wires, pulse_params)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def PauliRot(
@@ -1166,6 +1188,8 @@ class PulseGates:
         theta: float,
         wires: Union[int, List[int]],
         pulse_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
     ) -> None:
         """Not implemented as a PulseGate."""
         raise NotImplementedError("PauliRot gate is not implemented as PulseGate")
@@ -1175,6 +1199,8 @@ class PulseGates:
         w: float,
         wires: Union[int, List[int]],
         pulse_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
     ) -> None:
         """Apply X-axis rotation using the active pulse envelope.
 
@@ -1183,6 +1209,8 @@ class PulseGates:
             wires: Qubit index or indices.
             pulse_params: Envelope parameters ``[env_0, ..., env_n, t]``.
                 If ``None``, uses optimized defaults.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
         """
         pulse_params = PulseInformation.RX.split_params(pulse_params)
 
@@ -1191,14 +1219,18 @@ class PulseGates:
 
         # Pack: [envelope_params..., w] — evolution time is the last element
         # of pulse_params (pulse_params[-1]).
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         env_params = jnp.array([*pulse_params[:-1], w])
         ys.evolve(H_eff)([env_params], pulse_params[-1])
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def RY(
         w: float,
         wires: Union[int, List[int]],
         pulse_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
     ) -> None:
         """Apply Y-axis rotation using the active pulse envelope.
 
@@ -1207,6 +1239,8 @@ class PulseGates:
             wires: Qubit index or indices.
             pulse_params: Envelope parameters ``[env_0, ..., env_n, t]``.
                 If ``None``, uses optimized defaults.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
         """
         pulse_params = PulseInformation.RY.split_params(pulse_params)
 
@@ -1215,12 +1249,18 @@ class PulseGates:
 
         # Pack w into the params so the coefficient function doesn't need
         # a closure — this enables JIT solver cache sharing across all RY calls.
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         env_params = jnp.array([*pulse_params[:-1], w])
         ys.evolve(H_eff)([env_params], pulse_params[-1])
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def RZ(
-        w: float, wires: Union[int, List[int]], pulse_params: Optional[float] = None
+        w: float,
+        wires: Union[int, List[int]],
+        pulse_params: Optional[float] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
     ) -> None:
         """
         Apply Z-axis rotation using pulse-level implementation.
@@ -1233,6 +1273,8 @@ class PulseGates:
             wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
             pulse_params (Optional[float]): Duration parameter for the pulse.
                 Rotation angle = w * 2 * pulse_params. Defaults to 0.5 if None.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
 
         Returns:
             None: Gate is applied in-place to the circuit.
@@ -1246,8 +1288,11 @@ class PulseGates:
         # a closure — [pulse_param_scalar, w] enables JIT solver cache sharing.
         # pulse_params may be a 1-element array or scalar; ravel + index to
         # ensure a scalar for concatenation.
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         pp_scalar = jnp.ravel(jnp.asarray(pulse_params))[0]
         ys.evolve(H_eff)([jnp.array([pp_scalar, w])], 1)
+
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def _resolve_wires(wire_fn, wires):
@@ -1313,11 +1358,20 @@ class PulseGates:
 
     @staticmethod
     def H(
-        wires: Union[int, List[int]], pulse_params: Optional[jnp.ndarray] = None
+        wires: Union[int, List[int]],
+        pulse_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
     ) -> None:
         """Apply Hadamard gate using pulse decomposition.
 
         Decomposes as RZ(π) · RY(π/2) followed by a correction phase.
+
+        Args:
+            wires (Union[int, List[int]]): Qubit index or indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
+                (not used in this gate).
         """
         PulseGates._execute_composite("H", 0.0, wires, pulse_params)
 
@@ -1325,47 +1379,143 @@ class PulseGates:
         _H = op.Hermitian(PulseGates._H_corr, wires=wires, record=False)
         H_corr = PulseGates._coeff_Sc * _H
         ys.evolve(H_corr)([0], 1)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CX(wires: List[int], pulse_params: Optional[jnp.ndarray] = None) -> None:
-        """Apply CNOT gate via decomposition: H(target) · CZ · H(target)."""
+    def CX(
+        wires: List[int],
+        pulse_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
+        """Apply CNOT gate via decomposition: H(target) · CZ · H(target).
+
+        Args:
+            wires (List[int]): Control and target qubit indices [control, target].
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
+                (not used in this gate).
+
+        Returns:
+            None: Gate is applied in-place to the circuit.
+        """
         PulseGates._execute_composite("CX", 0.0, wires, pulse_params)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CY(wires: List[int], pulse_params: Optional[jnp.ndarray] = None) -> None:
-        """Apply controlled-Y via decomposition."""
+    def CY(
+        wires: List[int],
+        pulse_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
+        """Apply controlled-Y via decomposition.
+
+        Args:
+            wires (List[int]): Control and target qubit indices [control, target].
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
+                (not used in this gate).
+
+        """
         PulseGates._execute_composite("CY", 0.0, wires, pulse_params)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
-    def CZ(wires: List[int], pulse_params: Optional[float] = None) -> None:
-        """Apply controlled-Z using ZZ coupling Hamiltonian."""
+    def CZ(
+        wires: List[int],
+        pulse_params: Optional[float] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
+        """Apply controlled-Z using ZZ coupling Hamiltonian.
+
+        Args:
+            wires (List[int]): Control and target qubit indices.
+            pulse_params (Optional[float]): Time or duration parameter for
+                the pulse evolution. If None, uses optimized value.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
+                (not used in this gate).
+
+        """
         if pulse_params is None:
             pulse_params = PulseInformation.CZ.params
 
         _H = op.Hermitian(PulseGates._H_CZ, wires=wires, record=False)
         H_eff = PulseGates._coeff_Scz * _H
         ys.evolve(H_eff)([pulse_params], 1)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def CRX(
-        w: float, wires: List[int], pulse_params: Optional[jnp.ndarray] = None
+        w: float,
+        wires: List[int],
+        pulse_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
     ) -> None:
-        """Apply controlled-RX via decomposition."""
+        """Apply controlled-RX via decomposition.
+
+        Args:
+            w (float): Rotation angle in radians.
+            wires (List[int]): Control and target qubit indices [control, target].
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
+                (not used in this gate).
+        """
         PulseGates._execute_composite("CRX", w, wires, pulse_params)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def CRY(
-        w: float, wires: List[int], pulse_params: Optional[jnp.ndarray] = None
+        w: float,
+        wires: List[int],
+        pulse_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
     ) -> None:
-        """Apply controlled-RY via decomposition."""
+        """Apply controlled-RY via decomposition.
+
+        Args:
+            w (float): Rotation angle in radians.
+            wires (List[int]): Control and target qubit indices [control, target].
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
+        """
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         PulseGates._execute_composite("CRY", w, wires, pulse_params)
+        UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
     def CRZ(
-        w: float, wires: List[int], pulse_params: Optional[jnp.ndarray] = None
+        w: float,
+        wires: List[int],
+        pulse_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
     ) -> None:
-        """Apply controlled-RZ via decomposition."""
+        """Apply controlled-RZ via decomposition.
+
+        Args:
+            w (float): Rotation angle in radians.
+            wires (List[int]): Control and target qubit indices [control, target].
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
+        """
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         PulseGates._execute_composite("CRZ", w, wires, pulse_params)
+        UnitaryGates.Noise(wires, noise_params)
 
 
 # Meta class to avoid instantiating the Gates class
@@ -1416,10 +1566,18 @@ class Gates(metaclass=GatesMeta):
         gate_mode = kwargs.pop("gate_mode", "unitary")
 
         # Backend selection and kwargs filtering
-        allowed_args = ["w", "wires", "phi", "theta", "omega", "input_idx"]
+        allowed_args = [
+            "w",
+            "wires",
+            "phi",
+            "theta",
+            "omega",
+            "input_idx",
+            "noise_params",
+            "random_key",
+        ]
         if gate_mode == "unitary":
             gate_backend = UnitaryGates
-            allowed_args += ["noise_params", "random_key"]
         elif gate_mode == "pulse":
             gate_backend = PulseGates
             allowed_args += ["pulse_params"]
