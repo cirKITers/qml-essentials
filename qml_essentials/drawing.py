@@ -843,6 +843,27 @@ class PulseEvent:
     parent: Optional[str] = None  # composite gate that owns this pulse
 
 
+# Leaf gate metadata for pulse schedule drawing.
+# ``physical`` gates have an envelope; virtual gates (RZ, CZ) do not.
+LEAF_META = {
+    "RX": {"carrier_phase": float(jnp.pi), "physical": True},
+    "RY": {"carrier_phase": float(-jnp.pi / 2), "physical": True},
+    "RZ": {"carrier_phase": 0.0, "physical": False},
+    "CZ": {"carrier_phase": 0.0, "physical": False},
+}
+
+
+def _resolve_wires_for_drawing(wire_fn, wires_list):
+    """Resolve a ``wire_fn`` string to concrete wire(s) for drawing."""
+    if wire_fn == "all":
+        return wires_list
+    if wire_fn == "target":
+        return [wires_list[-1]] if len(wires_list) > 1 else wires_list
+    if wire_fn == "control":
+        return [wires_list[0]]
+    raise ValueError(f"Unknown wire_fn: {wire_fn!r}")
+
+
 def collect_pulse_events(
     gate_name: str,
     w: Union[float, List[float]],
@@ -852,198 +873,82 @@ def collect_pulse_events(
 ) -> List[PulseEvent]:
     """Decompose a (possibly composite) pulse gate into leaf PulseEvents.
 
-    This mirrors the decomposition logic in :class:`PulseGates` but does
-    not apply any quantum operations — it only collects timing and
-    envelope information for drawing.
+    Walks the :class:`DecompositionStep` tree stored on :class:`PulseParams`
+    and collects timing / envelope information for drawing — no quantum
+    operations are applied.
 
     Args:
         gate_name: Name of the gate (``"RX"``, ``"H"``, ``"CX"``, etc.).
-        w: Rotation angle(s).  Scalar for single-param gates, list for
-            ``Rot`` (``[phi, theta, omega]``).
-        wires: Qubit index or ``[control, target]`` for two-qubit gates.
-        pulse_params: Pulse parameters (``jnp.ndarray`` or ``None`` for
-            defaults).
-        parent: Label of the enclosing composite gate (used for nested
-            decompositions).
+        w: Rotation angle(s).
+        wires: Qubit index or ``[control, target]``.
+        pulse_params: Pulse parameters or ``None`` for defaults.
+        parent: Label of the enclosing composite gate.
 
     Returns:
         Ordered list of :class:`PulseEvent` objects.
     """
-    from qml_essentials.gates import PulseInformation, PulseEnvelope, PulseGates
+    from qml_essentials.gates import PulseInformation, PulseEnvelope
 
-    info = PulseEnvelope.get(PulseInformation.get_envelope())
-    envelope_fn = info["fn"]
-    n_env = info["n_envelope_params"]
+    pp_obj = PulseInformation.gate_by_name(gate_name)
+    if pp_obj is None:
+        raise ValueError(f"Unknown pulse gate: {gate_name!r}")
 
-    if isinstance(wires, int):
-        wires_list = [wires]
-    else:
-        wires_list = list(wires)
-
+    wires_list = [wires] if isinstance(wires, int) else list(wires)
     parent_label = parent or gate_name
 
-    # Leaf gates
+    # --- Leaf gate ---
+    if pp_obj.is_leaf:
+        meta = LEAF_META.get(gate_name)
+        if meta is None:
+            raise ValueError(f"Unknown pulse gate: {gate_name!r}")
 
-    if gate_name == "RX":
-        pp = PulseInformation.RX.split_params(pulse_params)
-        env_p = pp[:-1]  # envelope params
-        dur = float(pp[-1])
-        return [
-            PulseEvent(
-                gate="RX",
-                wires=wires_list,
-                envelope_fn=envelope_fn,
-                envelope_params=jnp.array(env_p),
-                w=float(w),
-                duration=dur,
-                carrier_phase=float(jnp.pi),  # cos(omega_c * t + pi)
-                parent=parent_label,
-            )
-        ]
+        info = PulseEnvelope.get(PulseInformation.get_envelope())
+        pp = pp_obj.split_params(pulse_params)
 
-    if gate_name == "RY":
-        pp = PulseInformation.RY.split_params(pulse_params)
-        env_p = pp[:-1]
-        dur = float(pp[-1])
-        return [
-            PulseEvent(
-                gate="RY",
-                wires=wires_list,
-                envelope_fn=envelope_fn,
-                envelope_params=jnp.array(env_p),
-                w=float(w),
-                duration=dur,
-                carrier_phase=float(-jnp.pi / 2),  # cos(omega_c * t - pi/2)
-                parent=parent_label,
-            )
-        ]
-
-    if gate_name == "RZ":
-        pp = PulseInformation.RZ.split_params(pulse_params)
-        dur_val = float(jnp.ravel(jnp.asarray(pp))[0])
-        return [
-            PulseEvent(
-                gate="RZ",
-                wires=wires_list,
-                envelope_fn=None,  # virtual-Z, no physical pulse
-                envelope_params=jnp.array([dur_val]),
-                w=float(w),
-                duration=1.0,  # unit time
-                carrier_phase=0.0,
-                parent=parent_label,
-            )
-        ]
-
-    if gate_name == "CZ":
-        if pulse_params is None:
-            pp = PulseInformation.CZ.params
+        if meta["physical"]:
+            env_p = pp[:-1]
+            dur = float(pp[-1])
+            return [
+                PulseEvent(
+                    gate=gate_name,
+                    wires=wires_list,
+                    envelope_fn=info["fn"],
+                    envelope_params=jnp.array(env_p),
+                    w=float(w),
+                    duration=dur,
+                    carrier_phase=meta["carrier_phase"],
+                    parent=parent_label,
+                )
+            ]
         else:
-            pp = pulse_params
-        return [
-            PulseEvent(
-                gate="CZ",
-                wires=wires_list,
-                envelope_fn=None,  # constant coefficient
-                envelope_params=jnp.ravel(jnp.asarray(pp)),
-                w=0.0,
-                duration=1.0,
-                carrier_phase=0.0,
-                parent=parent_label,
-            )
-        ]
+            # Virtual gate (RZ, CZ) — no physical envelope
+            return [
+                PulseEvent(
+                    gate=gate_name,
+                    wires=wires_list,
+                    envelope_fn=None,
+                    envelope_params=jnp.ravel(jnp.asarray(pp)),
+                    w=float(w) if not isinstance(w, list) else 0.0,
+                    duration=1.0,
+                    carrier_phase=0.0,
+                    parent=parent_label,
+                )
+            ]
 
-    # Composite gates
-
-    if gate_name == "H":
-        parts = PulseInformation.H.split_params(pulse_params)
-        pp_rz, pp_ry = parts
-        events = []
-        events += collect_pulse_events("RZ", jnp.pi, wires, pp_rz, parent=parent_label)
+    # --- Composite gate ---
+    parts = pp_obj.split_params(pulse_params)
+    events = []
+    for step, child_params in zip(pp_obj.decomposition, parts):
+        child_wires = _resolve_wires_for_drawing(step.wire_fn, wires_list)
+        child_w = step.angle_fn(w) if step.angle_fn is not None else w
         events += collect_pulse_events(
-            "RY", jnp.pi / 2, wires, pp_ry, parent=parent_label
+            step.gate.name,
+            child_w,
+            child_wires,
+            child_params,
+            parent=parent_label,
         )
-        return events
-
-    if gate_name == "Rot":
-        parts = PulseInformation.Rot.split_params(pulse_params)
-        pp_rz1, pp_ry, pp_rz2 = parts
-        phi, theta, omega = w  # Rot takes 3 angles
-        events = []
-        events += collect_pulse_events("RZ", phi, wires, pp_rz1, parent=parent_label)
-        events += collect_pulse_events("RY", theta, wires, pp_ry, parent=parent_label)
-        events += collect_pulse_events("RZ", omega, wires, pp_rz2, parent=parent_label)
-        return events
-
-    if gate_name == "CX":
-        parts = PulseInformation.CX.split_params(pulse_params)
-        pp_h1, pp_cz, pp_h2 = parts
-        target = wires_list[1]
-        events = []
-        events += collect_pulse_events("H", 0.0, target, pp_h1, parent=parent_label)
-        events += collect_pulse_events("CZ", 0.0, wires, pp_cz, parent=parent_label)
-        events += collect_pulse_events("H", 0.0, target, pp_h2, parent=parent_label)
-        return events
-
-    if gate_name == "CY":
-        parts = PulseInformation.CY.split_params(pulse_params)
-        pp_rz1, pp_cx, pp_rz2 = parts
-        target = wires_list[1]
-        events = []
-        events += collect_pulse_events(
-            "RZ", -jnp.pi / 2, target, pp_rz1, parent=parent_label
-        )
-        events += collect_pulse_events("CX", 0.0, wires, pp_cx, parent=parent_label)
-        events += collect_pulse_events(
-            "RZ", jnp.pi / 2, target, pp_rz2, parent=parent_label
-        )
-        return events
-
-    if gate_name == "CRX":
-        parts = PulseInformation.CRX.split_params(pulse_params)
-        pp_rz1, pp_ry1, pp_cx1, pp_ry2, pp_cx2, pp_rz2 = parts
-        target = wires_list[1]
-        events = []
-        events += collect_pulse_events(
-            "RZ", jnp.pi / 2, target, pp_rz1, parent=parent_label
-        )
-        events += collect_pulse_events("RY", w / 2, target, pp_ry1, parent=parent_label)
-        events += collect_pulse_events("CX", 0.0, wires, pp_cx1, parent=parent_label)
-        events += collect_pulse_events(
-            "RY", -w / 2, target, pp_ry2, parent=parent_label
-        )
-        events += collect_pulse_events("CX", 0.0, wires, pp_cx2, parent=parent_label)
-        events += collect_pulse_events(
-            "RZ", -jnp.pi / 2, target, pp_rz2, parent=parent_label
-        )
-        return events
-
-    if gate_name == "CRY":
-        parts = PulseInformation.CRY.split_params(pulse_params)
-        pp_ry1, pp_cx1, pp_ry2, pp_cx2 = parts
-        target = wires_list[1]
-        events = []
-        events += collect_pulse_events("RY", w / 2, target, pp_ry1, parent=parent_label)
-        events += collect_pulse_events("CX", 0.0, wires, pp_cx1, parent=parent_label)
-        events += collect_pulse_events(
-            "RY", -w / 2, target, pp_ry2, parent=parent_label
-        )
-        events += collect_pulse_events("CX", 0.0, wires, pp_cx2, parent=parent_label)
-        return events
-
-    if gate_name == "CRZ":
-        parts = PulseInformation.CRZ.split_params(pulse_params)
-        pp_rz1, pp_cx1, pp_rz2, pp_cx2 = parts
-        target = wires_list[1]
-        events = []
-        events += collect_pulse_events("RZ", w / 2, target, pp_rz1, parent=parent_label)
-        events += collect_pulse_events("CX", 0.0, wires, pp_cx1, parent=parent_label)
-        events += collect_pulse_events(
-            "RZ", -w / 2, target, pp_rz2, parent=parent_label
-        )
-        events += collect_pulse_events("CX", 0.0, wires, pp_cx2, parent=parent_label)
-        return events
-
-    raise ValueError(f"Unknown pulse gate: {gate_name!r}")
+    return events
 
 
 def draw_pulse_schedule(
@@ -1168,7 +1073,7 @@ def draw_pulse_schedule(
                 )
 
                 if show_carrier:
-                    carrier = np.cos(omega_c * t_arr + ev.carrier_phase)
+                    carrier = jnp.cos(omega_c * t_arr + ev.carrier_phase)
                     modulated = signal * carrier
                     ax.plot(
                         t_arr + t_start,
@@ -1180,7 +1085,7 @@ def draw_pulse_schedule(
                     )
 
                 # Label at the peak
-                peak_idx = np.argmax(np.abs(signal))
+                peak_idx = jnp.argmax(jnp.abs(signal))
                 label = ev.gate
                 if ev.parent and ev.parent != ev.gate:
                     label = f"{ev.gate} ({ev.parent})"

@@ -1,4 +1,5 @@
 import os
+from dataclasses import dataclass
 from typing import Optional, List, Union, Dict, Callable, Tuple
 import numbers
 import csv
@@ -480,45 +481,57 @@ class UnitaryGates:
         UnitaryGates.Noise(wires, noise_params)
 
 
-class PulseParams:
-    """
-    Container for hierarchical pulse parameters.
-
-    Manages pulse parameters for quantum gates, supporting both leaf nodes
-    (gates with direct parameters) and composite nodes (gates decomposed
-    into simpler gates). Enables hierarchical parameter access and
-    manipulation.
+@dataclass
+class DecompositionStep:
+    """One step in a composite pulse gate decomposition.
 
     Attributes:
-        name (str): Name identifier for the gate.
-        _params (jnp.ndarray): Direct pulse parameters (leaf nodes only).
-        _pulse_obj (List): Child PulseParams objects (composite nodes only).
+        gate: Child PulseParams object for this step.
+        wire_fn: Wire selection — ``"all"``, ``"target"``, or ``"control"``.
+        angle_fn: Maps parent angle(s) ``w`` to child angle.
+            ``None`` means pass ``w`` through unchanged.
+    """
+
+    gate: "PulseParams"
+    wire_fn: str = "all"
+    angle_fn: Optional[Callable] = None
+
+
+class PulseParams:
+    """Container for hierarchical pulse parameters.
+
+    Leaf nodes hold direct parameters; composite nodes hold a list of
+    :class:`DecompositionStep` objects that describe how the gate is
+    built from simpler gates.
+
+    Attributes:
+        name: Gate identifier (e.g. ``"RX"``, ``"H"``).
+        decomposition: List of :class:`DecompositionStep` (composite only).
     """
 
     def __init__(
         self,
         name: str = "",
         params: Optional[jnp.ndarray] = None,
-        pulse_obj: Optional[List] = None,
+        decomposition: Optional[List[DecompositionStep]] = None,
     ) -> None:
         """
-        Initialize pulse parameters container.
-
         Args:
-            name (str): Name identifier for the gate. Defaults to empty string.
-            params (Optional[jnp.ndarray]): Direct pulse parameters for leaf gates.
-                Mutually exclusive with pulse_obj.
-            pulse_obj (Optional[List]): List of child PulseParams for composite
-                gates. Mutually exclusive with params.
-
-        Raises:
-            AssertionError: If both or neither of params and pulse_obj are provided.
+            name: Gate name.
+            params: Direct pulse parameters (leaf gates).
+                Mutually exclusive with *decomposition*.
+            decomposition: List of :class:`DecompositionStep` (composite gates).
+                Mutually exclusive with *params*.
         """
-        assert (params is None and pulse_obj is not None) or (
-            params is not None and pulse_obj is None
-        ), "Exactly one of `params` or `pulse_params` must be provided."
+        assert (params is None) != (
+            decomposition is None
+        ), "Exactly one of `params` or `decomposition` must be provided."
 
-        self._pulse_obj = pulse_obj
+        self.decomposition = decomposition
+        # Derive _pulse_obj for backward compat with childs/leafs/split_params
+        self._pulse_obj = (
+            [step.gate for step in decomposition] if decomposition else None
+        )
 
         if params is not None:
             self._params = params
@@ -927,15 +940,66 @@ class PulseInformation:
     @classmethod
     def _build_composite_gates(cls):
         """(Re-)create composite PulseParams trees from current leaves."""
-        cls.H = PulseParams(name="H", pulse_obj=[cls.RZ, cls.RY])
-        cls.CX = PulseParams(name="CX", pulse_obj=[cls.H, cls.CZ, cls.H])
-        cls.CY = PulseParams(name="CY", pulse_obj=[cls.RZ, cls.CX, cls.RZ])
-        cls.CRX = PulseParams(
-            name="CRX", pulse_obj=[cls.RZ, cls.RY, cls.CX, cls.RY, cls.CX, cls.RZ]
+        cls.H = PulseParams(
+            name="H",
+            decomposition=[
+                DecompositionStep(cls.RZ, "all", lambda w: jnp.pi),
+                DecompositionStep(cls.RY, "all", lambda w: jnp.pi / 2),
+            ],
         )
-        cls.CRY = PulseParams(name="CRY", pulse_obj=[cls.RY, cls.CX, cls.RY, cls.CX])
-        cls.CRZ = PulseParams(name="CRZ", pulse_obj=[cls.RZ, cls.CX, cls.RZ, cls.CX])
-        cls.Rot = PulseParams(name="Rot", pulse_obj=[cls.RZ, cls.RY, cls.RZ])
+        cls.CX = PulseParams(
+            name="CX",
+            decomposition=[
+                DecompositionStep(cls.H, "target", lambda w: 0.0),
+                DecompositionStep(cls.CZ, "all", lambda w: 0.0),
+                DecompositionStep(cls.H, "target", lambda w: 0.0),
+            ],
+        )
+        cls.CY = PulseParams(
+            name="CY",
+            decomposition=[
+                DecompositionStep(cls.RZ, "target", lambda w: -jnp.pi / 2),
+                DecompositionStep(cls.CX, "all"),
+                DecompositionStep(cls.RZ, "target", lambda w: jnp.pi / 2),
+            ],
+        )
+        cls.CRX = PulseParams(
+            name="CRX",
+            decomposition=[
+                DecompositionStep(cls.RZ, "target", lambda w: jnp.pi / 2),
+                DecompositionStep(cls.RY, "target", lambda w: w / 2),
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+                DecompositionStep(cls.RY, "target", lambda w: -w / 2),
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+                DecompositionStep(cls.RZ, "target", lambda w: -jnp.pi / 2),
+            ],
+        )
+        cls.CRY = PulseParams(
+            name="CRY",
+            decomposition=[
+                DecompositionStep(cls.RY, "target", lambda w: w / 2),
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+                DecompositionStep(cls.RY, "target", lambda w: -w / 2),
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+            ],
+        )
+        cls.CRZ = PulseParams(
+            name="CRZ",
+            decomposition=[
+                DecompositionStep(cls.RZ, "target", lambda w: w / 2),
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+                DecompositionStep(cls.RZ, "target", lambda w: -w / 2),
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+            ],
+        )
+        cls.Rot = PulseParams(
+            name="Rot",
+            decomposition=[
+                DecompositionStep(cls.RZ, "all", lambda w: w[0]),
+                DecompositionStep(cls.RY, "all", lambda w: w[1]),
+                DecompositionStep(cls.RZ, "all", lambda w: w[2]),
+            ],
+        )
         cls.unique_gate_set = [cls.RX, cls.RY, cls.RZ, cls.CZ]
 
     @classmethod
@@ -1093,30 +1157,8 @@ class PulseGates:
         wires: Union[int, List[int]],
         pulse_params: Optional[jnp.ndarray] = None,
     ) -> None:
-        """
-        Apply general single-qubit rotation using pulse decomposition.
-
-        Decomposes a general rotation into RZ(phi) · RY(theta) · RZ(omega)
-        and applies each component using pulse-level implementations.
-
-        Args:
-            phi (float): First rotation angle.
-            theta (float): Second rotation angle.
-            omega (float): Third rotation angle.
-            wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
-            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
-                composing gates. If None, uses optimized parameters.
-
-        Returns:
-            None: Gates are applied in-place to the circuit.
-        """
-        params_RZ_1, params_RY, params_RZ_2 = PulseInformation.Rot.split_params(
-            pulse_params
-        )
-
-        PulseGates.RZ(phi, wires=wires, pulse_params=params_RZ_1)
-        PulseGates.RY(theta, wires=wires, pulse_params=params_RY)
-        PulseGates.RZ(omega, wires=wires, pulse_params=params_RZ_2)
+        """Apply general rotation via decomposition: RZ(phi) · RY(theta) · RZ(omega)."""
+        PulseGates._execute_composite("Rot", [phi, theta, omega], wires, pulse_params)
 
     @staticmethod
     def PauliRot(
@@ -1125,23 +1167,7 @@ class PulseGates:
         wires: Union[int, List[int]],
         pulse_params: Optional[jnp.ndarray] = None,
     ) -> None:
-        """
-        Apply Pauli rotation using pulse-level implementation.
-
-        Implements Pauli rotation using a shaped Gaussian pulse with optimized
-        envelope parameters.
-
-        Args:
-            pauli (str): Pauli string (X, Y, Z).
-            theta (float): Rotation angle in radians.
-            wires (Union[int, List[int]]): Qubit index or indices to apply rotation to.
-            pulse_params (Optional[jnp.ndarray]): Array containing pulse parameters
-                [A, sigma, t] for the Gaussian envelope. If None, uses optimized
-                parameters.
-
-        Returns:
-            None: Gate is applied in-place to the circuit.
-        """
+        """Not implemented as a PulseGate."""
         raise NotImplementedError("PauliRot gate is not implemented as PulseGate")
 
     @staticmethod
@@ -1224,203 +1250,122 @@ class PulseGates:
         ys.evolve(H_eff)([jnp.array([pp_scalar, w])], 1)
 
     @staticmethod
+    def _resolve_wires(wire_fn, wires):
+        """Resolve a wire selector string to actual wire(s).
+
+        Args:
+            wire_fn: ``"all"``, ``"target"``, or ``"control"``.
+            wires: Parent gate's wire(s) (int or list).
+
+        Returns:
+            Wire(s) for the child gate.
+        """
+        wires_list = [wires] if isinstance(wires, int) else list(wires)
+        if wire_fn == "all":
+            return wires if len(wires_list) > 1 else wires_list[0]
+        if wire_fn == "target":
+            return wires_list[-1] if len(wires_list) > 1 else wires_list[0]
+        if wire_fn == "control":
+            return wires_list[0]
+        raise ValueError(f"Unknown wire_fn: {wire_fn!r}")
+
+    @staticmethod
+    def _execute_composite(gate_name, w, wires, pulse_params=None):
+        """Execute a composite gate by walking its decomposition.
+
+        Reads the :class:`DecompositionStep` list from
+        :class:`PulseInformation` and dispatches each step to the
+        appropriate ``PulseGates`` method.
+
+        Args:
+            gate_name: Gate name (e.g. ``"H"``, ``"CX"``).
+            w: Rotation angle(s) passed to the parent gate.
+            wires: Wire(s) of the parent gate.
+            pulse_params: Optional pulse parameters (split across children).
+        """
+        pp_obj = PulseInformation.gate_by_name(gate_name)
+        parts = pp_obj.split_params(pulse_params)
+
+        for step, child_params in zip(pp_obj.decomposition, parts):
+            child_wires = PulseGates._resolve_wires(step.wire_fn, wires)
+            child_w = step.angle_fn(w) if step.angle_fn is not None else w
+            child_gate = getattr(PulseGates, step.gate.name)
+
+            # Leaf gates that take a rotation angle
+            if step.gate.name in ("RX", "RY", "RZ"):
+                child_gate(child_w, wires=child_wires, pulse_params=child_params)
+            # Leaf gates without a rotation angle
+            elif step.gate.name in ("CZ",):
+                child_gate(wires=child_wires, pulse_params=child_params)
+            # Composite gates with a rotation angle (CRX, CRY, CRZ, Rot, ...)
+            elif step.gate.name in ("Rot",):
+                # Rot expects (phi, theta, omega, wires, ...)
+                child_gate(*child_w, wires=child_wires, pulse_params=child_params)
+            elif step.gate.decomposition is not None and step.gate.name in (
+                "CRX",
+                "CRY",
+                "CRZ",
+            ):
+                child_gate(child_w, wires=child_wires, pulse_params=child_params)
+            # Other composite gates (H, CX, CY, ...)
+            else:
+                child_gate(wires=child_wires, pulse_params=child_params)
+
+    @staticmethod
     def H(
         wires: Union[int, List[int]], pulse_params: Optional[jnp.ndarray] = None
     ) -> None:
+        """Apply Hadamard gate using pulse decomposition.
+
+        Decomposes as RZ(π) · RY(π/2) followed by a correction phase.
         """
-        Apply Hadamard gate using pulse decomposition.
+        PulseGates._execute_composite("H", 0.0, wires, pulse_params)
 
-        Implements Hadamard as RZ(π) · RY(π/2) with a correction phase,
-        using pulse-level implementations for each component.
-
-        Args:
-            wires (Union[int, List[int]]): Qubit index or indices to apply gate to.
-            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
-                composing gates. If None, uses optimized parameters.
-
-        Returns:
-            None: Gate is applied in-place to the circuit.
-        """
-        pulse_params_RZ, pulse_params_RY = PulseInformation.H.split_params(pulse_params)
-
-        # qml.GlobalPhase(-jnp.pi / 2)  # this could act as substitute to Sc
-        PulseGates.RZ(jnp.pi, wires=wires, pulse_params=pulse_params_RZ)
-        PulseGates.RY(jnp.pi / 2, wires=wires, pulse_params=pulse_params_RY)
-
+        # Correction phase unique to the H gate
         _H = op.Hermitian(PulseGates._H_corr, wires=wires, record=False)
         H_corr = PulseGates._coeff_Sc * _H
-
         ys.evolve(H_corr)([0], 1)
 
     @staticmethod
     def CX(wires: List[int], pulse_params: Optional[jnp.ndarray] = None) -> None:
-        """
-        Apply CNOT gate using pulse decomposition.
-
-        Implements CNOT as H_target · CZ · H_target, where H and CZ are
-        applied using their respective pulse-level implementations.
-
-        Args:
-            wires (List[int]): Control and target qubit indices [control, target].
-            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
-                composing gates. If None, uses optimized parameters.
-
-        Returns:
-            None: Gate is applied in-place to the circuit.
-        """
-        params_H_1, params_CZ, params_H_2 = PulseInformation.CX.split_params(
-            pulse_params
-        )
-
-        target = wires[1]
-
-        PulseGates.H(wires=target, pulse_params=params_H_1)
-        PulseGates.CZ(wires=wires, pulse_params=params_CZ)
-        PulseGates.H(wires=target, pulse_params=params_H_2)
+        """Apply CNOT gate via decomposition: H(target) · CZ · H(target)."""
+        PulseGates._execute_composite("CX", 0.0, wires, pulse_params)
 
     @staticmethod
     def CY(wires: List[int], pulse_params: Optional[jnp.ndarray] = None) -> None:
-        """
-        Apply controlled-Y gate using pulse decomposition.
-
-        Implements CY as RZ(-π/2)_target · CX · RZ(π/2)_target using
-        pulse-level implementations.
-
-        Args:
-            wires (List[int]): Control and target qubit indices [control, target].
-            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
-                composing gates. If None, uses optimized parameters.
-
-        Returns:
-            None: Gate is applied in-place to the circuit.
-        """
-        params_RZ_1, params_CX, params_RZ_2 = PulseInformation.CY.split_params(
-            pulse_params
-        )
-
-        target = wires[1]
-
-        PulseGates.RZ(-jnp.pi / 2, wires=target, pulse_params=params_RZ_1)
-        PulseGates.CX(wires=wires, pulse_params=params_CX)
-        PulseGates.RZ(jnp.pi / 2, wires=target, pulse_params=params_RZ_2)
+        """Apply controlled-Y via decomposition."""
+        PulseGates._execute_composite("CY", 0.0, wires, pulse_params)
 
     @staticmethod
     def CZ(wires: List[int], pulse_params: Optional[float] = None) -> None:
-        """
-        Apply controlled-Z gate using pulse-level implementation.
-
-        Implements CZ using a two-qubit interaction Hamiltonian based on
-        ZZ coupling.
-
-        Args:
-            wires (List[int]): Control and target qubit indices.
-            pulse_params (Optional[float]): Time or duration parameter for
-                the pulse evolution. If None, uses optimized value.
-
-        Returns:
-            None: Gate is applied in-place to the circuit.
-        """
+        """Apply controlled-Z using ZZ coupling Hamiltonian."""
         if pulse_params is None:
             pulse_params = PulseInformation.CZ.params
-        else:
-            pulse_params = pulse_params
 
         _H = op.Hermitian(PulseGates._H_CZ, wires=wires, record=False)
         H_eff = PulseGates._coeff_Scz * _H
-
         ys.evolve(H_eff)([pulse_params], 1)
 
     @staticmethod
     def CRX(
         w: float, wires: List[int], pulse_params: Optional[jnp.ndarray] = None
     ) -> None:
-        """
-        Apply controlled-RX gate using pulse decomposition.
-
-        Implements CRX(w) as RZ(π/2) · RY(w/2) · CX · RY(-w/2) · CX · RZ(-π/2)
-        applied to the target qubit, following arXiv:2408.01036.
-
-        Args:
-            w (float): Rotation angle in radians.
-            wires (List[int]): Control and target qubit indices [control, target].
-            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
-                composing gates. If None, uses optimized parameters.
-
-        Returns:
-            None: Gate is applied in-place to the circuit.
-        """
-        params_RZ_1, params_RY, params_CX_1, params_RY_2, params_CX_2, params_RZ_2 = (
-            PulseInformation.CRX.split_params(pulse_params)
-        )
-
-        target = wires[1]
-
-        PulseGates.RZ(jnp.pi / 2, wires=target, pulse_params=params_RZ_1)
-        PulseGates.RY(w / 2, wires=target, pulse_params=params_RY)
-        PulseGates.CX(wires=wires, pulse_params=params_CX_1)
-        PulseGates.RY(-w / 2, wires=target, pulse_params=params_RY_2)
-        PulseGates.CX(wires=wires, pulse_params=params_CX_2)
-        PulseGates.RZ(-jnp.pi / 2, wires=target, pulse_params=params_RZ_2)
+        """Apply controlled-RX via decomposition."""
+        PulseGates._execute_composite("CRX", w, wires, pulse_params)
 
     @staticmethod
     def CRY(
         w: float, wires: List[int], pulse_params: Optional[jnp.ndarray] = None
     ) -> None:
-        """
-        Apply controlled-RY gate using pulse decomposition.
-
-        Implements CRY(w) as RY(w/2) · CX · RY(-w/2) · CX applied to the
-        target qubit, following arXiv:2408.01036.
-
-        Args:
-            w (float): Rotation angle in radians.
-            wires (List[int]): Control and target qubit indices [control, target].
-            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
-                composing gates. If None, uses optimized parameters.
-
-        Returns:
-            None: Gate is applied in-place to the circuit.
-        """
-        params_RY_1, params_CX_1, params_RY_2, params_CX_2 = (
-            PulseInformation.CRY.split_params(pulse_params)
-        )
-
-        target = wires[1]
-
-        PulseGates.RY(w / 2, wires=target, pulse_params=params_RY_1)
-        PulseGates.CX(wires=wires, pulse_params=params_CX_1)
-        PulseGates.RY(-w / 2, wires=target, pulse_params=params_RY_2)
-        PulseGates.CX(wires=wires, pulse_params=params_CX_2)
+        """Apply controlled-RY via decomposition."""
+        PulseGates._execute_composite("CRY", w, wires, pulse_params)
 
     @staticmethod
     def CRZ(
         w: float, wires: List[int], pulse_params: Optional[jnp.ndarray] = None
     ) -> None:
-        """
-        Apply controlled-RZ gate using pulse decomposition.
-
-        Implements CRZ(w) as RZ(w/2) · CX · RZ(-w/2) · CX applied to the
-        target qubit, following arXiv:2408.01036.
-
-        Args:
-            w (float): Rotation angle in radians.
-            wires (List[int]): Control and target qubit indices [control, target].
-            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
-                composing gates. If None, uses optimized parameters.
-
-        Returns:
-            None: Gate is applied in-place to the circuit.
-        """
-        params_RZ_1, params_CX_1, params_RZ_2, params_CX_2 = (
-            PulseInformation.CRZ.split_params(pulse_params)
-        )
-
-        target = wires[1]
-
-        PulseGates.RZ(w / 2, wires=target, pulse_params=params_RZ_1)
-        PulseGates.CX(wires=wires, pulse_params=params_CX_1)
-        PulseGates.RZ(-w / 2, wires=target, pulse_params=params_RZ_2)
-        PulseGates.CX(wires=wires, pulse_params=params_CX_2)
+        """Apply controlled-RZ via decomposition."""
+        PulseGates._execute_composite("CRZ", w, wires, pulse_params)
 
 
 # Meta class to avoid instantiating the Gates class
