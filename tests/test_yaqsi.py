@@ -2493,3 +2493,163 @@ def test_set_envelope_roundtrip():
         assert jnp.allclose(PulseInformation.RX.params, rx_params_before)
     finally:
         PulseInformation.set_envelope(original)
+
+
+# ---------------------------------------------------------------------------
+# pulse_recording / Script.pulse_events tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unittest
+def test_pulse_recording_rx():
+    """pulse_recording captures a PulseEvent for a single RX gate."""
+    from qml_essentials.tape import pulse_recording
+    from qml_essentials.drawing import PulseEvent
+
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope("gaussian")
+
+        def circuit(w, pp):
+            PulseGates.RX(w, wires=0, pulse_params=pp)
+
+        script = Script(circuit, n_qubits=1)
+        events = script.pulse_events(jnp.pi / 4, PulseInformation.RX.params)
+
+        assert len(events) == 1
+        ev = events[0]
+        assert ev.gate == "RX"
+        assert ev.wires == [0]
+        assert ev.envelope_fn is not None
+        assert np.isclose(ev.w, jnp.pi / 4)
+    finally:
+        PulseInformation.set_envelope(original)
+
+
+@pytest.mark.unittest
+def test_pulse_recording_composite_h():
+    """pulse_recording captures leaf events from composite H gate."""
+    from qml_essentials.tape import pulse_recording
+
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope("gaussian")
+
+        def circuit():
+            PulseGates.H(wires=0)
+
+        script = Script(circuit, n_qubits=1)
+        events = script.pulse_events()
+
+        # H = RZ + RY → 2 leaf events
+        gate_names = [ev.gate for ev in events]
+        assert gate_names == ["RZ", "RY"]
+    finally:
+        PulseInformation.set_envelope(original)
+
+
+@pytest.mark.unittest
+def test_pulse_recording_cx():
+    """pulse_recording captures leaf events from CX gate."""
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope("gaussian")
+
+        def circuit():
+            PulseGates.CX(wires=[0, 1])
+
+        script = Script(circuit, n_qubits=2)
+        events = script.pulse_events()
+
+        # CX = H(target) + CZ + H(target)
+        # H = RZ + RY, so: RZ + RY + CZ + RZ + RY
+        gate_names = [ev.gate for ev in events]
+        assert gate_names == ["RZ", "RY", "CZ", "RZ", "RY"]
+    finally:
+        PulseInformation.set_envelope(original)
+
+
+@pytest.mark.unittest
+def test_pulse_recording_context_direct():
+    """pulse_recording context manager works without Script."""
+    from qml_essentials.tape import pulse_recording, recording
+
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope("gaussian")
+
+        with pulse_recording() as events:
+            with recording() as _tape:
+                PulseGates.RY(jnp.pi / 2, wires=0)
+
+        assert len(events) == 1
+        assert events[0].gate == "RY"
+    finally:
+        PulseInformation.set_envelope(original)
+
+
+@pytest.mark.unittest
+def test_pulse_recording_no_events_outside_context():
+    """No events captured when pulse_recording is not active."""
+    from qml_essentials.tape import active_pulse_tape, recording
+
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope("gaussian")
+
+        assert active_pulse_tape() is None
+
+        with recording() as _tape:
+            PulseGates.RX(jnp.pi, wires=0)
+        # No crash, no events captured
+    finally:
+        PulseInformation.set_envelope(original)
+
+
+@pytest.mark.unittest
+def test_script_draw_pulse_mode():
+    """Script.draw(figure='pulse') returns a matplotlib figure."""
+    import matplotlib.pyplot as plt
+
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope("gaussian")
+
+        def circuit(w, pp):
+            PulseGates.RX(w, wires=0, pulse_params=pp)
+
+        script = Script(circuit, n_qubits=1)
+        fig, axes = script.draw(
+            figure="pulse",
+            args=(jnp.pi / 2, PulseInformation.RX.params),
+        )
+
+        assert fig is not None
+        assert len(axes) == 1
+        plt.close(fig)
+    finally:
+        PulseInformation.set_envelope(original)
+
+
+@pytest.mark.unittest
+def test_pulse_recording_multi_gate_sequence():
+    """pulse_recording captures events from a multi-gate sequence."""
+    original = PulseInformation.get_envelope()
+    try:
+        PulseInformation.set_envelope("gaussian")
+
+        def circuit(w1, w2):
+            PulseGates.RX(w1, wires=0)
+            PulseGates.RY(w2, wires=1)
+            PulseGates.CZ(wires=[0, 1])
+
+        script = Script(circuit, n_qubits=2)
+        events = script.pulse_events(jnp.pi / 4, jnp.pi / 3)
+
+        gate_names = [ev.gate for ev in events]
+        assert gate_names == ["RX", "RY", "CZ"]
+        assert events[0].wires == [0]
+        assert events[1].wires == [1]
+        assert events[2].wires == [0, 1]
+    finally:
+        PulseInformation.set_envelope(original)

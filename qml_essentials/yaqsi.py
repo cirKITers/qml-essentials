@@ -17,7 +17,7 @@ from qml_essentials.operations import (
     _einsum_subscript,
     _cdtype,
 )
-from qml_essentials.tape import recording
+from qml_essentials.tape import recording, pulse_recording
 from qml_essentials.drawing import draw_text, draw_mpl, draw_tikz
 
 import logging
@@ -695,6 +695,26 @@ class Script:
             self.f(*args, **kwargs)
         return tape
 
+    def pulse_events(self, *args, **kwargs) -> list:
+        """Run the circuit and collect pulse events emitted by PulseGates.
+
+        Activates both the normal operation tape (so gates execute) and
+        a pulse-event tape that captures
+        :class:`~qml_essentials.drawing.PulseEvent` objects from leaf
+        pulse gates (RX, RY, RZ, CZ).
+
+        Args:
+            *args: Forwarded to the circuit function.
+            **kwargs: Forwarded to the circuit function.
+
+        Returns:
+            List of :class:`~qml_essentials.drawing.PulseEvent`.
+        """
+        with pulse_recording() as events:
+            with recording() as _tape:
+                self.f(*args, **kwargs)
+        return events
+
     @staticmethod
     def _infer_n_qubits(ops: List[Operation], obs: List[Operation]) -> int:
         """Infer the number of qubits from a list of operations and observables.
@@ -1347,6 +1367,7 @@ class Script:
                 - ``"mpl"``   — Matplotlib figure (returns ``(fig, ax)``).
                 - ``"tikz"``  — LaTeX/TikZ code via ``quantikz``
                   (returns a :class:`QuanTikz.TikzFigure`).
+                - ``"pulse"`` — Pulse schedule plot (returns ``(fig, axes)``).
 
             args: Positional arguments forwarded to the circuit function
                 to record the tape.
@@ -1357,6 +1378,8 @@ class Script:
                   symbolic \\theta_i labels.  Default ``False``.
                 - ``inputs_symbols`` (str | list): Symbol(s) used for input
                   gates.  Default ``"x"``.
+                - ``show_carrier`` (bool): For ``"pulse"`` mode, overlay the
+                  carrier-modulated waveform.  Default ``False``.
 
         Returns:
             Depends on *figure*:
@@ -1364,17 +1387,29 @@ class Script:
             - ``"text"``  -> ``str``
             - ``"mpl"``   -> ``(matplotlib.figure.Figure, matplotlib.axes.Axes)``
             - ``"tikz"``  -> :class:`QuanTikz.TikzFigure`
+            - ``"pulse"`` -> ``(matplotlib.figure.Figure, numpy.ndarray)``
 
         Raises:
             ValueError: If *figure* is not one of the supported modes.
         """
-        if figure not in ("text", "mpl", "tikz"):
+        if figure not in ("text", "mpl", "tikz", "pulse"):
             raise ValueError(
-                f"Invalid figure mode: {figure!r}. " "Must be 'text', 'mpl', or 'tikz'."
+                f"Invalid figure mode: {figure!r}. "
+                "Must be 'text', 'mpl', 'tikz', or 'pulse'."
             )
 
         if kwargs is None:
             kwargs = {}
+
+        if figure == "pulse":
+            from qml_essentials.drawing import draw_pulse_schedule
+
+            events = self.pulse_events(*args, **kwargs)
+            n_qubits = (
+                self._n_qubits
+                or max((w for ev in events for w in ev.wires), default=0) + 1
+            )
+            return draw_pulse_schedule(events, n_qubits, **draw_kwargs)
 
         tape = self._record(*args, **kwargs)
         n_qubits = self._n_qubits or self._infer_n_qubits(tape, [])

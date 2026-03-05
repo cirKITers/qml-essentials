@@ -92,3 +92,48 @@ def recording() -> Iterator[List["Operation"]]:
         yield tape
     finally:
         stack.pop()
+
+
+# ---------------------------------------------------------------------------
+# Pulse-event tape (same pattern, separate stack)
+# ---------------------------------------------------------------------------
+
+
+def _pulse_tape_stack() -> List[list]:
+    """Return the per-thread pulse-event tape stack."""
+    if not hasattr(_local, "pulse_stack"):
+        _local.pulse_stack = []
+    return _local.pulse_stack
+
+
+def active_pulse_tape() -> Optional[list]:
+    """Return the innermost active pulse-event tape, or ``None``.
+
+    Called from :class:`~qml_essentials.gates.PulseGates` leaf methods
+    to record :class:`~qml_essentials.drawing.PulseEvent` objects.
+    """
+    stack = _pulse_tape_stack()
+    return stack[-1] if stack else None
+
+
+@contextmanager
+def pulse_recording() -> Iterator[list]:
+    """Context manager that collects pulse events emitted by PulseGates.
+
+    Yields:
+        A list that will be populated with
+        :class:`~qml_essentials.drawing.PulseEvent` instances.
+
+    Example::
+
+        with pulse_recording() as events:
+            PulseGates.RX(jnp.pi / 2, wires=0)
+        # events is now a list[PulseEvent]
+    """
+    stack = _pulse_tape_stack()
+    tape: list = []
+    stack.append(tape)
+    try:
+        yield tape
+    finally:
+        stack.pop()

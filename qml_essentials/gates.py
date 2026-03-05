@@ -13,6 +13,7 @@ from contextlib import contextmanager
 import logging
 
 from qml_essentials.utils import safe_random_split
+from qml_essentials.tape import active_pulse_tape
 
 log = logging.getLogger(__name__)
 
@@ -1150,6 +1151,55 @@ class PulseGates:
         return p * jnp.pi
 
     @staticmethod
+    def _record_pulse_event(gate_name, w, wires, pulse_params, parent=None):
+        """Append a PulseEvent to the active pulse tape if recording.
+
+        This is called from leaf gate methods (RX, RY, RZ, CZ) so that
+        :func:`~qml_essentials.tape.pulse_recording` can collect events
+        without the caller needing to know about the tape.
+        """
+        ptape = active_pulse_tape()
+        if ptape is None:
+            return
+
+        from qml_essentials.drawing import PulseEvent, LEAF_META
+
+        meta = LEAF_META.get(gate_name, {})
+        wires_list = [wires] if isinstance(wires, int) else list(wires)
+
+        if meta.get("physical", False):
+            info = PulseEnvelope.get(PulseInformation.get_envelope())
+            pp = PulseInformation.gate_by_name(gate_name).split_params(pulse_params)
+            env_p = pp[:-1]
+            dur = float(pp[-1])
+            ptape.append(
+                PulseEvent(
+                    gate=gate_name,
+                    wires=wires_list,
+                    envelope_fn=info["fn"],
+                    envelope_params=jnp.array(env_p),
+                    w=float(w),
+                    duration=dur,
+                    carrier_phase=meta["carrier_phase"],
+                    parent=parent,
+                )
+            )
+        else:
+            pp = PulseInformation.gate_by_name(gate_name).split_params(pulse_params)
+            ptape.append(
+                PulseEvent(
+                    gate=gate_name,
+                    wires=wires_list,
+                    envelope_fn=None,
+                    envelope_params=jnp.ravel(jnp.asarray(pp)),
+                    w=float(w) if not isinstance(w, list) else 0.0,
+                    duration=1.0,
+                    carrier_phase=0.0,
+                    parent=parent,
+                )
+            )
+
+    @staticmethod
     def Rot(
         phi: float,
         theta: float,
@@ -1214,6 +1264,8 @@ class PulseGates:
         """
         pulse_params = PulseInformation.RX.split_params(pulse_params)
 
+        PulseGates._record_pulse_event("RX", w, wires, pulse_params)
+
         _H = op.Hermitian(PulseGates._H_X, wires=wires, record=False)
         H_eff = PulseGates._coeff_Sx * _H
 
@@ -1243,6 +1295,8 @@ class PulseGates:
             random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
         """
         pulse_params = PulseInformation.RY.split_params(pulse_params)
+
+        PulseGates._record_pulse_event("RY", w, wires, pulse_params)
 
         _H = op.Hermitian(PulseGates._H_Y, wires=wires, record=False)
         H_eff = PulseGates._coeff_Sy * _H
@@ -1280,6 +1334,8 @@ class PulseGates:
             None: Gate is applied in-place to the circuit.
         """
         pulse_params = PulseInformation.RZ.split_params(pulse_params)
+
+        PulseGates._record_pulse_event("RZ", w, wires, pulse_params)
 
         _H = op.Hermitian(PulseGates.Z, wires=wires, record=False)
         H_eff = PulseGates._coeff_Sz * _H
@@ -1445,6 +1501,8 @@ class PulseGates:
         """
         if pulse_params is None:
             pulse_params = PulseInformation.CZ.params
+
+        PulseGates._record_pulse_event("CZ", 0.0, wires, pulse_params)
 
         _H = op.Hermitian(PulseGates._H_CZ, wires=wires, record=False)
         H_eff = PulseGates._coeff_Scz * _H
