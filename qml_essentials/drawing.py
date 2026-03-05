@@ -962,13 +962,15 @@ def _compute_display_window(
     ev: PulseEvent,
     n_samples: int,
     threshold: float = 0.05,
+    max_display_mult: float = 6.0,
 ) -> Tuple[float, float, float]:
     """Compute the (t_lo, t_hi, amp_max) display window for a physical pulse.
 
     Uses binary search to find the half-width where the envelope drops
-    to *threshold* of its peak, so the displayed window always shows the
-    characteristic envelope shape regardless of the ratio between sigma
-    and gate duration.
+    to *threshold* of its peak.  The result is capped at
+    ``max_display_mult * duration`` so that very broad envelopes
+    (sigma >> duration) still produce a compact plot while showing enough
+    of the bell curve to be visually distinguishable from a rectangle.
 
     Returns:
         ``(t_lo, t_hi, amp_max)`` — local time bounds and peak amplitude.
@@ -977,7 +979,6 @@ def _compute_display_window(
     val_center = float(ev.envelope_fn(ev.envelope_params, t_c, t_c))
 
     if abs(val_center) < 1e-12:
-        # Envelope is zero at center — just show the evolution window
         t_lo, t_hi = 0.0, ev.duration
     else:
         val_edge = float(ev.envelope_fn(ev.envelope_params, 0.0, t_c))
@@ -986,9 +987,8 @@ def _compute_display_window(
             # Envelope already decays visibly within the evolution window
             t_lo, t_hi = 0.0, ev.duration
         else:
-            # Envelope is nearly flat over the evolution window (e.g.
-            # sigma >> duration).  Binary-search for the half-width where
-            # the envelope drops to `threshold` of its peak.
+            # Binary-search for the half-width where the envelope drops
+            # to `threshold` of its peak.
             lo, hi = ev.duration / 2, ev.duration * 200
             for _ in range(40):
                 mid = (lo + hi) / 2
@@ -997,7 +997,10 @@ def _compute_display_window(
                     lo = mid
                 else:
                     hi = mid
-            half_width = hi * 1.1  # small padding
+            # Cap: show enough to see the shape, but stay compact.
+            natural_half = hi * 1.1
+            max_half = max_display_mult * ev.duration
+            half_width = min(natural_half, max_half)
             t_lo = t_c - half_width
             t_hi = t_c + half_width
 
@@ -1031,13 +1034,18 @@ def _draw_physical_pulse(
 
     for wire in ev.wires:
         ax = axes[wire]
-        ax.fill_between(t_display, signal, alpha=0.2, color=color, zorder=2)
-        ax.plot(t_display, signal, color=color, linewidth=1.2, alpha=0.8, zorder=3)
+        ax.fill_between(t_display, signal, alpha=0.12, color=color, zorder=2)
+        ax.plot(t_display, signal, color=color, linewidth=1.4, alpha=0.85, zorder=3)
 
-        # Mark evolution window boundaries
+        # Mark evolution window boundaries with visible dashed lines
         for t_edge in (t_start, t_start + ev.duration):
             ax.axvline(
-                t_edge, color=color, linestyle=":", linewidth=0.6, alpha=0.4, zorder=1
+                t_edge,
+                color=color,
+                linestyle="--",
+                linewidth=0.8,
+                alpha=0.5,
+                zorder=4,
             )
 
         if show_carrier:
