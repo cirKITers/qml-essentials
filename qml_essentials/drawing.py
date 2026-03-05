@@ -6,7 +6,6 @@ from typing import Optional
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from qml_essentials.gates import PulseGates, PulseInformation, PulseEnvelope
 
 from qml_essentials.operations import (
     Operation,
@@ -888,6 +887,7 @@ def collect_pulse_events(
     Returns:
         Ordered list of :class:`PulseEvent` objects.
     """
+    from qml_essentials.gates import PulseEnvelope, PulseInformation
 
     pp_obj = PulseInformation.gate_by_name(gate_name)
     if pp_obj is None:
@@ -1136,6 +1136,8 @@ def draw_pulse_schedule(
     Returns:
         ``(fig, axes)`` — Matplotlib Figure and array of Axes.
     """
+    from qml_essentials.gates import PulseGates, PulseInformation
+
     omega_c = float(PulseGates.omega_c)
 
     # Assign start times per wire (sequential, no parallelism)
