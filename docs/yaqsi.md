@@ -6,7 +6,11 @@ The simulator aims to be fully abstracted by the `Model` class, so for most usec
 However, some scenarios require building a custom circuits or require more granular control.
 
 ![overview](figures/yaqsi_overview_light.png#center#only-light)
-![overview](figures/yaqsi_overview_dark.png#center#only-light)
+![overview](figures/yaqsi_overview_dark.png#center#only-dark)
+
+![overview](figures/yaqsi_pulse_light.png#center#only-light)
+![overview](figures/yaqsi_pulse_dark.png#center#only-dark)
+
 
 The API of our simulator is very similar to what one might be used to know from pennylane.
 For a basic circuit execution, we have to do two imports:
