@@ -251,14 +251,12 @@ For more details:
 
 ## Multithreading (using JAX)
 
-Our framework can parallelise the execution of the model setting the `use_multithreading` flag (defaults to False).
-In our framework, JAX then automatically handles the number and distribution of the workers depending on the batch sizes and available CPUs.
+In our framework, JAX automatically handles the number and distribution of the workers depending on the batch sizes and available CPUs.
 ```
 model = Model(
     n_qubits=2,
     n_layers=1,
     circuit_type="Circuit_19",
-    use_multithreading=True,
 )
 ```
 
@@ -285,7 +283,7 @@ model = Model(
     n_layers=1,
     circuit_type="Circuit_19",
     repeat_batch_axis=[False, True, True],
-    use_multithreading=True,
+    ,
 )
 
 key = jax.random.key(1000)
@@ -334,3 +332,41 @@ Inputs are represented with "x" by default, which can be changed by adjusting th
 If you want to see the actual gate values instead of variables, simply set `gate_values=True` which is also the default option.
 The returned `fig` variable is a `TikzFigure` object that stores the Latex string and allows exporting to a specified file.
 To create a document that can be compiled, simply pass `full_document=True` when calling `export`.
+
+## Using a arbitrary circuit
+
+In some cases you may not want to utilize the structure enforced by the `Model` class.
+Therefore, this section provides an example on how to use a custom circuit.
+
+```python
+from qml_essentials.gates import Gates as g
+from qml_essentials.model import Model
+import qml_essentials.yaqsi as ys
+import jax.numpy as jnp
+
+def my_circuit(params, inputs, *args, **kwargs) -> None:
+    params = params.squeeze() # because the input shape can be a bit tricky otherwise
+
+    g.H(wires=[0])
+    g.H(wires=[1])
+    g.RX(1 * inputs, wires=[0])
+    g.PauliRot(params[0], wires=[0, 1])
+    g.CRX(3 * inputs, wires=[0, 1])
+
+
+params = jnp.array([[jnp.pi / 2, 1]])
+
+model = Model(
+    n_qubits=2,
+    n_layers=1,
+    output_qubit=0,  # this will correspond to PauliZ on qubit 0
+)
+
+# Define the spectrum (usually this is inferred from the encoding)
+model.degree = (7,)  # we count a full spectrum (-3,-2,...,2,3)
+model.frequencies = (-3, -1, 0, 1, 3)  # here we define the actual frequencies
+# We need to define which shape the parameters have
+model._params_shape = (2, 1)  # (n_layers, n_params_per_layer)
+# Overwrite the script with our own variational circuit
+model.script = ys.Script(f=my_circuit)
+```

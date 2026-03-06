@@ -1,31 +1,36 @@
-# qa: disable
+# flake8: noqa: E402
+import argparse
+from functools import partial
+from typing import List, Callable, Union
 
 import os
 import csv
 import jax
 from jax import numpy as jnp
 import optax
-import pennylane as qml
-from qml_essentials.gates import Gates, PulseInformation
-import argparse
-from functools import partial
-from typing import List, Callable, Union
-import logging
 
 jax.config.update("jax_enable_x64", True)
+
+from qml_essentials.gates import Gates, PulseInformation
+from qml_essentials import operations as op
+from qml_essentials import yaqsi as ys
+from qml_essentials.math import phase_difference, fidelity
+import logging
+
 log = logging.getLogger(__name__)
 
 
 class QOC:
     def __init__(
         self,
-        observable: Union[Callable, List[Callable]] = qml.state,
+        observable: Union[Callable, List[Callable], str] = "state",
         n_steps: int = 1000,
         n_loops: int = 1,
-        n_samples: int = 8,
-        learning_rate: float = 0.01,
+        n_samples: int = 12,
+        learning_rate: float = 0.001,
         log_interval: int = 50,
         skip_on_fidelity: bool = True,
+        file_dir: str = "./",
     ):
         """
         Initialize Quantum Optimal Control with Pulse-level Gates.
@@ -49,7 +54,7 @@ class QOC:
         self.learning_rate = learning_rate
         self.log_interval = log_interval
         self.skip_on_fidelity = skip_on_fidelity
-
+        self.file_dir = file_dir
         self.current_gate = None
 
     def save_results(self, gate, fidelity, pulse_params):
@@ -106,7 +111,7 @@ class QOC:
                 if not match:
                     writer.writerow(entry)
 
-    def cost_fn(self, pulse_params, pulse_qnode, target_qnode) -> float:
+    def cost_fn(self, pulse_params, pulse_script, target_script) -> float:
         """
         Cost function for QOC optimization.
 
@@ -116,8 +121,8 @@ class QOC:
         Args:
             pulse_params (list or array): Optimized parameters to
                 use for the pulse-based gate.
-            pulse_qnode (callable): Pulse-based gate qnode.
-            target_qnode (callable): Unitary-based gate qnode.
+            pulse_script (ys.Script): Pulse-based gate Script.
+            target_script (ys.Script): Unitary-based gate Script.
 
         Returns:
             float: Cost function value.
@@ -125,11 +130,15 @@ class QOC:
         abs_diff = 0
         phase_diff = 0
         for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / self.n_samples):
-            pulse_state = pulse_qnode(w, pulse_params)
-            target_state = target_qnode(w)
-            dot_prod = jnp.vdot(target_state, pulse_state)
-            abs_diff += 1 - jnp.abs(dot_prod) ** 2  # one if no diff
-            phase_diff += jnp.abs(jnp.angle(dot_prod)) / jnp.pi  # zero if no diff
+            pulse_state = pulse_script.execute(type="state", args=(w, pulse_params))
+            target_state = target_script.execute(type="state", args=(w,))
+            # dot_prod = jnp.vdot(target_state, pulse_state)
+            # abs_diff += 1 - jnp.abs(dot_prod) ** 2  # one if no diff
+            # phase_diff += jnp.abs(jnp.angle(dot_prod)) / jnp.pi  # zero if no diff
+            abs_diff += jnp.array(1.0, dtype=jnp.float64) - fidelity(
+                pulse_state, target_state
+            )
+            phase_diff += jnp.abs(phase_difference(pulse_state, target_state))
 
         abs_diff /= self.n_samples
         phase_diff /= self.n_samples
@@ -137,7 +146,7 @@ class QOC:
         return (abs_diff + phase_diff) / 2  # loss
 
     def multi_objective_cost_fn(
-        self, pulse_params, pulse_qnodes, target_qnodes, leafs
+        self, pulse_params, pulse_scripts, target_scripts, leafs
     ) -> float:
         """
         Cost function for QOC optimization.
@@ -148,8 +157,8 @@ class QOC:
         Args:
             pulse_params (list or array): Optimized parameters to use for
                 the pulse-based gate.
-            pulse_qnode (callable): Pulse-based gate qnode.
-            target_qnode (callable): Unitary-based gate qnode.
+            pulse_scripts (list): List of pulse-based gate Scripts.
+            target_scripts (list): List of unitary-based gate Scripts.
 
         Returns:
             float: Cost function value.
@@ -162,10 +171,10 @@ class QOC:
 
         abs_diff = 0
         phase_diff = 0
-        for pulse_qnode, target_qnode in zip(pulse_qnodes, target_qnodes):
+        for pulse_script, target_script in zip(pulse_scripts, target_scripts):
             for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / self.n_samples):
-                pulse_state = pulse_qnode(w, None)
-                target_state = target_qnode(w)
+                pulse_state = pulse_script.execute(type="state", args=(w, None))
+                target_state = target_script.execute(type="state", args=(w,))
                 dot_prod = jnp.vdot(target_state, pulse_state)
                 abs_diff += 1 - jnp.abs(dot_prod) ** 2  # one if no diff
                 # phase_diff += jnp.abs(jnp.angle(dot_prod)) / jnp.pi  # zero if no diff
@@ -173,7 +182,7 @@ class QOC:
             abs_diff /= self.n_samples
             phase_diff /= self.n_samples
 
-        n_nodes = len(pulse_qnodes)
+        n_nodes = len(pulse_scripts)
         return ((abs_diff + phase_diff) / 2) / n_nodes  # loss
 
     def run_optimization(
@@ -242,11 +251,10 @@ class QOC:
                     tuple: Optimized pulse parameters and list of loss values
                         at each iteration.
                 """
-                dev = qml.device(simulator, wires=wires)
-                pulse_circuit, target_circuit = create_circuits(dev)
+                pulse_circuit, target_circuit = create_circuits()
 
-                pulse_qnode = qml.QNode(pulse_circuit, dev, interface="jax")
-                target_qnode = qml.QNode(target_circuit, dev, interface="jax")
+                pulse_script = ys.Script(pulse_circuit, n_qubits=wires)
+                target_script = ys.Script(target_circuit, n_qubits=wires)
 
                 gate_name = create_circuits.__name__.split("_")[1]
 
@@ -264,8 +272,8 @@ class QOC:
                 pulse_params, loss_history = self.run_optimization(
                     partial(
                         self.cost_fn,
-                        pulse_qnode=pulse_qnode,
-                        target_qnode=target_qnode,
+                        pulse_script=pulse_script,
+                        target_script=target_script,
                     ),
                     params=init_pulse_params,
                 )
@@ -301,18 +309,14 @@ class QOC:
                     tuple: Optimized pulse parameters and list of
                         loss values at each iteration.
                 """
-                dev = qml.device(simulator, wires=wires)
-
-                pulse_qnodes = []
-                target_qnodes = []
+                pulse_scripts = []
+                target_scripts = []
                 leafs = []
                 for create_circuits in create_circuits_array:
-                    pulse_circuit, target_circuit = create_circuits(dev)
+                    pulse_circuit, target_circuit = create_circuits()
 
-                    pulse_qnodes.append(qml.QNode(pulse_circuit, dev, interface="jax"))
-                    target_qnodes.append(
-                        qml.QNode(target_circuit, dev, interface="jax")
-                    )
+                    pulse_scripts.append(ys.Script(pulse_circuit, n_qubits=wires))
+                    target_scripts.append(ys.Script(target_circuit, n_qubits=wires))
 
                     gate_name = create_circuits.__name__.split("_")[1]
 
@@ -329,8 +333,8 @@ class QOC:
                 pulse_params, loss_history = self.run_optimization(
                     partial(
                         self.multi_objective_cost_fn,
-                        pulse_qnode=pulse_qnodes,
-                        target_qnode=target_qnodes,
+                        pulse_scripts=pulse_scripts,
+                        target_scripts=target_scripts,
                         leafs=leafs,
                     ),
                     params=params,
@@ -356,156 +360,134 @@ class QOC:
     def create_RX(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
             Gates.RX(w, 0, pulse_params=pulse_params, gate_mode="pulse")
-            return qml.state()
 
         def target_circuit(w):
-            qml.RX(w, wires=0)
-            return qml.state()
+            op.RX(w, wires=0)
 
         return pulse_circuit, target_circuit
 
     def create_RY(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
             Gates.RY(w, 0, pulse_params=pulse_params, gate_mode="pulse")
-            return qml.state()
 
         def target_circuit(w):
-            qml.RY(w, wires=0)
-            return qml.state()
+            op.RY(w, wires=0)
 
         return pulse_circuit, target_circuit
 
     def create_RZ(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
-            qml.H(wires=0)
+            op.H(wires=0)
             Gates.RZ(w, 0, pulse_params=pulse_params, gate_mode="pulse")
-            qml.H(wires=0)
-            return qml.state()
+            op.H(wires=0)
 
         def target_circuit(w):
-            qml.H(wires=0)
-            qml.RZ(w, wires=0)
-            qml.H(wires=0)
-            return qml.state()
+            op.H(wires=0)
+            op.RZ(w, wires=0)
+            op.H(wires=0)
 
         return pulse_circuit, target_circuit
 
     def create_H(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
-            qml.RY(w, wires=0)
+            op.RY(w, wires=0)
             Gates.H(0, pulse_params=pulse_params, gate_mode="pulse")
-            return qml.state()
 
         def target_circuit(w):
-            qml.RY(w, wires=0)
-            qml.H(wires=0)
-            return qml.state()
+            op.RY(w, wires=0)
+            op.H(wires=0)
 
         return pulse_circuit, target_circuit
 
     def create_Rot(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
-            qml.H(wires=0)
+            op.H(wires=0)
             Gates.Rot(w, w * 2, w * 3, 0, pulse_params=pulse_params, gate_mode="pulse")
-            return qml.state()
 
         def target_circuit(w):
-            qml.H(wires=0)
-            qml.Rot(w, w * 2, w * 3, wires=0)
-            return qml.state()
+            op.H(wires=0)
+            op.Rot(w, w * 2, w * 3, wires=0)
 
         return pulse_circuit, target_circuit
 
     def create_CX(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
-            qml.RY(w, wires=0)
-            qml.H(wires=1)
+            op.RY(w, wires=0)
+            op.H(wires=1)
             Gates.CX(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
-            return qml.state()
 
         def target_circuit(w):
-            qml.RY(w, wires=0)
-            qml.H(wires=1)
-            qml.CNOT(wires=[0, 1])
-            return qml.state()
+            op.RY(w, wires=0)
+            op.H(wires=1)
+            op.CX(wires=[0, 1])
 
         return pulse_circuit, target_circuit
 
     def create_CY(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
-            qml.RX(w, wires=0)
-            qml.H(wires=1)
+            op.RX(w, wires=0)
+            op.H(wires=1)
             Gates.CY(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
-            return qml.state()
 
         def target_circuit(w):
-            qml.RX(w, wires=0)
-            qml.H(wires=1)
-            qml.CY(wires=[0, 1])
-            return qml.state()
+            op.RX(w, wires=0)
+            op.H(wires=1)
+            op.CY(wires=[0, 1])
 
         return pulse_circuit, target_circuit
 
     def create_CZ(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
-            qml.RY(w, wires=0)
-            qml.H(wires=1)
+            op.RY(w, wires=0)
+            op.H(wires=1)
             Gates.CZ(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
-            return qml.state()
 
         def target_circuit(w):
-            qml.RY(w, wires=0)
-            qml.H(wires=1)
-            qml.CZ(wires=[0, 1])
-            return qml.state()
+            op.RY(w, wires=0)
+            op.H(wires=1)
+            op.CZ(wires=[0, 1])
 
         return pulse_circuit, target_circuit
 
     def create_CRX(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
-            qml.H(wires=0)
+            op.H(wires=0)
             Gates.CRX(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
-            return qml.state()
 
         def target_circuit(w):
-            qml.H(wires=0)
-            qml.CRX(w, wires=[0, 1])
-            return qml.state()
+            op.H(wires=0)
+            op.CRX(w, wires=[0, 1])
 
         return pulse_circuit, target_circuit
 
     def create_CRY(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
-            qml.H(wires=0)
+            op.H(wires=0)
             Gates.CRY(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
-            return qml.state()
 
         def target_circuit(w):
-            qml.H(wires=0)
-            qml.CRY(w, wires=[0, 1])
-            return qml.state()
+            op.H(wires=0)
+            op.CRY(w, wires=[0, 1])
 
         return pulse_circuit, target_circuit
 
     def create_CRZ(self, init_pulse_params: jnp.ndarray = None):
         def pulse_circuit(w, pulse_params):
-            qml.H(wires=0)
-            qml.H(wires=1)
+            op.H(wires=0)
+            op.H(wires=1)
             Gates.CRZ(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
-            return qml.state()
 
         def target_circuit(w):
-            qml.H(wires=0)
-            qml.H(wires=1)
-            qml.CRZ(w, wires=[0, 1])
-            return qml.state()
+            op.H(wires=0)
+            op.H(wires=1)
+            op.CRZ(w, wires=[0, 1])
 
         return pulse_circuit, target_circuit
 
     def optimize_all(self, sel_gates, make_log):
         assert (
-            self.observable == qml.state
-        ), "Observable must be qml.state when doing optimization"
+            self.observable == "state"
+        ), "Observable must be 'state' when doing optimization"
 
         log_history = {}
         optimize_1q = self.optimize("default.qubit", wires=1)
@@ -514,7 +496,7 @@ class QOC:
         # random_key = jax.random.key(seed=1000)
         # PulseInformation.shuffle_params(random_key)
         for loop in range(self.n_loops):
-            log.info("Reading back optimized pulse parameters")
+            # log.info("Reading back optimized pulse parameters")
             # PulseInformation.update_params()
 
             log.info(f"Optimization loop {loop+1} of {self.n_loops}")
@@ -619,7 +601,7 @@ if __name__ == "__main__":
     log.addHandler(logging.StreamHandler())
 
     qoc = QOC(
-        observable=qml.state,
+        observable="state",
     )
 
     qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)

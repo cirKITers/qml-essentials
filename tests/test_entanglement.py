@@ -4,11 +4,13 @@ from qml_essentials.entanglement import Entanglement
 import logging
 import math
 import pytest
-import numpy as np
+import jax
 
 from copy import deepcopy
 
 logger = logging.getLogger(__name__)
+
+jax.config.update("jax_enable_x64", True)
 
 
 def get_test_cases():
@@ -94,7 +96,6 @@ def get_test_cases():
     return circuits, results_n_layers_1, results_n_layers_3, skip_indices
 
 
-@pytest.mark.expensive
 @pytest.mark.unittest
 def test_mw_measure() -> None:
     circuits, results_n_layers_1, results_n_layers_3, skip_indices = get_test_cases()
@@ -134,7 +135,6 @@ def test_mw_measure() -> None:
             circuit_type=test_case["circuit_type"],
             data_reupload=False,
             initialization="random",
-            use_multithreading=True,
         )
 
         ent_cap = Entanglement.meyer_wallach(model, n_samples=5000, seed=1000)
@@ -198,56 +198,6 @@ def test_no_sampling() -> None:
     _ = Entanglement.concentratable_entanglement(model, n_samples=None, seed=1000)
 
 
-@pytest.mark.unittest
-def test_multithreaded_entanglement() -> None:
-    test_cases = [
-        {"fct": Entanglement.meyer_wallach, "kwargs": {}},
-        {"fct": Entanglement.bell_measurements, "kwargs": {}},
-        {
-            "fct": Entanglement.entanglement_of_formation,
-            "kwargs": {"always_decompose": True},
-        },
-        {"fct": Entanglement.relative_entropy, "kwargs": {"n_sigmas": 10}},
-        {"fct": Entanglement.concentratable_entanglement, "kwargs": {}},
-    ]
-
-    for test_case in test_cases:
-        model = Model(
-            n_qubits=2,
-            n_layers=1,
-            circuit_type="Hardware_Efficient",
-            data_reupload=False,
-            initialization="random",
-            use_multithreading=True,
-        )
-        multi_threaded = test_case["fct"](
-            model,
-            n_samples=10,
-            seed=1000,
-            **test_case["kwargs"],
-        )
-        model = Model(
-            n_qubits=2,
-            n_layers=1,
-            circuit_type="Hardware_Efficient",
-            data_reupload=False,
-            initialization="random",
-            use_multithreading=False,
-        )
-        single_threaded = test_case["fct"](
-            model,
-            n_samples=10,
-            seed=1000,
-            **test_case["kwargs"],
-        )
-        assert np.isclose(multi_threaded, single_threaded), (
-            f"Got different results for multi vs. single_threaded entanglement "
-            f"measure {test_case['fct'].__name__}: {multi_threaded} vs. "
-            f"{single_threaded}"
-        )
-
-
-@pytest.mark.expensive
 @pytest.mark.unittest
 def test_bell_measure() -> None:
     circuits, results_n_layers_1, results_n_layers_3, skip_indices = get_test_cases()
@@ -359,7 +309,6 @@ def test_entangling_measures() -> None:
 
 
 @pytest.mark.smoketest
-@pytest.mark.expensive
 def test_scaling() -> None:
     model = Model(
         n_qubits=2,
@@ -411,7 +360,6 @@ def test_relative_entropy() -> None:
 
 
 @pytest.mark.smoketest
-@pytest.mark.expensive
 def test_relative_entropy_order() -> None:
 
     circuits = [
@@ -426,13 +374,14 @@ def test_relative_entropy_order() -> None:
         n_layers=1,
         circuit_type="GHZ",
         data_reupload=False,
-        use_multithreading=True,
     )
 
-    entanglement = [0.0]
+    entanglement = []
     for circuit in circuits:
         model = Model(
-            n_qubits=3, n_layers=1, circuit_type=circuit, use_multithreading=True
+            n_qubits=3,
+            n_layers=1,
+            circuit_type=circuit,
         )
 
         ent = Entanglement.relative_entropy(
@@ -447,7 +396,8 @@ def test_relative_entropy_order() -> None:
 
     assert all(
         entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
-    ), f"Order of entanglement should be {circuits}."
+    ), f"Order of entanglement should be\
+        {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."
 
 
 @pytest.mark.smoketest
@@ -456,25 +406,23 @@ def test_entanglement_of_formation() -> None:
         n_qubits=3,
         n_layers=1,
         circuit_type="Circuit_1",
-        use_multithreading=True,
     )
 
     entangled_model = Model(
         n_qubits=3,
         n_layers=1,
         circuit_type="Strongly_Entangling",
-        use_multithreading=True,
     )
 
     separable_ent = Entanglement.entanglement_of_formation(
         separable_model,
-        n_samples=10,
+        n_samples=500,
         seed=1000,
         noise_params={"Depolarizing": 0.01},
     )
     entangled_ent = Entanglement.entanglement_of_formation(
         entangled_model,
-        n_samples=10,
+        n_samples=500,
         seed=1000,
         noise_params={"Depolarizing": 0.01},
     )
@@ -486,7 +434,6 @@ def test_entanglement_of_formation() -> None:
 
 
 @pytest.mark.smoketest
-@pytest.mark.expensive
 def test_entanglement_of_formation_order() -> None:
 
     circuits = [
@@ -497,20 +444,21 @@ def test_entanglement_of_formation_order() -> None:
         "Strongly_Entangling",
     ]
 
-    entanglement = [0.0]
+    entanglement = []
     for circuit in circuits:
         model = Model(n_qubits=3, n_layers=1, circuit_type=circuit)
 
         ent = Entanglement.entanglement_of_formation(
             model,
-            n_samples=100,
+            n_samples=500,
             seed=1000,
         )
         entanglement.append(ent)
 
     assert all(
         entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
-    ), f"Order of entanglement should be {circuits}."
+    ), f"Order of entanglement should be\
+        {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."
 
 
 @pytest.mark.smoketest
@@ -545,7 +493,6 @@ def test_concentratable_entanglement() -> None:
 
 
 @pytest.mark.smoketest
-@pytest.mark.expensive
 def test_concentratable_entanglement_order() -> None:
 
     circuits = [
@@ -556,17 +503,18 @@ def test_concentratable_entanglement_order() -> None:
         "Strongly_Entangling",
     ]
 
-    entanglement = [0.0]
+    entanglement = []
     for circuit in circuits:
         model = Model(n_qubits=3, n_layers=1, circuit_type=circuit)
 
         ent = Entanglement.concentratable_entanglement(
             model,
-            n_samples=100,
+            n_samples=500,
             seed=1000,
         )
         entanglement.append(ent)
 
     assert all(
         entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
-    ), f"Order of entanglement should be {circuits}."
+    ), f"Order of entanglement should be\
+        {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."

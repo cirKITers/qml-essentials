@@ -1,4 +1,7 @@
+benchmarks-*.png
+benchmarks-*.csv
 .vscode
+logs/
 
 # General files
 *.bkp
