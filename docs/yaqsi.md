@@ -145,3 +145,18 @@ purity = jnp.real(jnp.trace(rho @ rho))
 print(purity) # Purity should be < 1 
 ```
 
+#TODO: Pulse Schedule Description
+
+```python
+def circuit(w):
+    PulseGates.CZ(wires=0)
+    PulseGates.H(wires=1)
+    PulseGates.H(wires=1)
+
+yss = ys.Script(circuit)
+
+fig, axes = yss.draw(figure="pulse", args=(jnp.pi*0.5,))
+```
+
+![pulse-schedule](figures/pulse_schedule_light.png#center#only-light)
+![pulse-schedule](figures/pulse_schedule_dark.png#center#only-dark)
