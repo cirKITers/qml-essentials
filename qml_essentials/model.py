@@ -1482,6 +1482,7 @@ class Model:
         inputs: Optional[jnp.ndarray] = None,
         pulse_params: Optional[jnp.ndarray] = None,
         enc_params: Optional[jnp.ndarray] = None,
+        data_reupload: Union[bool, List[List[bool]], List[List[List[bool]]]] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
@@ -1503,6 +1504,9 @@ class Model:
                 pulse-mode gate execution.
             enc_params (Optional[jnp.ndarray]): Encoding parameters of shape
                 (n_qubits, n_input_feat). If None, uses model's encoding parameters.
+            data_reupload (Union[bool, List[List[bool]], List[List[List[bool]]]]):
+                Data reupload configuration. If None, uses previously set reupload
+                configuration.
             noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
                 Noise configuration. If None, uses previously set noise parameters.
             execution_type (Optional[str]): Measurement type: "expval", "density",
@@ -1525,6 +1529,7 @@ class Model:
             inputs=inputs,
             pulse_params=pulse_params,
             enc_params=enc_params,
+            data_reupload=data_reupload,
             noise_params=noise_params,
             execution_type=execution_type,
             force_mean=force_mean,
@@ -1537,6 +1542,7 @@ class Model:
         inputs: Optional[jnp.ndarray] = None,
         pulse_params: Optional[jnp.ndarray] = None,
         enc_params: Optional[jnp.ndarray] = None,
+        data_reupload: Union[bool, List[List[bool]], List[List[List[bool]]]] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
@@ -1560,6 +1566,9 @@ class Model:
                 pulse-mode gate execution.
             enc_params (Optional[jnp.ndarray]): Encoding parameters of shape
                 (n_qubits, n_input_feat). If None, uses model's encoding parameters.
+            data_reupload (Union[bool, List[List[bool]], List[List[List[bool]]]]):
+                Data reupload configuration. If None, uses previously set reupload
+                configuration.
             noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
                 Noise configuration. If None, uses previously set noise parameters.
             execution_type (Optional[str]): Measurement type: "expval", "density",
@@ -1593,6 +1602,10 @@ class Model:
                 "pulse_params were provided but gate_mode is not 'pulse'. "
                 "Either switch gate_mode='pulse' or do not pass pulse_params."
             )
+
+        # TODO: add testing
+        if data_reupload is not None:
+            self.data_reupload = data_reupload
 
         params = self._params_validation(params)
         pulse_params = self._pulse_params_validation(pulse_params)
