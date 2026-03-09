@@ -702,8 +702,7 @@ class Model:
 
         The first five parameters (after ``self``) - ``params``, ``inputs``,
         ``pulse_params``, ``random_key``, ``enc_params`` - are the batchable
-        positional arguments that ``_mp_executor`` passes via
-        ``Script.execute``.
+        positional arguments.
         The remaining keyword arguments are broadcast across the batch.
 
         Args:
@@ -1241,91 +1240,6 @@ class Model:
 
         return inputs
 
-    def _mp_executor(
-        self,
-        params: jnp.ndarray,
-        pulse_params: jnp.ndarray,
-        inputs: jnp.ndarray,
-        enc_params: jnp.ndarray,
-        noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]],
-        random_key: random.PRNGKey,
-        gate_mode: str,
-        meas_type: str,
-        obs: List[op.Operation],
-        shots: Optional[int] = None,
-    ) -> jnp.ndarray:
-        """
-        Execute circuit function with optional parallelization over batches.
-
-        Uses the yaqsi Script to execute the circuit.  When batching
-        is needed (B > 1), ``Script.execute`` is called with
-        ``in_axes`` so that ``jax.vmap`` is applied internally.
-
-        Args:
-            params (jnp.ndarray): Variational parameters of shape
-                (batch_size, n_layers, n_params_per_layer).
-            pulse_params (jnp.ndarray): Pulse parameters of shape
-                (batch_size, n_layers, n_pulse_params_per_layer).
-            inputs (jnp.ndarray): Input data of shape (batch_size, n_input_feat).
-            enc_params (jnp.ndarray): Encoding parameters of shape
-                (n_qubits, n_input_feat).
-            noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
-                Noise configuration dictionary.
-            random_key (random.PRNGKey): JAX random key for stochastic operations.
-            gate_mode (str): Gate execution mode ("unitary" or "pulse").
-            meas_type (str): Measurement type for yaqsi execute.
-            obs (List[op.Operation]): Observable list for expval measurements.
-            shots (Optional[int]): Number of measurement shots for stochastic
-                sampling.  If ``None``, exact analytic results are returned.
-
-        Returns:
-            jnp.ndarray: Circuit execution results, post-processed for uniformity.
-        """
-        B = np.prod(self.eff_batch_shape)
-
-        # kwargs are broadcast (not vmapped over)
-        exec_kwargs = dict(
-            noise_params=noise_params,
-            gate_mode=gate_mode,
-        )
-
-        # Build a shot key from the random_key if shots are requested
-        shot_key = None
-        if shots is not None:
-            random_key, shot_key = safe_random_split(random_key)
-
-        if B > 1:
-            random_keys = safe_random_split(random_key, num=B)
-
-            in_axes = (
-                0 if self.batch_shape[1] > 1 else None,  # params
-                0 if self.batch_shape[0] > 1 else None,  # inputs
-                0 if self.batch_shape[2] > 1 else None,  # pulse_params
-                0,  # random_keys
-                None,  # enc_params (broadcast, not batched)
-            )
-
-            result = self.script.execute(
-                type=meas_type,
-                obs=obs,
-                args=(params, inputs, pulse_params, random_keys, enc_params),
-                kwargs=exec_kwargs,
-                in_axes=in_axes,
-                shots=shots,
-                key=shot_key,
-            )
-        else:
-            result = self.script.execute(
-                type=meas_type,
-                obs=obs,
-                args=(params, inputs, pulse_params, random_key, enc_params),
-                kwargs=exec_kwargs,
-                shots=shots,
-                key=shot_key,
-            )
-
-        return self._postprocess_res(result)
-
     def _postprocess_res(self, result: Union[List, jnp.ndarray]) -> jnp.ndarray:
         """
         Post-process circuit execution results for uniform shape.
@@ -1583,19 +1497,50 @@ class Model:
 
         # Yaqsi auto-routes between statevector and density-matrix simulation
         # based on whether noise channels appear on the tape, so a single
-        # _mp_executor call handles both branches.
-        result = self._mp_executor(
-            params=params,
-            pulse_params=pulse_params,
-            inputs=inputs,
-            enc_params=enc_params,
+        B = np.prod(self.eff_batch_shape)
+
+        # kwargs are broadcast (not vmapped over)
+        exec_kwargs = dict(
             noise_params=self.noise_params,
-            random_key=subkey,
-            gate_mode=gate_mode,
-            meas_type=meas_type,
-            obs=obs,
-            shots=self.shots,
+            gate_mode=self.gate_mode,
         )
+
+        # Build a shot key from the random_key if shots are requested
+        shot_key = None
+        if self.shots is not None:
+            random_key, shot_key = safe_random_split(random_key)
+
+        if B > 1:
+            random_keys = safe_random_split(random_key, num=B)
+
+            in_axes = (
+                0 if self.batch_shape[1] > 1 else None,  # params
+                0 if self.batch_shape[0] > 1 else None,  # inputs
+                0 if self.batch_shape[2] > 1 else None,  # pulse_params
+                0,  # random_keys
+                None,  # enc_params (broadcast, not batched)
+            )
+
+            result = self.script.execute(
+                type=meas_type,
+                obs=obs,
+                args=(params, inputs, pulse_params, random_keys, enc_params),
+                kwargs=exec_kwargs,
+                in_axes=in_axes,
+                shots=self.shots,
+                key=shot_key,
+            )
+        else:
+            result = self.script.execute(
+                type=meas_type,
+                obs=obs,
+                args=(params, inputs, pulse_params, random_key, enc_params),
+                kwargs=exec_kwargs,
+                shots=self.shots,
+                key=shot_key,
+            )
+
+        result = self._postprocess_res(result)
 
         # --- Post-processing for partial-qubit measurements ---------------
         if self.execution_type == "density" and not self.all_qubit_measurement:
