@@ -186,19 +186,9 @@ class Model:
         data_reupload = data_reupload.astype(bool)
         # Keep as NumPy array (not JAX) so that ``if data_reupload[q, idx]``
         # in _iec remains a concrete Python bool even under jax.jit tracing.
+        # note that setting this will also update self.degree and self.frequencies
+        # and in consequence also self.has_dru
         self.data_reupload = np.array(data_reupload)
-
-        self.degree: Tuple = tuple(
-            self._enc.get_n_freqs(np.count_nonzero(self.data_reupload[..., i]))
-            for i in range(self.n_input_feat)
-        )
-
-        self.frequencies: Tuple = tuple(
-            self._enc.get_spectrum(np.count_nonzero(self.data_reupload[..., i]))
-            for i in range(self.n_input_feat)
-        )
-
-        self.has_dru = jnp.max(jnp.array([jnp.max(f) for f in self.frequencies])) > 1
 
         # check for the highest degree among all input dimensions
         if self.has_dru:
@@ -483,6 +473,45 @@ class Model:
     def pulse_params(self, value: jnp.ndarray) -> None:
         """Set the pulse parameters."""
         self._pulse_params = value
+
+    @property
+    def data_reupload(self) -> jnp.ndarray:
+        """Get the data reupload mask."""
+        return self._data_reupload
+
+    @data_reupload.setter
+    def data_reupload(self, value: jnp.ndarray) -> None:
+        """Set the data reupload mask."""
+        self._data_reupload = value
+
+        self._degree: Tuple = tuple(
+            self._enc.get_n_freqs(np.count_nonzero(self.data_reupload[..., i]))
+            for i in range(self.n_input_feat)
+        )
+
+        self._frequencies: Tuple = tuple(
+            self._enc.get_spectrum(np.count_nonzero(self.data_reupload[..., i]))
+            for i in range(self.n_input_feat)
+        )
+
+        # Cache has_dru as a plain Python bool so that it can be used in
+        # Python ``if`` statements even inside JAX-traced functions.
+        self._has_dru: bool = bool(max(int(np.max(f)) for f in self._frequencies) > 1)
+
+    @property
+    def degree(self) -> Tuple:
+        """Get the degree of the model."""
+        return self._degree
+
+    @property
+    def frequencies(self) -> Tuple:
+        """Get the frequencies of the model."""
+        return self._frequencies
+
+    @property
+    def has_dru(self) -> bool:
+        """Check if the model has data reupload."""
+        return self._has_dru
 
     @property
     def all_qubit_measurement(self) -> bool:
