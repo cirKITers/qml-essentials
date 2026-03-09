@@ -144,61 +144,12 @@ class Model:
         self._zero_inputs = False
 
         # --- Data-Reuploading ---
-        # Process data reuploading strategy and set degree
-        if not isinstance(data_reupload, bool):
-            if not isinstance(data_reupload, np.ndarray):
-                data_reupload = np.array(data_reupload)
 
-            if len(data_reupload.shape) == 2:
-                assert data_reupload.shape == (
-                    n_layers,
-                    n_qubits,
-                ), f"Data reuploading array has wrong shape. \
-                    Expected {(n_layers, n_qubits)} or\
-                    {(n_layers, n_qubits, self.n_input_feat)},\
-                    got {data_reupload.shape}."
-                data_reupload = data_reupload.reshape(*data_reupload.shape, 1)
-                data_reupload = np.repeat(data_reupload, self.n_input_feat, axis=2)
-
-            assert data_reupload.shape == (
-                n_layers,
-                n_qubits,
-                self.n_input_feat,
-            ), f"Data reuploading array has wrong shape. \
-                Expected {(n_layers, n_qubits, self.n_input_feat)},\
-                got {data_reupload.shape}."
-
-            log.debug(f"Data reuploading array:\n{data_reupload}")
-        else:
-            if data_reupload:
-                impl_n_layers: int = (
-                    n_layers + 1
-                )  # we need L+1 according to Schuld et al.
-                data_reupload = np.ones((n_layers, n_qubits, self.n_input_feat))
-                log.debug("Full data reuploading.")
-            else:
-                impl_n_layers: int = n_layers
-                data_reupload = np.zeros((n_layers, n_qubits, self.n_input_feat))
-                data_reupload[0][0] = 1
-                log.debug("No data reuploading.")
-
-        # convert to boolean values
-        data_reupload = data_reupload.astype(bool)
         # Keep as NumPy array (not JAX) so that ``if data_reupload[q, idx]``
         # in _iec remains a concrete Python bool even under jax.jit tracing.
-        self.data_reupload = np.array(data_reupload)
-
-        self.degree: Tuple = tuple(
-            self._enc.get_n_freqs(np.count_nonzero(self.data_reupload[..., i]))
-            for i in range(self.n_input_feat)
-        )
-
-        self.frequencies: Tuple = tuple(
-            self._enc.get_spectrum(np.count_nonzero(self.data_reupload[..., i]))
-            for i in range(self.n_input_feat)
-        )
-
-        self.has_dru = jnp.max(jnp.array([jnp.max(f) for f in self.frequencies])) > 1
+        # note that setting this will also update self.degree and self.frequencies
+        # and in consequence also self.has_dru
+        self.data_reupload = data_reupload
 
         # check for the highest degree among all input dimensions
         if self.has_dru:
@@ -483,6 +434,85 @@ class Model:
     def pulse_params(self, value: jnp.ndarray) -> None:
         """Set the pulse parameters."""
         self._pulse_params = value
+
+    @property
+    def data_reupload(self) -> jnp.ndarray:
+        """Get the data reupload mask."""
+        return self._data_reupload
+
+    @data_reupload.setter
+    def data_reupload(self, value: jnp.ndarray) -> None:
+        """Set the data reupload mask.
+
+        Always converts to a concrete NumPy boolean array so that
+        ``if data_reupload[q, idx]`` in :meth:`_iec` remains a plain
+        Python ``bool`` even inside JAX-traced functions (jit / grad / vmap).
+        """
+        # Process data reuploading strategy and set degree
+        if not isinstance(value, bool):
+            if not isinstance(value, np.ndarray):
+                value = np.array(value)
+
+            if len(value.shape) == 2:
+                assert value.shape == (
+                    self.n_layers,
+                    self.n_qubits,
+                ), f"Data reuploading array has wrong shape. \
+                    Expected {(self.n_layers, self.n_qubits)} or\
+                    {(self.n_layers, self.n_qubits, self.n_input_feat)},\
+                    got {value.shape}."
+                value = value.reshape(*value.shape, 1)
+                value = np.repeat(value, self.n_input_feat, axis=2)
+
+            assert value.shape == (
+                self.n_layers,
+                self.n_qubits,
+                self.n_input_feat,
+            ), f"Data reuploading array has wrong shape. \
+                Expected {(self.n_layers, self.n_qubits, self.n_input_feat)},\
+                got {value.shape}."
+
+            log.debug(f"Data reuploading array:\n{value}")
+        else:
+            if value:
+                value = np.ones((self.n_layers, self.n_qubits, self.n_input_feat))
+                log.debug("Full data reuploading.")
+            else:
+                value = np.zeros((self.n_layers, self.n_qubits, self.n_input_feat))
+                value[0][0] = 1
+                log.debug("No data reuploading.")
+
+        # convert to boolean values
+        self._data_reupload = np.asarray(value).astype(bool)
+
+        self._degree: Tuple = tuple(
+            self._enc.get_n_freqs(np.count_nonzero(self.data_reupload[..., i]))
+            for i in range(self.n_input_feat)
+        )
+
+        self._frequencies: Tuple = tuple(
+            self._enc.get_spectrum(np.count_nonzero(self.data_reupload[..., i]))
+            for i in range(self.n_input_feat)
+        )
+
+        # Cache has_dru as a plain Python bool so that it can be used in
+        # Python ``if`` statements even inside JAX-traced functions.
+        self._has_dru: bool = bool(max(int(np.max(f)) for f in self._frequencies) > 1)
+
+    @property
+    def degree(self) -> Tuple:
+        """Get the degree of the model."""
+        return self._degree
+
+    @property
+    def frequencies(self) -> Tuple:
+        """Get the frequencies of the model."""
+        return self._frequencies
+
+    @property
+    def has_dru(self) -> bool:
+        """Check if the model has data reupload."""
+        return self._has_dru
 
     @property
     def all_qubit_measurement(self) -> bool:
@@ -1367,6 +1397,7 @@ class Model:
         inputs: Optional[jnp.ndarray] = None,
         pulse_params: Optional[jnp.ndarray] = None,
         enc_params: Optional[jnp.ndarray] = None,
+        data_reupload: Union[bool, List[List[bool]], List[List[List[bool]]]] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
@@ -1388,6 +1419,9 @@ class Model:
                 pulse-mode gate execution.
             enc_params (Optional[jnp.ndarray]): Encoding parameters of shape
                 (n_qubits, n_input_feat). If None, uses model's encoding parameters.
+            data_reupload (Union[bool, List[List[bool]], List[List[List[bool]]]]):
+                Data reupload configuration. If None, uses previously set reupload
+                configuration.
             noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
                 Noise configuration. If None, uses previously set noise parameters.
             execution_type (Optional[str]): Measurement type: "expval", "density",
@@ -1410,6 +1444,7 @@ class Model:
             inputs=inputs,
             pulse_params=pulse_params,
             enc_params=enc_params,
+            data_reupload=data_reupload,
             noise_params=noise_params,
             execution_type=execution_type,
             force_mean=force_mean,
@@ -1422,6 +1457,7 @@ class Model:
         inputs: Optional[jnp.ndarray] = None,
         pulse_params: Optional[jnp.ndarray] = None,
         enc_params: Optional[jnp.ndarray] = None,
+        data_reupload: Union[bool, List[List[bool]], List[List[List[bool]]]] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
@@ -1445,6 +1481,9 @@ class Model:
                 pulse-mode gate execution.
             enc_params (Optional[jnp.ndarray]): Encoding parameters of shape
                 (n_qubits, n_input_feat). If None, uses model's encoding parameters.
+            data_reupload (Union[bool, List[List[bool]], List[List[List[bool]]]]):
+                Data reupload configuration. If None, uses previously set reupload
+                configuration.
             noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
                 Noise configuration. If None, uses previously set noise parameters.
             execution_type (Optional[str]): Measurement type: "expval", "density",
@@ -1478,6 +1517,10 @@ class Model:
                 "pulse_params were provided but gate_mode is not 'pulse'. "
                 "Either switch gate_mode='pulse' or do not pass pulse_params."
             )
+
+        # TODO: add testing
+        if data_reupload is not None:
+            self.data_reupload = data_reupload
 
         params = self._params_validation(params)
         pulse_params = self._pulse_params_validation(pulse_params)

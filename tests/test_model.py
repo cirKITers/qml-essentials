@@ -972,6 +972,58 @@ def test_training_step() -> None:
 
 
 @pytest.mark.unittest
+def test_training_with_data_reupload() -> None:
+    """Test that jax.grad works when data_reupload is passed at call time."""
+    model = Model(
+        n_qubits=2,
+        n_layers=2,
+        circuit_type="Circuit_19",
+        data_reupload=True,
+    )
+
+    params = model.params
+    enc_params = model.enc_params
+    # Simulate layerwise DRU: start with zeros (JAX array, as user code does)
+    data_reupload = jnp.zeros(model.data_reupload.shape)
+    domain_samples = jnp.linspace(-jnp.pi, jnp.pi, 5)
+    fourier_samples = jnp.sin(domain_samples)
+
+    def cost(params, inputs, targets, **kwargs):
+        predictions = model(params=params, inputs=inputs, **kwargs)
+        return jnp.mean((predictions - targets) ** 2)
+
+    # This should not raise TracerBoolConversionError
+    grads = grad(cost)(
+        params,
+        inputs=domain_samples,
+        targets=fourier_samples,
+        noise_params=None,
+        enc_params=enc_params,
+        data_reupload=data_reupload,
+        execution_type="expval",
+        force_mean=True,
+    )
+
+    assert grads.shape == params.shape, "Gradient shape mismatch"
+
+    # Also test with a partially filled data_reupload
+    data_reupload_np = np.zeros(model.data_reupload.shape)
+    data_reupload_np[0, 0, 0] = 1
+    grads2 = grad(cost)(
+        params,
+        inputs=domain_samples,
+        targets=fourier_samples,
+        noise_params=None,
+        enc_params=enc_params,
+        data_reupload=data_reupload_np,
+        execution_type="expval",
+        force_mean=True,
+    )
+
+    assert grads2.shape == params.shape, "Gradient shape mismatch (np array)"
+
+
+@pytest.mark.unittest
 def test_pauli_circuit_model() -> None:
     test_cases = [
         {
