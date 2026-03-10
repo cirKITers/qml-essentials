@@ -88,6 +88,11 @@ class Model:
                 Defaults to 1000.
             remove_zero_encoding (bool, optional): whether to
                 remove the zero encoding from the circuit. Defaults to True.
+            repeat_batch_axis (List[bool], optional): Each boolean in the array
+                determines over which axes to parallelise computation. The axes
+                correspond to [inputs, params, pulse_params]. Defaults to
+                [True, True, True], meaning that batching is enabled over all
+                axes.
             pulse_shape (str, optional): Pulse envelope shape for pulse-level
                 simulation. One of ``PulseEnvelope.available()``.
                 Defaults to ``"gaussian"``.

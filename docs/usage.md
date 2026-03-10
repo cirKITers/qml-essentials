@@ -82,10 +82,11 @@ The initialization strategy can be set when instantiating the model with the `in
 
 The default strategy is "random" which will result in random initialization of the parameters using the domain specified in the `initialization_domain` argument.
 Other options are:
-- "zeros": All parameters are initialized to $0$
-- "zero-controlled": All parameters are initialized to randomly except for the angles of the controlled rotations which are initialized to $0$
-- "pi-controlled": All parameters are initialized to randomly except for the angles of the controlled rotations which are initialized to $\\pi$
-- "pi": All parameters are initialized to $\\pi$
+
+ - `"zeros"`: All parameters are initialized to $0$
+ - `"zero-controlled"`: All parameters are initialized to randomly except for the angles of the controlled rotations which are initialized to $0$
+ - `"pi-controlled"`: All parameters are initialized to randomly except for the angles of the controlled rotations which are initialized to $\\pi$
+ - `"pi"`: All parameters are initialized to $\\pi$
 
 The `initialize_params` method provides the option to re-initialise the parameters after model instantiation using either the previous configuration or a different strategy.
 Given a PRNG key, it returns the `key` from `key, subkey = random.split(key)`  as documented [here](https://docs.jax.dev/en/latest/random-numbers.html) and uses the subkey for the actual parameter initialization.
@@ -116,7 +117,7 @@ Note that, `model.degree` includes the negative and zero frequency (i.e. the ful
 Individual frequencies can be obtained via `model.frequencies`.
 
 By default, all encodings are `Hamming` encodings, meaning, all encodings are applied equally in each data-reuploading step.
-Note it is also possible to provide a custom encoding as the `encoding` argument essentially accepts any callable or list of callables see [here](ansaetze.md#custom-encoding) for more details.
+Note it is also possible to provide a custom encoding as the `encoding` argument essentially accepts any callable or list of callables see [here](ansaetze.md#custom_encoding) for more details.
 To make things a little bit easier, we implement following encoding strategies as introduced in [Generalization despite overfitting in quantum machine learning models](https://doi.org/10.22331/q-2023-12-20-1210) with their respective spectral properties:
 
 | Encoding strategy | Spectrum $\Omega$                                                                                                  | $\vert\Omega\vert$ |
@@ -207,7 +208,7 @@ Based on `t_factor` and the circuit depth the execution time is estimated, and t
 
 ## Pulse Level Simulation
 
-Our framework extends beyond unitary-level simulation by integrating **pulse-level simulation** through [PennyLane’s pulse module](https://docs.pennylane.ai/en/stable/code/qml_pulse.html).  
+Our framework extends beyond unitary-level simulation by integrating **pulse-level simulation**.
 This allows you to move from the abstract unitary layer, where gates are treated as instantaneous idealized operations, down to the physical pulse layer, where gates are represented by time-dependent microwave control fields.  
 
 In the pulse representation, each gate is decomposed into Gaussian-shaped pulses parameterized by:
@@ -249,32 +250,19 @@ For more details:
 - See [*Training*](training.md#pulse_level) for how to train pulse parameters jointly with rotation angles.  
 
 
-## Multithreading (using JAX)
+## Batching and Multithreading (using JAX)
 
 In our framework, JAX automatically handles the number and distribution of the workers depending on the batch sizes and available CPUs.
-```
-model = Model(
-    n_qubits=2,
-    n_layers=1,
-    circuit_type="Circuit_19",
-)
-```
-
-Depending your machine, this can result in a significant speedup.
-Note however, that this is currently only available for `n_qubits<model.lightning_threshold` which is 12 by default.
-Above this threshold, Pennylane's `lightning.qubit` device is used which would interfere with an additional parallelism.
-
-Mutlithreading works for both parameters and inputs, meaning that if a batched input is provided, processing will be parallelized in the same way as explained above.
-Note, that if both, parameters and inputs are batched with size `B_I` and `B_P` respectively, the effective batch dimension will multiply, i.e. resulting in `B_I * B_P` combinations. 
-Internally, these combinations will be flattened during processing and then reshaped to the original shape afterwards, such that the output shape is `[O, B_I, B_P]`.
-Here, `O` is the general output shape depending on the execution type, `B_I` is the batch dimension of the inputs and `B_P` is the batch dimension of the parameters.
+Batching works for inputs, parameters and pulse parameters.
+If all three, inputs, parameters and pulse parameters, are provided, with sizes `B_I`, `B_P` and `B_R`, respectively, the effective batch dimension will multiply, i.e. resulting in `B_I * B_P * B_R` combinations.
+Internally, these combinations will be flattened during processing and then reshaped to the original shape afterwards, such that the output shape is `[B_I, B_P, B_R, O]`.
+Here, `O` is the general output shape depending on the execution type.
 This shape is also available as a property of the model: `model.batch_shape`.
 Note, that the output shape is always squeezed, i.e. batch axes will be suppressed if their dimension is 1.
-Also, there is a third batch axis in `model.batch_shape` for pulse parameters.
 See more on that topic in [*Ansaetze*](ansaetze.md#pulse_simulation).
 
 In addition to letting the model handle repeating the batch axes, it is also possible to disable this functionality by setting `repeat_batch_axis` upon model initialization.
-This parameter is an array of boolean values determining of the corresponding axis in the `batch_shape` (#Inputs, #Params, #PulseParams)should be repeated.
+This parameter is an array of boolean values determining of the corresponding axis in the `batch_shape` (#Inputs, #Params, #PulseParams) should be repeated.
 Of course, when providing the batch manually, the dimensions have to match.
 
 ```python
@@ -291,29 +279,6 @@ key = model.initialize_params(key, repeat=10)
 model(inputs=random.uniform(key, (10, 1)))
 ```
 In this example, instead of a batch size of `100`, the output will have a batch size of `10` instead (shape `(10,2)`).
-
-
-For density matrix calculations, we computed the speedup of a multi-threaded computation over a single-threaded computation with a 4 qubit circuit, averaged over 8 runs, as shown in the following figure.
-
-![Multiprocessing Density](figures/mp_result_density_light.png#center#only-light)
-![Multiprocessing Density](figures/mp_result_density_dark.png#center#only-dark)
-
-The computation was performed on a 16 core CPU with 32GB of RAM.
-
-As shown in the following figure, computing the expectation value is significantly easier, with no, or only a small speedup over the single-threaded computation.
-
-![Multiprocessing Expval](figures/mp_result_expval_light.png#center#only-light)
-![Multiprocessing Expval](figures/mp_result_expval_dark.png#center#only-dark)
-
-The commands used to generate the plots above are:
-```
-cd docs && uv run python mp_experiment.py --execution_type="expval" --min_n_samples="3000" --max_n_samples="60000" --n_samples="3000" --n_qubits="6" --n_layers="1"
-```
-and
-```
-cd docs && uv run python mp_experiment.py --execution_type="density" --min_n_samples="500" --max_n_samples="10000" --n_samples="500" --n_qubits="6" --n_layers="1"
-```
-respectively.
 
 ## Quantikz Export
 
