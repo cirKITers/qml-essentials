@@ -145,11 +145,14 @@ purity = jnp.real(jnp.trace(rho @ rho))
 print(purity) # Purity should be < 1 
 ```
 
-#TODO: Pulse Schedule Description
+You can visualize the pulses schedules, i.e. the sequence in which the pulses are applied on each qubit in the circuit, using the `draw` method.
+Here, shaded areas represent the pulse shape/envelope (e.g. "Gaussian") of the pulse and the vertical line represents the time at which the pulse is applied.
+Note that all gates are automatically decomposed into basis gates (e.g. `H` is decomposed into `RZ` and `RY`).
 
 ```python
 def circuit(w):
     PulseGates.CZ(wires=0)
+    PulseGates.RY(wires=0)
     PulseGates.H(wires=1)
     PulseGates.H(wires=1)
 
