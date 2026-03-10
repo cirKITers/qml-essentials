@@ -111,7 +111,7 @@ class QOC:
                 if not match:
                     writer.writerow(entry)
 
-    def cost_fn(self, pulse_params, pulse_script, target_script) -> float:
+    def fidelity_cost_fn(self, pulse_params, pulse_script, target_script) -> float:
         """
         Cost function for QOC optimization.
 
@@ -144,6 +144,19 @@ class QOC:
         phase_diff /= self.n_samples
 
         return (abs_diff + phase_diff) / 2  # loss
+
+    def pulse_cost_fn(self, pulse_params):
+        if len(pulse_params) == 3:
+            pulse_width = pulse_params[1]
+        else:
+            pulse_width = 0
+
+        return jnp.array(pulse_width, dtype=jnp.float64)
+
+    def cost_fn(self, pulse_params, pulse_script, target_script):
+        return self.fidelity_cost_fn(
+            pulse_params, pulse_script, target_script
+        ) + self.pulse_cost_fn(pulse_params)
 
     def multi_objective_cost_fn(
         self, pulse_params, pulse_scripts, target_scripts, leafs
@@ -187,8 +200,8 @@ class QOC:
 
     def run_optimization(
         self,
-        cost,
-        params,
+        cost_fcts: List[Callable],
+        params: jnp.ndarray,
         *args,
     ) -> tuple[jnp.ndarray, List]:
         """
@@ -207,32 +220,39 @@ class QOC:
         optimizer = optax.adamw(self.learning_rate)
         opt_state = optimizer.init(params)
 
-        loss = cost(params, *args).item()
+        def all_costs(params, *args):
+            return cost_fcts[0](params, *args) + cost_fcts[1](params)
+
+        loss = cost_fcts[0](params, *args).item()
+        full_loss = all_costs(params, *args)  # will be `cost_fn` result later
         loss_history = [loss]
         best_pulse_params = params
 
         @jax.jit
         def opt_step(params, opt_state, *args):
-            loss, grads = jax.value_and_grad(cost)(params, *args)
+            loss, grads = jax.value_and_grad(all_costs)(params, *args)
             updates, opt_state = optimizer.update(grads, opt_state, params)
             params = optax.apply_updates(params, updates)
             return params, opt_state, loss
 
         for step in range(self.n_steps):
             if step % self.log_interval == 0:
-                log.info(f"Step {step}/{self.n_steps}, Loss: {loss_history[-1]:.3e}")
+                log.info(
+                    f"Step {step}/{self.n_steps}, Loss: {loss_history[-1]:.3e} | Full Loss: {full_loss.item():.3e}"
+                )
 
-            params, opt_state, loss = opt_step(params, opt_state, *args)
+            params, opt_state, full_loss = opt_step(params, opt_state, *args)
+            loss = cost_fcts[0](params, *args).item()
 
-            if loss.item() < min(loss_history):
+            if loss < min(loss_history):
                 log.debug(f"Best set of params found at step {step}")
                 best_pulse_params = params
 
-            loss_history.append(loss.item())
+            loss_history.append(loss)
 
         return best_pulse_params, loss_history
 
-    def optimize(self, simulator, wires):
+    def optimize(self, wires):
         def decorator(create_circuits):
             def wrapper(init_pulse_params: jnp.ndarray = None):
                 """
@@ -270,11 +290,14 @@ class QOC:
 
                 # Optimizing
                 pulse_params, loss_history = self.run_optimization(
-                    partial(
-                        self.cost_fn,
-                        pulse_script=pulse_script,
-                        target_script=target_script,
-                    ),
+                    [
+                        partial(
+                            self.fidelity_cost_fn,
+                            pulse_script=pulse_script,
+                            target_script=target_script,
+                        ),
+                        self.pulse_cost_fn,
+                    ],
                     params=init_pulse_params,
                 )
 
@@ -490,8 +513,8 @@ class QOC:
         ), "Observable must be 'state' when doing optimization"
 
         log_history = {}
-        optimize_1q = self.optimize("default.qubit", wires=1)
-        optimize_2q = self.optimize("default.qubit", wires=2)
+        optimize_1q = self.optimize(wires=1)
+        optimize_2q = self.optimize(wires=2)
 
         # random_key = jax.random.key(seed=1000)
         # PulseInformation.shuffle_params(random_key)
