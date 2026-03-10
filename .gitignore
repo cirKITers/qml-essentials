@@ -2,6 +2,7 @@ benchmarks-*.png
 benchmarks-*.csv
 .vscode
 logs/
+tests_external/
 
 # General files
 *.bkp
