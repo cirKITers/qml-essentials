@@ -1538,7 +1538,8 @@ class Model:
             pulse_params,
         )
 
-        self.random_key, subkey = safe_random_split(self.random_key)
+        # split to generate a sub_key, required for actual execution
+        self.random_key, sub_key = safe_random_split(self.random_key)
 
         # Build measurement type & observables from execution_type / output_qubit
         meas_type, obs = self._build_obs()
@@ -1556,10 +1557,12 @@ class Model:
         # Build a shot key from the random_key if shots are requested
         shot_key = None
         if self.shots is not None:
-            random_key, shot_key = safe_random_split(random_key)
+            # overwrite subkey and split shot_key
+            sub_key, shot_key = safe_random_split(sub_key)
 
         if B > 1:
-            random_keys = safe_random_split(random_key, num=B)
+            # use random keys, derived from the subkey
+            random_keys = safe_random_split(sub_key, num=B)
 
             in_axes = (
                 0 if self.batch_shape[1] > 1 else None,  # params
@@ -1579,10 +1582,11 @@ class Model:
                 key=shot_key,
             )
         else:
+            # use the subkey directly
             result = self.script.execute(
                 type=meas_type,
                 obs=obs,
-                args=(params, inputs, pulse_params, random_key, enc_params),
+                args=(params, inputs, pulse_params, sub_key, enc_params),
                 kwargs=exec_kwargs,
                 shots=self.shots,
                 key=shot_key,
