@@ -490,12 +490,12 @@ class Model:
         # convert to boolean values
         self._data_reupload = np.asarray(value).astype(bool)
 
-        self._degree: Tuple = tuple(
+        self.degree: Tuple = tuple(
             self._enc.get_n_freqs(np.count_nonzero(self.data_reupload[..., i]))
             for i in range(self.n_input_feat)
         )
 
-        self._frequencies: Tuple = tuple(
+        self.frequencies: Tuple = tuple(
             self._enc.get_spectrum(np.count_nonzero(self.data_reupload[..., i]))
             for i in range(self.n_input_feat)
         )
@@ -509,10 +509,18 @@ class Model:
         """Get the degree of the model."""
         return self._degree
 
+    @degree.setter
+    def degree(self, value: Tuple):
+        self._degree = value
+
     @property
     def frequencies(self) -> Tuple:
         """Get the frequencies of the model."""
         return self._frequencies
+
+    @frequencies.setter
+    def frequencies(self, value: Tuple):
+        self._frequencies = value
 
     @property
     def has_dru(self) -> bool:
