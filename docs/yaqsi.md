@@ -151,8 +151,8 @@ Note that all gates are automatically decomposed into basis gates (e.g. `H` is d
 
 ```python
 def circuit(w):
+    PulseGates.RX(w, wires=0)
     PulseGates.CZ(wires=0)
-    PulseGates.RY(wires=0)
     PulseGates.H(wires=1)
     PulseGates.H(wires=1)
 
