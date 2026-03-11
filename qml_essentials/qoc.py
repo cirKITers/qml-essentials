@@ -24,12 +24,10 @@ class Cost:
         self,
         cost: Callable,
         weight: Union[float, Tuple],
-        cargs: tuple = (),
         ckwargs: dict = {},
     ):
         self.cost = cost
         self.weight = weight
-        self.cargs = cargs
         self.ckwargs = ckwargs
 
     def cost(self, *args, **kwargs):
@@ -37,7 +35,7 @@ class Cost:
 
     def __call__(self, *args, **kwargs):
         # inject constant args in cost function
-        cost = self.cost(*args, *self.cargs, **kwargs, **self.ckwargs)
+        cost = self.cost(*args, **kwargs, **self.ckwargs)
         if isinstance(self.weight, tuple):
             return jnp.array(
                 [c * w for c, w in zip(cost, self.weight, strict=True)]
@@ -47,13 +45,12 @@ class Cost:
 
     def __add__(self, other):
         if not isinstance(other, Cost):
-            return NotImplemented
+            return lambda *args, **kwargs: self(*args, **kwargs)
         return lambda *args, **kwargs: self(*args, **kwargs) + other(*args, **kwargs)
 
 
 def fidelity_cost_fn(
     pulse_params: jnp.ndarray,
-    envelope: str,
     pulse_script: ys.Script,
     target_script: ys.Script,
     n_samples: int,
@@ -94,9 +91,6 @@ def fidelity_cost_fn(
 def pulse_width_cost_fn(
     pulse_params: jnp.ndarray,
     envelope: str,
-    pulse_script: ys.Script,
-    target_script: ys.Script,
-    n_samples: int,
     **kwargs,
 ) -> jnp.ndarray:
     """
@@ -109,9 +103,6 @@ def pulse_width_cost_fn(
     Args:
         pulse_params: Pulse parameters for the gate.
         envelope: Name of the active pulse envelope.
-        pulse_script: (unused – present for uniform signature).
-        target_script: (unused – present for uniform signature).
-        n_samples: (unused – present for uniform signature).
 
     Returns:
         Scalar pulse-width cost.
@@ -127,6 +118,38 @@ def pulse_width_cost_fn(
     return jnp.array(pulse_width, dtype=jnp.float64)
 
 
+def evolution_time_cost_fn(
+    pulse_params: jnp.ndarray,
+    t_target: float,
+    **kwargs,
+) -> jnp.ndarray:
+    """
+    Cost function penalising deviation of the evolution time from a target.
+
+    The evolution time is always the **last** element of the pulse parameter
+    vector.  The cost is the squared relative deviation from ``t_target``:
+
+        cost = ((t - t_target) / t_target) ** 2
+
+    This encourages all independently optimized gates to converge towards a
+    common evolution time, making them compatible when composed into a
+    circuit.
+
+    Args:
+        pulse_params: Pulse parameters for the gate.
+        envelope: Name of the active pulse envelope (unused).
+        t_target (float): Target evolution time (passed via ``**kwargs``).
+
+    Returns:
+        Scalar evolution-time cost.
+
+    Raises:
+        ValueError: If ``t_target`` is not provided in ``kwargs``.
+    """
+    t = pulse_params[-1]
+    return ((t - t_target) / t_target) ** 2
+
+
 # Cost function registry
 # ---------------------------------------------------------------------------
 # ``n_weights`` indicates how many weight components the function expects:
@@ -136,18 +159,25 @@ COST_FN_REGISTRY: Dict[str, dict] = {
     "fidelity": {
         "fn": fidelity_cost_fn,
         "n_weights": 2,
-        "default_weight": (0.4, 0.4),
+        "default_weight": (0.45, 0.45),
+        "ckwargs_keys": ["pulse_script", "target_script", "n_samples"],
     },
     "pulse_width": {
         "fn": pulse_width_cost_fn,
         "n_weights": 1,
-        "default_weight": 0.2,
+        "default_weight": 0.025,
+        "ckwargs_keys": ["envelope"],
+    },
+    "evolution_time": {
+        "fn": evolution_time_cost_fn,
+        "n_weights": 1,
+        "default_weight": 0.075,
+        "ckwargs_keys": ["t_target"],
     },
 }
 
 
-def available_cost_fns() -> List[str]:
-    """Return the names of all registered cost functions."""
+def available_cost_fns():
     return list(COST_FN_REGISTRY.keys())
 
 
@@ -208,6 +238,7 @@ class QOC:
         observable: Union[Callable, List[Callable], str] = "state",
         envelope: str = "gaussian",
         cost_fns: Optional[List[Tuple[str, Union[float, Tuple[float, ...]]]]] = None,
+        t_target: Optional[float] = 1.0,
         n_steps: int = 1000,
         n_loops: int = 1,
         n_samples: int = 12,
@@ -229,8 +260,11 @@ class QOC:
                 be a key in :data:`COST_FN_REGISTRY`.  *weight* is either a
                 single float or a tuple of floats matching the number of
                 return values of the cost function.
-                Defaults to ``[("fidelity", (0.4, 0.4)),
-                ("pulse_width", 0.2)]``.
+                Defaults to ``[("fidelity", (0.45, 0.45)),
+                ("pulse_width", 0.025), ("evolution_time", 0.075)]``.
+            t_target (float, optional): Target evolution time for the
+                ``evolution_time`` cost function.  Required when
+                ``"evolution_time"`` is among the selected cost functions.
             n_steps (int): Number of steps in optimization.
             n_loops (int): Number of loops for optimization.
             n_samples (int): Number of parameter samples per step.
@@ -253,16 +287,16 @@ class QOC:
             file_dir if file_dir else os.path.dirname(os.path.realpath(__file__))
         )
         self.current_gate = None
+        self.t_target = t_target
 
         # Validate and store cost functions
         if cost_fns is None:
             cost_fns = [
-                ("fidelity", (0.4, 0.4)),
-                ("pulse_width", 0.2),
+                ("fidelity", (0.45, 0.45)),
+                ("pulse_width", 0.025),
+                ("evolution_time", 0.075),
             ]
-        # Validate each entry against the registry
-        for name, weight in cost_fns:
-            get_cost_fn(name)  # raises ValueError if unknown
+
         self.cost_fns = cost_fns
 
         # Configure the pulse system with the selected envelope
@@ -358,26 +392,29 @@ class QOC:
                     f"Initial pulse parameters for {gate_name}: {init_pulse_params}"
                 )
 
+                all_ckwargs = {
+                    "pulse_script": pulse_script,
+                    "target_script": target_script,
+                    "envelope": self.envelope,
+                    "n_samples": self.n_samples,
+                    "t_target": self.t_target,
+                }
                 # Build the composite cost from self.cost_fns
-                cost_objects = []
+                total_costs = None
                 for name, weight in self.cost_fns:
                     meta = get_cost_fn(name)
-                    cost_objects.append(
+                    total_costs = (
                         Cost(
                             cost=meta["fn"],
                             weight=weight,
-                            cargs=(
-                                self.envelope,
-                                pulse_script,
-                                target_script,
-                                self.n_samples,
-                            ),
+                            ckwargs={
+                                k: v
+                                for k, v in all_ckwargs.items()
+                                if k in meta["ckwargs_keys"]
+                            },
                         )
+                        + total_costs
                     )
-
-                total_costs = cost_objects[0]
-                for c in cost_objects[1:]:
-                    total_costs = total_costs + c
 
                 params = init_pulse_params
 
@@ -686,6 +723,15 @@ if __name__ == "__main__":
             "Example: --costs fidelity:0.5,0.3 pulse_width:0.2"
         ),
     )
+    parser.add_argument(
+        "--t_target",
+        type=float,
+        default=1.0,
+        help=(
+            "Target evolution time for the 'evolution_time' cost function. "
+            "All gates will be softly encouraged towards this common time."
+        ),
+    )
     # TODO: add more arguments that take e.g. n_steps etc for initialization
 
     args = parser.parse_args()
@@ -704,6 +750,7 @@ if __name__ == "__main__":
         observable="state",
         envelope=args.envelope,
         cost_fns=cost_fns,
+        t_target=args.t_target,
     )
 
     qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)
