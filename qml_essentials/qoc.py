@@ -11,7 +11,7 @@ import optax
 
 jax.config.update("jax_enable_x64", True)
 
-from qml_essentials.gates import Gates, PulseInformation
+from qml_essentials.gates import Gates, PulseInformation, PulseEnvelope
 from qml_essentials import operations as op
 from qml_essentials import yaqsi as ys
 from qml_essentials.math import phase_difference, fidelity
@@ -56,6 +56,7 @@ class QOC:
     def __init__(
         self,
         observable: Union[Callable, List[Callable], str] = "state",
+        envelope: str = "gaussian",
         n_steps: int = 1000,
         n_loops: int = 1,
         n_samples: int = 12,
@@ -69,6 +70,9 @@ class QOC:
 
         Args:
             observable (str): Observable to measure during optimization.
+            envelope (str): Pulse envelope shape to use for optimization.
+                Must be one of the registered envelopes in PulseEnvelope
+                (e.g. 'gaussian', 'square', 'cosine', 'drag', 'sech').
             n_steps (int): Number of steps in optimization.
             n_loops (int): Number of loops for optimization.
             n_samples (int): Number of parameter samples per step.
@@ -80,18 +84,24 @@ class QOC:
         self.ws = jnp.linspace(0, 2 * jnp.pi, n_samples)
 
         self.observable = observable
+        self.envelope = envelope
         self.n_steps = n_steps
         self.n_loops = n_loops
         self.n_samples = n_samples
         self.learning_rate = learning_rate
         self.log_interval = log_interval
         self.skip_on_fidelity = skip_on_fidelity
-        self.file_dir = file_dir if file_dir else os.getcwd()
+        self.file_dir = (
+            file_dir if file_dir else os.path.dirname(os.path.realpath(__file__))
+        )
         self.current_gate = None
 
         self._fidelity_abs_cost_weight = 0.4
         self._fidelity_phase_cost_weight = 0.4
         self._pulse_cost_weight = 0.2
+
+        # Configure the pulse system with the selected envelope
+        PulseInformation.set_envelope(self.envelope)
 
     def save_results(self, gate, fidelity, pulse_params):
         """
@@ -193,20 +203,28 @@ class QOC:
     def pulse_cost_fn(self, pulse_params: jnp.ndarray, gate_name: str, *args, **kwargs):
         """
         Cost function to optimize the pulse shape.
-        Generally we want to make the pulse a short as possible.
-        For gaussian pulses, this directly corresponds to sigma.
+        Generally we want to make the pulse as short as possible.
+        The pulse width corresponds to the last envelope parameter
+        (e.g. sigma for gaussian/drag/sech, width for square/cosine).
+
+        For envelopes with no envelope parameters (e.g. 'general'), the
+        pulse width cost is zero.
 
         Args:
-            pulse_params (_type_): _description_
-            gate_name (_type_): _description_
+            pulse_params (jnp.ndarray): Pulse parameters for the gate.
+            gate_name (str): Name of the gate being optimized.
 
         Returns:
-            _type_: _description_
+            jnp.ndarray: Weighted pulse width cost.
         """
-        # NOTE: assuming gaussian pulse here (i.e. RY/RX)
-        # TODO: in future iterations, we should distinguish between different pulse shapes
-        if len(pulse_params) == 3:
-            pulse_width = pulse_params[1]
+        envelope_info = PulseEnvelope.get(self.envelope)
+        n_envelope_params = envelope_info["n_envelope_params"]
+
+        if n_envelope_params > 0:
+            # The pulse width (sigma/width) is the last envelope parameter.
+            # Full param layout: [envelope_params..., t], so width is at
+            # index n_envelope_params - 1, or equivalently p[-2].
+            pulse_width = pulse_params[n_envelope_params - 1]
         else:
             pulse_width = 0
 
@@ -538,8 +556,27 @@ class QOC:
 if __name__ == "__main__":
     # argparse the selected gate
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gates", type=str, default=["RX", "RY", "RZ", "CZ"])
-    parser.add_argument("--log", type=str, default=True)
+    parser.add_argument(
+        "--gates",
+        type=str,
+        default=["RX", "RY", "RZ", "CZ"],
+        choices=["all", "RX", "RY", "RZ", "CZ"],
+        help="Gate(s) to optimize.",
+    )
+    parser.add_argument(
+        "--log",
+        type=str,
+        default=True,
+        choices=[True, False],
+        help="Log results to file.",
+    )
+    parser.add_argument(
+        "--envelope",
+        type=str,
+        default="gaussian",
+        choices=PulseEnvelope.available(),
+        help="Pulse envelope shape to use for optimization.",
+    )
     # TODO: add more arguments that take e.g. n_steps etc for initialization
 
     args = parser.parse_args()
@@ -551,6 +588,7 @@ if __name__ == "__main__":
 
     qoc = QOC(
         observable="state",
+        envelope=args.envelope,
     )
 
     qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)
