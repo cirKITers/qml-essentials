@@ -44,9 +44,13 @@ class Cost:
             return cost * self.weight
 
     def __add__(self, other):
-        if not isinstance(other, Cost):
+        if other is None:
             return lambda *args, **kwargs: self(*args, **kwargs)
-        return lambda *args, **kwargs: self(*args, **kwargs) + other(*args, **kwargs)
+        if callable(other):
+            return lambda *args, **kwargs: self(*args, **kwargs) + other(
+                *args, **kwargs
+            )
+        raise TypeError(f"Cannot add Cost and {type(other)}")
 
 
 def fidelity_cost_fn(
@@ -164,19 +168,19 @@ class CostFnRegistry:
         "fidelity": {
             "fn": fidelity_cost_fn,
             "n_weights": 2,
-            "default_weight": (0.45, 0.45),
+            "default_weight": (0.5, 0.5),
             "ckwargs_keys": ["pulse_script", "target_script", "n_samples"],
         },
         "pulse_width": {
             "fn": pulse_width_cost_fn,
             "n_weights": 1,
-            "default_weight": 0.025,
+            "default_weight": 1.0,
             "ckwargs_keys": ["envelope"],
         },
         "evolution_time": {
             "fn": evolution_time_cost_fn,
             "n_weights": 1,
-            "default_weight": 0.075,
+            "default_weight": 1.0,
             "ckwargs_keys": ["t_target"],
         },
     }
@@ -286,8 +290,8 @@ class QOC:
         self,
         envelope: str = "gaussian",
         cost_fns: Optional[List[Tuple[str, Union[float, Tuple[float, ...]]]]] = None,
-        t_target: Optional[float] = 1.0,
-        n_steps: int = 1000,
+        t_target: Optional[float] = 0.5,
+        n_steps: int = 10000,
         n_samples: int = 12,
         learning_rate: float = 0.001,
         log_interval: int = 50,
@@ -333,9 +337,9 @@ class QOC:
         # Validate and store cost functions
         if cost_fns is None:
             cost_fns = [
-                ("fidelity", (0.45, 0.45)),
-                ("pulse_width", 0.025),
-                ("evolution_time", 0.075),
+                ("fidelity", (0.499999, 0.499999)),
+                ("pulse_width", 0.0000007),
+                ("evolution_time", 0.0000003),
             ]
 
         # Validate each entry against the registry
