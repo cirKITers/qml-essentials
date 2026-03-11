@@ -150,114 +150,162 @@ def evolution_time_cost_fn(
     return ((t - t_target) / t_target) ** 2
 
 
-# Cost function registry
-# ---------------------------------------------------------------------------
-# ``n_weights`` indicates how many weight components the function expects:
-# ``default_weight`` is used when the caller does not specify weights.
+class CostFnRegistry:
+    """Registry of cost functions available for pulse optimisation.
 
-COST_FN_REGISTRY: Dict[str, dict] = {
-    "fidelity": {
-        "fn": fidelity_cost_fn,
-        "n_weights": 2,
-        "default_weight": (0.45, 0.45),
-        "ckwargs_keys": ["pulse_script", "target_script", "n_samples"],
-    },
-    "pulse_width": {
-        "fn": pulse_width_cost_fn,
-        "n_weights": 1,
-        "default_weight": 0.025,
-        "ckwargs_keys": ["envelope"],
-    },
-    "evolution_time": {
-        "fn": evolution_time_cost_fn,
-        "n_weights": 1,
-        "default_weight": 0.075,
-        "ckwargs_keys": ["t_target"],
-    },
-}
+    Each entry maps a human-readable name to a metadata dict with keys:
+    - ``fn``            - the cost function callable
+    - ``n_weights``     - how many weight components the function expects
+    - ``default_weight``- weight(s) used when the caller omits them
+    - ``ckwargs_keys``  - which ``QOC``-level kwargs the function needs
 
-
-def available_cost_fns():
-    return list(COST_FN_REGISTRY.keys())
-
-
-def get_cost_fn(name: str) -> dict:
-    """Look up cost-function metadata by *name*.
-
-    Raises:
-        ValueError: If *name* is not registered.
+    Use :meth:`register` to add new cost functions at runtime and
+    :meth:`get` / :meth:`available` to query them.
     """
-    if name not in COST_FN_REGISTRY:
-        raise ValueError(
-            f"Unknown cost function '{name}'. " f"Available: {available_cost_fns()}"
-        )
-    return COST_FN_REGISTRY[name]
 
+    _REGISTRY: Dict[str, dict] = {
+        "fidelity": {
+            "fn": fidelity_cost_fn,
+            "n_weights": 2,
+            "default_weight": (0.45, 0.45),
+            "ckwargs_keys": ["pulse_script", "target_script", "n_samples"],
+        },
+        "pulse_width": {
+            "fn": pulse_width_cost_fn,
+            "n_weights": 1,
+            "default_weight": 0.025,
+            "ckwargs_keys": ["envelope"],
+        },
+        "evolution_time": {
+            "fn": evolution_time_cost_fn,
+            "n_weights": 1,
+            "default_weight": 0.075,
+            "ckwargs_keys": ["t_target"],
+        },
+    }
 
-def parse_cost_arg(spec: str) -> Tuple[str, Union[float, Tuple[float, ...]]]:
-    """Parse a ``"name:w1,w2,..."`` string into ``(name, weight)``.
+    @classmethod
+    def available(cls) -> List[str]:
+        """Return the names of all registered cost functions."""
+        return list(cls._REGISTRY.keys())
 
-    If the weight part is omitted the default weight from the registry is
-    used.  A single-component weight is returned as a float; multi-component
-    weights are returned as a tuple of floats.
+    @classmethod
+    def get(cls, name: str) -> dict:
+        """Look up cost-function metadata by *name*.
 
-    Args:
-        spec: A string of the form ``"name:w1,w2,..."``.
+        Args:
+            name: Registered cost function name.
 
-    Returns:
-        A tuple of (name, weight).
+        Returns:
+            Metadata dict with keys ``fn``, ``n_weights``,
+            ``default_weight``, ``ckwargs_keys``.
 
-    Raises:
-        ValueError: If the weight part is not a comma-separated list of
-    """
-    if ":" in spec:
-        name, weight_str = spec.split(":", 1)
-        parts = [float(x) for x in weight_str.split(",")]
-        weight: Union[float, Tuple[float, ...]] = (
-            parts[0] if len(parts) == 1 else tuple(parts)
-        )
-    else:
-        name = spec
-        weight = get_cost_fn(name)["default_weight"]
+        Raises:
+            ValueError: If *name* is not registered.
+        """
+        if name not in cls._REGISTRY:
+            raise ValueError(
+                f"Unknown cost function '{name}'. " f"Available: {cls.available()}"
+            )
+        return cls._REGISTRY[name]
 
-    # Validate
-    meta = get_cost_fn(name)
-    expected = meta["n_weights"]
-    got = len(weight) if isinstance(weight, tuple) else 1
-    if got != expected:
-        raise ValueError(
-            f"Cost function '{name}' expects {expected} weight(s), got {got}."
-        )
+    @classmethod
+    def register(
+        cls,
+        name: str,
+        fn: Callable,
+        n_weights: int,
+        default_weight: Union[float, Tuple[float, ...]],
+        ckwargs_keys: Optional[List[str]] = None,
+    ) -> None:
+        """Register a new cost function.
 
-    return name, weight
+        Args:
+            name: Unique name for the cost function.
+            fn: The cost function callable.
+            n_weights: Number of weight components (1 for scalar return,
+                >1 for tuple return).
+            default_weight: Default weight(s) when not specified by the user.
+            ckwargs_keys: List of kwarg names (from ``QOC`` attributes) that
+                this function requires at call time.
+
+        Raises:
+            ValueError: If *name* is already registered.
+        """
+        if name in cls._REGISTRY:
+            raise ValueError(
+                f"Cost function '{name}' is already registered. "
+                f"Use a different name or remove the existing entry first."
+            )
+        cls._REGISTRY[name] = {
+            "fn": fn,
+            "n_weights": n_weights,
+            "default_weight": default_weight,
+            "ckwargs_keys": ckwargs_keys or [],
+        }
+
+    @classmethod
+    def parse_cost_arg(cls, spec: str) -> Tuple[str, Union[float, Tuple[float, ...]]]:
+        """Parse a ``"name:w1,w2,..."`` CLI string into ``(name, weight)``.
+
+        If the weight part is omitted the default weight from the registry
+        is used.  A single-component weight is returned as a float;
+        multi-component weights are returned as a tuple of floats.
+
+        Args:
+            spec: A string of the form ``"name"`` or ``"name:w1,w2,..."``.
+
+        Returns:
+            A tuple of ``(name, weight)``.
+
+        Raises:
+            ValueError: If the name is unknown or the number of weight
+                components does not match ``n_weights``.
+        """
+        if ":" in spec:
+            name, weight_str = spec.split(":", 1)
+            parts = [float(x) for x in weight_str.split(",")]
+            weight: Union[float, Tuple[float, ...]] = (
+                parts[0] if len(parts) == 1 else tuple(parts)
+            )
+        else:
+            name = spec
+            weight = cls.get(name)["default_weight"]
+
+        # Validate weight count
+        meta = cls.get(name)
+        expected = meta["n_weights"]
+        got = len(weight) if isinstance(weight, tuple) else 1
+        if got != expected:
+            raise ValueError(
+                f"Cost function '{name}' expects {expected} weight(s), " f"got {got}."
+            )
+
+        return name, weight
 
 
 class QOC:
     def __init__(
         self,
-        observable: Union[Callable, List[Callable], str] = "state",
         envelope: str = "gaussian",
         cost_fns: Optional[List[Tuple[str, Union[float, Tuple[float, ...]]]]] = None,
         t_target: Optional[float] = 1.0,
         n_steps: int = 1000,
-        n_loops: int = 1,
         n_samples: int = 12,
         learning_rate: float = 0.001,
         log_interval: int = 50,
-        skip_on_fidelity: bool = True,
         file_dir: str = None,
     ):
         """
         Initialize Quantum Optimal Control with Pulse-level Gates.
 
         Args:
-            observable (str): Observable to measure during optimization.
             envelope (str): Pulse envelope shape to use for optimization.
                 Must be one of the registered envelopes in PulseEnvelope
                 (e.g. 'gaussian', 'square', 'cosine', 'drag', 'sech').
             cost_fns (list): List of ``(name, weight)`` tuples that select
                 which cost functions to use and their weights.  *name* must
-                be a key in :data:`COST_FN_REGISTRY`.  *weight* is either a
+                be a key in :class:`CostFnRegistry`.  *weight* is either a
                 single float or a tuple of floats matching the number of
                 return values of the cost function.
                 Defaults to ``[("fidelity", (0.45, 0.45)),
@@ -266,23 +314,19 @@ class QOC:
                 ``evolution_time`` cost function.  Required when
                 ``"evolution_time"`` is among the selected cost functions.
             n_steps (int): Number of steps in optimization.
-            n_loops (int): Number of loops for optimization.
             n_samples (int): Number of parameter samples per step.
             learning_rate (float): Learning rate for Adam with
                 weight decay regularization.
             log_interval (int): Interval for logging.
-            skip_on_fidelity (bool): Skip writing to qoc_results if fidelity is lower?
+            file_dir (str): Directory to save results.
         """
         self.ws = jnp.linspace(0, 2 * jnp.pi, n_samples)
 
-        self.observable = observable
         self.envelope = envelope
         self.n_steps = n_steps
-        self.n_loops = n_loops
         self.n_samples = n_samples
         self.learning_rate = learning_rate
         self.log_interval = log_interval
-        self.skip_on_fidelity = skip_on_fidelity
         self.file_dir = (
             file_dir if file_dir else os.path.dirname(os.path.realpath(__file__))
         )
@@ -315,8 +359,6 @@ class QOC:
             If the gate already exists in the file and
             the newly optimized pulse parameters have a higher fidelity,
             the existing entry will be overwritten.
-            If the fidelity is lower, the new entry will be skipped unless
-            `skip_on_fidelity=False`.
         """
         if self.file_dir is not None:
             os.makedirs(self.file_dir, exist_ok=True)
@@ -336,18 +378,12 @@ class QOC:
                     for row in reader:
                         # gate already exists
                         if row[0] == gate:
-                            if fidelity > float(row[1]):
-                                writer.writerow(entry)
-                            else:
+                            if fidelity <= float(row[1]):
                                 log.warning(
                                     f"Pulse parameters for {gate} already exist with "
                                     f"higher fidelity ({row[1]} >= {fidelity})"
                                 )
-                                if not self.skip_on_fidelity:
-                                    log.info("Overwriting parameters anyway")
-                                    writer.writerow(entry)
-                                else:
-                                    writer.writerow(row)
+                            writer.writerow(entry)
                             match = True
                         # any other gate
                         else:
@@ -402,7 +438,7 @@ class QOC:
                 # Build the composite cost from self.cost_fns
                 total_costs = None
                 for name, weight in self.cost_fns:
-                    meta = get_cost_fn(name)
+                    meta = CostFnRegistry.get(name)
                     total_costs = (
                         Cost(
                             cost=meta["fn"],
@@ -586,105 +622,93 @@ class QOC:
         return pulse_circuit, target_circuit
 
     def optimize_all(self, sel_gates, make_log):
-        assert (
-            self.observable == "state"
-        ), "Observable must be 'state' when doing optimization"
-
         log_history = {}
         optimize_1q = self.optimize(wires=1)
         optimize_2q = self.optimize(wires=2)
 
-        # random_key = jax.random.key(seed=1000)
-        # PulseInformation.shuffle_params(random_key)
-        for loop in range(self.n_loops):
-            # log.info("Reading back optimized pulse parameters")
-            # PulseInformation.update_params()
+        if "RX" in sel_gates or "all" in sel_gates:
+            log.info("Optimizing RX gate...")
+            optimized_pulse_params, loss_history = optimize_1q(self.create_RX)()
+            log.info(f"Optimized parameters for RX: {optimized_pulse_params}")
+            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+            log_history["RX"] = log_history.get("RX", []) + loss_history
 
-            log.info(f"Optimization loop {loop+1} of {self.n_loops}")
+        if "RY" in sel_gates or "all" in sel_gates:
+            log.info("Optimizing RY gate...")
+            optimized_pulse_params, loss_history = optimize_1q(self.create_RY)()
+            log.info(f"Optimized parameters for RY: {optimized_pulse_params}")
+            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+            log_history["RY"] = log_history.get("RY", []) + loss_history
 
-            if "RX" in sel_gates or "all" in sel_gates:
-                log.info("Optimizing RX gate...")
-                optimized_pulse_params, loss_history = optimize_1q(self.create_RX)()
-                log.info(f"Optimized parameters for RX: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-                log_history["RX"] = log_history.get("RX", []) + loss_history
+        if "RZ" in sel_gates or "all" in sel_gates:
+            log.info("Optimizing RZ gate...")
+            optimized_pulse_params, loss_history = optimize_1q(self.create_RZ)()
+            log.info(f"Optimized parameters for RZ: {optimized_pulse_params}")
+            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+            log_history["RZ"] = log_history.get("RZ", []) + loss_history
 
-            if "RY" in sel_gates or "all" in sel_gates:
-                log.info("Optimizing RY gate...")
-                optimized_pulse_params, loss_history = optimize_1q(self.create_RY)()
-                log.info(f"Optimized parameters for RY: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-                log_history["RY"] = log_history.get("RY", []) + loss_history
+        if "H" in sel_gates or "all" in sel_gates:
+            log.info("Optimizing H gate...")
+            optimized_pulse_params, loss_history = optimize_1q(self.create_H)()
+            log.info(f"Optimized parameters for H: {optimized_pulse_params}")
+            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+            log_history["H"] = log_history.get("H", []) + loss_history
 
-            if "RZ" in sel_gates or "all" in sel_gates:
-                log.info("Optimizing RZ gate...")
-                optimized_pulse_params, loss_history = optimize_1q(self.create_RZ)()
-                log.info(f"Optimized parameters for RZ: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-                log_history["RZ"] = log_history.get("RZ", []) + loss_history
+        if "Rot" in sel_gates or "all" in sel_gates:
+            log.info("Optimizing Rot gate...")
+            optimized_pulse_params, loss_history = optimize_1q(self.create_Rot)()
+            log.info(f"Optimized parameters for Rot: {optimized_pulse_params}")
+            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+            log_history["Rot"] = log_history.get("Rot", []) + loss_history
 
-            if "H" in sel_gates or "all" in sel_gates:
-                log.info("Optimizing H gate...")
-                optimized_pulse_params, loss_history = optimize_1q(self.create_H)()
-                log.info(f"Optimized parameters for H: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-                log_history["H"] = log_history.get("H", []) + loss_history
+        if "CX" in sel_gates or "all" in sel_gates:
+            log.info("Optimizing CX gate...")
+            optimized_pulse_params, loss_history = optimize_2q(self.create_CX)()
+            log.info(f"Optimized parameters for CX: {optimized_pulse_params}")
+            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+            log_history["CX"] = log_history.get("CX", []) + loss_history
 
-            if "Rot" in sel_gates or "all" in sel_gates:
-                log.info("Optimizing Rot gate...")
-                optimized_pulse_params, loss_history = optimize_1q(self.create_Rot)()
-                log.info(f"Optimized parameters for Rot: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-                log_history["Rot"] = log_history.get("Rot", []) + loss_history
+        if "CZ" in sel_gates or "all" in sel_gates:
+            log.info("Optimizing CZ gate...")
+            optimized_pulse_params, loss_history = optimize_2q(self.create_CZ)()
+            log.info(f"Optimized parameters for CZ: {optimized_pulse_params}")
+            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+            log_history["CZ"] = log_history.get("CZ", []) + loss_history
 
-            if "CX" in sel_gates or "all" in sel_gates:
-                log.info("Optimizing CX gate...")
-                optimized_pulse_params, loss_history = optimize_2q(self.create_CX)()
-                log.info(f"Optimized parameters for CX: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-                log_history["CX"] = log_history.get("CX", []) + loss_history
+        if "CY" in sel_gates or "all" in sel_gates:
+            log.info("Optimizing CY gate...")
+            optimized_pulse_params, loss_history = optimize_2q(self.create_CY)()
+            log.info(f"Optimized parameters for CY: {optimized_pulse_params}")
+            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+            log_history["CY"] = log_history.get("CY", []) + loss_history
 
-            if "CZ" in sel_gates or "all" in sel_gates:
-                log.info("Optimizing CZ gate...")
-                optimized_pulse_params, loss_history = optimize_2q(self.create_CZ)()
-                log.info(f"Optimized parameters for CZ: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-                log_history["CZ"] = log_history.get("CZ", []) + loss_history
+        if "CRX" in sel_gates or "all" in sel_gates:
+            log.info("Optimizing CRX gate...")
+            optimized_pulse_params, loss_history = optimize_2q(self.create_CRX)()
+            log.info(f"Optimized parameters for CRX: {optimized_pulse_params}")
+            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+            log_history["CRX"] = log_history.get("CRX", []) + loss_history
 
-            if "CY" in sel_gates or "all" in sel_gates:
-                log.info("Optimizing CY gate...")
-                optimized_pulse_params, loss_history = optimize_2q(self.create_CY)()
-                log.info(f"Optimized parameters for CY: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-                log_history["CY"] = log_history.get("CY", []) + loss_history
+        if "CRY" in sel_gates or "all" in sel_gates:
+            log.info("Optimizing CRY gate...")
+            optimized_pulse_params, loss_history = optimize_2q(self.create_CRY)()
+            log.info(f"Optimized parameters for CRY: {optimized_pulse_params}")
+            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+            log_history["CRY"] = log_history.get("CRY", []) + loss_history
 
-            if "CRX" in sel_gates or "all" in sel_gates:
-                log.info("Optimizing CRX gate...")
-                optimized_pulse_params, loss_history = optimize_2q(self.create_CRX)()
-                log.info(f"Optimized parameters for CRX: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-                log_history["CRX"] = log_history.get("CRX", []) + loss_history
+        if "CRZ" in sel_gates or "all" in sel_gates:
+            log.info("Optimizing CRZ gate...")
+            optimized_pulse_params, loss_history = optimize_2q(self.create_CRZ)()
+            log.info(f"Optimized parameters for CRZ: {optimized_pulse_params}")
+            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
+            log_history["CRZ"] = log_history.get("CRZ", []) + loss_history
 
-            if "CRY" in sel_gates or "all" in sel_gates:
-                log.info("Optimizing CRY gate...")
-                optimized_pulse_params, loss_history = optimize_2q(self.create_CRY)()
-                log.info(f"Optimized parameters for CRY: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-                log_history["CRY"] = log_history.get("CRY", []) + loss_history
-
-            if "CRZ" in sel_gates or "all" in sel_gates:
-                log.info("Optimizing CRZ gate...")
-                optimized_pulse_params, loss_history = optimize_2q(self.create_CRZ)()
-                log.info(f"Optimized parameters for CRZ: {optimized_pulse_params}")
-                log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-                log_history["CRZ"] = log_history.get("CRZ", []) + loss_history
-
-            if make_log:
-                # write log history to file
-                with open("qml_essentials/qoc_logs.csv", "w") as f:
-                    writer = csv.writer(f)
-                    writer.writerow(log_history.keys())
-                    writer.writerows(zip(*log_history.values()))
+        if make_log:
+            # write log history to file
+            with open("qml_essentials/qoc_logs.csv", "w") as f:
+                writer = csv.writer(f)
+                writer.writerow(log_history.keys())
+                writer.writerows(zip(*log_history.values()))
 
 
 if __name__ == "__main__":
@@ -719,7 +743,7 @@ if __name__ == "__main__":
         help=(
             "Cost functions and weights as 'name:w1,w2,...' strings. "
             "If weights are omitted the registry defaults are used. "
-            f"Available: {available_cost_fns()}. "
+            f"Available: {CostFnRegistry.available()}. "
             "Example: --costs fidelity:0.5,0.3 pulse_width:0.2"
         ),
     )
@@ -741,13 +765,12 @@ if __name__ == "__main__":
     # Parse cost function specs from CLI
     cost_fns = None
     if args.costs is not None:
-        cost_fns = [parse_cost_arg(spec) for spec in args.costs]
+        cost_fns = [CostFnRegistry.parse_cost_arg(spec) for spec in args.costs]
 
     log.setLevel(logging.INFO)
     log.addHandler(logging.StreamHandler())
 
     qoc = QOC(
-        observable="state",
         envelope=args.envelope,
         cost_fns=cost_fns,
         t_target=args.t_target,
