@@ -338,6 +338,10 @@ class QOC:
                 ("evolution_time", 0.075),
             ]
 
+        # Validate each entry against the registry
+        for name, _weight in cost_fns:
+            CostFnRegistry.get(name)  # raises ValueError if unknown
+
         self.cost_fns = cost_fns
 
         # Configure the pulse system with the selected envelope

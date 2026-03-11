@@ -4,7 +4,6 @@ import pytest
 import jax
 import jax.numpy as jnp
 
-jax.config.update("jax_enable_x64", True)
 
 from qml_essentials.qoc import (
     Cost,
@@ -15,20 +14,28 @@ from qml_essentials.qoc import (
     evolution_time_cost_fn,
 )
 
+jax.config.update("jax_enable_x64", True)
+
 
 class TestCost:
     """Unit tests for the Cost wrapper class."""
 
     def test_scalar_weight(self):
         """Cost with a scalar weight multiplies the result."""
-        fn = lambda params: params.sum()
+
+        def fn(params):
+            return params.sum()
+
         cost = Cost(cost=fn, weight=2.0)
         result = cost(jnp.array([1.0, 3.0]))
         assert jnp.isclose(result, 8.0)
 
     def test_tuple_weight(self):
         """Cost with a tuple weight does element-wise weighting and sums."""
-        fn = lambda params: (params[0], params[1])
+
+        def fn(params):
+            return (params[0], params[1])
+
         cost = Cost(cost=fn, weight=(0.5, 0.25))
         result = cost(jnp.array([4.0, 8.0]))
         # 4*0.5 + 8*0.25 = 2 + 2 = 4
@@ -36,7 +43,10 @@ class TestCost:
 
     def test_ckwargs_injection(self):
         """Constant kwargs are injected into the cost function call."""
-        fn = lambda params, offset=0.0: params.sum() + offset
+
+        def fn(params, offset=0.0):
+            return params.sum() + offset
+
         cost = Cost(cost=fn, weight=1.0, ckwargs={"offset": 10.0})
         result = cost(jnp.array([1.0, 2.0]))
         assert jnp.isclose(result, 13.0)
@@ -58,7 +68,10 @@ class TestCost:
 
     def test_weight_tuple_length_mismatch_raises(self):
         """Mismatched weight tuple and cost return length raises at call time."""
-        fn = lambda params: (params[0],)  # returns 1-tuple
+
+        def fn(params):
+            return (params[0],)  # returns 1-tuple
+
         cost = Cost(cost=fn, weight=(0.5, 0.5))  # expects 2
         with pytest.raises(ValueError):
             cost(jnp.array([1.0]))
@@ -89,7 +102,10 @@ class TestCostFnRegistry:
 
     def test_register_and_cleanup(self):
         """Registering a new cost function makes it available."""
-        dummy_fn = lambda params: jnp.array(0.0)
+
+        def dummy_fn(params):
+            return jnp.array(0.0)
+
         name = "_test_dummy_cost"
         try:
             CostFnRegistry.register(
