@@ -1,7 +1,7 @@
 # flake8: noqa: E402
 import argparse
 from functools import partial
-from typing import List, Callable, Union
+from typing import List, Callable, Union, Tuple
 
 import os
 import csv
@@ -20,6 +20,38 @@ import logging
 log = logging.getLogger(__name__)
 
 
+class Cost:
+    def __init__(
+        self,
+        cost: Callable,
+        weight: Union[float, Tuple],
+        cargs: tuple = (),
+        ckwargs: dict = {},
+    ):
+        self.cost = cost
+        self.weight = weight
+        self.cargs = cargs
+        self.ckwargs = ckwargs
+
+    def cost(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def __call__(self, *args, **kwargs):
+        # inject constant args in cost function
+        cost = self.cost(*args, *self.cargs, **kwargs, **self.ckwargs)
+        if isinstance(self.weight, tuple):
+            return jnp.array(
+                [c * w for c, w in zip(cost, self.weight, strict=True)]
+            ).sum()
+        else:
+            return cost * self.weight
+
+    def __add__(self, other):
+        if not isinstance(other, Cost):
+            return NotImplemented
+        return lambda *args, **kwargs: self(*args, **kwargs) + other(*args, **kwargs)
+
+
 class QOC:
     def __init__(
         self,
@@ -30,7 +62,7 @@ class QOC:
         learning_rate: float = 0.001,
         log_interval: int = 50,
         skip_on_fidelity: bool = True,
-        file_dir: str = "./",
+        file_dir: str = None,
     ):
         """
         Initialize Quantum Optimal Control with Pulse-level Gates.
@@ -54,8 +86,12 @@ class QOC:
         self.learning_rate = learning_rate
         self.log_interval = log_interval
         self.skip_on_fidelity = skip_on_fidelity
-        self.file_dir = file_dir
+        self.file_dir = file_dir if file_dir else os.getcwd()
         self.current_gate = None
+
+        self._fidelity_abs_cost_weight = 0.4
+        self._fidelity_phase_cost_weight = 0.4
+        self._pulse_cost_weight = 0.2
 
     def save_results(self, gate, fidelity, pulse_params):
         """
@@ -111,146 +147,70 @@ class QOC:
                 if not match:
                     writer.writerow(entry)
 
-    def fidelity_cost_fn(self, pulse_params, pulse_script, target_script) -> float:
+    def fidelity_cost_fn(
+        self,
+        pulse_params: jnp.ndarray,
+        pulse_script: ys.Script,
+        target_script: ys.Script,
+        n_samples: int,
+        *args,
+        **kwargs,
+    ) -> Tuple[float, float]:
         """
-        Cost function for QOC optimization.
-
-        The cost function is calculated as the average of the fidelity and
-        phase difference between the pulse-based and unitary-based gates.
+        Cost function to return the fidelity of two PQCs given a number of samples.
+        The fidelity is calculated for each parameter sample in the interval [0, 2pi].
+        In the same manner, the phase difference is returned as well.
+        PQCs are provided as Yaqsi scripts.
 
         Args:
-            pulse_params (list or array): Optimized parameters to
-                use for the pulse-based gate.
-            pulse_script (ys.Script): Pulse-based gate Script.
-            target_script (ys.Script): Unitary-based gate Script.
+            pulse_params (jnp.ndarray): Pulse parameters for evaluation
+            pulse_script (ys.Script): Yaqsi script with pulse parameters
+            target_script (ys.Script): Yaqsi script as target
+            n_samples (int): Number of parameter samples for input evaluation
 
         Returns:
-            float: Cost function value.
+            tuple: Fidelity and phase difference
         """
         abs_diff = 0
         phase_diff = 0
-        for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / self.n_samples):
+        for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / n_samples):
             pulse_state = pulse_script.execute(type="state", args=(w, pulse_params))
             target_state = target_script.execute(type="state", args=(w,))
-            # dot_prod = jnp.vdot(target_state, pulse_state)
-            # abs_diff += 1 - jnp.abs(dot_prod) ** 2  # one if no diff
-            # phase_diff += jnp.abs(jnp.angle(dot_prod)) / jnp.pi  # zero if no diff
+
+            # inverting fidelity to minimize
             abs_diff += jnp.array(1.0, dtype=jnp.float64) - fidelity(
                 pulse_state, target_state
             )
+            # using abs, as phase difference is in the interval [-pi, pi]
+            # TODO: we could try square here
             phase_diff += jnp.abs(phase_difference(pulse_state, target_state))
 
-        abs_diff /= self.n_samples
-        phase_diff /= self.n_samples
+        abs_diff /= n_samples
+        phase_diff /= n_samples
 
-        return (abs_diff + phase_diff) / 2  # loss
+        return (abs_diff, phase_diff)
 
-    def pulse_cost_fn(self, pulse_params):
+    def pulse_cost_fn(self, pulse_params: jnp.ndarray, gate_name: str, *args, **kwargs):
+        """
+        Cost function to optimize the pulse shape.
+        Generally we want to make the pulse a short as possible.
+        For gaussian pulses, this directly corresponds to sigma.
+
+        Args:
+            pulse_params (_type_): _description_
+            gate_name (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        # NOTE: assuming gaussian pulse here (i.e. RY/RX)
+        # TODO: in future iterations, we should distinguish between different pulse shapes
         if len(pulse_params) == 3:
             pulse_width = pulse_params[1]
         else:
             pulse_width = 0
 
-        return jnp.array(pulse_width, dtype=jnp.float64)
-
-    def cost_fn(self, pulse_params, pulse_script, target_script):
-        return self.fidelity_cost_fn(
-            pulse_params, pulse_script, target_script
-        ) + self.pulse_cost_fn(pulse_params)
-
-    def multi_objective_cost_fn(
-        self, pulse_params, pulse_scripts, target_scripts, leafs
-    ) -> float:
-        """
-        Cost function for QOC optimization.
-
-        The cost function is calculated as the average of the fidelity and
-        phase difference between the pulse-based and unitary-based gates.
-
-        Args:
-            pulse_params (list or array): Optimized parameters to use for
-                the pulse-based gate.
-            pulse_scripts (list): List of pulse-based gate Scripts.
-            target_scripts (list): List of unitary-based gate Scripts.
-
-        Returns:
-            float: Cost function value.
-        """
-        idx = 0
-        for leaf in leafs:
-            nidx = idx + leaf.size
-            leaf.params = pulse_params[idx:nidx]
-            idx = nidx
-
-        abs_diff = 0
-        phase_diff = 0
-        for pulse_script, target_script in zip(pulse_scripts, target_scripts):
-            for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / self.n_samples):
-                pulse_state = pulse_script.execute(type="state", args=(w, None))
-                target_state = target_script.execute(type="state", args=(w,))
-                dot_prod = jnp.vdot(target_state, pulse_state)
-                abs_diff += 1 - jnp.abs(dot_prod) ** 2  # one if no diff
-                # phase_diff += jnp.abs(jnp.angle(dot_prod)) / jnp.pi  # zero if no diff
-
-            abs_diff /= self.n_samples
-            phase_diff /= self.n_samples
-
-        n_nodes = len(pulse_scripts)
-        return ((abs_diff + phase_diff) / 2) / n_nodes  # loss
-
-    def run_optimization(
-        self,
-        cost_fcts: List[Callable],
-        params: jnp.ndarray,
-        *args,
-    ) -> tuple[jnp.ndarray, List]:
-        """
-        Run the optimization process.
-
-        Args:
-            cost (callable): Cost function to use for optimization.
-            params (list or array): Initial parameters to use for
-                the pulse-based gate.
-            *args: Arguments to pass to the cost function.
-
-        Returns:
-            tuple[jnp.ndarray, List]: Optimized parameters and list of loss values
-                at each iteration.
-        """
-        optimizer = optax.adamw(self.learning_rate)
-        opt_state = optimizer.init(params)
-
-        def all_costs(params, *args):
-            return cost_fcts[0](params, *args) + cost_fcts[1](params)
-
-        loss = cost_fcts[0](params, *args).item()
-        full_loss = all_costs(params, *args)  # will be `cost_fn` result later
-        loss_history = [loss]
-        best_pulse_params = params
-
-        @jax.jit
-        def opt_step(params, opt_state, *args):
-            loss, grads = jax.value_and_grad(all_costs)(params, *args)
-            updates, opt_state = optimizer.update(grads, opt_state, params)
-            params = optax.apply_updates(params, updates)
-            return params, opt_state, loss
-
-        for step in range(self.n_steps):
-            if step % self.log_interval == 0:
-                log.info(
-                    f"Step {step}/{self.n_steps}, Loss: {loss_history[-1]:.3e} | Full Loss: {full_loss.item():.3e}"
-                )
-
-            params, opt_state, full_loss = opt_step(params, opt_state, *args)
-            loss = cost_fcts[0](params, *args).item()
-
-            if loss < min(loss_history):
-                log.debug(f"Best set of params found at step {step}")
-                best_pulse_params = params
-
-            loss_history.append(loss)
-
-        return best_pulse_params, loss_history
+        return jnp.array(pulse_width, dtype=jnp.float64) * self._pulse_cost_weight
 
     def optimize(self, wires):
         def decorator(create_circuits):
@@ -288,93 +248,59 @@ class QOC:
                     f"Initial pulse parameters for {gate_name}: {init_pulse_params}"
                 )
 
-                # Optimizing
-                pulse_params, loss_history = self.run_optimization(
-                    [
-                        partial(
-                            self.fidelity_cost_fn,
-                            pulse_script=pulse_script,
-                            target_script=target_script,
-                        ),
-                        self.pulse_cost_fn,
-                    ],
-                    params=init_pulse_params,
+                fidelity_cost = Cost(
+                    cost=self.fidelity_cost_fn,
+                    weight=(
+                        self._fidelity_abs_cost_weight,
+                        self._fidelity_phase_cost_weight,
+                    ),
+                    cargs=(pulse_script, target_script, self.n_samples),
                 )
+                pulse_cost = Cost(
+                    cost=self.pulse_cost_fn,
+                    weight=self._pulse_cost_weight,
+                    cargs=(pulse_script, target_script, self.n_samples),
+                )
+
+                total_costs = fidelity_cost + pulse_cost
+
+                params = init_pulse_params
+
+                optimizer = optax.adamw(self.learning_rate)
+                opt_state = optimizer.init(params)
+
+                loss = total_costs(params)
+                loss_history = [loss]
+                best_pulse_params = params
+
+                @jax.jit
+                def opt_step(opt_state, params, *args):
+                    loss, grads = jax.value_and_grad(total_costs)(params, *args)
+                    updates, opt_state = optimizer.update(grads, opt_state, params)
+                    params = optax.apply_updates(params, updates)
+                    return params, opt_state, loss
+
+                for step in range(self.n_steps):
+                    if step % self.log_interval == 0:
+                        log.info(
+                            f"Step {step}/{self.n_steps}, Loss: {loss_history[-1]:.3e}"
+                        )
+
+                    params, opt_state, loss = opt_step(opt_state, params)
+
+                    if loss.item() < min(loss_history):
+                        log.debug(f"Best set of params found at step {step}")
+                        best_pulse_params = params
+
+                    loss_history.append(loss)
 
                 self.save_results(
                     gate=gate_name,
                     fidelity=1 - min(loss_history),
-                    pulse_params=pulse_params,
+                    pulse_params=best_pulse_params,
                 )
 
-                return pulse_params, loss_history
-
-            return wrapper
-
-        return decorator
-
-    def optimize_multi_objective(self, simulator, wires):
-        def decorator(create_circuits_array):
-            def wrapper(init_pulse_params: jnp.ndarray = None):
-                """
-                This function is a wrapper for the create_circuits method.
-                It takes a simulator and wires as input and optimizes
-                the pulse parameters using the cost function defined
-                in the QOC class.
-
-                Args:
-                    create_circuits (callable): A function to generate the pulse and
-                        target circuits for the gate.
-                    init_pulse_params (array): Initial pulse parameters to use for
-                        the pulse-based gate.
-
-                Returns:
-                    tuple: Optimized pulse parameters and list of
-                        loss values at each iteration.
-                """
-                pulse_scripts = []
-                target_scripts = []
-                leafs = []
-                for create_circuits in create_circuits_array:
-                    pulse_circuit, target_circuit = create_circuits()
-
-                    pulse_scripts.append(ys.Script(pulse_circuit, n_qubits=wires))
-                    target_scripts.append(ys.Script(target_circuit, n_qubits=wires))
-
-                    gate_name = create_circuits.__name__.split("_")[1]
-
-                    leafs.append(PulseInformation.gate_by_name(gate_name).leafs)
-                leafs = list(set(leafs))
-
-                params = []
-                for leaf in leafs:
-                    params.extend(leaf.params)
-
-                params = jnp.concatenate(params)
-
-                # Optimizing
-                pulse_params, loss_history = self.run_optimization(
-                    partial(
-                        self.multi_objective_cost_fn,
-                        pulse_scripts=pulse_scripts,
-                        target_scripts=target_scripts,
-                        leafs=leafs,
-                    ),
-                    params=params,
-                )
-
-                idx = 0
-                for leaf in leafs:
-                    nidx = idx + leaf.size
-                    # Saving the optimized parameters
-                    self.save_results(
-                        gate=leaf.name,
-                        fidelity=1 - min(loss_history),
-                        pulse_params=pulse_params[idx:nidx],
-                    )
-                    idx = nidx
-
-                return pulse_params, loss_history
+                return best_pulse_params, loss_history
 
             return wrapper
 
