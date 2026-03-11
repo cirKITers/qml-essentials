@@ -756,7 +756,39 @@ if __name__ == "__main__":
             "All gates will be softly encouraged towards this common time."
         ),
     )
-    # TODO: add more arguments that take e.g. n_steps etc for initialization
+    parser.add_argument(
+        "--n_steps",
+        type=int,
+        default=1000,
+        help="Number of optimisation steps per gate.",
+    )
+    parser.add_argument(
+        "--n_samples",
+        type=int,
+        default=12,
+        help="Number of parameter samples in [0, 2π] for cost evaluation.",
+    )
+    parser.add_argument(
+        "--learning_rate",
+        type=float,
+        default=0.001,
+        help="Learning rate for the AdamW optimiser.",
+    )
+    parser.add_argument(
+        "--log_interval",
+        type=int,
+        default=50,
+        help="Log the current loss every N steps.",
+    )
+    parser.add_argument(
+        "--file_dir",
+        type=str,
+        default=None,
+        help=(
+            "Directory to save qoc_results.csv. "
+            "Defaults to the package directory."
+        ),
+    )
 
     args = parser.parse_args()
     sel_gates = str(args.gates)
@@ -774,6 +806,11 @@ if __name__ == "__main__":
         envelope=args.envelope,
         cost_fns=cost_fns,
         t_target=args.t_target,
+        n_steps=args.n_steps,
+        n_samples=args.n_samples,
+        learning_rate=args.learning_rate,
+        log_interval=args.log_interval,
+        file_dir=args.file_dir,
     )
 
     qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)
