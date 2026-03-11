@@ -792,8 +792,8 @@ class PulseEnvelope:
 
     @staticmethod
     def drag(p, t, t_c):
-        """DRAG (Derivative Removal by Adiabatic Gate). ``p = [A, sigma, beta]``."""
-        A, sigma, beta = p[0], p[1], p[2]
+        """DRAG (Derivative Removal by Adiabatic Gate). ``p = [A, beta, sigma]``."""
+        A, beta, sigma = p[0], p[1], p[2]
         g = A * jnp.exp(-0.5 * ((t - t_c) / sigma) ** 2)
         dg = g * (-(t - t_c) / sigma**2)
         return g + beta * dg
@@ -818,8 +818,6 @@ class PulseEnvelope:
                 "RY": jnp.array(
                     [8.012252123237978, 1.94827419290548, 1.0989055608209761]
                 ),
-                "RZ": jnp.array([0.49999999899901876]),
-                "CZ": jnp.array([0.3182752540123598]),
             },
         },
         "square": {
@@ -828,8 +826,6 @@ class PulseEnvelope:
             "defaults": {
                 "RX": jnp.array([1.0, 1.0, 1.0]),
                 "RY": jnp.array([1.0, 1.0, 1.0]),
-                "RZ": jnp.array([0.5]),
-                "CZ": jnp.array([0.318]),
             },
         },
         "cosine": {
@@ -838,8 +834,6 @@ class PulseEnvelope:
             "defaults": {
                 "RX": jnp.array([1.0, 1.0, 1.0]),
                 "RY": jnp.array([1.0, 1.0, 1.0]),
-                "RZ": jnp.array([0.5]),
-                "CZ": jnp.array([0.318]),
             },
         },
         "drag": {
@@ -848,8 +842,6 @@ class PulseEnvelope:
             "defaults": {
                 "RX": jnp.array([1.0, 1.0, 0.1, 1.0]),
                 "RY": jnp.array([1.0, 1.0, 0.1, 1.0]),
-                "RZ": jnp.array([0.5]),
-                "CZ": jnp.array([0.318]),
             },
         },
         "sech": {
@@ -858,8 +850,14 @@ class PulseEnvelope:
             "defaults": {
                 "RX": jnp.array([1.0, 1.0, 1.0]),
                 "RY": jnp.array([1.0, 1.0, 1.0]),
-                "RZ": jnp.array([0.5]),
-                "CZ": jnp.array([0.318]),
+            },
+        },
+        "general": {
+            "fn": None,
+            "n_envelope_params": 0,
+            "defaults": {
+                "RZ": jnp.array([0.49999999899901876]),
+                "CZ": jnp.array([0.3182752540123598]),
             },
         },
     }
@@ -933,10 +931,13 @@ class PulseInformation:
     def _build_leaf_gates(cls):
         """(Re-)create leaf PulseParams from the active envelope defaults."""
         defaults = PulseEnvelope.get(cls._envelope)["defaults"]
+        general = PulseEnvelope.get("general")["defaults"]
+
         cls.RX = PulseParams(name="RX", params=defaults["RX"])
         cls.RY = PulseParams(name="RY", params=defaults["RY"])
-        cls.RZ = PulseParams(name="RZ", params=defaults["RZ"])
-        cls.CZ = PulseParams(name="CZ", params=defaults["CZ"])
+
+        cls.RZ = PulseParams(name="RZ", params=general["RZ"])
+        cls.CZ = PulseParams(name="CZ", params=general["CZ"])
 
     @classmethod
     def _build_composite_gates(cls):
