@@ -1,7 +1,6 @@
 # flake8: noqa: E402
 import argparse
-from functools import partial
-from typing import List, Callable, Union, Tuple
+from typing import Dict, List, Callable, Optional, Union, Tuple
 
 import os
 import csv
@@ -52,11 +51,163 @@ class Cost:
         return lambda *args, **kwargs: self(*args, **kwargs) + other(*args, **kwargs)
 
 
+def fidelity_cost_fn(
+    pulse_params: jnp.ndarray,
+    envelope: str,
+    pulse_script: ys.Script,
+    target_script: ys.Script,
+    n_samples: int,
+    **kwargs,
+) -> Tuple[float, float]:
+    """
+    Cost function returning (1 − fidelity) and |phase_difference| averaged
+    over *n_samples* uniformly spaced rotation angles in [0, 2π].
+
+    Args:
+        pulse_params: Pulse parameters for evaluation.
+        envelope: Name of the active pulse envelope (unused here, but kept
+            for a uniform signature).
+        pulse_script: Yaqsi script with pulse parameters.
+        target_script: Yaqsi script as target.
+        n_samples: Number of parameter samples.
+
+    Returns:
+        Tuple of (abs_diff, phase_diff).
+    """
+    abs_diff = 0
+    phase_diff = 0
+    for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / n_samples):
+        pulse_state = pulse_script.execute(type="state", args=(w, pulse_params))
+        target_state = target_script.execute(type="state", args=(w,))
+
+        abs_diff += jnp.array(1.0, dtype=jnp.float64) - fidelity(
+            pulse_state, target_state
+        )
+        phase_diff += jnp.abs(phase_difference(pulse_state, target_state))
+
+    abs_diff /= n_samples
+    phase_diff /= n_samples
+
+    return (abs_diff, phase_diff)
+
+
+def pulse_width_cost_fn(
+    pulse_params: jnp.ndarray,
+    envelope: str,
+    pulse_script: ys.Script,
+    target_script: ys.Script,
+    n_samples: int,
+    **kwargs,
+) -> jnp.ndarray:
+    """
+    Cost function penalising the pulse width (sigma / width).
+
+    The pulse width is taken as the **last** envelope parameter. For
+    envelopes with no envelope parameters (e.g. ``"general"``), the cost
+    is zero.
+
+    Args:
+        pulse_params: Pulse parameters for the gate.
+        envelope: Name of the active pulse envelope.
+        pulse_script: (unused – present for uniform signature).
+        target_script: (unused – present for uniform signature).
+        n_samples: (unused – present for uniform signature).
+
+    Returns:
+        Scalar pulse-width cost.
+    """
+    envelope_info = PulseEnvelope.get(envelope)
+    n_envelope_params = envelope_info["n_envelope_params"]
+
+    if n_envelope_params > 0:
+        pulse_width = pulse_params[n_envelope_params - 1]
+    else:
+        pulse_width = 0
+
+    return jnp.array(pulse_width, dtype=jnp.float64)
+
+
+# Cost function registry
+# ---------------------------------------------------------------------------
+# ``n_weights`` indicates how many weight components the function expects:
+# ``default_weight`` is used when the caller does not specify weights.
+
+COST_FN_REGISTRY: Dict[str, dict] = {
+    "fidelity": {
+        "fn": fidelity_cost_fn,
+        "n_weights": 2,
+        "default_weight": (0.4, 0.4),
+    },
+    "pulse_width": {
+        "fn": pulse_width_cost_fn,
+        "n_weights": 1,
+        "default_weight": 0.2,
+    },
+}
+
+
+def available_cost_fns() -> List[str]:
+    """Return the names of all registered cost functions."""
+    return list(COST_FN_REGISTRY.keys())
+
+
+def get_cost_fn(name: str) -> dict:
+    """Look up cost-function metadata by *name*.
+
+    Raises:
+        ValueError: If *name* is not registered.
+    """
+    if name not in COST_FN_REGISTRY:
+        raise ValueError(
+            f"Unknown cost function '{name}'. " f"Available: {available_cost_fns()}"
+        )
+    return COST_FN_REGISTRY[name]
+
+
+def parse_cost_arg(spec: str) -> Tuple[str, Union[float, Tuple[float, ...]]]:
+    """Parse a ``"name:w1,w2,..."`` string into ``(name, weight)``.
+
+    If the weight part is omitted the default weight from the registry is
+    used.  A single-component weight is returned as a float; multi-component
+    weights are returned as a tuple of floats.
+
+    Args:
+        spec: A string of the form ``"name:w1,w2,..."``.
+
+    Returns:
+        A tuple of (name, weight).
+
+    Raises:
+        ValueError: If the weight part is not a comma-separated list of
+    """
+    if ":" in spec:
+        name, weight_str = spec.split(":", 1)
+        parts = [float(x) for x in weight_str.split(",")]
+        weight: Union[float, Tuple[float, ...]] = (
+            parts[0] if len(parts) == 1 else tuple(parts)
+        )
+    else:
+        name = spec
+        weight = get_cost_fn(name)["default_weight"]
+
+    # Validate
+    meta = get_cost_fn(name)
+    expected = meta["n_weights"]
+    got = len(weight) if isinstance(weight, tuple) else 1
+    if got != expected:
+        raise ValueError(
+            f"Cost function '{name}' expects {expected} weight(s), got {got}."
+        )
+
+    return name, weight
+
+
 class QOC:
     def __init__(
         self,
         observable: Union[Callable, List[Callable], str] = "state",
         envelope: str = "gaussian",
+        cost_fns: Optional[List[Tuple[str, Union[float, Tuple[float, ...]]]]] = None,
         n_steps: int = 1000,
         n_loops: int = 1,
         n_samples: int = 12,
@@ -73,6 +224,13 @@ class QOC:
             envelope (str): Pulse envelope shape to use for optimization.
                 Must be one of the registered envelopes in PulseEnvelope
                 (e.g. 'gaussian', 'square', 'cosine', 'drag', 'sech').
+            cost_fns (list): List of ``(name, weight)`` tuples that select
+                which cost functions to use and their weights.  *name* must
+                be a key in :data:`COST_FN_REGISTRY`.  *weight* is either a
+                single float or a tuple of floats matching the number of
+                return values of the cost function.
+                Defaults to ``[("fidelity", (0.4, 0.4)),
+                ("pulse_width", 0.2)]``.
             n_steps (int): Number of steps in optimization.
             n_loops (int): Number of loops for optimization.
             n_samples (int): Number of parameter samples per step.
@@ -96,9 +254,16 @@ class QOC:
         )
         self.current_gate = None
 
-        self._fidelity_abs_cost_weight = 0.4
-        self._fidelity_phase_cost_weight = 0.4
-        self._pulse_cost_weight = 0.2
+        # Validate and store cost functions
+        if cost_fns is None:
+            cost_fns = [
+                ("fidelity", (0.4, 0.4)),
+                ("pulse_width", 0.2),
+            ]
+        # Validate each entry against the registry
+        for name, weight in cost_fns:
+            get_cost_fn(name)  # raises ValueError if unknown
+        self.cost_fns = cost_fns
 
         # Configure the pulse system with the selected envelope
         PulseInformation.set_envelope(self.envelope)
@@ -157,79 +322,6 @@ class QOC:
                 if not match:
                     writer.writerow(entry)
 
-    def fidelity_cost_fn(
-        self,
-        pulse_params: jnp.ndarray,
-        pulse_script: ys.Script,
-        target_script: ys.Script,
-        n_samples: int,
-        *args,
-        **kwargs,
-    ) -> Tuple[float, float]:
-        """
-        Cost function to return the fidelity of two PQCs given a number of samples.
-        The fidelity is calculated for each parameter sample in the interval [0, 2pi].
-        In the same manner, the phase difference is returned as well.
-        PQCs are provided as Yaqsi scripts.
-
-        Args:
-            pulse_params (jnp.ndarray): Pulse parameters for evaluation
-            pulse_script (ys.Script): Yaqsi script with pulse parameters
-            target_script (ys.Script): Yaqsi script as target
-            n_samples (int): Number of parameter samples for input evaluation
-
-        Returns:
-            tuple: Fidelity and phase difference
-        """
-        abs_diff = 0
-        phase_diff = 0
-        for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / n_samples):
-            pulse_state = pulse_script.execute(type="state", args=(w, pulse_params))
-            target_state = target_script.execute(type="state", args=(w,))
-
-            # inverting fidelity to minimize
-            abs_diff += jnp.array(1.0, dtype=jnp.float64) - fidelity(
-                pulse_state, target_state
-            )
-            # using abs, as phase difference is in the interval [-pi, pi]
-            # TODO: we could try square here
-            phase_diff += jnp.abs(phase_difference(pulse_state, target_state))
-
-        abs_diff /= n_samples
-        phase_diff /= n_samples
-
-        return (abs_diff, phase_diff)
-
-    def pulse_cost_fn(self, pulse_params: jnp.ndarray, gate_name: str, *args, **kwargs):
-        """
-        Cost function to optimize the pulse shape.
-        Generally we want to make the pulse as short as possible.
-        The pulse width corresponds to the last envelope parameter
-        (e.g. sigma for gaussian/drag/sech, width for square/cosine).
-
-        For envelopes with no envelope parameters (e.g. 'general'), the
-        pulse width cost is zero.
-
-        Args:
-            pulse_params (jnp.ndarray): Pulse parameters for the gate.
-            gate_name (str): Name of the gate being optimized.
-
-        Returns:
-            jnp.ndarray: Weighted pulse width cost.
-        """
-        envelope_info = PulseEnvelope.get(self.envelope)
-        n_envelope_params = envelope_info["n_envelope_params"]
-
-        if n_envelope_params > 0:
-            # The pulse width (sigma/width) is the last envelope parameter.
-            # Full param layout: [envelope_params..., t], so width is at
-            # index n_envelope_params - 1, or equivalently p[-2].
-            pulse_width = pulse_params[n_envelope_params - 1]
-        else:
-            pulse_width = 0
-
-        return jnp.array(pulse_width, dtype=jnp.float64) * self._pulse_cost_weight
-
     def optimize(self, wires):
         def decorator(create_circuits):
             def wrapper(init_pulse_params: jnp.ndarray = None):
@@ -266,21 +358,26 @@ class QOC:
                     f"Initial pulse parameters for {gate_name}: {init_pulse_params}"
                 )
 
-                fidelity_cost = Cost(
-                    cost=self.fidelity_cost_fn,
-                    weight=(
-                        self._fidelity_abs_cost_weight,
-                        self._fidelity_phase_cost_weight,
-                    ),
-                    cargs=(pulse_script, target_script, self.n_samples),
-                )
-                pulse_cost = Cost(
-                    cost=self.pulse_cost_fn,
-                    weight=self._pulse_cost_weight,
-                    cargs=(pulse_script, target_script, self.n_samples),
-                )
+                # Build the composite cost from self.cost_fns
+                cost_objects = []
+                for name, weight in self.cost_fns:
+                    meta = get_cost_fn(name)
+                    cost_objects.append(
+                        Cost(
+                            cost=meta["fn"],
+                            weight=weight,
+                            cargs=(
+                                self.envelope,
+                                pulse_script,
+                                target_script,
+                                self.n_samples,
+                            ),
+                        )
+                    )
 
-                total_costs = fidelity_cost + pulse_cost
+                total_costs = cost_objects[0]
+                for c in cost_objects[1:]:
+                    total_costs = total_costs + c
 
                 params = init_pulse_params
 
@@ -577,11 +674,28 @@ if __name__ == "__main__":
         choices=PulseEnvelope.available(),
         help="Pulse envelope shape to use for optimization.",
     )
+    parser.add_argument(
+        "--costs",
+        type=str,
+        nargs="+",
+        default=None,
+        help=(
+            "Cost functions and weights as 'name:w1,w2,...' strings. "
+            "If weights are omitted the registry defaults are used. "
+            f"Available: {available_cost_fns()}. "
+            "Example: --costs fidelity:0.5,0.3 pulse_width:0.2"
+        ),
+    )
     # TODO: add more arguments that take e.g. n_steps etc for initialization
 
     args = parser.parse_args()
     sel_gates = str(args.gates)
     make_log = bool(args.log)
+
+    # Parse cost function specs from CLI
+    cost_fns = None
+    if args.costs is not None:
+        cost_fns = [parse_cost_arg(spec) for spec in args.costs]
 
     log.setLevel(logging.INFO)
     log.addHandler(logging.StreamHandler())
@@ -589,6 +703,7 @@ if __name__ == "__main__":
     qoc = QOC(
         observable="state",
         envelope=args.envelope,
+        cost_fns=cost_fns,
     )
 
     qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)
