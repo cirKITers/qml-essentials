@@ -54,7 +54,6 @@ def fidelity_cost_fn(
     pulse_script: ys.Script,
     target_script: ys.Script,
     n_samples: int,
-    **kwargs,
 ) -> Tuple[float, float]:
     """
     Cost function returning (1 − fidelity) and |phase_difference| averaged
@@ -91,7 +90,6 @@ def fidelity_cost_fn(
 def pulse_width_cost_fn(
     pulse_params: jnp.ndarray,
     envelope: str,
-    **kwargs,
 ) -> jnp.ndarray:
     """
     Cost function penalising the pulse width (sigma / width).
@@ -121,7 +119,6 @@ def pulse_width_cost_fn(
 def evolution_time_cost_fn(
     pulse_params: jnp.ndarray,
     t_target: float,
-    **kwargs,
 ) -> jnp.ndarray:
     """
     Cost function penalising deviation of the evolution time from a target.
@@ -785,8 +782,7 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help=(
-            "Directory to save qoc_results.csv. "
-            "Defaults to the package directory."
+            "Directory to save qoc_results.csv. " "Defaults to the package directory."
         ),
     )
 
