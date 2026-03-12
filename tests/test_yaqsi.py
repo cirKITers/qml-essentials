@@ -286,21 +286,21 @@ class TestMeasurement:
         [PauliX, PauliZ],
         ids=["X", "Z"],
     )
-    def test_expval_bell(obs_cls) -> None:
+    def test_expval_bell(self, obs_cls) -> None:
         """Bell state (|00⟩+|11⟩)/√2 has ⟨Oᵢ⟩ = 0 for O ∈ {X, Z}."""
         script = Script(f=bell_circuit)
         res = script.execute(type="expval", obs=[obs_cls(0), obs_cls(1)])
         assert jnp.allclose(res, jnp.array([0.0, 0.0]), atol=1e-10)
 
     @pytest.mark.unittest
-    def test_probs_bell() -> None:
+    def test_probs_bell(self) -> None:
         """Bell state yields |00⟩ and |11⟩ each with probability 0.5."""
         script = Script(f=bell_circuit)
         probs = script.execute(type="probs")
         assert jnp.allclose(probs, jnp.array([0.5, 0.0, 0.0, 0.5]), atol=1e-10)
 
     @pytest.mark.unittest
-    def test_parametrized_expval() -> None:
+    def test_parametrized_expval(self) -> None:
         """RX(θ)|0⟩ gives ⟨Z⟩ = cos(θ)."""
         script = Script(f=parametrized_circuit)
         theta_val = jnp.array(0.5)
@@ -1445,15 +1445,18 @@ class TestChunk:
         )
         assert chunk >= 1
 
-    def _chunked_circuit_expval(self, theta):
+    @staticmethod
+    def _chunked_circuit_expval(theta):
         RX(theta, wires=0)
         CX(wires=[0, 1])
 
-    def _chunked_circuit_probs(self, theta):
+    @staticmethod
+    def _chunked_circuit_probs(theta):
         RX(theta, wires=0)
         H(wires=1)
 
-    def _chunked_circuit_density(self, theta):
+    @staticmethod
+    def _chunked_circuit_density(theta):
         RX(theta, wires=0)
 
     @pytest.mark.unittest
@@ -1987,7 +1990,7 @@ class TestPulse:
             else:
                 for gate in ["RZ", "CZ"]:
                     assert (
-                        gate in info["general"]
+                        gate in info["defaults"]
                     ), f"Missing default for gate '{gate}' in envelope '{name}'"
 
     @pytest.mark.unittest

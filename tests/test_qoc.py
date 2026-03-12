@@ -107,7 +107,7 @@ class TestCostFnRegistry:
     def test_get_unknown_raises(self):
         """Getting an unregistered name raises ValueError."""
         with pytest.raises(ValueError, match="Unknown cost function"):
-            CostFnRegistry.get("nonexistent_cost")
+            CostFnRegistry.get("unknown")
 
     def test_register_and_cleanup(self):
         """Registering a new cost function makes it available."""
@@ -239,9 +239,9 @@ class TestQOCInit:
 
     def test_custom_cost_fns(self):
         """Custom cost_fns override the defaults."""
-        custom = [("fidelity", (0.5, 0.5))]
-        default_qoc_params["cost_fns"] = custom
-        qoc = QOC(**default_qoc_params)
+        custom = {"cost_fns": [("fidelity", (0.5, 0.5))]}
+        custom.update(default_qoc_params)
+        qoc = QOC(**custom)
         assert qoc.cost_fns == custom
 
     def test_stores_parameters(self):
@@ -264,8 +264,9 @@ class TestQOCInit:
     def test_unknown_cost_fn_raises(self):
         """Using an unregistered cost function name raises ValueError."""
         with pytest.raises(ValueError, match="Unknown cost function"):
-            default_qoc_params["cost_fns"] = [("nonexistent", 0.5)]
-            QOC(**default_qoc_params)
+            custom = {"cost_fns": [("unknown", (0.5, 0.5))]}
+            custom.update(default_qoc_params)
+            QOC(**custom)
 
 
 class TestSaveResults:
