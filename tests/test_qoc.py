@@ -144,71 +144,67 @@ class TestCostFnRegistry:
 
     # --- parse_cost_arg ---
 
-    def test_parse_cost_arg_with_weight(self):
-        """Parsing 'name:w' returns the correct tuple."""
-        name, weight = CostFnRegistry.parse_cost_arg("pulse_width:0.3")
-        assert name == "pulse_width"
-        assert weight == 0.3
+    @pytest.mark.parametrize(
+        "arg,expected_name,expected_weight",
+        [
+            ("pulse_width:0.3", "pulse_width", 0.3),
+            ("fidelity:0.6,0.2", "fidelity", (0.6, 0.2)),
+            ("evolution_time", "evolution_time", 0.075),
+        ],
+        ids=["scalar_weight", "tuple_weight", "default_weight"],
+    )
+    def test_parse_cost_arg(self, arg, expected_name, expected_weight):
+        """Parsing cost arg strings returns the correct name and weight."""
+        name, weight = CostFnRegistry.parse_cost_arg(arg)
+        assert name == expected_name
+        assert weight == expected_weight
 
-    def test_parse_cost_arg_tuple_weight(self):
-        """Parsing 'name:w1,w2' returns a tuple weight."""
-        name, weight = CostFnRegistry.parse_cost_arg("fidelity:0.6,0.2")
-        assert name == "fidelity"
-        assert weight == (0.6, 0.2)
-
-    def test_parse_cost_arg_default_weight(self):
-        """Omitting the weight part uses the registry default."""
-        name, weight = CostFnRegistry.parse_cost_arg("evolution_time")
-        assert name == "evolution_time"
-        assert weight == 0.075
-
-    def test_parse_cost_arg_unknown_raises(self):
-        """Parsing an unknown name raises ValueError."""
-        with pytest.raises(ValueError, match="Unknown cost function"):
-            CostFnRegistry.parse_cost_arg("bogus:0.5")
-
-    def test_parse_cost_arg_wrong_weight_count_raises(self):
-        """Passing wrong number of weights raises ValueError."""
-        # fidelity expects 2 weights, giving 1 should fail
-        with pytest.raises(ValueError, match="expects 2 weight"):
-            CostFnRegistry.parse_cost_arg("fidelity:0.5")
-
-        # pulse_width expects 1 weight, giving 2 should fail
-        with pytest.raises(ValueError, match="expects 1 weight"):
-            CostFnRegistry.parse_cost_arg("pulse_width:0.3,0.2")
+    @pytest.mark.parametrize(
+        "arg,match",
+        [
+            ("bogus:0.5", "Unknown cost function"),
+            ("fidelity:0.5", "expects 2 weight"),
+            ("pulse_width:0.3,0.2", "expects 1 weight"),
+        ],
+        ids=["unknown_name", "too_few_weights", "too_many_weights"],
+    )
+    def test_parse_cost_arg_raises(self, arg, match):
+        """Invalid parse_cost_arg inputs raise ValueError."""
+        with pytest.raises(ValueError, match=match):
+            CostFnRegistry.parse_cost_arg(arg)
 
 
 class TestPulseWidthCostFn:
     """Tests for the pulse_width_cost_fn."""
 
-    def test_gaussian_returns_sigma(self):
-        """For gaussian envelope the cost equals the sigma parameter."""
-        # gaussian: [A, sigma, t] -> n_envelope_params=2, width = p[1]
-        params = jnp.array([10.0, 2.5, 0.8])
-        cost = pulse_width_cost_fn(params, envelope="gaussian")
-        assert jnp.isclose(cost, 2.5)
-
-    def test_general_returns_zero(self):
-        """For 'general' envelope (0 envelope params) cost is zero."""
-        params = jnp.array([0.5])
-        cost = pulse_width_cost_fn(params, envelope="general")
-        assert jnp.isclose(cost, 0.0)
+    @pytest.mark.parametrize(
+        "params,envelope,expected",
+        [
+            (jnp.array([10.0, 2.5, 0.8]), "gaussian", 2.5),
+            (jnp.array([0.5]), "general", 0.0),
+        ],
+        ids=["gaussian_returns_sigma", "general_returns_zero"],
+    )
+    def test_pulse_width_cost(self, params, envelope, expected):
+        """pulse_width_cost_fn returns the expected value for each envelope."""
+        cost = pulse_width_cost_fn(params, envelope=envelope)
+        assert jnp.isclose(cost, expected)
 
 
 class TestEvolutionTimeCostFn:
     """Tests for the evolution_time_cost_fn."""
 
-    def test_at_target_is_zero(self):
-        """When t == t_target the cost is exactly zero."""
-        params = jnp.array([5.0, 1.0, 1.0])  # t = p[-1] = 1.0
-        cost = evolution_time_cost_fn(params, t_target=1.0)
-        assert jnp.isclose(cost, 0.0)
-
-    def test_deviation_is_squared_relative(self):
-        """The cost equals ((t - t_target) / t_target) ** 2."""
-        params = jnp.array([5.0, 1.0, 1.5])  # t = 1.5
-        cost = evolution_time_cost_fn(params, t_target=1.0)
-        expected = ((1.5 - 1.0) / 1.0) ** 2  # 0.25
+    @pytest.mark.parametrize(
+        "params,t_target,expected",
+        [
+            (jnp.array([5.0, 1.0, 1.0]), 1.0, 0.0),
+            (jnp.array([5.0, 1.0, 1.5]), 1.0, 0.25),
+        ],
+        ids=["at_target_is_zero", "deviation_is_squared_relative"],
+    )
+    def test_evolution_time_cost(self, params, t_target, expected):
+        """evolution_time_cost_fn returns ((t - t_target) / t_target) ** 2."""
+        cost = evolution_time_cost_fn(params, t_target=t_target)
         assert jnp.isclose(cost, expected)
 
     def test_symmetric_penalty(self):
@@ -275,57 +271,54 @@ class TestQOCInit:
 class TestSaveResults:
     """Tests for QOC.save_results CSV I/O."""
 
-    def test_creates_new_file(self, tmp_path):
-        """save_results creates a new CSV when none exists."""
+    @pytest.mark.parametrize(
+        "writes,expected_rows,expected_gate_fidelity",
+        [
+            (
+                [("RX", 0.95, [1.0, 2.0, 3.0])],
+                1,
+                {"RX": 0.95},
+            ),
+            (
+                [("RX", 0.9, [1.0, 2.0]), ("RY", 0.8, [3.0, 4.0])],
+                2,
+                {"RX": 0.9, "RY": 0.8},
+            ),
+            (
+                [("RX", 0.9, [1.0, 2.0]), ("RX", 0.95, [5.0, 6.0])],
+                1,
+                {"RX": 0.95},
+            ),
+            (
+                [("RX", 0.9, [1.0]), ("RY", 0.8, [2.0]), ("RX", 0.95, [3.0])],
+                2,
+                {"RX": 0.95, "RY": 0.8},
+            ),
+        ],
+        ids=[
+            "creates_new_file",
+            "appends_new_gate",
+            "overwrites_existing_gate",
+            "preserves_other_gates_on_overwrite",
+        ],
+    )
+    def test_save_results_csv(
+        self, tmp_path, writes, expected_rows, expected_gate_fidelity
+    ):
+        """save_results writes/overwrites CSV rows correctly."""
         qoc = QOC(**default_qoc_params, file_dir=str(tmp_path))
-        qoc.save_results("RX", 0.95, [1.0, 2.0, 3.0])
+        for gate, fid, params in writes:
+            qoc.save_results(gate, fid, params)
 
         csv_path = tmp_path / "qoc_results.csv"
         assert csv_path.exists()
 
         with open(csv_path) as f:
             rows = list(csv.reader(f))
-        assert len(rows) == 1
-        assert rows[0][0] == "RX"
-        assert float(rows[0][1]) == pytest.approx(0.95)
-
-    def test_appends_new_gate(self, tmp_path):
-        """A second gate is appended as a new row."""
-        qoc = QOC(**default_qoc_params, file_dir=str(tmp_path))
-        qoc.save_results("RX", 0.9, [1.0, 2.0])
-        qoc.save_results("RY", 0.8, [3.0, 4.0])
-
-        with open(tmp_path / "qoc_results.csv") as f:
-            rows = list(csv.reader(f))
-        assert len(rows) == 2
-        gate_names = {r[0] for r in rows}
-        assert gate_names == {"RX", "RY"}
-
-    def test_overwrites_existing_gate(self, tmp_path):
-        """Writing the same gate again overwrites the row."""
-        qoc = QOC(**default_qoc_params, file_dir=str(tmp_path))
-        qoc.save_results("RX", 0.9, [1.0, 2.0])
-        qoc.save_results("RX", 0.95, [5.0, 6.0])
-
-        with open(tmp_path / "qoc_results.csv") as f:
-            rows = list(csv.reader(f))
-        assert len(rows) == 1
-        assert rows[0][0] == "RX"
-        assert float(rows[0][1]) == pytest.approx(0.95)
-
-    def test_preserves_other_gates_on_overwrite(self, tmp_path):
-        """Overwriting one gate does not lose other gates."""
-        qoc = QOC(**default_qoc_params, file_dir=str(tmp_path))
-        qoc.save_results("RX", 0.9, [1.0])
-        qoc.save_results("RY", 0.8, [2.0])
-        qoc.save_results("RX", 0.95, [3.0])
-
-        with open(tmp_path / "qoc_results.csv") as f:
-            rows = list(csv.reader(f))
-        assert len(rows) == 2
+        assert len(rows) == expected_rows
         gate_map = {r[0]: float(r[1]) for r in rows}
-        assert gate_map["RX"] == pytest.approx(0.95)
-        assert gate_map["RY"] == pytest.approx(0.8)
+        for gate, fid in expected_gate_fidelity.items():
+            assert gate_map[gate] == pytest.approx(fid)
 
     def test_no_file_when_file_dir_is_none(self, tmp_path):
         """When file_dir is explicitly None, nothing is written."""
@@ -350,31 +343,26 @@ class TestOptimizeSmoke:
         assert best_params is not None
         assert len(loss_history) == 5 + 1  # initial + n_steps
 
-    def test_create_circuits_return_callables(self):
-        """create_RX / create_RY / … return (pulse_circuit, target_circuit)."""
+    @pytest.mark.parametrize(
+        "factory_name",
+        [
+            "create_RX",
+            "create_RY",
+            "create_RZ",
+            "create_H",
+            "create_Rot",
+            "create_CX",
+            "create_CY",
+            "create_CZ",
+            "create_CRX",
+            "create_CRY",
+            "create_CRZ",
+        ],
+    )
+    def test_create_circuits_return_callables(self, factory_name):
+        """All create_* factory methods return (pulse_circuit, target_circuit) callables."""
         qoc = QOC(**default_qoc_params)
-        for factory in [
-            qoc.create_RX,
-            qoc.create_RY,
-            qoc.create_RZ,
-            qoc.create_H,
-            qoc.create_Rot,
-        ]:
-            pulse_c, target_c = factory()
-            assert callable(pulse_c)
-            assert callable(target_c)
-
-    def test_create_2q_circuits_return_callables(self):
-        """Two-qubit create_C* methods return callable pairs."""
-        qoc = QOC(**default_qoc_params)
-        for factory in [
-            qoc.create_CX,
-            qoc.create_CY,
-            qoc.create_CZ,
-            qoc.create_CRX,
-            qoc.create_CRY,
-            qoc.create_CRZ,
-        ]:
-            pulse_c, target_c = factory()
-            assert callable(pulse_c)
-            assert callable(target_c)
+        factory = getattr(qoc, factory_name)
+        pulse_c, target_c = factory()
+        assert callable(pulse_c)
+        assert callable(target_c)
