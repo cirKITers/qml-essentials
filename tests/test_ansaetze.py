@@ -21,6 +21,15 @@ jax.config.update("jax_enable_x64", True)
 
 logger = logging.getLogger(__name__)
 
+default_qoc_params = {
+    "envelope": "gaussian",
+    "cost_fns": [("fidelity", (0.5, 0.5))],
+    "t_target": 0.5,
+    "n_steps": 1000,
+    "n_samples": 12,
+    "learning_rate": 0.001,
+}
+
 
 @pytest.mark.unittest
 def test_gate_gateerror_noise():
@@ -458,14 +467,7 @@ single_qubit_pulse_testdata = itertools.product(
 @pytest.mark.unittest
 @pytest.mark.parametrize("gate,w", single_qubit_pulse_testdata)
 def test_single_qubit_pulse_gate(gate, w):
-    qoc = QOC(
-        envelope="gaussian",
-        cost_fns=[("fidelity", (0.5, 0.5))],
-        t_target=0.5,
-        n_steps=1000,
-        n_samples=12,
-        learning_rate=0.001,
-    )
+    qoc = QOC(**default_qoc_params)
     pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
     pulse_script = ys.Script(pulse_circuit, n_qubits=1)
     target_script = ys.Script(target_circuit, n_qubits=1)
@@ -493,14 +495,7 @@ two_qubit_pulse_testdata = itertools.product(
 @pytest.mark.unittest
 @pytest.mark.parametrize("gate,w", two_qubit_pulse_testdata)
 def test_two_qubit_pulse_gate(gate, w):
-    qoc = QOC(
-        envelope="gaussian",
-        cost_fns=[("fidelity", (0.5, 0.5))],
-        t_target=0.5,
-        n_steps=1000,
-        n_samples=12,
-        learning_rate=0.001,
-    )
+    qoc = QOC(**default_qoc_params)
     pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
     pulse_script = ys.Script(pulse_circuit, n_qubits=2)
     target_script = ys.Script(target_circuit, n_qubits=2)

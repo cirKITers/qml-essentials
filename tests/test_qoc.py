@@ -16,6 +16,15 @@ from qml_essentials.qoc import (
 
 jax.config.update("jax_enable_x64", True)
 
+default_qoc_params = {
+    "envelope": "gaussian",
+    "cost_fns": [("fidelity", (0.5, 0.5))],
+    "t_target": 0.5,
+    "n_steps": 1000,
+    "n_samples": 12,
+    "learning_rate": 0.001,
+}
+
 
 class TestCost:
     """Unit tests for the Cost wrapper class."""
@@ -226,7 +235,7 @@ class TestQOCInit:
 
     def test_default_cost_fns(self):
         """Default cost_fns include fidelity, pulse_width, evolution_time."""
-        qoc = QOC()
+        qoc = QOC(**default_qoc_params)
         names = [name for name, _ in qoc.cost_fns]
         assert "fidelity" in names
         assert "pulse_width" in names
@@ -235,7 +244,8 @@ class TestQOCInit:
     def test_custom_cost_fns(self):
         """Custom cost_fns override the defaults."""
         custom = [("fidelity", (0.5, 0.5))]
-        qoc = QOC(cost_fns=custom)
+        default_qoc_params["cost_fns"] = custom
+        qoc = QOC(**default_qoc_params)
         assert qoc.cost_fns == custom
 
     def test_stores_parameters(self):
@@ -258,7 +268,8 @@ class TestQOCInit:
     def test_unknown_cost_fn_raises(self):
         """Using an unregistered cost function name raises ValueError."""
         with pytest.raises(ValueError, match="Unknown cost function"):
-            QOC(cost_fns=[("nonexistent", 0.5)])
+            default_qoc_params["cost_fns"] = [("nonexistent", 0.5)]
+            QOC(**default_qoc_params)
 
 
 class TestSaveResults:
@@ -266,7 +277,7 @@ class TestSaveResults:
 
     def test_creates_new_file(self, tmp_path):
         """save_results creates a new CSV when none exists."""
-        qoc = QOC(file_dir=str(tmp_path))
+        qoc = QOC(**default_qoc_params, file_dir=str(tmp_path))
         qoc.save_results("RX", 0.95, [1.0, 2.0, 3.0])
 
         csv_path = tmp_path / "qoc_results.csv"
@@ -280,7 +291,7 @@ class TestSaveResults:
 
     def test_appends_new_gate(self, tmp_path):
         """A second gate is appended as a new row."""
-        qoc = QOC(file_dir=str(tmp_path))
+        qoc = QOC(**default_qoc_params, file_dir=str(tmp_path))
         qoc.save_results("RX", 0.9, [1.0, 2.0])
         qoc.save_results("RY", 0.8, [3.0, 4.0])
 
@@ -292,7 +303,7 @@ class TestSaveResults:
 
     def test_overwrites_existing_gate(self, tmp_path):
         """Writing the same gate again overwrites the row."""
-        qoc = QOC(file_dir=str(tmp_path))
+        qoc = QOC(**default_qoc_params, file_dir=str(tmp_path))
         qoc.save_results("RX", 0.9, [1.0, 2.0])
         qoc.save_results("RX", 0.95, [5.0, 6.0])
 
@@ -304,7 +315,7 @@ class TestSaveResults:
 
     def test_preserves_other_gates_on_overwrite(self, tmp_path):
         """Overwriting one gate does not lose other gates."""
-        qoc = QOC(file_dir=str(tmp_path))
+        qoc = QOC(**default_qoc_params, file_dir=str(tmp_path))
         qoc.save_results("RX", 0.9, [1.0])
         qoc.save_results("RY", 0.8, [2.0])
         qoc.save_results("RX", 0.95, [3.0])
@@ -318,7 +329,7 @@ class TestSaveResults:
 
     def test_no_file_when_file_dir_is_none(self, tmp_path):
         """When file_dir is explicitly None, nothing is written."""
-        qoc = QOC(file_dir=str(tmp_path))
+        qoc = QOC(**default_qoc_params, file_dir=str(tmp_path))
         qoc.file_dir = None
         qoc.save_results("RX", 0.9, [1.0])
         assert not (tmp_path / "qoc_results.csv").exists()
@@ -330,11 +341,7 @@ class TestOptimizeSmoke:
     def test_optimize_returns_params_and_history(self, tmp_path):
         """optimize() returns (params, loss_history) and loss decreases."""
         qoc = QOC(
-            envelope="gaussian",
-            n_steps=5,
-            n_samples=4,
-            learning_rate=0.01,
-            log_interval=100,
+            **default_qoc_params,
             file_dir=str(tmp_path),
         )
         opt_1q = qoc.optimize(wires=1)
@@ -345,7 +352,7 @@ class TestOptimizeSmoke:
 
     def test_create_circuits_return_callables(self):
         """create_RX / create_RY / … return (pulse_circuit, target_circuit)."""
-        qoc = QOC()
+        qoc = QOC(**default_qoc_params)
         for factory in [
             qoc.create_RX,
             qoc.create_RY,
@@ -359,7 +366,7 @@ class TestOptimizeSmoke:
 
     def test_create_2q_circuits_return_callables(self):
         """Two-qubit create_C* methods return callable pairs."""
-        qoc = QOC()
+        qoc = QOC(**default_qoc_params)
         for factory in [
             qoc.create_CX,
             qoc.create_CY,
