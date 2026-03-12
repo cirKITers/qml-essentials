@@ -63,10 +63,13 @@ def fidelity_cost_fn(
     Cost function returning (1 − fidelity) and |phase_difference| averaged
     over *n_samples* uniformly spaced rotation angles in [0, 2π].
 
+    Uses batched (vmapped) circuit execution: all *n_samples* rotation
+    angles are evaluated in a single vectorised call per script, replacing
+    ``n_samples`` sequential Python-level circuit executions with one
+    JIT-compiled XLA program each.
+
     Args:
         pulse_params: Pulse parameters for evaluation.
-        envelope: Name of the active pulse envelope (unused here, but kept
-            for a uniform signature).
         pulse_script: Yaqsi script with pulse parameters.
         target_script: Yaqsi script as target.
         n_samples: Number of parameter samples.
@@ -74,19 +77,25 @@ def fidelity_cost_fn(
     Returns:
         Tuple of (abs_diff, phase_diff).
     """
-    abs_diff = 0
-    phase_diff = 0
-    for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / n_samples):
-        pulse_state = pulse_script.execute(type="state", args=(w, pulse_params))
-        target_state = target_script.execute(type="state", args=(w,))
+    ws = jnp.linspace(0, 2 * jnp.pi, n_samples)
 
-        abs_diff += jnp.array(1.0, dtype=jnp.float64) - fidelity(
-            pulse_state, target_state
-        )
-        phase_diff += jnp.abs(phase_difference(pulse_state, target_state))
+    # Broadcast pulse_params across the sample batch (shape unchanged)
+    pulse_states = pulse_script.execute(
+        type="state",
+        args=(ws, pulse_params),
+        in_axes=(0, None),
+    )  # (n_samples, dim)
 
-    abs_diff /= n_samples
-    phase_diff /= n_samples
+    target_states = target_script.execute(
+        type="state",
+        args=(ws,),
+        in_axes=(0,),
+    )  # (n_samples, dim)
+
+    abs_diff = jnp.mean(
+        jnp.array(1.0, dtype=jnp.float64) - fidelity(pulse_states, target_states)
+    )
+    phase_diff = jnp.mean(jnp.abs(phase_difference(pulse_states, target_states)))
 
     return (abs_diff, phase_diff)
 
@@ -469,6 +478,7 @@ class QOC:
 
                 loss = total_costs(params)
                 loss_history = [loss]
+                best_loss = loss
                 best_pulse_params = params
 
                 @jax.jit
@@ -480,21 +490,27 @@ class QOC:
 
                 for step in range(self.n_steps):
                     if step % self.log_interval == 0:
+                        # .item() forces a device→host sync; only pay this
+                        # cost at log intervals instead of every step.
                         log.info(
-                            f"Step {step}/{self.n_steps}, Loss: {loss_history[-1]:.3e}"
+                            f"Step {step}/{self.n_steps}, Loss: {loss_history[-1].item():.3e}"
                         )
 
                     params, opt_state, loss = opt_step(opt_state, params)
 
-                    if loss.item() < min(loss_history):
+                    # Compare on-device to avoid a .item() sync every step.
+                    # jnp.less returns a JAX boolean; the Python `if` will
+                    # block only until that single scalar is transferred.
+                    if loss < best_loss:
                         log.debug(f"Best set of params found at step {step}")
+                        best_loss = loss
                         best_pulse_params = params
 
                     loss_history.append(loss)
 
                 self.save_results(
                     gate=gate_name,
-                    fidelity=1 - min(loss_history),
+                    fidelity=1 - best_loss.item(),
                     pulse_params=best_pulse_params,
                 )
 
@@ -644,9 +660,8 @@ class QOC:
                 log.info(f"Optimizing {gate} gate...")
                 optimized_pulse_params, loss_history = opt(gate_factory)()
                 log.info(f"Optimized parameters for {gate}: {optimized_pulse_params}")
-                log.info(
-                    f"Best achieved fidelity: {(1 - min(loss_history)) * 100:.5f}%"
-                )
+                best_fid = 1 - min(float(l) for l in loss_history)
+                log.info(f"Best achieved fidelity: {best_fid * 100:.5f}%")
                 log_history[gate] = log_history.get(gate, []) + loss_history
 
         if make_log:
@@ -686,10 +701,10 @@ if __name__ == "__main__":
         type=str,
         nargs="+",
         default=[
-            "fidelity:0.499999,0.499999",
-            "pulse_width:0.000001",
-            "evolution_time:0.000001",
-        ],
+            "fidelity:0.4999999,0.4999999",
+            "pulse_width:0.00000015",
+            "evolution_time:0.00000005",
+        ],  # be aware of the numerical precision limit!
         help=(
             "Cost functions and weights as 'name:w1,w2,...' strings. "
             "If weights are omitted the registry defaults are used. "
@@ -700,7 +715,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--t_target",
         type=float,
-        default=0.5,
+        default=0.5,  # referenz is the RZ gate
         help=(
             "Target evolution time for the 'evolution_time' cost function. "
             "All gates will be softly encouraged towards this common time."
@@ -709,19 +724,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n_steps",
         type=int,
-        default=1000,
+        default=1500,
         help="Number of optimisation steps per gate.",
     )
     parser.add_argument(
         "--n_samples",
         type=int,
-        default=12,
+        default=20,
         help="Number of parameter samples in [0, 2π] for cost evaluation.",
     )
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=0.001,
+        default=0.01,
         help="Learning rate for the AdamW optimiser.",
     )
     parser.add_argument(
