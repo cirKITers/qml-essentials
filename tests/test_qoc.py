@@ -361,7 +361,6 @@ class TestOptimizeSmoke:
         ],
     )
     def test_create_circuits_return_callables(self, factory_name):
-        """All create_* factory methods return (pulse_circuit, target_circuit) callables."""
         qoc = QOC(**default_qoc_params)
         factory = getattr(qoc, factory_name)
         pulse_c, target_c = factory()
