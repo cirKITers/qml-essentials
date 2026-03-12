@@ -276,6 +276,7 @@ class CostFnRegistry:
         # Validate weight count
         meta = cls.get(name)
         expected = meta["n_weights"]
+        # TODO: maybe we can get rid of n_weights entirely; it's just for validation
         got = len(weight) if isinstance(weight, tuple) else 1
         if got != expected:
             raise ValueError(
@@ -309,8 +310,6 @@ class QOC:
                 be a key in :class:`CostFnRegistry`.  *weight* is either a
                 single float or a tuple of floats matching the number of
                 return values of the cost function.
-                Defaults to ``[("fidelity", (0.45, 0.45)),
-                ("pulse_width", 0.025), ("evolution_time", 0.075)]``.
             t_target (float, optional): Target evolution time for the
                 ``evolution_time`` cost function.  Required when
                 ``"evolution_time"`` is among the selected cost functions.
@@ -343,8 +342,14 @@ class QOC:
         log.info(f"Using cost function(s) {cost_fns}")
 
         # Validate each entry against the registry
+        summed_weights = 0
         for name, _weight in cost_fns:
             CostFnRegistry.get(name)  # raises ValueError if unknown
+            summed_weights += sum(_weight) if isinstance(_weight, tuple) else _weight
+            # check sume of weights
+        assert jnp.isclose(
+            summed_weights, 1.0, rtol=1e-8
+        ), f"Cost function weights must sum to 1. Got {summed_weights}"
 
         self.cost_fns = cost_fns
 
@@ -804,17 +809,6 @@ if __name__ == "__main__":
 
     # Parse cost function specs from CLI
     cost_fns = [CostFnRegistry.parse_cost_arg(spec) for spec in args.costs]
-
-    # check sume of weights
-    summed_weights = sum(
-        [
-            cost_fn[1] if isinstance(cost_fn[1], float) else sum(cost_fn[1])
-            for cost_fn in cost_fns
-        ]
-    )
-    assert jnp.isclose(
-        summed_weights, 1.0, rtol=1e-8
-    ), f"Cost function weights must sum to 1. Got {summed_weights}"
 
     # create logger
     log = logging.getLogger("qml_essentials.qoc")
