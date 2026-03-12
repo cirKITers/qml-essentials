@@ -295,8 +295,8 @@ class QOC:
         n_steps: int,
         n_samples: int,
         learning_rate: float,
-        log_interval: int,
-        file_dir: str,
+        log_interval: int = 50,
+        file_dir: str = None,
     ):
         """
         Initialize Quantum Optimal Control with Pulse-level Gates.
