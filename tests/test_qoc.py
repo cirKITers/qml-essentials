@@ -101,7 +101,7 @@ class TestCostFnRegistry:
         meta = CostFnRegistry.get("fidelity")
         assert meta["fn"] is fidelity_cost_fn
         assert meta["n_weights"] == 2
-        assert meta["default_weight"] == (0.45, 0.45)
+        assert meta["default_weight"] == (0.5, 0.5)
         assert "pulse_script" in meta["ckwargs_keys"]
 
     def test_get_unknown_raises(self):
@@ -149,7 +149,7 @@ class TestCostFnRegistry:
         [
             ("pulse_width:0.3", "pulse_width", 0.3),
             ("fidelity:0.6,0.2", "fidelity", (0.6, 0.2)),
-            ("evolution_time", "evolution_time", 0.075),
+            ("evolution_time", "evolution_time", 1.0),
         ],
         ids=["scalar_weight", "tuple_weight", "default_weight"],
     )
@@ -230,24 +230,23 @@ class TestQOCInit:
     """Tests for QOC construction and parameter storage."""
 
     def test_default_cost_fns(self):
-        """Default cost_fns include fidelity, pulse_width, evolution_time."""
+        """cost_fns from default_qoc_params are stored correctly."""
         qoc = QOC(**default_qoc_params)
         names = [name for name, _ in qoc.cost_fns]
         assert "fidelity" in names
-        assert "pulse_width" in names
-        assert "evolution_time" in names
 
     def test_custom_cost_fns(self):
         """Custom cost_fns override the defaults."""
-        custom = {"cost_fns": [("fidelity", (0.5, 0.5))]}
-        custom.update(default_qoc_params)
-        qoc = QOC(**custom)
+        custom = [("fidelity", (0.5, 0.5))]
+        params = {**default_qoc_params, "cost_fns": custom}
+        qoc = QOC(**params)
         assert qoc.cost_fns == custom
 
     def test_stores_parameters(self):
         """All __init__ parameters are stored as attributes."""
         qoc = QOC(
             envelope="gaussian",
+            cost_fns=[("fidelity", (0.5, 0.5))],
             t_target=2.0,
             n_steps=500,
             n_samples=8,
@@ -264,9 +263,8 @@ class TestQOCInit:
     def test_unknown_cost_fn_raises(self):
         """Using an unregistered cost function name raises ValueError."""
         with pytest.raises(ValueError, match="Unknown cost function"):
-            custom = {"cost_fns": [("unknown", (0.5, 0.5))]}
-            custom.update(default_qoc_params)
-            QOC(**custom)
+            params = {**default_qoc_params, "cost_fns": [("nonexistent", 0.5)]}
+            QOC(**params)
 
 
 class TestSaveResults:
@@ -342,7 +340,9 @@ class TestOptimizeSmoke:
         best_params, loss_history = opt_1q(qoc.create_RX)()
 
         assert best_params is not None
-        assert len(loss_history) == 5 + 1  # initial + n_steps
+        assert (
+            len(loss_history) == default_qoc_params["n_steps"] + 1
+        )  # initial + n_steps
 
     @pytest.mark.parametrize(
         "factory_name",

@@ -1981,13 +1981,14 @@ class TestPulse:
             assert "fn" in info
             assert "n_envelope_params" in info
             assert "defaults" in info
-            assert callable(info["fn"])
             if name != "general":
+                assert callable(info["fn"])
                 for gate in ["RX", "RY"]:
                     assert (
                         gate in info["defaults"]
                     ), f"Missing default for gate '{gate}' in envelope '{name}'"
             else:
+                assert info["fn"] is None
                 for gate in ["RZ", "CZ"]:
                     assert (
                         gate in info["defaults"]
