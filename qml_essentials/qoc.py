@@ -288,14 +288,14 @@ class CostFnRegistry:
 class QOC:
     def __init__(
         self,
-        envelope: str = "gaussian",
-        cost_fns: Optional[List[Tuple[str, Union[float, Tuple[float, ...]]]]] = None,
-        t_target: Optional[float] = 0.5,
-        n_steps: int = 10000,
-        n_samples: int = 12,
-        learning_rate: float = 0.001,
-        log_interval: int = 50,
-        file_dir: str = None,
+        envelope: str,
+        cost_fns: List[Tuple[str, Union[float, Tuple[float, ...]]]],
+        t_target: float,
+        n_steps: int,
+        n_samples: int,
+        learning_rate: float,
+        log_interval: int,
+        file_dir: str,
     ):
         """
         Initialize Quantum Optimal Control with Pulse-level Gates.
@@ -334,13 +334,13 @@ class QOC:
         self.current_gate = None
         self.t_target = t_target
 
-        # Validate and store cost functions
-        if cost_fns is None:
-            cost_fns = [
-                ("fidelity", (0.499999, 0.499999)),
-                ("pulse_width", 0.0000007),
-                ("evolution_time", 0.0000003),
-            ]
+        log.info(
+            f"Training parameters: {self.n_steps} steps, {self.n_samples} samples, {self.learning_rate} learning rate"
+        )
+
+        log.info(f"Envelope: {self.envelope}")
+        log.info(f"Target evolution time: {self.t_target}")
+        log.info(f"Using cost function(s) {cost_fns}")
 
         # Validate each entry against the registry
         for name, _weight in cost_fns:
@@ -744,7 +744,11 @@ if __name__ == "__main__":
         "--costs",
         type=str,
         nargs="+",
-        default=None,
+        default=[
+            "fidelity:0.499999,0.499999",
+            "pulse_width:0.000001",
+            "evolution_time:0.000001",
+        ],
         help=(
             "Cost functions and weights as 'name:w1,w2,...' strings. "
             "If weights are omitted the registry defaults are used. "
@@ -755,7 +759,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--t_target",
         type=float,
-        default=1.0,
+        default=0.5,
         help=(
             "Target evolution time for the 'evolution_time' cost function. "
             "All gates will be softly encouraged towards this common time."
@@ -799,9 +803,21 @@ if __name__ == "__main__":
     make_log = bool(args.log)
 
     # Parse cost function specs from CLI
-    cost_fns = None
-    if args.costs is not None:
-        cost_fns = [CostFnRegistry.parse_cost_arg(spec) for spec in args.costs]
+    cost_fns = [CostFnRegistry.parse_cost_arg(spec) for spec in args.costs]
+
+    # check sume of weights
+    summed_weights = sum(
+        [
+            cost_fn[1] if isinstance(cost_fn[1], float) else sum(cost_fn[1])
+            for cost_fn in cost_fns
+        ]
+    )
+    assert jnp.isclose(
+        summed_weights, 1.0, rtol=1e-8
+    ), f"Cost function weights must sum to 1. Got {summed_weights}"
+
+    # create logger
+    log = logging.getLogger("qml_essentials.qoc")
 
     log.setLevel(logging.INFO)
     log.addHandler(logging.StreamHandler())
