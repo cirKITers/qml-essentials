@@ -633,85 +633,21 @@ class QOC:
 
     def optimize_all(self, sel_gates, make_log):
         log_history = {}
-        optimize_1q = self.optimize(wires=1)
-        optimize_2q = self.optimize(wires=2)
 
-        if "RX" in sel_gates or "all" in sel_gates:
-            log.info("Optimizing RX gate...")
-            optimized_pulse_params, loss_history = optimize_1q(self.create_RX)()
-            log.info(f"Optimized parameters for RX: {optimized_pulse_params}")
-            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-            log_history["RX"] = log_history.get("RX", []) + loss_history
+        gates_1q = ["RX", "RY", "RZ", "Rot", "H"]
+        gates_2q = ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"]
 
-        if "RY" in sel_gates or "all" in sel_gates:
-            log.info("Optimizing RY gate...")
-            optimized_pulse_params, loss_history = optimize_1q(self.create_RY)()
-            log.info(f"Optimized parameters for RY: {optimized_pulse_params}")
-            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-            log_history["RY"] = log_history.get("RY", []) + loss_history
-
-        if "RZ" in sel_gates or "all" in sel_gates:
-            log.info("Optimizing RZ gate...")
-            optimized_pulse_params, loss_history = optimize_1q(self.create_RZ)()
-            log.info(f"Optimized parameters for RZ: {optimized_pulse_params}")
-            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-            log_history["RZ"] = log_history.get("RZ", []) + loss_history
-
-        if "H" in sel_gates or "all" in sel_gates:
-            log.info("Optimizing H gate...")
-            optimized_pulse_params, loss_history = optimize_1q(self.create_H)()
-            log.info(f"Optimized parameters for H: {optimized_pulse_params}")
-            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-            log_history["H"] = log_history.get("H", []) + loss_history
-
-        if "Rot" in sel_gates or "all" in sel_gates:
-            log.info("Optimizing Rot gate...")
-            optimized_pulse_params, loss_history = optimize_1q(self.create_Rot)()
-            log.info(f"Optimized parameters for Rot: {optimized_pulse_params}")
-            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-            log_history["Rot"] = log_history.get("Rot", []) + loss_history
-
-        if "CX" in sel_gates or "all" in sel_gates:
-            log.info("Optimizing CX gate...")
-            optimized_pulse_params, loss_history = optimize_2q(self.create_CX)()
-            log.info(f"Optimized parameters for CX: {optimized_pulse_params}")
-            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-            log_history["CX"] = log_history.get("CX", []) + loss_history
-
-        if "CZ" in sel_gates or "all" in sel_gates:
-            log.info("Optimizing CZ gate...")
-            optimized_pulse_params, loss_history = optimize_2q(self.create_CZ)()
-            log.info(f"Optimized parameters for CZ: {optimized_pulse_params}")
-            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-            log_history["CZ"] = log_history.get("CZ", []) + loss_history
-
-        if "CY" in sel_gates or "all" in sel_gates:
-            log.info("Optimizing CY gate...")
-            optimized_pulse_params, loss_history = optimize_2q(self.create_CY)()
-            log.info(f"Optimized parameters for CY: {optimized_pulse_params}")
-            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-            log_history["CY"] = log_history.get("CY", []) + loss_history
-
-        if "CRX" in sel_gates or "all" in sel_gates:
-            log.info("Optimizing CRX gate...")
-            optimized_pulse_params, loss_history = optimize_2q(self.create_CRX)()
-            log.info(f"Optimized parameters for CRX: {optimized_pulse_params}")
-            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-            log_history["CRX"] = log_history.get("CRX", []) + loss_history
-
-        if "CRY" in sel_gates or "all" in sel_gates:
-            log.info("Optimizing CRY gate...")
-            optimized_pulse_params, loss_history = optimize_2q(self.create_CRY)()
-            log.info(f"Optimized parameters for CRY: {optimized_pulse_params}")
-            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-            log_history["CRY"] = log_history.get("CRY", []) + loss_history
-
-        if "CRZ" in sel_gates or "all" in sel_gates:
-            log.info("Optimizing CRZ gate...")
-            optimized_pulse_params, loss_history = optimize_2q(self.create_CRZ)()
-            log.info(f"Optimized parameters for CRZ: {optimized_pulse_params}")
-            log.info(f"Best achieved fidelity: {(1 - min(loss_history))*100:.5f}%")
-            log_history["CRZ"] = log_history.get("CRZ", []) + loss_history
+        for gate in gates_1q + gates_2q:
+            if gate in sel_gates or "all" in sel_gates:
+                opt = self.optimize(wires=1 if gate in gates_1q else 2)
+                gate_factory = getattr(self, f"create_{gate}")
+                log.info(f"Optimizing {gate} gate...")
+                optimized_pulse_params, loss_history = opt(gate_factory)()
+                log.info(f"Optimized parameters for {gate}: {optimized_pulse_params}")
+                log.info(
+                    f"Best achieved fidelity: {(1 - min(loss_history)) * 100:.5f}%"
+                )
+                log_history[gate] = log_history.get(gate, []) + loss_history
 
         if make_log:
             # write log history to file
