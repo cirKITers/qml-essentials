@@ -31,6 +31,7 @@ class Coefficients:
         mts: int = 1,
         shift=False,
         trim=False,
+        numerical_cap: Optional[float] = -1,
         **kwargs,
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
@@ -50,6 +51,7 @@ class Coefficients:
             shift (bool): Whether to apply jnp-fftshift. Default is False.
             trim (bool): Whether to remove the Nyquist frequency if spectrum is even.
                 Default is False.
+            numerical_cap (Optional[float]): Numerical cap for the coefficients.
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
@@ -78,6 +80,14 @@ class Coefficients:
         if shift:
             coeffs = jnp.fft.fftshift(coeffs, axes=list(range(model.n_input_feat)))
             freqs = np.fft.fftshift(freqs)
+
+        if numerical_cap > 0:
+            # set coeffs below threshold to zero
+            coeffs = jnp.where(
+                jnp.abs(coeffs) < numerical_cap,
+                jnp.zeros_like(coeffs),
+                coeffs,
+            )
 
         if len(freqs) == 1:
             freqs = freqs[0]
@@ -1081,6 +1091,7 @@ class FCC:
         _, coeffs, freqs = FCC._calculate_coefficients(
             model, n_samples, seed, scale, **kwargs
         )
+
         fourier_fingerprint = FCC._correlate(coeffs.transpose(), method=method)
 
         # perform weighting if requested
