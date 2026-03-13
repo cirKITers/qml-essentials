@@ -12,18 +12,12 @@ from qml_essentials.qoc import (
     fidelity_cost_fn,
     pulse_width_cost_fn,
     evolution_time_cost_fn,
+    default_qoc_params,
 )
 
 jax.config.update("jax_enable_x64", True)
 
-default_qoc_params = {
-    "envelope": "gaussian",
-    "cost_fns": [("fidelity", (0.5, 0.5))],
-    "t_target": 0.5,
-    "n_steps": 50,
-    "n_samples": 12,
-    "learning_rate": 0.001,
-}
+default_qoc_params["n_steps"] = 50
 
 
 class TestCost:

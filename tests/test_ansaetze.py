@@ -1,5 +1,5 @@
 from typing import Optional
-from qml_essentials.qoc import QOC
+from qml_essentials.qoc import QOC, default_qoc_params
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Circuit
 from qml_essentials.gates import Gates, UnitaryGates
@@ -20,15 +20,6 @@ jax.config.update("jax_enable_x64", True)
 
 
 logger = logging.getLogger(__name__)
-
-default_qoc_params = {
-    "envelope": "gaussian",
-    "cost_fns": [("fidelity", (0.5, 0.5))],
-    "t_target": 0.5,
-    "n_steps": 1000,
-    "n_samples": 12,
-    "learning_rate": 0.001,
-}
 
 
 @pytest.mark.unittest
