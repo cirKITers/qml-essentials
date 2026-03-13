@@ -20,7 +20,7 @@ default_qoc_params = {
     "envelope": "gaussian",
     "cost_fns": [("fidelity", (0.5, 0.5))],
     "t_target": 0.5,
-    "n_steps": 1000,
+    "n_steps": 50,
     "n_samples": 12,
     "learning_rate": 0.001,
 }
