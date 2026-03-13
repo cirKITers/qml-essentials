@@ -63,10 +63,13 @@ def fidelity_cost_fn(
     Cost function returning (1 − fidelity) and |phase_difference| averaged
     over *n_samples* uniformly spaced rotation angles in [0, 2π].
 
+    Uses batched (vmapped) circuit execution: all *n_samples* rotation
+    angles are evaluated in a single vectorised call per script, replacing
+    ``n_samples`` sequential Python-level circuit executions with one
+    JIT-compiled XLA program each.
+
     Args:
         pulse_params: Pulse parameters for evaluation.
-        envelope: Name of the active pulse envelope (unused here, but kept
-            for a uniform signature).
         pulse_script: Yaqsi script with pulse parameters.
         target_script: Yaqsi script as target.
         n_samples: Number of parameter samples.
@@ -74,19 +77,25 @@ def fidelity_cost_fn(
     Returns:
         Tuple of (abs_diff, phase_diff).
     """
-    abs_diff = 0
-    phase_diff = 0
-    for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / n_samples):
-        pulse_state = pulse_script.execute(type="state", args=(w, pulse_params))
-        target_state = target_script.execute(type="state", args=(w,))
+    ws = jnp.linspace(0, 2 * jnp.pi, n_samples)
 
-        abs_diff += jnp.array(1.0, dtype=jnp.float64) - fidelity(
-            pulse_state, target_state
-        )
-        phase_diff += jnp.abs(phase_difference(pulse_state, target_state))
+    # Broadcast pulse_params across the sample batch (shape unchanged)
+    pulse_states = pulse_script.execute(
+        type="state",
+        args=(ws, pulse_params),
+        in_axes=(0, None),
+    )  # (n_samples, dim)
 
-    abs_diff /= n_samples
-    phase_diff /= n_samples
+    target_states = target_script.execute(
+        type="state",
+        args=(ws,),
+        in_axes=(0,),
+    )  # (n_samples, dim)
+
+    abs_diff = jnp.mean(
+        jnp.array(1.0, dtype=jnp.float64) - fidelity(pulse_states, target_states)
+    )
+    phase_diff = jnp.mean(jnp.abs(phase_difference(pulse_states, target_states)))
 
     return (abs_diff, phase_diff)
 
