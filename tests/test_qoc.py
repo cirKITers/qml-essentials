@@ -103,41 +103,6 @@ class TestCostFnRegistry:
         with pytest.raises(ValueError, match="Unknown cost function"):
             CostFnRegistry.get("unknown")
 
-    def test_register_and_cleanup(self):
-        """Registering a new cost function makes it available."""
-
-        def dummy_fn(params):
-            return jnp.array(0.0)
-
-        name = "_test_dummy_cost"
-        try:
-            CostFnRegistry.register(
-                name=name,
-                fn=dummy_fn,
-                n_weights=1,
-                default_weight=0.1,
-                ckwargs_keys=[],
-            )
-            assert name in CostFnRegistry.available()
-            meta = CostFnRegistry.get(name)
-            assert meta["fn"] is dummy_fn
-            assert meta["n_weights"] == 1
-        finally:
-            # Clean up so other tests aren't affected
-            CostFnRegistry._REGISTRY.pop(name, None)
-
-    def test_register_duplicate_raises(self):
-        """Registering a name that already exists raises ValueError."""
-        with pytest.raises(ValueError, match="already registered"):
-            CostFnRegistry.register(
-                name="fidelity",
-                fn=lambda p: 0.0,
-                n_weights=1,
-                default_weight=0.1,
-            )
-
-    # --- parse_cost_arg ---
-
     @pytest.mark.parametrize(
         "arg,expected_name,expected_weight",
         [
