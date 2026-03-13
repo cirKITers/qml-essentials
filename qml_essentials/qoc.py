@@ -255,7 +255,9 @@ class CostFnRegistry:
         }
 
     @classmethod
-    def parse_cost_arg(cls, spec: str) -> Tuple[str, Union[float, Tuple[float, ...]]]:
+    def parse_cost_arg(
+        cls, spec: Union[str, Tuple]
+    ) -> Tuple[str, Union[float, Tuple[float, ...]]]:
         """Parse a ``"name:w1,w2,..."`` CLI string into ``(name, weight)``.
 
         If the weight part is omitted the default weight from the registry
@@ -272,6 +274,9 @@ class CostFnRegistry:
             ValueError: If the name is unknown or the number of weight
                 components does not match ``n_weights``.
         """
+        if isinstance(spec, tuple):
+            return spec
+
         if ":" in spec:
             name, weight_str = spec.split(":", 1)
             parts = [float(x) for x in weight_str.split(",")]
@@ -707,6 +712,23 @@ class QOC:
                 writer.writerows(zip(*log_history.values()))
 
 
+default_qoc_params = {
+    "envelope": "gaussian",
+    "cost_fns": [
+        ("fidelity", (0.49999999, 0.49999999)),
+        ("pulse_width", 0.000000015),
+        ("evolution_time", 0.000000005),
+    ],
+    "t_target": 0.5,
+    "n_steps": 1500,
+    "n_samples": 20,
+    "learning_rate": 0.0001,
+    "warmup_ratio": 0.05,
+    "end_lr_ratio": 0.01,
+    "log_interval": 50,
+    "file_dir": None,
+}
+
 if __name__ == "__main__":
     # argparse the selected gate
     parser = argparse.ArgumentParser()
@@ -727,7 +749,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--envelope",
         type=str,
-        default="gaussian",
+        default=default_qoc_params["envelope"],
         choices=PulseEnvelope.available(),
         help="Pulse envelope shape to use for optimization.",
     )
@@ -735,10 +757,8 @@ if __name__ == "__main__":
         "--costs",
         type=str,
         nargs="+",
-        default=[
-            "fidelity:0.49999999,0.49999999",
-            "pulse_width:0.000000015",
-            "evolution_time:0.000000005",
+        default=default_qoc_params[
+            "cost_fns"
         ],  # be aware of the numerical precision limit!
         help=(
             "Cost functions and weights as 'name:w1,w2,...' strings. "
@@ -750,7 +770,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--t_target",
         type=float,
-        default=0.5,  # referenz is the RZ gate
+        default=default_qoc_params["t_target"],  # referenz is the RZ gate
         help=(
             "Target evolution time for the 'evolution_time' cost function. "
             "All gates will be softly encouraged towards this common time."
@@ -759,25 +779,25 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n_steps",
         type=int,
-        default=1500,
+        default=default_qoc_params["n_steps"],
         help="Number of optimisation steps per gate.",
     )
     parser.add_argument(
         "--n_samples",
         type=int,
-        default=20,
+        default=default_qoc_params["n_samples"],
         help="Number of parameter samples in [0, 2π] for cost evaluation.",
     )
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=0.0001,
+        default=default_qoc_params["learning_rate"],
         help="Peak learning rate for the AdamW optimiser.",
     )
     parser.add_argument(
         "--warmup_ratio",
         type=float,
-        default=0.05,
+        default=default_qoc_params["warmup_ratio"],
         help=(
             "Fraction of n_steps used for linear LR warmup (0.0-1.0). "
             "Set to 0 to start at the peak LR immediately."
@@ -786,7 +806,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--end_lr_ratio",
         type=float,
-        default=0.01,
+        default=default_qoc_params["end_lr_ratio"],
         help=(
             "Final LR as a fraction of --learning_rate after cosine decay. "
             "Also used as the initial LR before warmup. "
@@ -796,13 +816,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--log_interval",
         type=int,
-        default=50,
+        default=default_qoc_params["log_interval"],
         help="Log the current loss every N steps.",
     )
     parser.add_argument(
         "--file_dir",
         type=str,
-        default=None,
+        default=default_qoc_params["file_dir"],
         help=(
             "Directory to save qoc_results.csv. " "Defaults to the package directory."
         ),
