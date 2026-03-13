@@ -63,13 +63,10 @@ def fidelity_cost_fn(
     Cost function returning (1 − fidelity) and |phase_difference| averaged
     over *n_samples* uniformly spaced rotation angles in [0, 2π].
 
-    Uses batched (vmapped) circuit execution: all *n_samples* rotation
-    angles are evaluated in a single vectorised call per script, replacing
-    ``n_samples`` sequential Python-level circuit executions with one
-    JIT-compiled XLA program each.
-
     Args:
         pulse_params: Pulse parameters for evaluation.
+        envelope: Name of the active pulse envelope (unused here, but kept
+            for a uniform signature).
         pulse_script: Yaqsi script with pulse parameters.
         target_script: Yaqsi script as target.
         n_samples: Number of parameter samples.
@@ -77,25 +74,19 @@ def fidelity_cost_fn(
     Returns:
         Tuple of (abs_diff, phase_diff).
     """
-    ws = jnp.linspace(0, 2 * jnp.pi, n_samples)
+    abs_diff = 0
+    phase_diff = 0
+    for w in jnp.arange(0, 2 * jnp.pi, (2 * jnp.pi) / n_samples):
+        pulse_state = pulse_script.execute(type="state", args=(w, pulse_params))
+        target_state = target_script.execute(type="state", args=(w,))
 
-    # Broadcast pulse_params across the sample batch (shape unchanged)
-    pulse_states = pulse_script.execute(
-        type="state",
-        args=(ws, pulse_params),
-        in_axes=(0, None),
-    )  # (n_samples, dim)
+        abs_diff += jnp.array(1.0, dtype=jnp.float64) - fidelity(
+            pulse_state, target_state
+        )
+        phase_diff += jnp.abs(phase_difference(pulse_state, target_state))
 
-    target_states = target_script.execute(
-        type="state",
-        args=(ws,),
-        in_axes=(0,),
-    )  # (n_samples, dim)
-
-    abs_diff = jnp.mean(
-        jnp.array(1.0, dtype=jnp.float64) - fidelity(pulse_states, target_states)
-    )
-    phase_diff = jnp.mean(jnp.abs(phase_difference(pulse_states, target_states)))
+    abs_diff /= n_samples
+    phase_diff /= n_samples
 
     return (abs_diff, phase_diff)
 
@@ -306,6 +297,8 @@ class QOC:
         learning_rate: float,
         log_interval: int = 50,
         file_dir: str = None,
+        warmup_ratio: float = 0.0,
+        end_lr_ratio: float = 1.0,
     ):
         """
         Initialize Quantum Optimal Control with Pulse-level Gates.
@@ -324,10 +317,21 @@ class QOC:
                 ``"evolution_time"`` is among the selected cost functions.
             n_steps (int): Number of steps in optimization.
             n_samples (int): Number of parameter samples per step.
-            learning_rate (float): Learning rate for Adam with
-                weight decay regularization.
+            learning_rate (float): Peak learning rate for AdamW. When a
+                warmup/decay schedule is active this is the maximum LR
+                reached after the warmup phase.
             log_interval (int): Interval for logging.
             file_dir (str): Directory to save results.
+            warmup_ratio (float): Fraction of ``n_steps`` used for linear
+                warmup (0.0 - 1.0).  Set to 0.0 to disable warmup and use
+                a constant learning rate throughout.  A value of e.g. 0.05
+                means the first 5 % of steps linearly ramp the LR from
+                ``end_lr_ratio * learning_rate`` to ``learning_rate``.
+            end_lr_ratio (float): The final learning rate is
+                ``end_lr_ratio * learning_rate``.  Also used as the initial
+                LR at the start of warmup.  Set to 0.0 for full cosine
+                decay to zero; set to 1.0 (together with
+                ``warmup_ratio=0.0``) to recover a constant LR.
         """
         self.ws = jnp.linspace(0, 2 * jnp.pi, n_samples)
 
@@ -335,6 +339,8 @@ class QOC:
         self.n_steps = n_steps
         self.n_samples = n_samples
         self.learning_rate = learning_rate
+        self.warmup_ratio = warmup_ratio
+        self.end_lr_ratio = end_lr_ratio
         self.log_interval = log_interval
         self.file_dir = (
             file_dir if file_dir else os.path.dirname(os.path.realpath(__file__))
@@ -344,6 +350,9 @@ class QOC:
 
         log.info(
             f"Training parameters: {self.n_steps} steps, {self.n_samples} samples, {self.learning_rate} learning rate"
+        )
+        log.info(
+            f"LR schedule: warmup_ratio={self.warmup_ratio}, end_lr_ratio={self.end_lr_ratio}"
         )
 
         log.info(f"Envelope: {self.envelope}")
@@ -473,7 +482,24 @@ class QOC:
 
                 params = init_pulse_params
 
-                optimizer = optax.adamw(self.learning_rate)
+                # Build learning rate schedule
+                warmup_steps = int(self.n_steps * self.warmup_ratio)
+                end_value = self.learning_rate * self.end_lr_ratio
+
+                if warmup_steps > 0 or self.end_lr_ratio < 1.0:
+                    schedule = optax.warmup_cosine_decay_schedule(
+                        init_value=(
+                            end_value if warmup_steps > 0 else self.learning_rate
+                        ),
+                        peak_value=self.learning_rate,
+                        warmup_steps=warmup_steps,
+                        decay_steps=self.n_steps,
+                        end_value=end_value,
+                    )
+                else:
+                    schedule = self.learning_rate
+
+                optimizer = optax.adamw(schedule)
                 opt_state = optimizer.init(params)
 
                 loss = total_costs(params)
@@ -701,9 +727,9 @@ if __name__ == "__main__":
         type=str,
         nargs="+",
         default=[
-            "fidelity:0.4999999,0.4999999",
-            "pulse_width:0.00000015",
-            "evolution_time:0.00000005",
+            "fidelity:0.49999999,0.49999999",
+            "pulse_width:0.000000015",
+            "evolution_time:0.000000005",
         ],  # be aware of the numerical precision limit!
         help=(
             "Cost functions and weights as 'name:w1,w2,...' strings. "
@@ -736,8 +762,27 @@ if __name__ == "__main__":
     parser.add_argument(
         "--learning_rate",
         type=float,
+        default=0.0001,
+        help="Peak learning rate for the AdamW optimiser.",
+    )
+    parser.add_argument(
+        "--warmup_ratio",
+        type=float,
+        default=0.05,
+        help=(
+            "Fraction of n_steps used for linear LR warmup (0.0-1.0). "
+            "Set to 0 to start at the peak LR immediately."
+        ),
+    )
+    parser.add_argument(
+        "--end_lr_ratio",
+        type=float,
         default=0.01,
-        help="Learning rate for the AdamW optimiser.",
+        help=(
+            "Final LR as a fraction of --learning_rate after cosine decay. "
+            "Also used as the initial LR before warmup. "
+            "Set to 1.0 (with --warmup_ratio 0) for a constant LR."
+        ),
     )
     parser.add_argument(
         "--log_interval",
@@ -774,6 +819,8 @@ if __name__ == "__main__":
         n_steps=args.n_steps,
         n_samples=args.n_samples,
         learning_rate=args.learning_rate,
+        warmup_ratio=args.warmup_ratio,
+        end_lr_ratio=args.end_lr_ratio,
         log_interval=args.log_interval,
         file_dir=args.file_dir,
     )
