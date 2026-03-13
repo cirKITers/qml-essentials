@@ -79,7 +79,6 @@ def fidelity_cost_fn(
     """
     ws = jnp.linspace(0, 2 * jnp.pi, n_samples)
 
-    # Broadcast pulse_params across the sample batch (shape unchanged)
     pulse_states = pulse_script.execute(
         type="state",
         args=(ws, pulse_params),
@@ -163,12 +162,6 @@ def evolution_time_cost_fn(
 class CostFnRegistry:
     """Registry of cost functions available for pulse optimisation.
 
-    Each entry maps a human-readable name to a metadata dict with keys:
-    - ``fn``            - the cost function callable
-    - ``n_weights``     - how many weight components the function expects
-    - ``default_weight``- weight(s) used when the caller omits them
-    - ``ckwargs_keys``  - which ``QOC``-level kwargs the function needs
-
     Use :meth:`register` to add new cost functions at runtime and
     :meth:`get` / :meth:`available` to query them.
     """
@@ -220,45 +213,11 @@ class CostFnRegistry:
         return cls._REGISTRY[name]
 
     @classmethod
-    def register(
-        cls,
-        name: str,
-        fn: Callable,
-        n_weights: int,
-        default_weight: Union[float, Tuple[float, ...]],
-        ckwargs_keys: Optional[List[str]] = None,
-    ) -> None:
-        """Register a new cost function.
-
-        Args:
-            name: Unique name for the cost function.
-            fn: The cost function callable.
-            n_weights: Number of weight components (1 for scalar return,
-                >1 for tuple return).
-            default_weight: Default weight(s) when not specified by the user.
-            ckwargs_keys: List of kwarg names (from ``QOC`` attributes) that
-                this function requires at call time.
-
-        Raises:
-            ValueError: If *name* is already registered.
-        """
-        if name in cls._REGISTRY:
-            raise ValueError(
-                f"Cost function '{name}' is already registered. "
-                f"Use a different name or remove the existing entry first."
-            )
-        cls._REGISTRY[name] = {
-            "fn": fn,
-            "n_weights": n_weights,
-            "default_weight": default_weight,
-            "ckwargs_keys": ckwargs_keys or [],
-        }
-
-    @classmethod
     def parse_cost_arg(
         cls, spec: Union[str, Tuple]
     ) -> Tuple[str, Union[float, Tuple[float, ...]]]:
         """Parse a ``"name:w1,w2,..."`` CLI string into ``(name, weight)``.
+        If a tuple is provided, it is returned directly.
 
         If the weight part is omitted the default weight from the registry
         is used.  A single-component weight is returned as a float;
@@ -530,17 +489,12 @@ class QOC:
 
                 for step in range(self.n_steps):
                     if step % self.log_interval == 0:
-                        # .item() forces a device→host sync; only pay this
-                        # cost at log intervals instead of every step.
                         log.info(
                             f"Step {step}/{self.n_steps}, Loss: {loss_history[-1].item():.3e}"
                         )
 
                     params, opt_state, loss = opt_step(opt_state, params)
 
-                    # Compare on-device to avoid a .item() sync every step.
-                    # jnp.less returns a JAX boolean; the Python `if` will
-                    # block only until that single scalar is transferred.
                     if loss < best_loss:
                         log.debug(f"Best set of params found at step {step}")
                         best_loss = loss

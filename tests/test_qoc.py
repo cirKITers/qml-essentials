@@ -299,7 +299,8 @@ class TestSaveResults:
         self, tmp_path, writes, expected_rows, expected_gate_fidelity
     ):
         """save_results writes/overwrites CSV rows correctly."""
-        qoc = QOC(**default_qoc_params, file_dir=str(tmp_path))
+        params = {**default_qoc_params, "file_dir": str(tmp_path)}
+        qoc = QOC(**params)
         for gate, fid, params in writes:
             qoc.save_results(gate, fid, params)
 
@@ -315,7 +316,8 @@ class TestSaveResults:
 
     def test_no_file_when_file_dir_is_none(self, tmp_path):
         """When file_dir is explicitly None, nothing is written."""
-        qoc = QOC(**default_qoc_params, file_dir=str(tmp_path))
+        params = {**default_qoc_params, "file_dir": str(tmp_path)}
+        qoc = QOC(**params)
         qoc.file_dir = None
         qoc.save_results("RX", 0.9, [1.0])
         assert not (tmp_path / "qoc_results.csv").exists()
@@ -326,9 +328,9 @@ class TestOptimizeSmoke:
 
     def test_optimize_returns_params_and_history(self, tmp_path):
         """optimize() returns (params, loss_history) and loss decreases."""
+        params = {**default_qoc_params, "file_dir": str(tmp_path)}
         qoc = QOC(
-            **default_qoc_params,
-            file_dir=str(tmp_path),
+            **params,
         )
         opt_1q = qoc.optimize(wires=1)
         best_params, loss_history = opt_1q(qoc.create_RX)()
