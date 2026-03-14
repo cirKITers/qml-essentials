@@ -12,6 +12,7 @@ from qml_essentials.qoc import (
     fidelity_cost_fn,
     pulse_width_cost_fn,
     evolution_time_cost_fn,
+    sepctral_density_cost_fn,
     default_qoc_params,
 )
 
@@ -84,11 +85,12 @@ class TestCostFnRegistry:
     """Unit tests for CostFnRegistry classmethods."""
 
     def test_available_returns_builtin_names(self):
-        """All three built-in cost functions are listed."""
+        """All built-in cost functions are listed."""
         names = CostFnRegistry.available()
         assert "fidelity" in names
         assert "pulse_width" in names
         assert "evolution_time" in names
+        assert "spectral_density" in names
 
     def test_get_known(self):
         """Getting a known cost function returns correct metadata."""
@@ -183,6 +185,66 @@ class TestEvolutionTimeCostFn:
         assert jnp.isclose(grads[0], 0.0)
         assert jnp.isclose(grads[1], 0.0)
         assert not jnp.isclose(grads[2], 0.0)
+
+
+class TestSpectralDensityCostFn:
+    """Tests for the sepctral_density_cost_fn."""
+
+    def test_general_envelope_returns_zero(self):
+        """Envelopes with no tuneable shape params (general) return zero cost."""
+        params = jnp.array([0.5])
+        cost = sepctral_density_cost_fn(params, envelope="general")
+        assert jnp.isclose(cost, 0.0)
+
+    def test_gaussian_lower_than_square(self):
+        """A Gaussian pulse has a narrower spectrum than a rectangular pulse."""
+        # Gaussian: [A, sigma, t_evol]
+        gauss_params = jnp.array([1.0, 0.3, 2.0])
+        gauss_cost = sepctral_density_cost_fn(gauss_params, envelope="gaussian")
+
+        # Square: [A, width, t_evol]
+        square_params = jnp.array([1.0, 1.0, 2.0])
+        square_cost = sepctral_density_cost_fn(square_params, envelope="square")
+
+        assert gauss_cost < square_cost, (
+            f"Gaussian cost ({gauss_cost}) should be lower than "
+            f"square cost ({square_cost})"
+        )
+
+    def test_output_is_bounded(self):
+        """The spectral-width cost should be in [0, 1]."""
+        params = jnp.array([1.0, 0.5, 1.0])
+        cost = sepctral_density_cost_fn(params, envelope="gaussian")
+        assert 0.0 <= float(cost) <= 1.0
+
+    def test_narrow_gaussian_lower_than_wide(self):
+        """A narrow Gaussian (small sigma) has a wider spectrum than a wide one."""
+        narrow_params = jnp.array([1.0, 0.05, 2.0])  # small sigma
+        wide_params = jnp.array([1.0, 0.5, 2.0])  # large sigma
+
+        narrow_cost = sepctral_density_cost_fn(narrow_params, envelope="gaussian")
+        wide_cost = sepctral_density_cost_fn(wide_params, envelope="gaussian")
+
+        # Narrow time-domain pulse => wider spectrum => higher cost
+        assert wide_cost < narrow_cost, (
+            f"Wide Gaussian cost ({wide_cost}) should be lower than "
+            f"narrow Gaussian cost ({narrow_cost})"
+        )
+
+    def test_is_differentiable(self):
+        """JAX can compute gradients through the spectral density cost."""
+        grad_fn = jax.grad(lambda p: sepctral_density_cost_fn(p, envelope="gaussian"))
+        grads = grad_fn(jnp.array([1.0, 0.3, 2.0]))
+        # At least sigma (index 1) should have nonzero gradient
+        assert not jnp.all(jnp.isclose(grads, 0.0))
+
+    def test_registered_in_registry(self):
+        """spectral_density is available in CostFnRegistry."""
+        assert "spectral_density" in CostFnRegistry.available()
+        meta = CostFnRegistry.get("spectral_density")
+        assert meta["fn"] is sepctral_density_cost_fn
+        assert meta["n_weights"] == 1
+        assert "envelope" in meta["ckwargs_keys"]
 
 
 class TestQOCInit:

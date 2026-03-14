@@ -159,6 +159,66 @@ def evolution_time_cost_fn(
     return ((t - t_target) / t_target) ** 2
 
 
+def sepctral_density_cost_fn(
+    pulse_params: jnp.ndarray,
+    envelope: str,
+    n_fft: int = 1024,
+) -> jnp.ndarray:
+    """
+    Cost function penalising the spectral width of a given pulse.
+
+    Samples the pulse envelope in the time domain over ``[0, t_evol]``
+    (where ``t_evol`` is the last element of *pulse_params*), computes its
+    power spectral density via FFT, and returns the normalised RMS bandwidth
+    (square root of the second central moment of the PSD).
+
+    Pulses with narrow spectra (e.g. Gaussian, DRAG) receive a low cost,
+    whereas pulses with wide spectra (e.g. rectangular) are penalised more
+    heavily.
+
+    For envelopes with no envelope parameters (e.g. ``"general"``), the
+    cost is zero.
+
+    Args:
+        pulse_params: Pulse parameters for the gate.  Envelope parameters
+            occupy ``pulse_params[:n_envelope_params]`` and the evolution
+            time is ``pulse_params[-1]``.
+        envelope: Name of the active pulse envelope.
+        n_fft: Number of time-domain samples used for the FFT
+            (default 1024).
+
+    Returns:
+        Scalar spectral-width cost (RMS bandwidth normalised by the
+        Nyquist frequency so the value is in [0, 1]).
+    """
+    envelope_info = PulseEnvelope.get(envelope)
+    n_envelope_params = envelope_info["n_envelope_params"]
+    envelope_fn = envelope_info["fn"]
+
+    # Nothing to penalise for envelopes without tuneable shape params
+    if n_envelope_params == 0 or envelope_fn is None:
+        return jnp.array(0.0, dtype=jnp.float64)
+
+    # Extract envelope parameters and evolution time
+    env_params = pulse_params[:n_envelope_params]
+    t_evol = pulse_params[-1]
+    t_c = t_evol / 2.0
+
+    t_samples = jnp.linspace(0.0, t_evol, n_fft)
+    signal = jax.vmap(lambda t: envelope_fn(env_params, t, t_c))(t_samples)
+
+    spectrum = jnp.fft.rfft(signal)
+    psd = jnp.abs(spectrum) ** 2
+    psd = psd / (jnp.sum(psd) + 1e-12)  # normalise to a distribution
+
+    freqs = jnp.linspace(0.0, 1.0, len(psd))
+
+    mean_freq = jnp.sum(freqs * psd)
+    rms_bw = jnp.sqrt(jnp.sum((freqs - mean_freq) ** 2 * psd))
+
+    return jnp.array(rms_bw, dtype=jnp.float64)
+
+
 class CostFnRegistry:
     """Registry of cost functions available for pulse optimisation.
 
@@ -184,6 +244,12 @@ class CostFnRegistry:
             "n_weights": 1,
             "default_weight": 1.0,
             "ckwargs_keys": ["t_target"],
+        },
+        "spectral_density": {
+            "fn": sepctral_density_cost_fn,
+            "n_weights": 1,
+            "default_weight": 1.0,
+            "ckwargs_keys": ["envelope"],
         },
     }
 
