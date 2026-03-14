@@ -1094,6 +1094,9 @@ class FCC:
 
         fourier_fingerprint = FCC._correlate(coeffs.transpose(), method=method)
 
+        # set nan to 1
+        fourier_fingerprint[jnp.isnan(fourier_fingerprint)] = 1.0
+
         # perform weighting if requested
         fourier_fingerprint = (
             FCC._weighting(fourier_fingerprint) if weight else fourier_fingerprint
