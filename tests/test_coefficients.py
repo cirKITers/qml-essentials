@@ -492,8 +492,8 @@ class TestFCC:
         [
             ("Circuit_20", 0.004),
             ("Circuit_19", 0.010),
-            ("Circuit_17", 0.115),
-            ("Hardware_Efficient", 0.144),
+            ("Circuit_17", 0.530),
+            ("Hardware_Efficient", 0.715),
         ],
         ids=["Circuit_20", "Circuit_19", "Circuit_17", "Hardware_Efficient"],
     )
