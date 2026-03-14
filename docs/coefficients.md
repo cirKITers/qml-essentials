@@ -205,7 +205,6 @@ model = Model(
     circuit_type="Hardware_Efficient",
     output_qubit=-1,
     encoding=["RY"],
-    use_multithreading=True,
 )
 
 fcc = FCC.get_fcc(

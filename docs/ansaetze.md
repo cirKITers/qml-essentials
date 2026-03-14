@@ -102,7 +102,7 @@ class MyHardwareEfficient(Circuit):
                 Gates.CZ(wires=[q, q + 1], **kwargs)
 ```
 
-The `**kwargs` allow both [noise simulation](#noise) and [pulse simulation](#pulse-simulation).
+The `**kwargs` allow both [noise simulation](#noise) and [pulse simulation](#pulse_simulation).
 A custom `Circuit` should define `n_pulse_params_per_layer` if it will use pulse simulation at some point, but may be omitted otherwise.
 
 Check out page [*Usage*](usage.md) on how to proceed from here.
@@ -150,6 +150,7 @@ noise_params = {
 ```
 
 Providing this optional input will apply the corresponding noise to the model where the Bit Flip, Phase Flip, Depolarizing and Two-Qubit Depolarizing Channels are applied after each gate and the Amplitude and Phase Damping are applied at the end of the circuit.
+For more information on the available noise types, have a look [here](usage.md#noise).
 
 To demonstrate this, let's recall the custom ansatz `MyHardwareEfficient` defined in [Custom Ansatz](#custom-ansatz) and extend the model's usage:
 

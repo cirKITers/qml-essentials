@@ -3,6 +3,7 @@ on:
   pull_request:
     branches: ["main"]
   workflow_call:
+  workflow_dispatch:
 permissions:
   contents: write
 concurrency:
@@ -21,4 +22,4 @@ jobs:
       - name: Install dependencies
         run: pipx run uv sync --group dev
       - name: Test with pytest
-        run: pipx run uv run pytest --cov=qml_essentials --dist load -m "not expensive" -n 4
+        run: pipx run uv run pytest --cov=qml_essentials --dist load -n 4
