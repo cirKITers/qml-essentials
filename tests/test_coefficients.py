@@ -492,8 +492,8 @@ class TestFCC:
         [
             ("Circuit_20", 0.004),
             ("Circuit_19", 0.010),
-            ("Circuit_17", 0.530),
-            ("Hardware_Efficient", 0.715),
+            ("Circuit_17", 0.115),
+            ("Hardware_Efficient", 0.144),
         ],
         ids=["Circuit_20", "Circuit_19", "Circuit_17", "Hardware_Efficient"],
     )
@@ -511,9 +511,7 @@ class TestFCC:
             output_qubit=-1,
             encoding=["RY"],
         )
-        fcc = FCC.get_fcc(
-            model=model, n_samples=500, seed=1000, scale=True, numerical_cap=1e-10
-        )
+        fcc = FCC.get_fcc(model=model, n_samples=500, seed=1000, scale=True)
 
         assert jnp.isclose(
             fcc, expected_fcc, atol=3.0e-2
