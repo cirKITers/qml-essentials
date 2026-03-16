@@ -1061,6 +1061,7 @@ class FCC:
         scale: Optional[bool] = False,
         weight: Optional[bool] = False,
         trim_redundant: Optional[bool] = True,
+        nan_to_one: Optional[bool] = False,
         **kwargs,
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
@@ -1082,6 +1083,8 @@ class FCC:
                 Defaults to False.
             trim_redundant (Optional[bool], optional): Whether to remove redundant
                 correlations. Defaults to True.
+            nan_to_one (Optional[bool], optional): Whether to set nan to 1.
+                Defaults to False.
             **kwargs: Additional keyword arguments for the model function.
 
         Returns:
@@ -1094,8 +1097,9 @@ class FCC:
 
         fourier_fingerprint = FCC._correlate(coeffs.transpose(), method=method)
 
-        # set nan to 1
-        fourier_fingerprint[jnp.isnan(fourier_fingerprint)] = 1.0
+        if nan_to_one:
+            # set nan to 1
+            fourier_fingerprint[jnp.isnan(fourier_fingerprint)] = 1.0
 
         # perform weighting if requested
         fourier_fingerprint = (
