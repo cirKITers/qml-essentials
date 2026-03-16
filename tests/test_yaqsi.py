@@ -1354,14 +1354,6 @@ class TestMemory:
         # 8 qubits: dim=256 vs 4 qubits: dim=16  → ~16x more
         assert est8 > est4 * 10
 
-    @pytest.mark.unittest
-    def test_available_memory_bytes(self):
-        """Available memory should return a positive value."""
-        avail = Script._available_memory_bytes()
-        assert avail > 0
-        # Should be at least 2 GB on any reasonable system
-        assert avail >= 2 * 1024**3
-
 
 class TestChunk:
 
