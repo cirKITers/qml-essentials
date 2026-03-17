@@ -1,6 +1,6 @@
 # flake8: noqa: E402
 import argparse
-from typing import Dict, List, Callable, Optional, Union, Tuple
+from typing import Dict, List, Callable, Union, Tuple
 
 import os
 import csv

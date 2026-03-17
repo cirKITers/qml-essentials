@@ -1,32 +1,3 @@
-"""Thread-safe, re-entrant tape recording context for quantum operations.
-
-The tape is the mechanism by which :class:`~qml_essentials.operations.Operation`
-instances are collected when a circuit function is executed.  This module
-provides a clean context-manager interface that:
-
-* is **thread-safe** — each thread has its own tape stack via
-  ``threading.local()``, so concurrent ``Script.execute`` calls in
-  different threads never interfere;
-* is **re-entrant** — nested ``recording()`` blocks each get their own tape
-  (implemented as a stack), which is important because
-  ``Script._execute_batched`` re-records inside a ``jax.vmap``-traced
-  function;
-* is **multiprocessing-safe** by construction — each process has its own
-  address space, so there is nothing to share.
-
-Usage (inside ``Script._record``)::
-
-    with recording() as tape:
-        circuit_fn(*args, **kwargs)
-    # tape is now a list[Operation]
-
-Usage (inside ``Operation.__init__``)::
-
-    tape = active_tape()
-    if tape is not None:
-        tape.append(self)
-"""
-
 from __future__ import annotations
 
 import threading
@@ -36,9 +7,6 @@ from typing import TYPE_CHECKING, Iterator, List, Optional
 if TYPE_CHECKING:
     from qml_essentials.operations import Operation
 
-# ---------------------------------------------------------------------------
-# Thread-local tape stack
-# ---------------------------------------------------------------------------
 _local = threading.local()
 
 
@@ -77,13 +45,6 @@ def recording() -> Iterator[List["Operation"]]:
 
     Yields:
         A new empty list that will be populated with ``Operation`` instances.
-
-    Example::
-
-        with recording() as tape:
-            RX(0.5, wires=0)
-            H(wires=1)
-        assert len(tape) == 2
     """
     stack = _tape_stack()
     tape: List["Operation"] = []
@@ -92,11 +53,6 @@ def recording() -> Iterator[List["Operation"]]:
         yield tape
     finally:
         stack.pop()
-
-
-# ---------------------------------------------------------------------------
-# Pulse-event tape (same pattern, separate stack)
-# ---------------------------------------------------------------------------
 
 
 def _pulse_tape_stack() -> List[list]:
@@ -123,12 +79,6 @@ def pulse_recording() -> Iterator[list]:
     Yields:
         A list that will be populated with
         :class:`~qml_essentials.drawing.PulseEvent` instances.
-
-    Example::
-
-        with pulse_recording() as events:
-            PulseGates.RX(jnp.pi / 2, wires=0)
-        # events is now a list[PulseEvent]
     """
     stack = _pulse_tape_stack()
     tape: list = []

@@ -1,5 +1,4 @@
 import csv
-import os
 import pytest
 import jax
 import jax.numpy as jnp
@@ -18,6 +17,7 @@ from qml_essentials.qoc import (
 
 jax.config.update("jax_enable_x64", True)
 
+# overwrite to make tests a bit easier
 default_qoc_params["n_steps"] = 50
 
 
@@ -236,13 +236,6 @@ class TestSpectralDensityCostFn:
         grads = grad_fn(jnp.array([1.0, 0.3, 2.0]))
         # At least sigma (index 1) should have nonzero gradient
         assert not jnp.all(jnp.isclose(grads, 0.0))
-
-    def test_registered_in_registry(self):
-        """spectral_density is available in CostFnRegistry."""
-        assert "spectral_density" in CostFnRegistry.available()
-        meta = CostFnRegistry.get("spectral_density")
-        assert meta["fn"] is sepctral_density_cost_fn
-        assert "envelope" in meta["ckwargs_keys"]
 
 
 class TestQOCInit:

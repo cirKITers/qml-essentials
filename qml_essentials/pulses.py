@@ -21,7 +21,7 @@ class DecompositionStep:
 
     Attributes:
         gate: Child PulseParams object for this step.
-        wire_fn: Wire selection — ``"all"``, ``"target"``, or ``"control"``.
+        wire_fn: Wire selection - ``"all"``, ``"target"``, or ``"control"``.
         angle_fn: Maps parent angle(s) ``w`` to child angle.
             ``None`` means pass ``w`` through unchanged.
     """
@@ -639,16 +639,13 @@ class PulseGates:
     Y = jnp.array([[0, -1j], [1j, 0]])
     Z = jnp.array([[1, 0], [0, -1]])
 
-    # Pre-computed interaction-picture Hamiltonians (H_static† @ P @ H_static).
     _H_X = H_static.conj().T @ X @ H_static
     _H_Y = H_static.conj().T @ Y @ H_static
 
-    # Pre-computed CZ Hamiltonian: (π/4)(I⊗I - Z⊗I - I⊗Z + Z⊗Z)
     _H_CZ = (jnp.pi / 4) * (
         jnp.kron(Id, Id) - jnp.kron(Z, Id) - jnp.kron(Id, Z) + jnp.kron(Z, Z)
     )
 
-    # Pre-computed H correction Hamiltonian: (π/2) I
     _H_corr = jnp.pi / 2 * jnp.eye(2, dtype=jnp.complex64)
 
     _active_envelope: str = "gaussian"
@@ -803,7 +800,7 @@ class PulseGates:
         _H = op.Hermitian(PulseGates._H_X, wires=wires, record=False)
         H_eff = PulseGates._coeff_Sx * _H
 
-        # Pack: [envelope_params..., w] — evolution time is the last element
+        # Pack: [envelope_params..., w] - evolution time is the last element
         # of pulse_params (pulse_params[-1]).
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         env_params = jnp.array([*pulse_params[:-1], w])
@@ -836,7 +833,7 @@ class PulseGates:
         H_eff = PulseGates._coeff_Sy * _H
 
         # Pack w into the params so the coefficient function doesn't need
-        # a closure — this enables JIT solver cache sharing across all RY calls.
+        # a closure - this enables JIT solver cache sharing across all RY calls.
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         env_params = jnp.array([*pulse_params[:-1], w])
         ys.evolve(H_eff)([env_params], pulse_params[-1])
@@ -875,7 +872,7 @@ class PulseGates:
         H_eff = PulseGates._coeff_Sz * _H
 
         # Pack w into the params so the coefficient function doesn't need
-        # a closure — [pulse_param_scalar, w] enables JIT solver cache sharing.
+        # a closure - [pulse_param_scalar, w] enables JIT solver cache sharing.
         # pulse_params may be a 1-element array or scalar; ravel + index to
         # ensure a scalar for concatenation.
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)

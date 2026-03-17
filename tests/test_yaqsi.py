@@ -892,7 +892,7 @@ def test_parity_observable_single_qubit() -> None:
 
 @pytest.mark.unittest
 def test_parity_observable_two_qubit() -> None:
-    """Two-qubit parity observable is Z⊗Z."""
+    """Two-qubit parity observable is Z\\otimesZ."""
     obs = build_parity_observable([0, 1])
     expected = jnp.kron(PauliZ._matrix, PauliZ._matrix)
     assert obs.matrix.shape == (4, 4)

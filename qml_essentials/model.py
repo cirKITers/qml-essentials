@@ -899,7 +899,7 @@ class Model:
                 if isinstance(qubit_spec, int):
                     obs.append(op.PauliZ(wires=qubit_spec))
                 else:
-                    # parity: Z ⊗ Z ⊗ …
+                    # parity: Z \\otimes Z \\otimes …
                     obs.append(ys.build_parity_observable(list(qubit_spec)))
             return "expval", obs
 

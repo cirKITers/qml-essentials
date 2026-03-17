@@ -685,14 +685,15 @@ RZ = _make_rotation_gate(PauliZ, "RZ")
 
 
 # Projectors used by controlled-gate factories
-_P0 = jnp.array([[1, 0], [0, 0]], dtype=_cdtype())  # |0><0|
-_P1 = jnp.array([[0, 0], [0, 1]], dtype=_cdtype())  # |1><1|
+_P0 = jnp.array([[1, 0], [0, 0]], dtype=_cdtype())
+_P1 = jnp.array([[0, 0], [0, 1]], dtype=_cdtype())
 
 
 def _make_controlled_gate(target_class: type, name: str) -> type:
     """Factory for controlled Pauli gates CX, CY, CZ.
 
-    Each gate has the form ``CP = |0><0| ⊗ I + |1><1| ⊗ P``.
+    Each gate has the form
+    ``CP = |0><0| \\otimes I + |1\\langle\\rangle 1| \\otimes P``.
 
     Args:
         target_class: The single-qubit gate class (PauliX, PauliY, PauliZ).
@@ -798,7 +799,7 @@ def _make_controlled_rotation_gate(pauli_class: type, name: str) -> type:
     """Factory for controlled rotation gates CRX, CRY, CRZ.
 
     Each gate has the form
-    ``CR_P(\\theta) = |0><0| ⊗ I + |1><1| ⊗ R_P(\\theta)``.
+    ``CR_P(\\theta) = |0><0| \\otimes I + |1><1| \\otimes R_P(\\theta)``.
 
     Args:
         pauli_class: One of PauliX, PauliY, PauliZ.
@@ -870,7 +871,7 @@ class Rot(Operation):
         self.phi = phi
         self.theta = theta
         self.omega = omega
-        # Rot(\\phi, \theta, \\omega) = RZ(\\omega) @ RY(\theta) @ RZ(\\phi)  # noqa: W605
+        # Rot(\\phi, \theta, \\omega) = RZ(\\omega) @ RY(\theta) @ RZ(\\phi)
         rz_phi = jnp.cos(phi / 2) * Id._matrix - 1j * jnp.sin(phi / 2) * PauliZ._matrix
         ry_theta = (
             jnp.cos(theta / 2) * Id._matrix - 1j * jnp.sin(theta / 2) * PauliY._matrix
@@ -1245,13 +1246,13 @@ class ThermalRelaxationError(KrausChannel):
     Models simultaneous T_1 energy relaxation and T_2 dephasing.  Two regimes
     are handled:
 
-    T_2 ≤ T_1 (Markovian dephasing + reset):
+    T_2 <= T_1 (Markovian dephasing + reset):
         Six Kraus operators built from p_z (phase-flip probability), p_r0
         (reset-to-|0\\rangle probability) and p_r1 (reset-to-|1\\rangle probability).
 
     T_2 > T_1 (non-Markovian; Choi matrix decomposition):
         The Choi matrix is assembled from the relaxation/dephasing rates, then
-        diagonalised; Kraus operators are K_i = \sqrt λ_i · mat(v_i).
+        diagonalised; Kraus operators are K_i = \sqrt \lambda_i · mat(v_i).
 
     Attributes:
         pe: Excited-state population (thermal population of |1\\rangle).
@@ -1276,8 +1277,8 @@ class ThermalRelaxationError(KrausChannel):
         Args:
             pe: Excited-state population (thermal population of |1\\rangle), in [0, 1].
             t1: T_1 longitudinal relaxation time, must be > 0.
-            t2: T_2 transverse dephasing time, must be > 0 and ≤ 2·T_1.
-            tg: Gate duration, must be ≥ 0.
+            t2: T_2 transverse dephasing time, must be > 0 and <= 2·T_1.
+            tg: Gate duration, must be >= 0.
             wires: Qubit index or list of qubit indices this channel acts on.
 
         Raises:
@@ -1290,9 +1291,9 @@ class ThermalRelaxationError(KrausChannel):
         if t2 <= 0:
             raise ValueError("t2 must be > 0.")
         if t2 > 2 * t1:
-            raise ValueError("t2 must be ≤ 2·t1.")
+            raise ValueError("t2 must be <= 2·t1.")
         if tg < 0:
-            raise ValueError("tg must be ≥ 0.")
+            raise ValueError("tg must be >= 0.")
         self.pe = pe
         self.t1 = t1
         self.t2 = t2
@@ -1304,7 +1305,7 @@ class ThermalRelaxationError(KrausChannel):
 
         The number of operators depends on the regime:
 
-        * T_2 ≤ T_1: six operators (identity, phase-flip, two reset-to-|0\\rangle,
+        * T_2 <= T_1: six operators (identity, phase-flip, two reset-to-|0\\rangle,
           two reset-to-|1\\rangle).
         * T_2 > T_1: four operators derived from the Choi matrix eigendecomposition.
 
@@ -1318,7 +1319,7 @@ class ThermalRelaxationError(KrausChannel):
         eT2 = jnp.exp(-tg / t2)
 
         if t2 <= t1:
-            # --- Case T_2 ≤ T_1: six Kraus operators ---
+            # --- Case T_2 <= T_1: six Kraus operators ---
             pz = (1.0 - p_reset) * (1.0 - eT2 / eT1) / 2.0
             pr0 = (1.0 - pe) * p_reset
             pr1 = pe * p_reset
@@ -1460,7 +1461,7 @@ def _embed_matrix(
     # Build the full-space matrix by tensoring with identities
     # Strategy: tensor I on missing wires, then permute
     missing = [w for w in all_wires if w not in op_wires]
-    # Full matrix = mat ⊗ I_{missing}
+    # Full matrix = mat \\otimes I_{missing}
     full_mat = mat
     for _ in missing:
         full_mat = jnp.kron(full_mat, jnp.eye(2, dtype=_cdtype()))
