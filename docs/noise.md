@@ -15,7 +15,7 @@ noise_params = {
 Providing this optional input will apply the corresponding noise to the model where the Bit Flip, Phase Flip, Depolarizing and Two-Qubit Depolarizing Channels are applied after each gate and the Amplitude and Phase Damping are applied at the end of the circuit.
 For more information on the available noise types, have a look [here](usage.md#noise).
 
-To demonstrate this, let's recall the custom ansatz `MyHardwareEfficient` defined in [Custom Ansatz](ansaetze.md#custom-ansatz) and extend the model's usage:
+To demonstrate this, let's recall the custom ansatz `MyHardwareEfficient` defined in [Custom Ansatz](ansaetze.md#custom_ansatz) and extend the model's usage:
 
 ```python
 model(
