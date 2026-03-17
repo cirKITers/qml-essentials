@@ -96,7 +96,6 @@ class TestCostFnRegistry:
         """Getting a known cost function returns correct metadata."""
         meta = CostFnRegistry.get("fidelity")
         assert meta["fn"] is fidelity_cost_fn
-        assert meta["n_weights"] == 2
         assert meta["default_weight"] == (0.5, 0.5)
         assert "pulse_script" in meta["ckwargs_keys"]
 
@@ -243,7 +242,6 @@ class TestSpectralDensityCostFn:
         assert "spectral_density" in CostFnRegistry.available()
         meta = CostFnRegistry.get("spectral_density")
         assert meta["fn"] is sepctral_density_cost_fn
-        assert meta["n_weights"] == 1
         assert "envelope" in meta["ckwargs_keys"]
 
 

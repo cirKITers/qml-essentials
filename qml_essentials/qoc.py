@@ -60,8 +60,8 @@ def fidelity_cost_fn(
     n_samples: int,
 ) -> Tuple[float, float]:
     """
-    Cost function returning (1 − fidelity) and |phase_difference| averaged
-    over *n_samples* uniformly spaced rotation angles in [0, 2π].
+    Cost function returning (1 - fidelity) and |phase_difference| averaged
+    over *n_samples* uniformly spaced rotation angles in [0, 2\\pi].
 
     Uses batched (vmapped) circuit execution: all *n_samples* rotation
     angles are evaluated in a single vectorised call per script, replacing
@@ -229,25 +229,21 @@ class CostFnRegistry:
     _REGISTRY: Dict[str, dict] = {
         "fidelity": {
             "fn": fidelity_cost_fn,
-            "n_weights": 2,
             "default_weight": (0.5, 0.5),
             "ckwargs_keys": ["pulse_script", "target_script", "n_samples"],
         },
         "pulse_width": {
             "fn": pulse_width_cost_fn,
-            "n_weights": 1,
             "default_weight": 1.0,
             "ckwargs_keys": ["envelope"],
         },
         "evolution_time": {
             "fn": evolution_time_cost_fn,
-            "n_weights": 1,
             "default_weight": 1.0,
             "ckwargs_keys": ["t_target"],
         },
         "spectral_density": {
             "fn": sepctral_density_cost_fn,
-            "n_weights": 1,
             "default_weight": 1.0,
             "ckwargs_keys": ["envelope"],
         },
@@ -266,7 +262,7 @@ class CostFnRegistry:
             name: Registered cost function name.
 
         Returns:
-            Metadata dict with keys ``fn``, ``n_weights``,
+            Metadata dict with keys ``fn``,
             ``default_weight``, ``ckwargs_keys``.
 
         Raises:
@@ -297,7 +293,7 @@ class CostFnRegistry:
 
         Raises:
             ValueError: If the name is unknown or the number of weight
-                components does not match ``n_weights``.
+                components does not match the ones in ``default_weight``.
         """
         if isinstance(spec, tuple):
             return spec
@@ -313,10 +309,10 @@ class CostFnRegistry:
             weight = cls.get(name)["default_weight"]
 
         # Validate weight count
-        meta = cls.get(name)
-        expected = meta["n_weights"]
-        # TODO: maybe we can get rid of n_weights entirely; it's just for validation
         got = len(weight) if isinstance(weight, tuple) else 1
+        default_weight = cls.get(name)["default_weight"]
+        expected = len(default_weight) if isinstance(default_weight, tuple) else 1
+
         if got != expected:
             raise ValueError(
                 f"Cost function '{name}' expects {expected} weight(s), " f"got {got}."
@@ -806,7 +802,7 @@ if __name__ == "__main__":
         "--n_samples",
         type=int,
         default=default_qoc_params["n_samples"],
-        help="Number of parameter samples in [0, 2π] for cost evaluation.",
+        help="Number of parameter samples in [0, 2\\pi] for cost evaluation.",
     )
     parser.add_argument(
         "--learning_rate",

@@ -707,7 +707,7 @@ def _make_controlled_gate(target_class: type, name: str) -> type:
         __doc__ = (
             f"Controlled-{target_class.__name__[5:]} gate.\n\n"
             f"Applies {target_class.__name__} on the target qubit conditioned "
-            f"on the control qubit being in state |1⟩."
+            f"on the control qubit being in state |1\\rangle."
         )
         _matrix = jnp.kron(_P0, Id._matrix) + jnp.kron(_P1, target_mat)
         _num_wires = 2
@@ -763,7 +763,7 @@ class CCX(Operation):
 class CSWAP(Operation):
     """Controlled-SWAP (Fredkin) gate.
 
-    Swaps the two target qubits conditioned on the control qubit being |1⟩.
+    Swaps the two target qubits conditioned on the control qubit being |1\\rangle.
 
     Args on construction:
         wires: ``[control, target0, target1]``.
@@ -813,7 +813,7 @@ def _make_controlled_rotation_gate(pauli_class: type, name: str) -> type:
         __doc__ = (
             f"Controlled rotation around the {name[2]} axis.\n\n"
             f"Applies R{name[2]}(\\theta) on the target qubit conditioned on the "
-            f"control qubit being in state |1⟩.\n\n"
+            f"control qubit being in state |1\\rangle.\n\n"
             f".. math::\n"
             f"{name}(\\theta) = |0\\rangle\\langle 0| \\otimes I\n"
             f"                  + |1\\rangle\\langle 1| \\otimes R{name[2]}(\\theta)"
@@ -841,7 +841,8 @@ CRZ = _make_controlled_rotation_gate(PauliZ, "CRZ")
 
 
 class Rot(Operation):
-    """General single-qubit rotation: Rot(φ, \\theta, ω) = RZ(ω) RY(\\theta) RZ(φ).
+    """General single-qubit rotation:
+    Rot(\\phi, \\theta, \\omega) = RZ(\\omega) RY(\\theta) RZ(\\phi).
 
     This is the most general SU(2) rotation (up to a global phase).  It
     decomposes into three successive rotations and has three free parameters.
@@ -869,7 +870,7 @@ class Rot(Operation):
         self.phi = phi
         self.theta = theta
         self.omega = omega
-        # Rot(φ, \theta, ω) = RZ(ω) @ RY(\theta) @ RZ(φ)  # noqa: W605
+        # Rot(\\phi, \theta, \\omega) = RZ(\\omega) @ RY(\theta) @ RZ(\\phi)  # noqa: W605
         rz_phi = jnp.cos(phi / 2) * Id._matrix - 1j * jnp.sin(phi / 2) * PauliZ._matrix
         ry_theta = (
             jnp.cos(theta / 2) * Id._matrix - 1j * jnp.sin(theta / 2) * PauliY._matrix
@@ -949,7 +950,7 @@ class PauliRot(Operation):
 class KrausChannel(Operation):
     """Base class for noise channels defined by a set of Kraus operators.
 
-    A Kraus channel Φ(\\rho ) = \\sigma_k K_k \\rho  K_k\\dagger
+    A Kraus channel \\phi(\\rho ) = \\sigma_k K_k \\rho  K_k\\dagger
     is the most general physical
     operation on a quantum state.  For a pure unitary gate there is a single
     operator K_0 = U satisfying K_0\\daggerK_0 = I; for noisy channels there are
@@ -1008,7 +1009,8 @@ class KrausChannel(Operation):
         )
 
     def apply_to_density(self, rho: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
-        """Apply Φ(\\rho ) = \\sigma_k K_k \\rho  K_k\\dagger using tensor-contraction.
+        """Apply
+        \\phi(\\rho ) = \\sigma_k K_k \\rho  K_k\\dagger using tensor-contraction.
 
         Uses the shared :func:`_contract_and_restore` helper, summing the
         result over all Kraus operators.
@@ -1042,7 +1044,7 @@ class BitFlip(KrausChannel):
     .. math::
         K_0 = \sqrt{1-p}\,I, \quad K_1 = \sqrt{p}\,X
 
-    where *p* ∈ [0, 1] is the probability of a bit flip.
+    where *p* \\in [0, 1] is the probability of a bit flip.
     """
 
     _num_wires = 1
@@ -1081,7 +1083,7 @@ class PhaseFlip(KrausChannel):
     .. math::
         K_0 = \sqrt{1-p}\,I, \quad K_1 = \sqrt{p}\,Z
 
-    where *p* ∈ [0, 1] is the probability of a phase flip.
+    where *p* \\in [0, 1] is the probability of a phase flip.
     """
 
     _num_wires = 1
@@ -1121,7 +1123,7 @@ class DepolarizingChannel(KrausChannel):
         K_0 = \sqrt{1-p}\,I,\quad K_1 = \sqrt{p/3}\,X,\quad
         K_2 = \sqrt{p/3}\,Y,\quad K_3 = \sqrt{p/3}\,Z
 
-    where *p* ∈ [0, 1].  At p = 3/4 the channel is fully depolarizing.
+    where *p* \\in [0, 1].  At p = 3/4 the channel is fully depolarizing.
     """
 
     _num_wires = 1
@@ -1163,7 +1165,8 @@ class AmplitudeDamping(KrausChannel):
         K_0 = \begin{pmatrix}1 & 0\\ 0 & \sqrt{1-\gamma}\end{pmatrix},\quad
         K_1 = \begin{pmatrix}0 & \sqrt{\gamma}\\ 0 & 0\end{pmatrix}
 
-    where *γ* ∈ [0, 1] is the probability of energy loss (|1⟩ -> |0⟩).
+    where *\\gamma* \\in [0, 1] is the probability of
+    energy loss (|1\\rangle -> |0\\rangle).
     """
 
     _num_wires = 1
@@ -1203,7 +1206,7 @@ class PhaseDamping(KrausChannel):
         K_0 = \begin{pmatrix}1 & 0\\ 0 & \sqrt{1-\gamma}\end{pmatrix},\quad
         K_1 = \begin{pmatrix}0 & 0\\ 0 & \sqrt{\gamma}\end{pmatrix}
 
-    where *γ* ∈ [0, 1] is the phase damping probability.
+    where *\\gamma* \\in [0, 1] is the phase damping probability.
     """
 
     _num_wires = 1
@@ -1239,21 +1242,21 @@ class PhaseDamping(KrausChannel):
 class ThermalRelaxationError(KrausChannel):
     r"""Single-qubit thermal relaxation error channel.
 
-    Models simultaneous T₁ energy relaxation and T₂ dephasing.  Two regimes
+    Models simultaneous T_1 energy relaxation and T_2 dephasing.  Two regimes
     are handled:
 
-    T₂ ≤ T₁ (Markovian dephasing + reset):
+    T_2 ≤ T_1 (Markovian dephasing + reset):
         Six Kraus operators built from p_z (phase-flip probability), p_r0
-        (reset-to-|0⟩ probability) and p_r1 (reset-to-|1⟩ probability).
+        (reset-to-|0\\rangle probability) and p_r1 (reset-to-|1\\rangle probability).
 
-    T₂ > T₁ (non-Markovian; Choi matrix decomposition):
+    T_2 > T_1 (non-Markovian; Choi matrix decomposition):
         The Choi matrix is assembled from the relaxation/dephasing rates, then
         diagonalised; Kraus operators are K_i = \sqrt λ_i · mat(v_i).
 
     Attributes:
-        pe: Excited-state population (thermal population of |1⟩).
-        t1: T₁ longitudinal relaxation time.
-        t2: T₂ transverse dephasing time.
+        pe: Excited-state population (thermal population of |1\\rangle).
+        t1: T_1 longitudinal relaxation time.
+        t2: T_2 transverse dephasing time.
         tg: Gate duration.
     """
 
@@ -1271,9 +1274,9 @@ class ThermalRelaxationError(KrausChannel):
         """Initialise a thermal relaxation error channel.
 
         Args:
-            pe: Excited-state population (thermal population of |1⟩), in [0, 1].
-            t1: T₁ longitudinal relaxation time, must be > 0.
-            t2: T₂ transverse dephasing time, must be > 0 and ≤ 2·T₁.
+            pe: Excited-state population (thermal population of |1\\rangle), in [0, 1].
+            t1: T_1 longitudinal relaxation time, must be > 0.
+            t2: T_2 transverse dephasing time, must be > 0 and ≤ 2·T_1.
             tg: Gate duration, must be ≥ 0.
             wires: Qubit index or list of qubit indices this channel acts on.
 
@@ -1301,9 +1304,9 @@ class ThermalRelaxationError(KrausChannel):
 
         The number of operators depends on the regime:
 
-        * T₂ ≤ T₁: six operators (identity, phase-flip, two reset-to-|0⟩,
-          two reset-to-|1⟩).
-        * T₂ > T₁: four operators derived from the Choi matrix eigendecomposition.
+        * T_2 ≤ T_1: six operators (identity, phase-flip, two reset-to-|0\\rangle,
+          two reset-to-|1\\rangle).
+        * T_2 > T_1: four operators derived from the Choi matrix eigendecomposition.
 
         Returns:
             List of 2x2 JAX arrays representing the Kraus operators.
@@ -1315,7 +1318,7 @@ class ThermalRelaxationError(KrausChannel):
         eT2 = jnp.exp(-tg / t2)
 
         if t2 <= t1:
-            # --- Case T₂ ≤ T₁: six Kraus operators ---
+            # --- Case T_2 ≤ T_1: six Kraus operators ---
             pz = (1.0 - p_reset) * (1.0 - eT2 / eT1) / 2.0
             pr0 = (1.0 - pe) * p_reset
             pr1 = pe * p_reset
@@ -1330,7 +1333,7 @@ class ThermalRelaxationError(KrausChannel):
             return [K0, K1, K2, K3, K4, K5]
 
         else:
-            # --- Case T₂ > T₁: Choi matrix decomposition ---
+            # --- Case T_2 > T_1: Choi matrix decomposition ---
             # Choi matrix (column-major / reshaping convention matching PennyLane)
             choi = jnp.array(
                 [
@@ -1356,7 +1359,7 @@ class QubitChannel(KrausChannel):
     """Generic Kraus channel from a user-supplied list of Kraus operators.
 
     This replaces PennyLane's ``qml.QubitChannel`` and accepts an arbitrary set
-    of Kraus matrices satisfying \\sigma_k K_k\\daggerK_k = I.
+    of Kraus matrices satisfying \\sigma_k K_k\\dagger K_k = I.
 
     Example::
 
