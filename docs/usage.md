@@ -246,7 +246,7 @@ See our documentation on [Quantum Optimal Control (QOC)](ansaetze.md#quantum_opt
 
 For more details:
 
-- See [*Ansaetze*](ansaetze.md#pulse_simulation) for a deeper explanation of our pulse-level gates and ansaetze, as well as details on Quantum Optimal Control (QOC), which enables optimizing pulses directly for target unitaries.  
+- See [*Ansaetze*](pulse_simulation.md) for a deeper explanation of our pulse-level gates and ansaetze, as well as details on Quantum Optimal Control (QOC), which enables optimizing pulses directly for target unitaries.  
 - See [*Training*](training.md#pulse_level) for how to train pulse parameters jointly with rotation angles.  
 
 
@@ -259,7 +259,6 @@ Internally, these combinations will be flattened during processing and then resh
 Here, `O` is the general output shape depending on the execution type.
 This shape is also available as a property of the model: `model.batch_shape`.
 Note, that the output shape is always squeezed, i.e. batch axes will be suppressed if their dimension is 1.
-See more on that topic in [*Ansaetze*](ansaetze.md#pulse_simulation).
 
 In addition to letting the model handle repeating the batch axes, it is also possible to disable this functionality by setting `repeat_batch_axis` upon model initialization.
 This parameter is an array of boolean values determining of the corresponding axis in the `batch_shape` (#Inputs, #Params, #PulseParams) should be repeated.
