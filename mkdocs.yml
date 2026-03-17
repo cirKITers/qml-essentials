@@ -9,6 +9,8 @@ nav:
   - expressibility.md
   - training.md
   - yaqsi.md
+  - pulse_simulation.md
+  - noise.md
   - references.md
 theme:
   name: material
