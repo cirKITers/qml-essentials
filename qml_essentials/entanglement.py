@@ -1,10 +1,11 @@
-from typing import Optional, Any, List, Tuple
-import pennylane as qml
+from typing import Optional, Any, Tuple
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from qml_essentials.utils import logm_v
+from qml_essentials import yaqsi as ys
+from qml_essentials import operations as op
+from qml_essentials.math import logm_v
 from qml_essentials.model import Model
 import logging
 
@@ -38,8 +39,8 @@ class Entanglement:
         """
         if "noise_params" in kwargs:
             log.warning(
-                "Meyer-Wallach measure not suitable for noisy circuits.\
-                    Consider 'relative_entropy' instead."
+                "Meyer-Wallach measure not suitable for noisy circuits. "
+                "Consider 'concentratable entanglement' instead."
             )
 
         if scale:
@@ -60,18 +61,14 @@ class Entanglement:
             -1, 2**model.n_qubits, 2**model.n_qubits
         )
 
-        ent = Entanglement._compute_meyer_wallach_meas(
-            rhos, model.n_qubits, model.use_multithreading
-        )
+        ent = Entanglement._compute_meyer_wallach_meas(rhos, model.n_qubits)
 
         log.debug(f"Variance of measure: {ent.var()}")
 
         return ent.mean()
 
     @staticmethod
-    def _compute_meyer_wallach_meas(
-        rhos: jnp.ndarray, n_qubits: int, use_multithreading: bool = False
-    ) -> jnp.ndarray:
+    def _compute_meyer_wallach_meas(rhos: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
         """
         Computes the Meyer-Wallach entangling capability measure for a given
         set of density matrices.
@@ -81,9 +78,8 @@ class Entanglement:
                 The shape is (B_s, 2^n, 2^n), where B_s is the number of samples
                 (batch) and n the number of qubits
             n_qubits (int): The number of qubits
-            use_multithreading (bool): Whether to use JAX vectorisation.
 
-        Returns:
+                    Returns:
             jnp.ndarray: Entangling capability for each sample, array with
                 shape (B_s,)
         """
@@ -93,7 +89,9 @@ class Entanglement:
             entropy = 0
             for j in range(n_qubits):
                 # Formula 6 in https://doi.org/10.48550/arXiv.quant-ph/0305094
-                density = qml.math.partial_trace(rhos, qb[:j] + qb[j + 1 :])
+                # Trace out qubit j, keep all others
+                keep = qb[:j] + qb[j + 1 :]
+                density = ys.partial_trace(rhos, n_qubits, keep)
                 # only real values, because imaginary part will be separate
                 # in all following calculations anyway
                 # entropy should be 1/2 <= entropy <= 1
@@ -102,10 +100,7 @@ class Entanglement:
             # inverse averaged entropy and scale to [0, 1]
             return 2 * (1 - entropy / n_qubits)
 
-        if use_multithreading:
-            return jax.vmap(_f)(rhos)
-        else:
-            return _f(rhos)
+        return jax.vmap(_f)(rhos)
 
     @staticmethod
     def bell_measurements(
@@ -113,6 +108,10 @@ class Entanglement:
     ) -> float:
         """
         Compute the Bell measurement for a given model.
+
+        Constructs a ``2 * n_qubits`` circuit that prepares two copies of
+        the model state (on disjoint qubit registers), applies CNOTs and
+        Hadamards, and measures probabilities on the first register.
 
         Args:
             model (Model): The quantum circuit model.
@@ -127,52 +126,52 @@ class Entanglement:
         """
         if "noise_params" in kwargs:
             log.warning(
-                "Bell Measurements not suitable for noisy circuits.\
-                    Consider 'relative_entropy' instead."
+                "Bell Measurements not suitable for noisy circuits. "
+                "Consider 'concentratable entanglement' instead."
             )
 
         if scale:
             n_samples = jnp.power(2, model.n_qubits) * n_samples
 
-        def _circuit(
-            params: jnp.ndarray, inputs: jnp.ndarray, **kwargs
-        ) -> List[jnp.ndarray]:
-            """
-            Compute the Bell measurement circuit.
+        n = model.n_qubits
 
-            Args:
-                params (jnp.ndarray): The model parameters.
-                inputs (jnp.ndarray): The input to the model.
-                pulse_params (jnp.ndarray): The model pulse parameters.
-                enc_params (Optional[jnp.ndarray]): The frequency encoding parameters.
+        def _bell_circuit(params, inputs, pulse_params=None, random_key=None, **kw):
+            """Bell measurement circuit on 2*n qubits."""
+            # First copy on wires 0..n-1
+            model._variational(
+                params, inputs, pulse_params=pulse_params, random_key=random_key, **kw
+            )
 
-            Returns:
-                List[jnp.ndarray]: The probabilities of the Bell measurement.
-            """
-            model._variational(params, inputs, **kwargs)
+            # TODO: this is very user-unfriendly and we should find a better way
 
-            qml.map_wires(
-                model._variational,
-                {i: i + model.n_qubits for i in range(model.n_qubits)},
-            )(params, inputs)
+            # Second copy on wires n..2n-1: record the tape then shift wires
+            from qml_essentials.tape import recording as _recording
 
-            for q in range(model.n_qubits):
-                qml.CNOT(wires=[q, q + model.n_qubits])
-                qml.H(q)
+            with _recording() as shifted_tape:
+                model._variational(
+                    params,
+                    inputs,
+                    pulse_params=pulse_params,
+                    random_key=random_key,
+                    **kw,
+                )
+            for o in shifted_tape:
+                shifted_op = o.__class__.__new__(o.__class__)
+                shifted_op.__dict__.update(o.__dict__)
+                shifted_op._wires = [w + n for w in o.wires]
+                # Re-register on the active tape
+                from qml_essentials.tape import active_tape as _active_tape
 
-            # look at the auxiliary qubits
-            return model._observable()
+                tape = _active_tape()
+                if tape is not None:
+                    tape.append(shifted_op)
 
-        prev_output_qubit = model.output_qubit
-        model.output_qubit = [(q, q + model.n_qubits) for q in range(model.n_qubits)]
-        model.circuit = qml.QNode(
-            _circuit,
-            qml.device(
-                "default.qubit",
-                shots=model.shots,
-                wires=model.n_qubits * 2,
-            ),
-        )
+            # Bell measurement: CNOT + H
+            for q in range(n):
+                op.CX(wires=[q, q + n])
+                op.H(wires=q)
+
+        bell_script = ys.Script(f=_bell_circuit, n_qubits=2 * n)
 
         random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:
@@ -184,30 +183,51 @@ class Entanglement:
                 log.warning("Seed is ignored when samples is 0")
 
             if len(model.params.shape) <= 2:
-                params = model.params.reshape(*model.params.shape, 1)
+                params = model.params.reshape(1, *model.params.shape)
             else:
-                log.info(f"Using sample size of model params: {model.params.shape[-1]}")
+                log.info(f"Using sample size of model params: {model.params.shape[0]}")
                 params = model.params
 
-        n_samples = params.shape[-1]
-        measure = jnp.zeros(n_samples)
+        n_samples = params.shape[0]
+        inputs = model._inputs_validation(kwargs.get("inputs", None))
 
-        # implicitly set input to none in case it's not needed
-        kwargs.setdefault("inputs", None)
-        exp = model(params=params, execution_type="probs", **kwargs)
-        exp = 1 - 2 * exp[..., -1]
+        # Execute: vmap over batch dimension of params (axis 0)
+        if n_samples > 1:
+            from qml_essentials.utils import safe_random_split
+
+            random_keys = safe_random_split(random_key, num=n_samples)
+            result = bell_script.execute(
+                type="probs",
+                args=(params, inputs, model.pulse_params, random_keys),
+                kwargs=kwargs,
+                in_axes=(0, None, None, 0),
+            )
+        else:
+            result = bell_script.execute(
+                type="probs",
+                args=(params, inputs, model.pulse_params, random_key),
+                kwargs=kwargs,
+            )
+
+        # Marginalize: for each qubit q, keep wires [q, q+n] from the 2n-qubit probs
+        # The last probability in each pair gives P(|11⟩) for that qubit pair
+        per_qubit = []
+        for q in range(n):
+            marg = ys.marginalize_probs(result, 2 * n, [q, q + n])
+            per_qubit.append(marg)
+        # per_qubit[q] has shape (n_samples, 4) or (4,)
+        exp = jnp.stack(per_qubit, axis=-2)  # (..., n, 4)
+        exp = 1 - 2 * exp[..., -1]  # (..., n)
 
         if not jnp.isclose(jnp.sum(exp.imag), 0, atol=1e-6):
             log.warning("Imaginary part of probabilities detected")
             exp = jnp.abs(exp)
 
         measure = 2 * (1 - exp.mean(axis=0))
-        entangling_capability = min(max(measure.mean(), 0.0), 1.0)
+        entangling_capability = min(max(float(measure.mean()), 0.0), 1.0)
         log.debug(f"Variance of measure: {measure.var()}")
 
-        # restore state
-        model.output_qubit = prev_output_qubit
-        return float(entangling_capability)
+        return entangling_capability
 
     @staticmethod
     def relative_entropy(
@@ -268,26 +288,24 @@ class Entanglement:
                 log.warning("Seed is ignored when samples is 0")
 
             if len(model.params.shape) <= 2:
-                model.params = model.params.reshape(*model.params.shape, 1)
+                model.params = model.params.reshape(1, *model.params.shape)
             else:
-                log.info(f"Using sample size of model params: {model.params.shape[-1]}")
+                log.info(f"Using sample size of model params: {model.params.shape[0]}")
 
         rhos, log_rhos = Entanglement._compute_log_density(model, **kwargs)
 
-        rel_entropies = jnp.zeros((n_sigmas, model.params.shape[-1]))
+        rel_entropies = jnp.zeros((n_sigmas, model.params.shape[0]))
 
         for i, log_sigma in enumerate(log_sigmas):
             rel_entropies = rel_entropies.at[i].set(
-                Entanglement._compute_rel_entropies(
-                    rhos, log_rhos, log_sigma, model.use_multithreading
-                )
+                Entanglement._compute_rel_entropies(rhos, log_rhos, log_sigma)
             )
 
         # Entropy of GHZ states should be maximal
         ghz_model = Model(model.n_qubits, 1, "GHZ", data_reupload=False)
         rho_ghz, log_rho_ghz = Entanglement._compute_log_density(ghz_model, **kwargs)
         ghz_entropies = Entanglement._compute_rel_entropies(
-            rho_ghz, log_rho_ghz, log_sigmas, use_multithreading=False
+            rho_ghz, log_rho_ghz, log_sigmas
         )
 
         normalised_entropies = rel_entropies / ghz_entropies
@@ -324,7 +342,6 @@ class Entanglement:
         rhos: jnp.ndarray,
         log_rhos: jnp.ndarray,
         log_sigmas: jnp.ndarray,
-        use_multithreading: bool,
     ) -> jnp.ndarray:
         """
         Compute the relative entropy for a given model.
@@ -346,22 +363,19 @@ class Entanglement:
             n_sigmas = log_sigmas.shape[0]
             rhos = jnp.tile(rhos, (n_sigmas, 1, 1))
             log_rhos = jnp.tile(log_rhos, (n_sigmas, 1, 1))
-            einsum_subscript = "ij,jk->ik" if use_multithreading else "sij,sjk->sik"
+            einsum_subscript = "ij,jk->ik"
         else:
             n_sigmas = 1
             log_sigmas = log_sigmas[jnp.newaxis, ...].repeat(n_rhos, axis=0)
 
-        einsum_subscript = "ij,jk->ik" if use_multithreading else "sij,sjk->sik"
+        einsum_subscript = "ij,jk->ik"
 
         def _f(rhos, log_rhos, log_sigmas):
             prod = jnp.einsum(einsum_subscript, rhos, log_rhos - log_sigmas)
             rel_entropies = jnp.abs(jnp.trace(prod, axis1=-2, axis2=-1))
             return rel_entropies
 
-        if use_multithreading:
-            rel_entropies = jax.vmap(_f, in_axes=(0, 0, 0))(rhos, log_rhos, log_sigmas)
-        else:
-            rel_entropies = _f(rhos, log_rhos, log_sigmas)
+        rel_entropies = jax.vmap(_f, in_axes=(0, 0, 0))(rhos, log_rhos, log_sigmas)
 
         if n_sigmas > 1:
             rel_entropies = rel_entropies.reshape(n_sigmas, n_rhos)
@@ -419,16 +433,16 @@ class Entanglement:
                 log.warning("Seed is ignored when samples is 0")
 
             if len(model.params.shape) <= 2:
-                model.params = model.params.reshape(*model.params.shape, 1)
+                model.params = model.params.reshape(1, *model.params.shape)
             else:
-                log.info(f"Using sample size of model params: {model.params.shape[-1]}")
+                log.info(f"Using sample size of model params: {model.params.shape[0]}")
 
         # implicitly set input to none in case it's not needed
         kwargs.setdefault("inputs", None)
         rhos = model(execution_type="density", **kwargs)
         rhos = rhos.reshape(-1, 2**model.n_qubits, 2**model.n_qubits)
         ent = Entanglement._compute_entanglement_of_formation(
-            rhos, model.n_qubits, always_decompose, model.use_multithreading
+            rhos, model.n_qubits, always_decompose
         )
         return ent.mean()
 
@@ -437,7 +451,6 @@ class Entanglement:
         rhos: jnp.ndarray,
         n_qubits: int,
         always_decompose: bool,
-        use_multithreading: bool,
     ) -> jnp.ndarray:
         """
         Computes the entanglement of formation for a given batch of density
@@ -450,20 +463,17 @@ class Entanglement:
             always_decompose (bool): Whether to explicitly compute the
                 entantlement of formation for the eigendecomposition of a pure
                 state.
-            use_multithreading (bool): Whether to use JAX vectorisation.
 
         Returns:
             jnp.ndarray: Entanglement for the provided density matrices.
         """
         eigenvalues, eigenvectors = jnp.linalg.eigh(rhos)
         if not always_decompose and jnp.isclose(eigenvalues, 1.0).any(axis=-1).all():
-            return Entanglement._compute_meyer_wallach_meas(
-                rhos, n_qubits, use_multithreading
-            )
+            return Entanglement._compute_meyer_wallach_meas(rhos, n_qubits)
 
         rhos = np.einsum("sij,sik->sijk", eigenvectors, eigenvectors.conjugate())
         measures = Entanglement._compute_meyer_wallach_meas(
-            rhos.reshape(-1, 2**n_qubits, 2**n_qubits), n_qubits, use_multithreading
+            rhos.reshape(-1, 2**n_qubits, 2**n_qubits), n_qubits
         )
         ent = np.einsum("si,si->s", measures.reshape(-1, 2**n_qubits), eigenvalues)
         return ent
@@ -476,7 +486,8 @@ class Entanglement:
         Computes the concentratable entanglement of a given model.
 
         This method utilizes the Concentratable Entanglement measure from
-        https://arxiv.org/abs/2104.06923.
+        https://arxiv.org/abs/2104.06923.  The swap test is implemented
+        directly in yaqsi using a ``3 * n_qubits`` circuit.
 
         Args:
             model (Model): The quantum circuit model.
@@ -496,47 +507,58 @@ class Entanglement:
         if scale:
             n_samples = N * n_samples
 
-        dev = qml.device(
-            "default.mixed",
-            shots=model.shots,
-            wires=n * 3,
-        )
+        def _shift_and_append(tape_ops, offset):
+            """Re-register *tape_ops* on the active tape with wires shifted."""
+            from qml_essentials.tape import active_tape as _active_tape
 
-        @qml.qnode(device=dev)
-        def _swap_test(
-            params: jnp.ndarray, inputs: jnp.ndarray, **kwargs
-        ) -> jnp.ndarray:
-            """
-            Constructs a circuit to compute the concentratable entanglement using the
-            swap test by creating two copies of a state given by a density matrix rho
-            and mapping the output wires accordingly.
+            current = _active_tape()
+            if current is None:
+                return
+            for o in tape_ops:
+                shifted = o.__class__.__new__(o.__class__)
+                shifted.__dict__.update(o.__dict__)
+                shifted._wires = [w + offset for w in o.wires]
+                current.append(shifted)
 
-            Args:
-                rho (jnp.ndarray): the density matrix of the state on which the swap
-                    test is performed.
+        def _swap_test_circuit(
+            params, inputs, pulse_params=None, random_key=None, **kw
+        ):
+            """Swap-test circuit on 3*n qubits."""
+            from qml_essentials.tape import recording as _recording
 
-            Returns:
-                List[jnp.ndarray]: Probabilities obtained from the swap test circuit.
-            """
+            # First copy on wires n..2n-1
+            with _recording() as copy1_tape:
+                model._variational(
+                    params,
+                    inputs,
+                    pulse_params=pulse_params,
+                    random_key=random_key,
+                    **kw,
+                )
+            _shift_and_append(copy1_tape, n)
 
-            qml.map_wires(model._variational, wire_map={o: o + n for o in range(n)})(
-                params, inputs, **kwargs
-            )
-            qml.map_wires(
-                model._variational, wire_map={o: o + 2 * n for o in range(n)}
-            )(params, inputs, **kwargs)
+            # Second copy on wires 2n..3n-1
+            with _recording() as copy2_tape:
+                model._variational(
+                    params,
+                    inputs,
+                    pulse_params=pulse_params,
+                    random_key=random_key,
+                    **kw,
+                )
+            _shift_and_append(copy2_tape, 2 * n)
 
-            # Perform swap test
+            # Swap test: H on ancilla register (wires 0..n-1)
             for i in range(n):
-                qml.H(i)
+                op.H(wires=i)
 
             for i in range(n):
-                qml.CSWAP([i, i + n, i + 2 * n])
+                op.CSWAP(wires=[i, i + n, i + 2 * n])
 
             for i in range(n):
-                qml.H(i)
+                op.H(wires=i)
 
-            return qml.probs(wires=[i for i in range(n)])
+        swap_script = ys.Script(f=_swap_test_circuit, n_qubits=3 * n)
 
         random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:
@@ -547,24 +569,41 @@ class Entanglement:
                 log.warning("Seed is ignored when samples is 0")
 
             if len(model.params.shape) <= 2:
-                model.params = model.params.reshape(*model.params.shape, 1)
+                model.params = model.params.reshape(1, *model.params.shape)
             else:
-                log.info(f"Using sample size of model params: {model.params.shape[-1]}")
+                log.info(f"Using sample size of model params: {model.params.shape[0]}")
 
-        def _f(params):
-            probs = _swap_test(params, model._inputs_validation(None), **kwargs)
-            ent = 1 - probs[..., 0]
-            return ent
+        params = model.params
+        inputs = model._inputs_validation(kwargs.get("inputs", None))
+        n_batch = params.shape[0]
 
-        if model.use_multithreading:
-            ent = jax.vmap(_f, in_axes=2)(model.params)
+        marg_probs = jax.jit(ys.marginalize_probs, static_argnums=(1, 2))
+
+        if n_batch > 1:
+            from qml_essentials.utils import safe_random_split
+
+            random_keys = safe_random_split(random_key, num=n_batch)
+            probs = swap_script.execute(
+                type="probs",
+                args=(params, inputs, model.pulse_params, random_keys),
+                in_axes=(0, None, None, 0),
+                kwargs=kwargs,
+            )
         else:
-            ent = _f(model.params)
+            probs = swap_script.execute(
+                type="probs",
+                args=(params, inputs, model.pulse_params, random_key),
+                kwargs=kwargs,
+            )
 
-        # Catch floating point errors
+        # Marginalize to the ancilla register (wires 0..n-1)
+        probs = marg_probs(probs, 3 * n, tuple(range(n)))
+
+        ent = 1 - probs[..., 0]
+
         log.debug(f"Variance of measure: {ent.var()}")
 
-        return ent.mean()
+        return float(ent.mean())
 
 
 def sample_random_separable_states(

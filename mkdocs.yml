@@ -8,6 +8,9 @@ nav:
   - entanglement.md
   - expressibility.md
   - training.md
+  - yaqsi.md
+  - pulses.md
+  - noise.md
   - references.md
 theme:
   name: material
