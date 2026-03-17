@@ -13,25 +13,21 @@ class Expressibility:
     @staticmethod
     def _sample_state_fidelities(
         model: Model,
-        x_samples: jnp.ndarray,
         n_samples: int,
         seed: int,
         kwargs: Any,
     ) -> jnp.ndarray:
         """
-        Compute the fidelities for each pair of input samples and parameter sets.
+        Compute the fidelities for each parameter set.
 
         Args:
             model (Callable): Function that models the quantum circuit.
-            x_samples (jnp.ndarray): Array of shape (n_input_samples, n_features)
-                containing the input samples.
             n_samples (int): Number of parameter sets to generate.
             seed (int): Random number generator seed.
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
-            jnp.ndarray: Array of shape (n_input_samples, n_samples)
-            containing the fidelities.
+            jnp.ndarray: Array of shape (n_samples,) containing the fidelities.
         """
         random_key = random.key(seed)
 
@@ -40,39 +36,33 @@ class Expressibility:
         # pair of random state vectors
         model.initialize_params(random_key, repeat=n_samples * 2)
 
-        # Initialize array to store fidelities
-        fidelities: jnp.ndarray = jnp.zeros((len(x_samples), n_samples))
+        # Evaluate the model for all parameters
+        # Execution type is explicitly set to density
+        sv: jnp.ndarray = model(
+            params=model.params,
+            execution_type="density",
+            **kwargs,
+        )
 
-        # Compute the fidelity for each pair of input samples and parameters
-        for idx, x_sample in enumerate(x_samples):
-            # Evaluate the model for the current pair of input samples and parameters
-            # Execution type is explicitly set to density
-            sv: jnp.ndarray = model(
-                inputs=x_sample,
-                params=model.params,
-                execution_type="density",
-                **kwargs,
+        # $\sqrt{\rho}$
+        sqrt_sv1: jnp.ndarray = jnp.array([sqrtm(m) for m in sv[:n_samples]])
+
+        # $\sqrt{\rho} \sigma \sqrt{\rho}$
+        inner_fidelity = sqrt_sv1 @ sv[n_samples:] @ sqrt_sv1
+
+        # Compute the fidelity using the partial trace of the statevector
+        fidelity: jnp.ndarray = (
+            jnp.trace(
+                jnp.array([sqrtm(m) for m in inner_fidelity]),
+                axis1=1,
+                axis2=2,
             )
+            ** 2
+        )
 
-            # $\sqrt{\rho}$
-            sqrt_sv1: jnp.ndarray = jnp.array([sqrtm(m) for m in sv[:n_samples]])
+        fidelity = jnp.abs(fidelity)
 
-            # $\sqrt{\rho} \sigma \sqrt{\rho}$
-            inner_fidelity = sqrt_sv1 @ sv[n_samples:] @ sqrt_sv1
-
-            # Compute the fidelity using the partial trace of the statevector
-            fidelity: jnp.ndarray = (
-                jnp.trace(
-                    jnp.array([sqrtm(m) for m in inner_fidelity]),
-                    axis1=1,
-                    axis2=2,
-                )
-                ** 2
-            )
-
-            fidelities = fidelities.at[idx].set(jnp.abs(fidelity))
-
-        return fidelities
+        return fidelity
 
     @staticmethod
     def state_fidelities(
@@ -80,11 +70,9 @@ class Expressibility:
         n_samples: int,
         n_bins: int,
         model: Model,
-        n_input_samples: int = 0,
-        input_domain: List[float] = None,
         scale: bool = False,
         **kwargs: Any,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Sample the state fidelities and histogram them into a 2D array.
 
@@ -92,46 +80,32 @@ class Expressibility:
             seed (int): Random number generator seed.
             n_samples (int): Number of parameter sets to generate.
             n_bins (int): Number of histogram bins.
-            n_input_samples (int): Number of input samples.
-            input_domain (List[float]): Input domain.
             model (Callable): Function that models the quantum circuit.
             scale (bool): Whether to scale the number of samples and bins.
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
-            Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]: Tuple containing the
-                input samples, bin edges, and histogram values.
+            Tuple[jnp.ndarray, jnp.ndarray]: Tuple containing the bin edges,
+            and histogram values.
         """
         if scale:
             n_samples = jnp.power(2, model.n_qubits) * n_samples
             n_bins = model.n_qubits * n_bins
 
-        if input_domain is None or n_input_samples is None or n_input_samples == 0:
-            x = jnp.zeros((1))
-            n_input_samples = 1
-        else:
-            x = jnp.linspace(*input_domain, n_input_samples)
-
         fidelities = Expressibility._sample_state_fidelities(
-            x_samples=x,
             n_samples=n_samples,
             seed=seed,
             model=model,
             kwargs=kwargs,
         )
-        z: np.ndarray = np.zeros((n_input_samples, n_bins))
 
         y: jnp.ndarray = jnp.linspace(0, 1, n_bins + 1)
 
-        for i, f in enumerate(fidelities):
-            z[i], _ = jnp.histogram(f, bins=y)
+        z, _ = jnp.histogram(fidelities, bins=y)
 
         z = z / n_samples
 
-        if z.shape[0] == 1:
-            z = z.flatten()
-
-        return x, y, z
+        return y, z
 
     @staticmethod
     def _haar_probability(fidelity: float, n_qubits: int) -> float:
@@ -255,3 +229,43 @@ class Expressibility:
             kl_divergence[idx] = jnp.sum(rel_entr(p, haar_dist))
 
         return kl_divergence
+
+    def kl_divergence_to_haar(
+        model: Model,
+        seed: int,
+        n_samples: int,
+        n_bins: int,
+        scale: bool = False,
+        **kwargs: Any,
+    ) -> float:
+        """
+        Shortcut method to compute the KL-Divergence bewteen a model and the
+        Haar distribution. The basic steps are:
+            - Sample the state fidelities for randomly initialised parameters.
+            - Calculates the KL divergence between the sampled probability and
+              the Haar probability distribution.
+
+        Args:
+            model (Model): Function that models the quantum circuit.
+            seed (int): Random number generator seed.
+            n_samples (int): Number of parameter sets to generate.
+            n_bins (int): Number of histogram bins.
+            scale (bool): Whether to scale the number of samples and bins.
+            kwargs (Any): Additional keyword arguments for the model function.
+
+        Returns:
+            Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]: Tuple containing the
+                input samples, bin edges, and histogram values.
+        """
+        _, fidelities = Expressibility.state_fidelities(
+            model=model,
+            seed=seed,
+            n_samples=n_samples,
+            n_bins=n_bins,
+            scale=scale,
+            **kwargs,
+        )
+        _, haar_probs = Expressibility.haar_integral(
+            model.n_qubits, n_bins=n_bins, scale=scale
+        )
+        return Expressibility.kullback_leibler_divergence(fidelities, haar_probs)

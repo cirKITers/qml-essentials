@@ -61,7 +61,6 @@ def main(
                         n_layers=n_layers,
                         circuit_type="Circuit_19",
                         random_seed=seed,
-                        use_multithreading=True,
                     )
 
                     model.initialize_params(random_key_p, repeat=n_samples)

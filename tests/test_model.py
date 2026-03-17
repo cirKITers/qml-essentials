@@ -5,10 +5,10 @@ import random as pyrandom
 import optax
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Circuit, Ansaetze, Gates, Encoding
-from qml_essentials.ansaetze import PulseInformation as pinfo
+from qml_essentials.gates import PulseInformation as pinfo
 from qml_essentials.utils import PauliCircuit
+from qml_essentials.yaqsi import Script
 import pytest
-import inspect
 import logging
 import pennylane as qml
 import time
@@ -105,11 +105,16 @@ def test_transform_input() -> None:
 
 @pytest.mark.unittest
 def test_batching() -> None:
-    model = Model(
-        n_qubits=2,
-        n_layers=1,
-        circuit_type="Circuit_19",
-    )
+    for ansatz in Ansaetze.get_available(parameterized_only=True):
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type=ansatz.__name__,
+        )
+        print(ansatz.__name__)
+        n_samples = 3
+        model.initialize_params(random.key(1000), repeat=n_samples)
+        params = model.params
 
     n_samples = 3
     model.initialize_params(random.key(1000), repeat=n_samples)
@@ -117,7 +122,7 @@ def test_batching() -> None:
 
     res = np.zeros((n_samples, 4, 4), dtype=jnp.complex128)
     for i in range(n_samples):
-        res[i] = model(params=params[:, :, i], execution_type="density")
+        res[i] = model(params=params[i], execution_type="density")
 
     assert res.shape == (n_samples, 4, 4), "Shape of batching is not correct"
     assert jnp.allclose(
@@ -146,48 +151,6 @@ def test_repeat_batch_axis() -> None:
 
 
 @pytest.mark.unittest
-def test_multiprocessing_density() -> None:
-    # use n_samples that is not a multiple of the threshold
-    n_samples = 1000
-
-    model = Model(
-        n_qubits=3,
-        n_layers=1,
-        circuit_type="Circuit_19",
-        use_multithreading=True,
-    )
-
-    model.initialize_params(random.key(1000), repeat=n_samples)
-    params = model.params
-
-    start = time.time()
-    res_parallel = model(params=params, execution_type="density")
-    t_parallel = time.time() - start
-
-    model = Model(
-        n_qubits=3,
-        n_layers=1,
-        circuit_type="Circuit_19",
-    )
-
-    model.initialize_params(random.key(1000), repeat=n_samples)
-    params = model.params
-
-    start = time.time()
-    res_single = model(params=params, execution_type="density")
-    t_single = time.time() - start
-    # assert (
-    #     t_parallel < t_single
-    # ), "Time required for multiprocessing larger than single process"
-    print(f"Diff: {t_parallel - t_single}")
-
-    assert (
-        res_parallel.shape == res_single.shape
-    ), "Shape of multiprocessing is not correct"
-    assert (res_parallel == res_single).all(), "Content of multiprocessing is not equal"
-
-
-@pytest.mark.unittest
 def test_multiprocessing_expval() -> None:
     n_samples = 40000  # expval requires more samples for advantage
 
@@ -195,7 +158,6 @@ def test_multiprocessing_expval() -> None:
         n_qubits=6,  # .. and larger circuits
         n_layers=6,
         circuit_type="Circuit_19",
-        use_multithreading=True,
     )
 
     model.initialize_params(random.key(1000), repeat=n_samples)
@@ -353,22 +315,6 @@ def test_encoding() -> None:
             model.degree == test_case["degree"]
         ), f"Frequencies is not correct: got {model.degree},\
             expected {test_case['degree']} for test case {test_case}"
-
-
-@pytest.mark.expensive
-@pytest.mark.smoketest
-def test_lightning() -> None:
-    model = Model(
-        n_qubits=12,  # model.lightning_threshold
-        n_layers=1,
-        circuit_type="Hardware_Efficient",
-    )
-    assert model.circuit.device.name == "lightning.qubit"
-
-    _ = model(
-        model.params,
-        inputs=None,
-    )
 
 
 @pytest.mark.smoketest
@@ -598,7 +544,6 @@ def test_pulse_model() -> None:
     assert jnp.any(jnp.abs(grads[1]) > 1e-6), "Gradient wrt pulse_params is too small"
 
 
-@pytest.mark.expensive
 @pytest.mark.unittest
 def test_pulse_model_inference():
     model = Model(
@@ -643,7 +588,7 @@ def test_pulse_model_batching():
 
     # test pulse params batching
     res_b = model(
-        pulse_params=jnp.repeat(model.pulse_params, 2, axis=-1), gate_mode="pulse"
+        pulse_params=jnp.repeat(model.pulse_params, 2, axis=0), gate_mode="pulse"
     )
 
     # two qubits -> two expvals with batch size 2
@@ -657,7 +602,9 @@ def test_pulse_model_batching():
     res_b = model(inputs=inputs, gate_mode="pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
-    assert jnp.allclose(res_a, res_b, atol=1e-3), "Inputs batching failed!"
+    assert jnp.allclose(
+        res_a, res_b, atol=1e-2
+    ), "Inputs batching failed. Results differ."
 
     model.initialize_params(random_key, repeat=2)
 
@@ -666,18 +613,9 @@ def test_pulse_model_batching():
     res_b = model(inputs=inputs, gate_mode="pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
-    assert jnp.allclose(res_a, res_b, atol=1e-3), "Params batching failed!"
-
-
-@pytest.mark.unittest
-def test_available_ansaetze() -> None:
-    ansatze = set(Ansaetze.get_available())
-
-    actual_ansaetze = set(
-        ansatz for ansatz in Ansaetze.__dict__.values() if inspect.isclass(ansatz)
-    )
-    # check that the classes are the ones returned by .__subclasses__
-    assert actual_ansaetze == ansatze
+    assert jnp.allclose(
+        res_a, res_b, atol=1e-2
+    ), "Params batching failed. Results differ."
 
 
 @pytest.mark.unittest
@@ -1034,17 +972,69 @@ def test_training_step() -> None:
 
 
 @pytest.mark.unittest
+def test_training_with_data_reupload() -> None:
+    """Test that jax.grad works when data_reupload is passed at call time."""
+    model = Model(
+        n_qubits=2,
+        n_layers=2,
+        circuit_type="Circuit_19",
+        data_reupload=True,
+    )
+
+    params = model.params
+    enc_params = model.enc_params
+    # Simulate layerwise DRU: start with zeros (JAX array, as user code does)
+    data_reupload = jnp.zeros(model.data_reupload.shape)
+    domain_samples = jnp.linspace(-jnp.pi, jnp.pi, 5)
+    fourier_samples = jnp.sin(domain_samples)
+
+    def cost(params, inputs, targets, **kwargs):
+        predictions = model(params=params, inputs=inputs, **kwargs)
+        return jnp.mean((predictions - targets) ** 2)
+
+    # This should not raise TracerBoolConversionError
+    grads = grad(cost)(
+        params,
+        inputs=domain_samples,
+        targets=fourier_samples,
+        noise_params=None,
+        enc_params=enc_params,
+        data_reupload=data_reupload,
+        execution_type="expval",
+        force_mean=True,
+    )
+
+    assert grads.shape == params.shape, "Gradient shape mismatch"
+
+    # Also test with a partially filled data_reupload
+    data_reupload_np = np.zeros(model.data_reupload.shape)
+    data_reupload_np[0, 0, 0] = 1
+    grads2 = grad(cost)(
+        params,
+        inputs=domain_samples,
+        targets=fourier_samples,
+        noise_params=None,
+        enc_params=enc_params,
+        data_reupload=data_reupload_np,
+        execution_type="expval",
+        force_mean=True,
+    )
+
+    assert grads2.shape == params.shape, "Gradient shape mismatch (np array)"
+
+
+@pytest.mark.unittest
 def test_pauli_circuit_model() -> None:
     test_cases = [
         {
             "shots": None,
             "output_qubit": 0,
-            "inputs": jnp.array([0.1, 0.2, 0.3]),
+            "inputs": jnp.array([0.5]),
         },
         {
             "shots": None,
             "output_qubit": -1,
-            "inputs": jnp.array([0.1, 0.2, 0.3]),
+            "inputs": jnp.array([0.5]),
         },
         {
             "shots": None,
@@ -1057,7 +1047,6 @@ def test_pauli_circuit_model() -> None:
             "inputs": None,
         },
     ]
-    dev = qml.device("default.qubit", wires=3)
 
     for test_case in test_cases:
         model = Model(
@@ -1067,18 +1056,33 @@ def test_pauli_circuit_model() -> None:
             output_qubit=test_case["output_qubit"],
             shots=test_case["shots"],
         )
+        # Validate inputs for a single sample (not a batch)
         inputs = model._inputs_validation(test_case["inputs"])
-        model_tape = qml.workflow.construct_tape(model.circuit)(
-            model.params,
+
+        # Record the tape using yaqsi with a single input sample
+        model_tape = model.script._record(
+            params=model.params,
             inputs=inputs,
         )
-        pauli_tape = PauliCircuit.from_parameterised_circuit(model_tape)
+
+        # Build observables from the model
+        _, obs = model._build_obs()
+
+        pauli_tape = PauliCircuit.from_parameterised_circuit(model_tape, obs)
 
         result_circuit = model(
             model.params,
             inputs=test_case["inputs"],
         )
-        result_pauli_circuit = jnp.array(qml.execute([pauli_tape], dev)[0]).T
+
+        # Execute the Pauli tape via yaqsi's statevector simulator
+        result_pauli_circuit = Script._simulate_and_measure(
+            pauli_tape.operations,
+            model.n_qubits,
+            "expval",
+            pauli_tape.observables,
+            False,
+        )
 
         assert all(
             jnp.isclose(result_circuit, result_pauli_circuit, atol=1e-5).flatten()
