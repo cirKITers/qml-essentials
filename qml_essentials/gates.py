@@ -4,6 +4,7 @@ import numbers
 import jax.numpy as jnp
 import jax
 
+# Imports to keep the api `from gates import ...`
 from qml_essentials.unitary import UnitaryGates
 from qml_essentials.pulses import (
     PulseGates,
@@ -12,6 +13,7 @@ from qml_essentials.pulses import (
     PulseInformation,
     PulseParamManager,
 )
+
 import logging
 
 log = logging.getLogger(__name__)

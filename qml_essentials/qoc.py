@@ -1,4 +1,3 @@
-# flake8: noqa: E402
 import argparse
 from typing import Dict, List, Callable, Union, Tuple
 
@@ -8,7 +7,6 @@ import jax
 from jax import numpy as jnp
 import optax
 
-jax.config.update("jax_enable_x64", True)
 
 from qml_essentials.gates import Gates, PulseInformation, PulseEnvelope
 from qml_essentials import operations as op
@@ -16,6 +14,7 @@ from qml_essentials import yaqsi as ys
 from qml_essentials.math import phase_difference, fidelity
 import logging
 
+jax.config.update("jax_enable_x64", True)
 log = logging.getLogger(__name__)
 
 
@@ -384,10 +383,12 @@ class QOC:
         self.t_target = t_target
 
         log.info(
-            f"Training parameters: {self.n_steps} steps, {self.n_samples} samples, {self.learning_rate} learning rate"
+            f"Training parameters: {self.n_steps} steps, {self.n_samples} samples\
+                {self.learning_rate} learning rate"
         )
         log.info(
-            f"LR schedule: warmup_ratio={self.warmup_ratio}, end_lr_ratio={self.end_lr_ratio}"
+            f"LR schedule: warmup_ratio={self.warmup_ratio},\
+                end_lr_ratio={self.end_lr_ratio}"
         )
 
         log.info(f"Envelope: {self.envelope}")
@@ -552,7 +553,8 @@ class QOC:
                 for step in range(self.n_steps):
                     if step % self.log_interval == 0:
                         log.info(
-                            f"Step {step}/{self.n_steps}, Loss: {loss_history[-1].item():.3e}"
+                            f"Step {step}/{self.n_steps},\
+                                Loss: {loss_history[-1].item():.3e}"
                         )
 
                     params, opt_state, loss = opt_step(opt_state, params)
@@ -716,7 +718,7 @@ class QOC:
                 log.info(f"Optimizing {gate} gate...")
                 optimized_pulse_params, loss_history = opt(gate_factory)()
                 log.info(f"Optimized parameters for {gate}: {optimized_pulse_params}")
-                best_fid = 1 - min(float(l) for l in loss_history)
+                best_fid = 1 - min(float(loss) for loss in loss_history)
                 log.info(f"Best achieved fidelity: {best_fid * 100:.5f}%")
                 log_history[gate] = log_history.get(gate, []) + loss_history
 
