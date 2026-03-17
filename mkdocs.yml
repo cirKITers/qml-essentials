@@ -9,7 +9,7 @@ nav:
   - expressibility.md
   - training.md
   - yaqsi.md
-  - pulse_simulation.md
+  - pulses.md
   - noise.md
   - references.md
 theme:

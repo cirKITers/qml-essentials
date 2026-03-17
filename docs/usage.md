@@ -246,7 +246,7 @@ See our documentation on [Quantum Optimal Control (QOC)](ansaetze.md#quantum_opt
 
 For more details:
 
-- See [*Ansaetze*](pulse_simulation.md) for a deeper explanation of our pulse-level gates and ansaetze, as well as details on Quantum Optimal Control (QOC), which enables optimizing pulses directly for target unitaries.  
+- See [*Ansaetze*](pulses.md) for a deeper explanation of our pulse-level gates and ansaetze, as well as details on Quantum Optimal Control (QOC), which enables optimizing pulses directly for target unitaries.  
 - See [*Training*](training.md#pulse_level) for how to train pulse parameters jointly with rotation angles.  
 
 

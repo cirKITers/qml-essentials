@@ -115,7 +115,7 @@ purity = jnp.real(jnp.trace(rho @ rho))
 print(purity) # Purity should be < 1 
 ```
 
-As [Pulse Gates](pulse_simulation.md) are built entirely upon YAQSI operations, you can also use those in the circuit to perform pulse level simulation:
+As [Pulse Gates](pulses.md) are built entirely upon YAQSI operations, you can also use those in the circuit to perform pulse level simulation:
 
 ```python
 from qml_essentials.gates import PulseGates

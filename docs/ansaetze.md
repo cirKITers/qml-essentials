@@ -102,7 +102,7 @@ class MyHardwareEfficient(Circuit):
                 Gates.CZ(wires=[q, q + 1], **kwargs)
 ```
 
-The `**kwargs` allow both [noise simulation](#noise) and [pulse simulation](#pulse_simulation).
+The `**kwargs` allow both [noise simulation](#noise) and [pulse simulation](#pulses).
 A custom `Circuit` should define `n_pulse_params_per_layer` if it will use pulse simulation at some point, but may be omitted otherwise.
 
 Check out page [*Usage*](usage.md) on how to proceed from here.
