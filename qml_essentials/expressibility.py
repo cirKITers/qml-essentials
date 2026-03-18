@@ -269,3 +269,121 @@ class Expressibility:
             model.n_qubits, n_bins=n_bins, scale=scale
         )
         return Expressibility.kullback_leibler_divergence(fidelities, haar_probs)
+
+    @staticmethod
+    def covering_numbers(
+        model,
+        n_samples=200,
+        eps=1e-2,
+        seed=1000,
+    ):
+        O = (None,)
+        mode = "states"  # "paper_hypothesis" or "states"
+        state_distance = "trace"  # "trace" or "fro"
+
+        def trace_distance(rho, sigma):
+            """
+            Trace distance: 1/2 ||rho - sigma||_1.
+            We compute ||A||_1 as sum of singular values.
+            """
+            A = rho - sigma
+            svals = np.linalg.svd(A, compute_uv=False)
+            return 0.5 * np.sum(svals)
+
+        def frobenius_distance(rho, sigma):
+            return np.linalg.norm(rho - sigma, ord="fro")
+
+        def hypothesis_from_rho(rho, O):
+            # For Hermitian O and density rho, this should be real (up to numerical noise).
+            val = np.trace(O @ rho)
+            return float(np.real_if_close(val))
+
+        def pairwise_distances(points, dist_fn):
+            n = len(points)
+            D = np.zeros((n, n), dtype=float)
+            for i in range(n):
+                for j in range(i + 1, n):
+                    d = dist_fn(points[i], points[j])
+                    D[i, j] = D[j, i] = d
+            return D
+
+        def greedy_cover_number(D, eps):
+            """
+            Approximate minimum eps-cover size for a finite set with distance matrix D.
+            Greedy set cover:
+            - each center covers all points within eps.
+            - iteratively pick center covering the most uncovered points.
+            Returns: cover_size, chosen_indices
+            """
+            n = D.shape[0]
+            uncovered = set(range(n))
+            chosen = []
+
+            # Precompute neighborhoods within eps
+            neighborhoods = [set(np.where(D[i] <= eps)[0].tolist()) for i in range(n)]
+
+            while uncovered:
+                # pick i maximizing |neighborhood(i) ∩ uncovered|
+                best_i = None
+                best_cov = set()
+                for i in range(n):
+                    cov = neighborhoods[i] & uncovered
+                    if len(cov) > len(best_cov):
+                        best_cov = cov
+                        best_i = i
+
+                chosen.append(best_i)
+                uncovered -= best_cov
+
+            return len(chosen), chosen
+
+        model.initialize_params(repeat=n_samples)
+        rhos = model(execution_type="density")
+
+        if mode == "paper_hypothesis":
+            if O is None:
+                raise ValueError("O must be provided for mode='paper_hypothesis'")
+            hs = np.array([hypothesis_from_rho(rho, O) for rho in rhos], dtype=float)
+
+            # In 1D, the exact epsilon-covering number is easy:
+            # sort points; greedily cover intervals [x-eps, x+eps]
+            xs = np.sort(hs)
+            cover = 0
+            i = 0
+            while i < len(xs):
+                cover += 1
+                center = xs[i]
+                # cover up to center + 2eps because choosing center=xs[i] covers [center-eps, center+eps]
+                # next uncovered point must be > center+eps
+                # easier: cover all points <= center + 2eps? No. Let's do properly:
+                # place ball centered at xs[i] => covers up to xs[i]+eps. Next uncovered is first > xs[i]+eps.
+                j = i
+                while j < len(xs) and xs[j] <= center + eps:
+                    j += 1
+                i = j
+
+            return {
+                "cover_number_hat": cover,
+                "points": hs,
+                "notes": "Exact 1D epsilon-cover for scalar hypotheses h(theta)=Tr(O rho(theta)).",
+            }
+
+        elif mode == "states":
+            if state_distance == "trace":
+                dist_fn = trace_distance
+            elif state_distance == "fro":
+                dist_fn = frobenius_distance
+            else:
+                raise ValueError("state_distance must be 'trace' or 'fro'")
+
+            D = pairwise_distances(rhos, dist_fn)
+            cover_hat, chosen = greedy_cover_number(D, eps)
+            return {
+                "cover_number_hat": cover_hat,
+                "chosen_centers": chosen,
+                "distance_matrix": D,
+                "notes": "Greedy set cover approximation on sampled density matrices.",
+            }
+
+        else:
+            raise ValueError("mode must be 'paper_hypothesis' or 'states'")

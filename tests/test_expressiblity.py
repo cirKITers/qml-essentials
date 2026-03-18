@@ -214,3 +214,14 @@ def test_scaling() -> None:
     )
 
     assert y.shape == (8,)
+
+
+def test_covering_numbers() -> None:
+    model = Model(
+        n_qubits=3,
+        n_layers=1,
+        circuit_type="Circuit_10",
+    )
+
+    res = Expressibility.covering_numbers(model)
+    print(res)
