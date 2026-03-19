@@ -10,7 +10,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
-  test-not-expensive:
+  test-all:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v6
@@ -21,5 +21,7 @@ jobs:
           # cache: "uv"
       - name: Install dependencies
         run: pipx run uv sync --group dev
-      - name: Test with pytest
-        run: pipx run uv run pytest --cov=qml_essentials --dist load -n 4
+      - name: Test with pytest (no benchmark)
+        run: pipx run uv run pytest --cov=qml_essentials --dist load -n 4 -m "not benchmark"
+      - name: Test with pytest (benchmark)
+        run: pipx run uv run pytest --cov=qml_essentials -m "benchmark"

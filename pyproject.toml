@@ -73,7 +73,7 @@ fail_packages = ["typing_extensions"]
 
 [tool.pytest.ini_options]
 markers = [
-    "expensive: Tests that take a long time to run",
+    "benchmark: Benchmarking tests (should not run in parallel to other tests)",
     "unittest: Tests with an assertion to check the output of a particular unit",
     "smoketest: Tests that just run a method and check if it not fails",
 ]
