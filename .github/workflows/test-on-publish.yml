@@ -16,8 +16,8 @@ jobs:
           # cache: "uv"
       - name: Install dependencies
         run: pipx run uv sync --group dev
-      - name: Test with pytest (expensive)
-        run: pipx run uv run pytest --cov=qml_essentials --cov-report html --dist load -n 0
+      - name: Test with pytest (no benchmark)
+        run: pipx run uv run pytest --cov=qml_essentials --cov-report html --dist load -n 0 -m "not benchmark"
       - name: Share coverage report
         uses: actions/upload-artifact@v6
         with:
