@@ -127,17 +127,14 @@ class Operation:
             input_idx: Marks the operation as input with the corresponding
                 input index, which is useful for the analytical Fourier
                 coefficients computation, but has no effect otherwise.
-            name: Optional explicit name for this operation.  When provided
-                it overrides the default class-name based ``name`` property.
-                Useful for operations created by ``evolve()`` that wrap a
-                computed unitary but should retain the original gate name
-                (e.g. ``"RX"``, ``"CZ"``).
+            name: Optional explicit name for this operation.  When ``None``
+                (default), the class name is used (e.g. ``"RX"``).
 
         Raises:
             ValueError: If ``_num_wires`` is set and the number of wires
                 doesn't match, or if duplicate wires are provided.
         """
-        self._name_override = name
+        self.name = name or self.__class__.__name__
         self.wires = list(wires) if isinstance(wires, (list, tuple)) else [wires]
         self.input_idx = input_idx
 
@@ -157,20 +154,6 @@ class Operation:
             tape = active_tape()
             if tape is not None:
                 tape.append(self)
-
-    @property
-    def name(self) -> str:
-        """Return the name of this operation (e.g. ``'RX'``, ``'CX'``).
-
-        If an explicit name was provided at construction time, that name is
-        returned; otherwise the class name is used.
-
-        Returns:
-            The operation name string.
-        """
-        if self._name_override is not None:
-            return self._name_override
-        return self.__class__.__name__
 
     @property
     def parameters(self) -> list:
