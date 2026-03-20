@@ -1060,7 +1060,7 @@ def _draw_physical_pulse(
         if show_carrier:
             modulated = signal * jnp.cos(omega_c * t_arr + ev.carrier_phase)
             ax.plot(
-                t_display, modulated, color=color, linewidth=0.8, alpha=0.6, zorder=2
+                t_display, modulated, color=color, linewidth=0.8, alpha=0.8, zorder=2
             )
 
         peak_idx = jnp.argmax(jnp.abs(signal))
@@ -1089,7 +1089,7 @@ def _draw_virtual_z(
             amp_max * 0.6,
             color=color,
             linestyle="--",
-            linewidth=1.0,
+            linewidth=1.2,
             alpha=0.8,
             zorder=2,
         )
