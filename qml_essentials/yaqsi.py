@@ -164,7 +164,7 @@ class Yaqsi:
         return Hermitian(matrix=mat, wires=qubit_group, record=False)
 
     @classmethod
-    def evolve(cls, hamiltonian, **odeint_kwargs):
+    def evolve(cls, hamiltonian, name=None, **odeint_kwargs):
         """Return a gate-factory for Hamiltonian time evolution.
 
         Supports two modes:
@@ -207,9 +207,9 @@ class Yaqsi:
                 ``ParametrizedHamiltonian``.
         """
         if isinstance(hamiltonian, Hermitian):
-            return cls._evolve_static(hamiltonian)
+            return cls._evolve_static(hamiltonian, name=name)
         elif isinstance(hamiltonian, ParametrizedHamiltonian):
-            return cls._evolve_parametrized(hamiltonian, **odeint_kwargs)
+            return cls._evolve_parametrized(hamiltonian, name=name, **odeint_kwargs)
         else:
             raise TypeError(
                 f"evolve() expects a Hermitian or ParametrizedHamiltonian, "
@@ -217,19 +217,19 @@ class Yaqsi:
             )
 
     @staticmethod
-    def _evolve_static(hermitian: Hermitian) -> Callable:
+    def _evolve_static(hermitian: Hermitian, name=None) -> Callable:
         """Gate factory for static Hamiltonian evolution U = exp(-i t H)."""
         H_mat = hermitian.matrix
 
         def _apply(t: float, wires: Union[int, List[int]] = 0) -> Operation:
             U = jax.scipy.linalg.expm(-1j * t * H_mat)
-            return Operation(wires=wires, matrix=U)
+            return Operation(wires=wires, matrix=U, name=name)
 
         return _apply
 
     @classmethod
     def _evolve_parametrized(
-        cls, ph: ParametrizedHamiltonian, **odeint_kwargs
+        cls, ph: ParametrizedHamiltonian, name=None, **odeint_kwargs
     ) -> Callable:
         """Gate factory for time-dependent Hamiltonian evolution.
 
@@ -347,7 +347,7 @@ class Yaqsi:
 
             U = _solve(neg_iH, params, t0, t1)
 
-            return Operation(wires=wires, matrix=U)
+            return Operation(wires=wires, matrix=U, name=name)
 
         return _apply
 
