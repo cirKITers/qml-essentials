@@ -961,16 +961,17 @@ def _make_event_label(gate: str, parent: Optional[str]) -> str:
 def _compute_display_window(
     ev: PulseEvent,
     n_samples: int,
-    threshold: float = 0.05,
-    max_display_mult: float = 6.0,
 ) -> Tuple[float, float, float]:
     """Compute the (t_lo, t_hi, amp_max) display window for a physical pulse.
 
-    Uses binary search to find the half-width where the envelope drops
-    to *threshold* of its peak.  The result is capped at
-    ``max_display_mult * duration`` so that very broad envelopes
-    (sigma >> duration) still produce a compact plot while showing enough
-    of the bell curve to be visually distinguishable from a rectangle.
+    The display window is chosen adaptively based on how much the envelope
+    decays within the evolution window ``[0, duration]``.  If the envelope
+    is essentially zero at the edges, the evolution window is used as-is.
+    Otherwise, the window is widened until the envelope drops to the same
+    fraction of its peak that the edge-to-center ratio *squared* gives.
+    Squaring the ratio means narrow pulses (that already decay a lot within
+    the window) get very little extra room, while broad pulses (ratio ≈ 1)
+    get enough to reveal the shape — without any hand-tuned constants.
 
     Returns:
         ``(t_lo, t_hi, amp_max)`` — local time bounds and peak amplitude.
@@ -982,27 +983,28 @@ def _compute_display_window(
         t_lo, t_hi = 0.0, ev.duration
     else:
         val_edge = float(ev.envelope_fn(ev.envelope_params, 0.0, t_c))
+        edge_ratio = abs(val_edge / val_center)
 
-        if abs(val_edge / val_center) <= threshold:
-            # Envelope already decays visibly within the evolution window
+        if edge_ratio < 0.01:
+            # Envelope is essentially zero at the edges — fits the window.
             t_lo, t_hi = 0.0, ev.duration
         else:
-            # Binary-search for the half-width where the envelope drops
-            # to `threshold` of its peak.
-            lo, hi = ev.duration / 2, ev.duration * 200
-            for _ in range(40):
+            # Use edge_ratio³ as the target: narrow pulses (small ratio)
+            # get a very tight cutoff; broad pulses (ratio ≈ 1) get a
+            # generous one that still converges.
+            target = edge_ratio**10
+
+            # Binary-search outward from t_c for where envelope ≈ target.
+            lo, hi = ev.duration / 2, ev.duration * 50
+            for _ in range(30):
                 mid = (lo + hi) / 2
                 val = float(ev.envelope_fn(ev.envelope_params, t_c + mid, t_c))
-                if abs(val / val_center) > threshold:
+                if abs(val / val_center) > target:
                     lo = mid
                 else:
                     hi = mid
-            # Cap: show enough to see the shape, but stay compact.
-            natural_half = hi * 1.1
-            max_half = max_display_mult * ev.duration
-            half_width = min(natural_half, max_half)
-            t_lo = t_c - half_width
-            t_hi = t_c + half_width
+            t_lo = t_c - hi
+            t_hi = t_c + hi
 
     t_arr = jnp.linspace(t_lo, t_hi, n_samples)
     env = jnp.array(
