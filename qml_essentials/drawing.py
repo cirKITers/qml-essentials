@@ -1100,7 +1100,7 @@ def _draw_virtual_z(
             ha="center",
             va="bottom",
             color=color,
-            fontstyle="italic",
+            # fontstyle="italic",
             zorder=5,
         )
 
