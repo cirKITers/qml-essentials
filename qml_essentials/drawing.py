@@ -1053,14 +1053,14 @@ def _draw_physical_pulse(
                 color=color,
                 linestyle="--",
                 linewidth=0.8,
-                alpha=0.5,
+                alpha=0.7,
                 zorder=4,
             )
 
         if show_carrier:
             modulated = signal * jnp.cos(omega_c * t_arr + ev.carrier_phase)
             ax.plot(
-                t_display, modulated, color=color, linewidth=0.5, alpha=0.4, zorder=2
+                t_display, modulated, color=color, linewidth=0.8, alpha=0.6, zorder=2
             )
 
         peak_idx = jnp.argmax(jnp.abs(signal))
@@ -1090,13 +1090,13 @@ def _draw_virtual_z(
             color=color,
             linestyle="--",
             linewidth=1.0,
-            alpha=0.7,
+            alpha=0.8,
             zorder=2,
         )
         ax.annotate(
             _make_event_label(ev.gate, ev.parent),
             xy=(t_mid, amp_max * 0.85),
-            fontsize=6,
+            fontsize=7,
             ha="center",
             va="bottom",
             color=color,
@@ -1188,10 +1188,10 @@ def draw_pulse_schedule(
     t_total = max(wire_cursor.values()) if wire_cursor else 1.0
 
     gate_colors = {
-        "RX": "#009682",
-        "RY": "#DF9B1B",
-        "RZ": "#ED665A",
-        "CZ": "#23A1E0",
+        "RX": "#1F78B4",
+        "RY": "#E69F00",
+        "RZ": "#009371",
+        "CZ": "#ED665A",
     }
 
     fig, axes = plt.subplots(
@@ -1260,7 +1260,7 @@ def draw_pulse_schedule(
     # Legend
     used_gates = {ev.gate for ev, _ in scheduled}
     handles = [
-        mpatches.Patch(color=c, alpha=0.5, label=g)
+        mpatches.Patch(color=c, alpha=0.7, label=g)
         for g, c in gate_colors.items()
         if g in used_gates
     ]
@@ -1270,7 +1270,7 @@ def draw_pulse_schedule(
             loc="lower right",
             ncol=len(handles),
             fontsize=8,
-            framealpha=0.7,
+            framealpha=0.8,
         )
 
     fig.suptitle(
