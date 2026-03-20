@@ -958,6 +958,18 @@ def _make_event_label(gate: str, parent: Optional[str]) -> str:
     return gate
 
 
+def _sample_envelope(ev: PulseEvent, t_lo: float, t_hi: float, n_samples: int):
+    """Sample the envelope over [t_lo, t_hi] and return (t_arr, signal).
+
+    Uses vectorised JAX operations instead of a Python loop.
+    """
+    t_c = ev.duration / 2
+    t_arr = jnp.linspace(t_lo, t_hi, n_samples)
+    env = ev.envelope_fn(ev.envelope_params, t_arr, t_c)
+    signal = env * ev.w
+    return t_arr, signal
+
+
 def _compute_display_window(
     ev: PulseEvent,
     n_samples: int,
@@ -967,11 +979,11 @@ def _compute_display_window(
     The display window is chosen adaptively based on how much the envelope
     decays within the evolution window ``[0, duration]``.  If the envelope
     is essentially zero at the edges, the evolution window is used as-is.
-    Otherwise, the window is widened until the envelope drops to the same
-    fraction of its peak that the edge-to-center ratio *squared* gives.
-    Squaring the ratio means narrow pulses (that already decay a lot within
-    the window) get very little extra room, while broad pulses (ratio ≈ 1)
-    get enough to reveal the shape — without any hand-tuned constants.
+    Otherwise the window is widened until the envelope drops to
+    ``edge_ratio ** 10`` of its peak, where ``edge_ratio`` is the
+    amplitude at the window edge relative to the center.  This adaptive
+    exponent means narrow pulses (small ratio) get very little extra room,
+    while broad pulses (ratio ≈ 1) get enough to reveal the shape.
 
     Returns:
         ``(t_lo, t_hi, amp_max)`` — local time bounds and peak amplitude.
@@ -986,15 +998,9 @@ def _compute_display_window(
         edge_ratio = abs(val_edge / val_center)
 
         if edge_ratio < 0.01:
-            # Envelope is essentially zero at the edges — fits the window.
             t_lo, t_hi = 0.0, ev.duration
         else:
-            # Use edge_ratio³ as the target: narrow pulses (small ratio)
-            # get a very tight cutoff; broad pulses (ratio ≈ 1) get a
-            # generous one that still converges.
             target = edge_ratio**10
-
-            # Binary-search outward from t_c for where envelope ≈ target.
             lo, hi = ev.duration / 2, ev.duration * 50
             for _ in range(30):
                 mid = (lo + hi) / 2
@@ -1006,11 +1012,8 @@ def _compute_display_window(
             t_lo = t_c - hi
             t_hi = t_c + hi
 
-    t_arr = jnp.linspace(t_lo, t_hi, n_samples)
-    env = jnp.array(
-        [float(ev.envelope_fn(ev.envelope_params, ti, t_c)) for ti in t_arr]
-    )
-    amp = float(jnp.max(jnp.abs(env)) * abs(ev.w) * 1.1)
+    _, signal = _sample_envelope(ev, t_lo, t_hi, n_samples)
+    amp = float(jnp.max(jnp.abs(signal))) * 1.1
     return t_lo, t_hi, amp
 
 
@@ -1026,13 +1029,8 @@ def _draw_physical_pulse(
     show_carrier: bool,
 ) -> None:
     """Draw a physical (RX/RY) pulse envelope on the given axes."""
-    t_c = ev.duration / 2
-    t_arr = jnp.linspace(t_lo, t_hi, n_samples)
-    env = jnp.array(
-        [float(ev.envelope_fn(ev.envelope_params, ti, t_c)) for ti in t_arr]
-    )
-    signal = env * ev.w
-    t_display = t_arr - t_c + t_start + ev.duration / 2
+    t_arr, signal = _sample_envelope(ev, t_lo, t_hi, n_samples)
+    t_display = t_arr + t_start
 
     for wire in ev.wires:
         ax = axes[wire]
@@ -1076,8 +1074,15 @@ def _draw_virtual_z(
     t_mid = t_start + ev.duration / 2
     for wire in ev.wires:
         ax = axes[wire]
-        ax.axvline(
-            t_mid, color=color, linestyle="--", linewidth=1.0, alpha=0.7, zorder=2
+        ax.vlines(
+            t_mid,
+            -amp_max * 0.6,
+            amp_max * 0.6,
+            color=color,
+            linestyle="--",
+            linewidth=1.0,
+            alpha=0.7,
+            zorder=2,
         )
         ax.annotate(
             _make_event_label(ev.gate, ev.parent),
@@ -1120,11 +1125,41 @@ def _draw_cz(ev: PulseEvent, t_start: float, axes, color: str, amp_max: float) -
     )
 
 
+def _draw_pulse_block(
+    ev: PulseEvent, t_start: float, axes, color: str, amp_max: float
+) -> None:
+    """Draw a physical pulse as a labelled rectangular block."""
+    for wire in ev.wires:
+        ax = axes[wire]
+        rect = mpatches.Rectangle(
+            (t_start, -amp_max * 0.6),
+            ev.duration,
+            amp_max * 1.2,
+            alpha=0.2,
+            facecolor=color,
+            edgecolor=color,
+            linewidth=1.0,
+            zorder=1,
+        )
+        ax.add_patch(rect)
+        ax.annotate(
+            _make_event_label(ev.gate, ev.parent),
+            xy=(t_start + ev.duration / 2, amp_max * 0.7),
+            fontsize=7,
+            ha="center",
+            va="bottom",
+            color=color,
+            fontweight="bold",
+            zorder=5,
+        )
+
+
 def draw_pulse_schedule(
     events: List[PulseEvent],
     n_qubits: int,
     n_samples: int = 200,
     show_carrier: bool = True,
+    show_envelope: bool = False,
     **kwargs: Any,
 ) -> Tuple:
     """Render a pulse schedule as a Matplotlib figure.
@@ -1141,6 +1176,9 @@ def draw_pulse_schedule(
         n_samples: Number of time samples per pulse envelope.
         show_carrier: If ``True``, overlay the carrier-modulated waveform
             (envelope x cos) as a thin line.
+        show_envelope: If ``True``, draw the full envelope shape for
+            physical pulses.  If ``False``, show them as simple
+            rectangular blocks indicating duration only.
         **kwargs: Forwarded to ``plt.subplots``.
 
     Returns:
@@ -1163,11 +1201,10 @@ def draw_pulse_schedule(
     t_total = max(wire_cursor.values()) if wire_cursor else 1.0
 
     gate_colors = {
-        "RX": "#4e79a7",
-        "RY": "#f28e2b",
-        "RZ": "#76b7b2",
-        "CZ": "#e15759",
-        "H": "#59a14f",
+        "RX": "#009682",
+        "RY": "#DF9B1B",
+        "RZ": "#ED665A",
+        "CZ": "#23A1E0",
     }
 
     fig, axes = plt.subplots(
@@ -1190,23 +1227,22 @@ def draw_pulse_schedule(
 
     axes[-1].set_xlabel("Time", fontsize=11)
 
-    # Pre-compute display windows and amplitude range for physical pulses
+    # Pre-compute display windows, amplitude range, and x-limits
     display_windows: Dict[int, Tuple[float, float]] = {}
     amp_max = 1.0
-    for idx, (ev, _) in enumerate(scheduled):
-        if ev.envelope_fn is not None and ev.gate in ("RX", "RY"):
+    x_lo, x_hi = 0.0, t_total
+
+    if show_envelope:
+        for idx, (ev, t_start) in enumerate(scheduled):
+            if ev.envelope_fn is None or ev.gate not in ("RX", "RY"):
+                continue
             t_lo, t_hi, amp = _compute_display_window(ev, n_samples)
             display_windows[idx] = (t_lo, t_hi)
             amp_max = max(amp_max, amp)
+            # Map local display bounds to global time coordinates
+            x_lo = min(x_lo, t_lo + t_start)
+            x_hi = max(x_hi, t_hi + t_start)
 
-    # Compute effective x-limits accounting for widened display windows
-    x_lo, x_hi = 0.0, t_total
-    for idx, (ev, t_start) in enumerate(scheduled):
-        if idx in display_windows:
-            t_c = ev.duration / 2
-            dw_lo, dw_hi = display_windows[idx]
-            x_lo = min(x_lo, dw_lo - t_c + t_start + ev.duration / 2)
-            x_hi = max(x_hi, dw_hi - t_c + t_start + ev.duration / 2)
     x_margin = (x_hi - x_lo) * 0.05
     for q in range(n_qubits):
         axes[q].set_xlim(x_lo - x_margin, x_hi + x_margin)
@@ -1217,31 +1253,41 @@ def draw_pulse_schedule(
         color = gate_colors.get(ev.gate, "#bab0ac")
 
         if ev.gate in ("RX", "RY") and ev.envelope_fn is not None:
-            t_lo, t_hi = display_windows.get(idx, (0.0, ev.duration))
-            _draw_physical_pulse(
-                ev,
-                t_start,
-                t_lo,
-                t_hi,
-                axes,
-                color,
-                n_samples,
-                omega_c,
-                show_carrier,
-            )
+            if show_envelope:
+                t_lo, t_hi = display_windows[idx]
+                _draw_physical_pulse(
+                    ev,
+                    t_start,
+                    t_lo,
+                    t_hi,
+                    axes,
+                    color,
+                    n_samples,
+                    omega_c,
+                    show_carrier,
+                )
+            else:
+                _draw_pulse_block(ev, t_start, axes, color, amp_max)
         elif ev.gate == "RZ":
             _draw_virtual_z(ev, t_start, axes, color, amp_max)
         elif ev.gate == "CZ":
             _draw_cz(ev, t_start, axes, color, amp_max)
 
     # Legend
-    handles = []
     used_gates = {ev.gate for ev, _ in scheduled}
-    for gate, color in gate_colors.items():
-        if gate in used_gates:
-            handles.append(mpatches.Patch(color=color, alpha=0.5, label=gate))
+    handles = [
+        mpatches.Patch(color=c, alpha=0.5, label=g)
+        for g, c in gate_colors.items()
+        if g in used_gates
+    ]
     if handles:
-        axes[0].legend(handles=handles, loc="upper right", fontsize=8, framealpha=0.7)
+        fig.legend(
+            handles=handles,
+            loc="lower right",
+            ncol=len(handles),
+            fontsize=8,
+            framealpha=0.7,
+        )
 
     fig.suptitle(
         f"Pulse Schedule ({PulseInformation.get_envelope()} envelope)",
