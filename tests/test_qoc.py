@@ -19,6 +19,7 @@ jax.config.update("jax_enable_x64", True)
 
 # overwrite to make tests a bit easier
 default_qoc_params["n_steps"] = 50
+default_qoc_params["scan_steps"] = 0
 
 
 class TestCost:

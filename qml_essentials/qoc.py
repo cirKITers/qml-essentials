@@ -1,5 +1,5 @@
 import argparse
-from typing import Dict, List, Callable, Union, Tuple
+from typing import Dict, List, Callable, Optional, Union, Tuple
 
 import os
 import csv
@@ -333,6 +333,14 @@ class QOC:
         file_dir: str = None,
         warmup_ratio: float = 0.0,
         end_lr_ratio: float = 1.0,
+        n_restarts: int = 1,
+        restart_noise_scale: float = 0.5,
+        grad_clip: float = 1.0,
+        random_seed: int = 42,
+        scan_steps: int = 0,
+        scan_grid_size: int = 5,
+        scan_ranges: Optional[List[Tuple[float, float]]] = None,
+        log_scale_params: Optional[List[int]] = None,
     ):
         """
         Initialize Quantum Optimal Control with Pulse-level Gates.
@@ -366,6 +374,50 @@ class QOC:
                 LR at the start of warmup.  Set to 0.0 for full cosine
                 decay to zero; set to 1.0 (together with
                 ``warmup_ratio=0.0``) to recover a constant LR.
+            n_restarts (int): Number of random restarts for the
+                optimisation.  The first run uses the initial parameters
+                as-is; subsequent runs add scaled random perturbations.
+                The best result across all restarts is kept.
+                Set to 1 to disable restarts (default behaviour).
+            restart_noise_scale (float): Standard deviation of the
+                Gaussian noise added to the initial parameters for each
+                restart (relative to the absolute value of each parameter).
+                Defaults to 0.5 (50 % relative perturbation).
+            grad_clip (float): Maximum global gradient norm.  Gradients
+                are clipped to this value before being passed to the
+                optimiser, which stabilises training when the loss
+                landscape has steep regions.  Set to ``float('inf')`` or
+                0.0 to disable.  Defaults to 1.0.
+            random_seed (int): Base random seed for generating restart
+                perturbations.  Defaults to 42.
+            scan_steps (int): Number of short gradient-descent steps to
+                run for each candidate in the coarse grid search
+                (Stage 0).  Set to 0 to disable the grid scan entirely
+                and rely solely on restarts.  A value of 20–50 is
+                usually enough to identify promising basins.  Defaults
+                to 0.
+            scan_grid_size (int): Number of points per parameter
+                dimension in the coarse grid.  The total number of
+                candidates is ``scan_grid_size ** n_params``, so keep
+                this small for high-dimensional parameter spaces.
+                Defaults to 5.
+            scan_ranges (Optional[List[Tuple[float, float]]]): Per-
+                parameter ``(lo, hi)`` ranges for the grid scan.  If
+                ``None``, heuristic ranges are used based on the
+                envelope type: amplitude in ``[0.5, 30]``, width/sigma
+                in ``[0.05, 2]``, and evolution time in ``[0.05, 2]``.
+                Must have length equal to the number of pulse parameters
+                if provided.
+            log_scale_params (Optional[List[int]]): Indices of pulse
+                parameters that should be optimised in log-space.  For
+                these parameters the optimizer sees ``log(p)`` and the
+                actual parameter used in the simulation is ``exp(log_p)``.
+                This dramatically improves convergence when the optimal
+                value may differ from the initial value by an order of
+                magnitude (e.g. amplitude, evolution time).
+                If ``None``, defaults to ``[0, -1]`` (amplitude and
+                evolution time) for envelopes with ≥ 2 envelope params,
+                or ``[]`` otherwise.
         """
         self.ws = jnp.linspace(0, 2 * jnp.pi, n_samples)
 
@@ -381,6 +433,24 @@ class QOC:
         )
         self.current_gate = None
         self.t_target = t_target
+        self.n_restarts = max(1, n_restarts)
+        self.restart_noise_scale = restart_noise_scale
+        self.grad_clip = grad_clip
+        self.random_key = jax.random.PRNGKey(random_seed)
+        self.scan_steps = scan_steps
+        self.scan_grid_size = scan_grid_size
+        self.scan_ranges = scan_ranges
+
+        # Determine log-scale param indices
+        envelope_info = PulseEnvelope.get(envelope)
+        n_env = envelope_info["n_envelope_params"]
+        if log_scale_params is not None:
+            self.log_scale_params = log_scale_params
+        elif n_env >= 2:
+            # Default: amplitude (index 0) and evolution time (last)
+            self.log_scale_params = [0, -1]
+        else:
+            self.log_scale_params = []
 
         log.info(
             f"Training parameters: {self.n_steps} steps, {self.n_samples} samples\
@@ -393,6 +463,15 @@ class QOC:
 
         log.info(f"Envelope: {self.envelope}")
         log.info(f"Target evolution time: {self.t_target}")
+        log.info(
+            f"Restarts: {self.n_restarts}, noise_scale={self.restart_noise_scale}, "
+            f"grad_clip={self.grad_clip}"
+        )
+        log.info(
+            f"Grid scan: scan_steps={self.scan_steps}, "
+            f"scan_grid_size={self.scan_grid_size}, "
+            f"log_scale_params={self.log_scale_params}"
+        )
         log.info(f"Using cost function(s) {cost_fns}")
 
         # Validate each entry against the registry
@@ -456,24 +535,126 @@ class QOC:
                 if not match:
                     writer.writerow(entry)
 
+    def _to_log_space(self, params: jnp.ndarray) -> jnp.ndarray:
+        """Convert selected parameters to log-space for optimisation.
+
+        Parameters at indices in ``self.log_scale_params`` are replaced
+        by ``log(|p| + eps)`` so the optimiser operates on a
+        logarithmic scale.  All other parameters are left unchanged.
+
+        Args:
+            params: Pulse parameters in physical space.
+
+        Returns:
+            Parameters with selected entries in log-space.
+        """
+        if not self.log_scale_params:
+            return params
+        n = len(params)
+        log_params = params.copy()
+        for idx in self.log_scale_params:
+            # Normalise negative indices
+            i = idx if idx >= 0 else n + idx
+            log_params = log_params.at[i].set(jnp.log(jnp.abs(params[i]) + 1e-12))
+        return log_params
+
+    def _from_log_space(self, log_params: jnp.ndarray) -> jnp.ndarray:
+        """Convert selected parameters back from log-space.
+
+        Inverse of :meth:`_to_log_space`.  Parameters at indices in
+        ``self.log_scale_params`` are exponentiated; all others are
+        passed through unchanged.
+
+        Args:
+            log_params: Parameters with selected entries in log-space.
+
+        Returns:
+            Parameters in physical space (all positive for log-scaled
+            entries).
+        """
+        if not self.log_scale_params:
+            return log_params
+        n = len(log_params)
+        params = log_params.copy()
+        for idx in self.log_scale_params:
+            i = idx if idx >= 0 else n + idx
+            params = params.at[i].set(jnp.exp(log_params[i]))
+        return params
+
+    def _build_scan_grid(self, n_params: int) -> jnp.ndarray:
+        """Build a coarse parameter grid for the initial scan phase.
+
+        Uses either user-supplied ``scan_ranges`` or heuristic defaults
+        based on typical Gaussian pulse parameter ranges.
+
+        Args:
+            n_params: Number of pulse parameters.
+
+        Returns:
+            Array of shape ``(n_candidates, n_params)`` with grid points.
+        """
+        import itertools
+
+        if self.scan_ranges is not None:
+            ranges = self.scan_ranges
+            assert len(ranges) == n_params, (
+                f"scan_ranges has {len(ranges)} entries but gate has "
+                f"{n_params} parameters."
+            )
+        else:
+            # Heuristic defaults for Gaussian-like envelopes:
+            # [amplitude, sigma/width, evolution_time]
+            default_ranges = {
+                1: [(0.05, 2.0)],  # evolution time only (general)
+                2: [(0.5, 2.0), (0.05, 2.0)],  # not typically used
+                3: [(0.5, 30.0), (0.05, 2.0), (0.05, 2.0)],  # A, σ, t
+                4: [(0.5, 30.0), (0.05, 2.0), (0.01, 0.5), (0.05, 2.0)],  # DRAG
+            }
+            ranges = default_ranges.get(
+                n_params,
+                [(0.1, 10.0)] * n_params,  # fallback
+            )
+
+        # Build log-spaced grids for each parameter
+        axes = []
+        for lo, hi in ranges:
+            axes.append(jnp.logspace(jnp.log10(lo), jnp.log10(hi), self.scan_grid_size))
+
+        # Cartesian product of all axes
+        grid = jnp.array(list(itertools.product(*axes)))
+        return grid
+
     def optimize(self, wires):
         def decorator(create_circuits):
             def wrapper(init_pulse_params: jnp.ndarray = None):
                 """
-                This function is a wrapper for the create_circuits method.
-                It takes a simulator and wires as input and optimizes
-                the pulse parameters using the cost function defined
-                in the QOC class.
+                Optimise pulse parameters for a quantum gate using a
+                multi-phase strategy:
+
+                Stage 0 - Grid scan (if ``scan_steps > 0``):
+                    Evaluate a coarse grid of parameter candidates using
+                    only the fidelity cost (ignoring phase).  Each
+                    candidate is refined with a few fast gradient steps.
+                    The best candidate becomes the starting point for
+                    Stage 1, unless the user-supplied init_pulse_params
+                    are already better.
+
+                Stage 1 - Multi-restart gradient optimisation:
+                    Run ``n_restarts`` independent Adam optimisation runs
+                    with the full cost function.  The first restart uses
+                    the best point found so far; subsequent restarts add
+                    random perturbations.  Parameters at indices in
+                    ``log_scale_params`` are optimised in log-space to
+                    handle order-of-magnitude differences in scale.
 
                 Args:
-                    create_circuits (callable): A function to generate the pulse and
-                        target circuits for the gate.
-                    init_pulse_params (array): Initial pulse parameters to use for
-                        the pulse-based gate.
+                    init_pulse_params (array): Initial pulse parameters.
+                        If ``None``, uses the envelope defaults from
+                        :class:`PulseInformation`.
 
                 Returns:
-                    tuple: Optimized pulse parameters and list of loss values
-                        at each iteration.
+                    tuple: ``(best_params, loss_history)`` from the best
+                        restart.
                 """
                 pulse_circuit, target_circuit = create_circuits()
 
@@ -498,7 +679,9 @@ class QOC:
                     "n_samples": self.n_samples,
                     "t_target": self.t_target,
                 }
-                # Build the composite cost from self.cost_fns
+
+                # --- Build cost functions ---
+                # Full cost (all user-selected cost terms)
                 total_costs = None
                 for name, weight in self.cost_fns:
                     meta = CostFnRegistry.get(name)
@@ -515,7 +698,93 @@ class QOC:
                         + total_costs
                     )
 
-                params = init_pulse_params
+                # Fidelity-only cost for the scan phase - only uses the
+                # (1-F) component, ignoring phase.  This gives cleaner
+                # gradients when starting from a poor initialisation
+                # where the phase signal is essentially random noise.
+                fid_meta = CostFnRegistry.get("fidelity")
+                fidelity_only_cost = Cost(
+                    cost=fid_meta["fn"],
+                    weight=(1.0, 0.0),  # 100% fidelity, 0% phase
+                    ckwargs={
+                        k: v
+                        for k, v in all_ckwargs.items()
+                        if k in fid_meta["ckwargs_keys"]
+                    },
+                )
+
+                # Wrap the cost function with log-space reparameterisation
+                def total_costs_log(log_params, *args):
+                    return total_costs(self._from_log_space(log_params), *args)
+
+                def fidelity_only_cost_log(log_params, *args):
+                    return fidelity_only_cost(self._from_log_space(log_params), *args)
+
+                # ============================================================
+                # Stage 0: Coarse grid scan (optional)
+                # ============================================================
+                best_scan_params = init_pulse_params
+                best_scan_loss = fidelity_only_cost(init_pulse_params)
+
+                if self.scan_steps > 0:
+                    log.info(
+                        f"Stage 0: Grid scan with {self.scan_grid_size}^"
+                        f"{len(init_pulse_params)} candidates, "
+                        f"{self.scan_steps} steps each"
+                    )
+
+                    grid = self._build_scan_grid(len(init_pulse_params))
+                    log.info(f"  Total candidates: {len(grid)}")
+
+                    # Use a fast, constant-LR Adam for the scan phase
+                    scan_optimizer = optax.chain(
+                        optax.clip_by_global_norm(
+                            self.grad_clip if self.grad_clip > 0 else 1.0
+                        ),
+                        optax.adam(self.learning_rate * 5),  # aggressive LR
+                    )
+
+                    @jax.jit
+                    def scan_step(opt_state, log_params):
+                        loss, grads = jax.value_and_grad(fidelity_only_cost_log)(
+                            log_params
+                        )
+                        updates, opt_state = scan_optimizer.update(
+                            grads, opt_state, log_params
+                        )
+                        log_params = optax.apply_updates(log_params, updates)
+                        return log_params, opt_state, loss
+
+                    for ci, candidate in enumerate(grid):
+                        log_candidate = self._to_log_space(candidate)
+                        opt_state = scan_optimizer.init(log_candidate)
+
+                        log_p = log_candidate
+                        for _ in range(self.scan_steps):
+                            log_p, opt_state, loss = scan_step(opt_state, log_p)
+
+                        # Evaluate final loss
+                        physical_p = self._from_log_space(log_p)
+                        loss = fidelity_only_cost(physical_p)
+
+                        if loss < best_scan_loss:
+                            best_scan_loss = loss
+                            best_scan_params = physical_p
+                            log.info(
+                                f"  Candidate {ci + 1}/{len(grid)}: "
+                                f"loss={loss.item():.3e} improved with "
+                                f"params={physical_p}"
+                            )
+
+                    log.info(
+                        f"Stage 0 complete. Best fidelity-only loss: "
+                        f"{best_scan_loss.item():.3e}, "
+                        f"params: {best_scan_params}"
+                    )
+
+                # ============================================================
+                # Stage 1: Multi-restart gradient optimisation
+                # ============================================================
 
                 # Build learning rate schedule
                 warmup_steps = int(self.n_steps * self.warmup_ratio)
@@ -534,44 +803,106 @@ class QOC:
                 else:
                     schedule = self.learning_rate
 
-                optimizer = optax.adamw(schedule)
-                opt_state = optimizer.init(params)
-
-                loss = total_costs(params)
-                loss_history = [loss]
-                best_loss = loss
-                best_pulse_params = params
+                # Build optimiser chain with gradient clipping
+                if (
+                    self.grad_clip
+                    and self.grad_clip > 0
+                    and jnp.isfinite(self.grad_clip)
+                ):
+                    optimizer = optax.chain(
+                        optax.clip_by_global_norm(self.grad_clip),
+                        optax.adamw(schedule),
+                    )
+                else:
+                    optimizer = optax.adamw(schedule)
 
                 @jax.jit
-                def opt_step(opt_state, params, *args):
-                    loss, grads = jax.value_and_grad(total_costs)(params, *args)
-                    updates, opt_state = optimizer.update(grads, opt_state, params)
-                    params = optax.apply_updates(params, updates)
-                    return params, opt_state, loss
+                def opt_step(opt_state, log_params, *args):
+                    loss, grads = jax.value_and_grad(total_costs_log)(log_params, *args)
+                    updates, opt_state = optimizer.update(grads, opt_state, log_params)
+                    log_params = optax.apply_updates(log_params, updates)
+                    return log_params, opt_state, loss
 
-                for step in range(self.n_steps):
-                    if step % self.log_interval == 0:
+                # Use the best from grid scan as starting point
+                start_params = best_scan_params
+
+                global_best_loss = jnp.inf
+                global_best_params = start_params
+                global_best_history = []
+                restart_key = self.random_key
+
+                for restart in range(self.n_restarts):
+                    if restart == 0:
+                        params = start_params
+                    else:
+                        # Perturb the starting point
+                        restart_key, sub_key = jax.random.split(restart_key)
+                        noise = jax.random.normal(sub_key, shape=start_params.shape)
+                        scale = (
+                            jnp.maximum(jnp.abs(start_params), 0.1)
+                            * self.restart_noise_scale
+                        )
+                        params = start_params + noise * scale
+                        # Ensure all params that should be positive stay so
+                        params = params.at[-1].set(jnp.abs(params[-1]))
+                        if self.log_scale_params:
+                            n = len(params)
+                            for idx in self.log_scale_params:
+                                i = idx if idx >= 0 else n + idx
+                                params = params.at[i].set(jnp.abs(params[i]))
                         log.info(
-                            f"Step {step}/{self.n_steps},\
-                                Loss: {loss_history[-1].item():.3e}"
+                            f"Restart {restart + 1}/{self.n_restarts} for "
+                            f"{gate_name} with perturbed params: {params}"
                         )
 
-                    params, opt_state, loss = opt_step(opt_state, params)
+                    # Convert to log-space for optimisation
+                    log_params = self._to_log_space(params)
+                    opt_state = optimizer.init(log_params)
 
-                    if loss < best_loss:
-                        log.debug(f"Best set of params found at step {step}")
-                        best_loss = loss
-                        best_pulse_params = params
+                    loss = total_costs(params)
+                    loss_history = [loss]
+                    best_loss = loss
+                    best_pulse_params = params
 
-                    loss_history.append(loss)
+                    for step in range(self.n_steps):
+                        if step % self.log_interval == 0:
+                            restart_tag = (
+                                f" [restart {restart + 1}/{self.n_restarts}]"
+                                if self.n_restarts > 1
+                                else ""
+                            )
+                            log.info(
+                                f"Step {step}/{self.n_steps}, "
+                                f"Loss: {loss_history[-1].item():.3e}"
+                                f"{restart_tag}"
+                            )
+
+                        log_params, opt_state, loss = opt_step(opt_state, log_params)
+
+                        if loss < best_loss:
+                            log.debug(f"Best set of params found at step {step}")
+                            best_loss = loss
+                            best_pulse_params = self._from_log_space(log_params)
+
+                        loss_history.append(loss)
+
+                    log.info(
+                        f"Restart {restart + 1}/{self.n_restarts} finished "
+                        f"with best loss: {best_loss.item():.3e}"
+                    )
+
+                    if best_loss < global_best_loss:
+                        global_best_loss = best_loss
+                        global_best_params = best_pulse_params
+                        global_best_history = loss_history
 
                 self.save_results(
                     gate=gate_name,
-                    fidelity=1 - best_loss.item(),
-                    pulse_params=best_pulse_params,
+                    fidelity=1 - global_best_loss.item(),
+                    pulse_params=global_best_params,
                 )
 
-                return best_pulse_params, loss_history
+                return global_best_params, global_best_history
 
             return wrapper
 
@@ -733,17 +1064,25 @@ default_qoc_params = {
     "envelope": "gaussian",
     "cost_fns": [
         ("fidelity", (0.49999999, 0.49999999)),
-        ("pulse_width", 0.000000015),
-        ("evolution_time", 0.000000005),
+        # ("pulse_width", 0.000000015),
+        # ("evolution_time", 0.000000005),
     ],
     "t_target": 0.5,
     "n_steps": 1500,
     "n_samples": 20,
-    "learning_rate": 0.0001,
+    "learning_rate": 0.001,
     "warmup_ratio": 0.05,
     "end_lr_ratio": 0.01,
     "log_interval": 50,
     "file_dir": None,
+    "n_restarts": 3,
+    "restart_noise_scale": 0.5,
+    "grad_clip": 1.0,
+    "random_seed": 42,
+    "scan_steps": 30,
+    "scan_grid_size": 5,
+    "scan_ranges": None,
+    "log_scale_params": None,
 }
 
 if __name__ == "__main__":
@@ -844,6 +1183,60 @@ if __name__ == "__main__":
             "Directory to save qoc_results.csv. " "Defaults to the package directory."
         ),
     )
+    parser.add_argument(
+        "--n_restarts",
+        type=int,
+        default=default_qoc_params["n_restarts"],
+        help=(
+            "Number of random restarts for the optimisation. "
+            "The first run uses the initial parameters as-is; "
+            "subsequent runs add random perturbations. "
+            "The best result across all restarts is kept."
+        ),
+    )
+    parser.add_argument(
+        "--restart_noise_scale",
+        type=float,
+        default=default_qoc_params["restart_noise_scale"],
+        help=(
+            "Standard deviation of Gaussian noise added to the initial "
+            "parameters for each restart, relative to parameter magnitude."
+        ),
+    )
+    parser.add_argument(
+        "--grad_clip",
+        type=float,
+        default=default_qoc_params["grad_clip"],
+        help=(
+            "Maximum global gradient norm. Gradients are clipped to this "
+            "value before being passed to the optimiser. "
+            "Set to 0 to disable."
+        ),
+    )
+    parser.add_argument(
+        "--random_seed",
+        type=int,
+        default=default_qoc_params["random_seed"],
+        help="Base random seed for restart perturbations.",
+    )
+    parser.add_argument(
+        "--scan_steps",
+        type=int,
+        default=default_qoc_params["scan_steps"],
+        help=(
+            "Number of short gradient-descent steps per candidate in the "
+            "coarse grid scan (Stage 0).  Set to 0 to disable the grid scan."
+        ),
+    )
+    parser.add_argument(
+        "--scan_grid_size",
+        type=int,
+        default=default_qoc_params["scan_grid_size"],
+        help=(
+            "Number of points per parameter dimension in the coarse grid. "
+            "Total candidates = scan_grid_size^n_params."
+        ),
+    )
 
     args = parser.parse_args()
     sel_gates = str(args.gates)
@@ -869,6 +1262,12 @@ if __name__ == "__main__":
         end_lr_ratio=args.end_lr_ratio,
         log_interval=args.log_interval,
         file_dir=args.file_dir,
+        n_restarts=args.n_restarts,
+        restart_noise_scale=args.restart_noise_scale,
+        grad_clip=args.grad_clip,
+        random_seed=args.random_seed,
+        scan_steps=args.scan_steps,
+        scan_grid_size=args.scan_grid_size,
     )
 
     qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)
