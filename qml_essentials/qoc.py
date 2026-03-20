@@ -483,11 +483,10 @@ class QOC:
                 gate_name = create_circuits.__name__.split("_")[1]
 
                 if init_pulse_params is None:
-                    log.warning(
-                        f"Using initial pulse parameters for {gate_name} \
-                            from `ansaetze.py`"
-                    )
                     init_pulse_params = PulseInformation.gate_by_name(gate_name).params
+                    log.warning(
+                        f"Using initial pulse parameters for {gate_name} : {init_pulse_params}"
+                    )
                 log.debug(
                     f"Initial pulse parameters for {gate_name}: {init_pulse_params}"
                 )
