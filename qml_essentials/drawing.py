@@ -983,7 +983,7 @@ def _compute_display_window(
     else:
         val_edge = float(ev.envelope_fn(ev.envelope_params, 0.0, t_c))
 
-        if abs(val_edge / val_center) < (1.0 - threshold):
+        if abs(val_edge / val_center) <= threshold:
             # Envelope already decays visibly within the evolution window
             t_lo, t_hi = 0.0, ev.duration
         else:
@@ -1122,7 +1122,7 @@ def draw_pulse_schedule(
     events: List[PulseEvent],
     n_qubits: int,
     n_samples: int = 200,
-    show_carrier: bool = False,
+    show_carrier: bool = True,
     **kwargs: Any,
 ) -> Tuple:
     """Render a pulse schedule as a Matplotlib figure.
