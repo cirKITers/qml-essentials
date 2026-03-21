@@ -1,48 +1,57 @@
 import argparse
-from typing import Dict, List, Callable, Optional, Union, Tuple
-
-import os
 import csv
+import itertools
+import logging
+import os
+from typing import Callable, Dict, List, Optional, Tuple, Union
+
 import jax
 from jax import numpy as jnp
 import optax
-
 
 from qml_essentials.gates import Gates, PulseInformation, PulseEnvelope
 from qml_essentials import operations as op
 from qml_essentials import yaqsi as ys
 from qml_essentials.math import phase_difference, fidelity
-import logging
 
 jax.config.update("jax_enable_x64", True)
 log = logging.getLogger(__name__)
 
 
 class Cost:
+    """Weighted wrapper around a cost function.
+
+    Combines a cost callable with a scalar or tuple weight and optional
+    constant keyword arguments.  Multiple ``Cost`` instances can be
+    composed via the ``+`` operator to build a combined objective.
+
+    Args:
+        cost: Callable ``(pulse_params, **ckwargs) -> scalar | tuple``.
+        weight: Scalar or tuple of per-component weights.
+        ckwargs: Constant keyword arguments injected into every call.
+    """
+
     def __init__(
         self,
         cost: Callable,
         weight: Union[float, Tuple],
-        ckwargs: dict = {},
+        ckwargs: Optional[dict] = None,
     ):
         self.cost = cost
         self.weight = weight
-        self.ckwargs = ckwargs
-
-    def cost(self, *args, **kwargs):
-        raise NotImplementedError
+        self.ckwargs = ckwargs if ckwargs is not None else {}
 
     def __call__(self, *args, **kwargs):
-        # inject constant args in cost function
+        """Evaluate the cost function with injected kwargs and apply weights."""
         cost = self.cost(*args, **kwargs, **self.ckwargs)
         if isinstance(self.weight, tuple):
             return jnp.array(
                 [c * w for c, w in zip(cost, self.weight, strict=True)]
             ).sum()
-        else:
-            return cost * self.weight
+        return cost * self.weight
 
     def __add__(self, other):
+        """Compose two cost terms into a single callable that sums them."""
         if other is None:
             return lambda *args, **kwargs: self(*args, **kwargs)
         if callable(other):
@@ -145,20 +154,16 @@ def evolution_time_cost_fn(
 
     Args:
         pulse_params: Pulse parameters for the gate.
-        envelope: Name of the active pulse envelope (unused).
-        t_target (float): Target evolution time (passed via ``**kwargs``).
+        t_target: Target evolution time.
 
     Returns:
         Scalar evolution-time cost.
-
-    Raises:
-        ValueError: If ``t_target`` is not provided in ``kwargs``.
     """
     t = pulse_params[-1]
     return ((t - t_target) / t_target) ** 2
 
 
-def sepctral_density_cost_fn(
+def spectral_density_cost_fn(
     pulse_params: jnp.ndarray,
     envelope: str,
     n_fft: int = 1024,
@@ -218,6 +223,10 @@ def sepctral_density_cost_fn(
     return jnp.array(rms_bw, dtype=jnp.float64)
 
 
+# Backward-compatible alias for the old misspelled name
+sepctral_density_cost_fn = spectral_density_cost_fn
+
+
 class CostFnRegistry:
     """Registry of cost functions available for pulse optimisation.
 
@@ -242,7 +251,7 @@ class CostFnRegistry:
             "ckwargs_keys": ["t_target"],
         },
         "spectral_density": {
-            "fn": sepctral_density_cost_fn,
+            "fn": spectral_density_cost_fn,
             "default_weight": 1.0,
             "ckwargs_keys": ["envelope"],
         },
@@ -321,6 +330,22 @@ class CostFnRegistry:
 
 
 class QOC:
+    """Quantum Optimal Control for pulse-level gate synthesis.
+
+    Optimises pulse parameters to reproduce the unitary of standard
+    quantum gates using a two-stage strategy:
+
+    * **Stage 0** – coarse grid scan (optional).
+    * **Stage 1** – multi-restart gradient optimisation with AdamW.
+
+    Attributes:
+        GATES_1Q: Names of supported single-qubit gates.
+        GATES_2Q: Names of supported two-qubit gates.
+    """
+
+    GATES_1Q: List[str] = ["RX", "RY", "RZ", "Rot", "H"]
+    GATES_2Q: List[str] = ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"]
+
     def __init__(
         self,
         envelope: str,
@@ -419,8 +444,6 @@ class QOC:
                 evolution time) for envelopes with ≥ 2 envelope params,
                 or ``[]`` otherwise.
         """
-        self.ws = jnp.linspace(0, 2 * jnp.pi, n_samples)
-
         self.envelope = envelope
         self.n_steps = n_steps
         self.n_samples = n_samples
@@ -431,7 +454,6 @@ class QOC:
         self.file_dir = (
             file_dir if file_dir else os.path.dirname(os.path.realpath(__file__))
         )
-        self.current_gate = None
         self.t_target = t_target
         self.n_restarts = max(1, n_restarts)
         self.restart_noise_scale = restart_noise_scale
@@ -453,12 +475,12 @@ class QOC:
             self.log_scale_params = []
 
         log.info(
-            f"Training parameters: {self.n_steps} steps, {self.n_samples} samples\
-                {self.learning_rate} learning rate"
+            f"Training parameters: {self.n_steps} steps, "
+            f"{self.n_samples} samples, {self.learning_rate} learning rate"
         )
         log.info(
-            f"LR schedule: warmup_ratio={self.warmup_ratio},\
-                end_lr_ratio={self.end_lr_ratio}"
+            f"LR schedule: warmup_ratio={self.warmup_ratio}, "
+            f"end_lr_ratio={self.end_lr_ratio}"
         )
 
         log.info(f"Envelope: {self.envelope}")
@@ -479,7 +501,6 @@ class QOC:
         for name, _weight in cost_fns:
             CostFnRegistry.get(name)  # raises ValueError if unknown
             summed_weights += sum(_weight) if isinstance(_weight, tuple) else _weight
-            # check sume of weights
         assert jnp.isclose(
             summed_weights, 1.0, rtol=1e-8
         ), f"Cost function weights must sum to 1. Got {summed_weights}"
@@ -489,19 +510,17 @@ class QOC:
         # Configure the pulse system with the selected envelope
         PulseInformation.set_envelope(self.envelope)
 
-    def save_results(self, gate, fidelity, pulse_params):
-        """
-        Saves the optimized pulse parameters and fidelity for a given gate to a CSV file
+    def save_results(self, gate: str, fidelity: float, pulse_params) -> None:
+        """Save optimised pulse parameters and fidelity for a gate to CSV.
+
+        If the gate already exists in the file, its entry is overwritten
+        regardless of whether the new fidelity is higher.  A warning is
+        logged when the existing fidelity was better.
 
         Args:
-            gate (str): Name of the gate.
-            fidelity (float): Fidelity of the optimized pulse parameters.
-            pulse_params (list): Optimized pulse parameters for the gate.
-
-        Notes:
-            If the gate already exists in the file and
-            the newly optimized pulse parameters have a higher fidelity,
-            the existing entry will be overwritten.
+            gate: Name of the gate (e.g. ``"RX"``).
+            fidelity: Achieved fidelity of the optimised pulse.
+            pulse_params: Optimised pulse parameters for the gate.
         """
         if self.file_dir is not None:
             os.makedirs(self.file_dir, exist_ok=True)
@@ -593,8 +612,6 @@ class QOC:
         Returns:
             Array of shape ``(n_candidates, n_params)`` with grid points.
         """
-        import itertools
-
         if self.scan_ranges is not None:
             ranges = self.scan_ranges
             assert len(ranges) == n_params, (
@@ -602,7 +619,6 @@ class QOC:
                 f"{n_params} parameters."
             )
         else:
-            # Heuristic defaults for Gaussian-like envelopes:
             # [amplitude, sigma/width, evolution_time]
             default_ranges = {
                 1: [(0.05, 2.0)],  # evolution time only (general)
@@ -625,6 +641,20 @@ class QOC:
         return grid
 
     def stage_0_opt(self, init_pulse_params: jnp.ndarray, fidelity_only_cost):
+        """Run the coarse grid-scan phase (Stage 0).
+
+        Evaluates a Cartesian grid of parameter candidates using only the
+        fidelity cost (ignoring phase).  Each candidate is refined with a
+        few fast gradient steps.  Returns the best-found parameters.
+
+        Args:
+            init_pulse_params: Initial pulse parameters to compare against.
+            fidelity_only_cost: Cost callable using fidelity only.
+
+        Returns:
+            Best pulse parameters found during the scan.
+        """
+
         def fidelity_only_cost_log(log_params, *args):
             return fidelity_only_cost(self._from_log_space(log_params), *args)
 
@@ -686,6 +716,22 @@ class QOC:
         return best_scan_params
 
     def stage_1_opt(self, best_scan_params: jnp.ndarray, total_costs):
+        """Run multi-restart gradient optimisation (Stage 1).
+
+        Performs ``n_restarts`` independent AdamW runs with the full
+        (weighted) cost function.  The first restart uses
+        ``best_scan_params`` directly; subsequent restarts add random
+        perturbations.  Parameters specified in ``log_scale_params`` are
+        optimised in log-space.
+
+        Args:
+            best_scan_params: Starting parameters (typically from Stage 0).
+            total_costs: Combined cost callable.
+
+        Returns:
+            Tuple of ``(best_params, loss_history, best_loss)``.
+        """
+
         # Wrap the cost function with log-space reparameterisation
         def total_costs_log(log_params, *args):
             return total_costs(self._from_log_space(log_params), *args)
@@ -706,7 +752,10 @@ class QOC:
             schedule = self.learning_rate
 
         # Build optimiser chain with gradient clipping
-        if self.grad_clip and self.grad_clip > 0 and jnp.isfinite(self.grad_clip):
+        use_clip = (
+            self.grad_clip and self.grad_clip > 0 and jnp.isfinite(self.grad_clip)
+        )
+        if use_clip:
             optimizer = optax.chain(
                 optax.clip_by_global_norm(self.grad_clip),
                 optax.adamw(schedule),
@@ -740,15 +789,16 @@ class QOC:
                     jnp.maximum(jnp.abs(start_params), 0.1) * self.restart_noise_scale
                 )
                 params = start_params + noise * scale
-                # Ensure all params that should be positive stay so
+                # Ensure log-scaled params remain positive before
+                # conversion (evolution time at index -1 is always
+                # included since _to_log_space uses jnp.abs anyway,
+                # but we keep values positive for readability).
                 params = params.at[-1].set(jnp.abs(params[-1]))
-                if self.log_scale_params:
-                    n = len(params)
-                    for idx in self.log_scale_params:
-                        i = idx if idx >= 0 else n + idx
-                        params = params.at[i].set(jnp.abs(params[i]))
+                for idx in self.log_scale_params:
+                    i = idx if idx >= 0 else len(params) + idx
+                    params = params.at[i].set(jnp.abs(params[i]))
                 log.info(
-                    f"Restart {restart + 1}/{self.n_restarts} for "
+                    f"Restart {restart + 1}/{self.n_restarts} "
                     f"with perturbed params: {params}"
                 )
 
@@ -796,6 +846,22 @@ class QOC:
         return global_best_params, global_best_history, global_best_loss
 
     def optimize(self, wires):
+        """Decorator factory that optimises pulse parameters for a gate.
+
+        Usage::
+
+            opt = qoc.optimize(wires=1)
+            best_params, loss_history = opt(qoc.create_RX)()
+
+        Args:
+            wires: Number of qubits the gate acts on.
+
+        Returns:
+            A decorator that accepts a circuit-factory function and
+            returns a callable ``(init_pulse_params=None) ->
+            (best_params, loss_history)``.
+        """
+
         def decorator(create_circuits):
             def wrapper(init_pulse_params: jnp.ndarray = None):
                 """
@@ -848,50 +914,32 @@ class QOC:
                     "t_target": self.t_target,
                 }
 
-                # --- Build cost functions ---
-                # Full cost (all user-selected cost terms)
-                total_costs = None
-                for name, weight in self.cost_fns:
+                def _build_cost(name, weight):
+                    """Build a Cost from a registry entry, filtering ckwargs."""
                     meta = CostFnRegistry.get(name)
-                    total_costs = (
-                        Cost(
-                            cost=meta["fn"],
-                            weight=weight,
-                            ckwargs={
-                                k: v
-                                for k, v in all_ckwargs.items()
-                                if k in meta["ckwargs_keys"]
-                            },
-                        )
-                        + total_costs
+                    return Cost(
+                        cost=meta["fn"],
+                        weight=weight,
+                        ckwargs={
+                            k: v
+                            for k, v in all_ckwargs.items()
+                            if k in meta["ckwargs_keys"]
+                        },
                     )
 
-                # Fidelity-only cost for the scan phase - only uses the
-                # (1-F) component, ignoring phase.  This gives cleaner
-                # gradients when starting from a poor initialisation
-                # where the phase signal is essentially random noise.
-                fid_meta = CostFnRegistry.get("fidelity")
-                fidelity_only_cost = Cost(
-                    cost=fid_meta["fn"],
-                    weight=(1.0, 0.0),  # 100% fidelity, 0% phase
-                    ckwargs={
-                        k: v
-                        for k, v in all_ckwargs.items()
-                        if k in fid_meta["ckwargs_keys"]
-                    },
+                total_costs = None
+                for name, weight in self.cost_fns:
+                    total_costs = _build_cost(name, weight) + total_costs
+
+                fidelity_only_cost = _build_cost(
+                    "fidelity", (1.0, 0.0)  # 100% fidelity, 0% phase
                 )
 
-                # ============================================================
-                # Stage 0: Coarse grid scan (optional)
-                # ============================================================
                 best_scan_params = self.stage_0_opt(
                     init_pulse_params,
                     fidelity_only_cost,
                 )
 
-                # ============================================================
-                # Stage 1: Multi-restart gradient optimisation
-                # ============================================================
                 global_best_params, global_best_history, global_best_loss = (
                     self.stage_1_opt(
                         best_scan_params,
@@ -910,7 +958,9 @@ class QOC:
 
         return decorator
 
-    def create_RX(self, init_pulse_params: jnp.ndarray = None):
+    def create_RX(self):
+        """Create pulse and target circuits for the RX gate."""
+
         def pulse_circuit(w, pulse_params):
             Gates.RX(w, 0, pulse_params=pulse_params, gate_mode="pulse")
 
@@ -919,7 +969,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_RY(self, init_pulse_params: jnp.ndarray = None):
+    def create_RY(self):
+        """Create pulse and target circuits for the RY gate."""
+
         def pulse_circuit(w, pulse_params):
             Gates.RY(w, 0, pulse_params=pulse_params, gate_mode="pulse")
 
@@ -928,7 +980,13 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_RZ(self, init_pulse_params: jnp.ndarray = None):
+    def create_RZ(self):
+        """Create pulse and target circuits for the RZ gate.
+
+        Both circuits are sandwiched between Hadamard gates to make the
+        RZ rotation observable in the computational basis.
+        """
+
         def pulse_circuit(w, pulse_params):
             op.H(wires=0)
             Gates.RZ(w, 0, pulse_params=pulse_params, gate_mode="pulse")
@@ -941,7 +999,12 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_H(self, init_pulse_params: jnp.ndarray = None):
+    def create_H(self):
+        """Create pulse and target circuits for the Hadamard gate.
+
+        An RY rotation is prepended to break symmetry.
+        """
+
         def pulse_circuit(w, pulse_params):
             op.RY(w, wires=0)
             Gates.H(0, pulse_params=pulse_params, gate_mode="pulse")
@@ -952,7 +1015,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_Rot(self, init_pulse_params: jnp.ndarray = None):
+    def create_Rot(self):
+        """Create pulse and target circuits for the general Rot gate."""
+
         def pulse_circuit(w, pulse_params):
             op.H(wires=0)
             Gates.Rot(w, w * 2, w * 3, 0, pulse_params=pulse_params, gate_mode="pulse")
@@ -963,7 +1028,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_CX(self, init_pulse_params: jnp.ndarray = None):
+    def create_CX(self):
+        """Create pulse and target circuits for the CX (CNOT) gate."""
+
         def pulse_circuit(w, pulse_params):
             op.RY(w, wires=0)
             op.H(wires=1)
@@ -976,7 +1043,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_CY(self, init_pulse_params: jnp.ndarray = None):
+    def create_CY(self):
+        """Create pulse and target circuits for the CY gate."""
+
         def pulse_circuit(w, pulse_params):
             op.RX(w, wires=0)
             op.H(wires=1)
@@ -989,7 +1058,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_CZ(self, init_pulse_params: jnp.ndarray = None):
+    def create_CZ(self):
+        """Create pulse and target circuits for the CZ gate."""
+
         def pulse_circuit(w, pulse_params):
             op.RY(w, wires=0)
             op.H(wires=1)
@@ -1002,7 +1073,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_CRX(self, init_pulse_params: jnp.ndarray = None):
+    def create_CRX(self):
+        """Create pulse and target circuits for the CRX gate."""
+
         def pulse_circuit(w, pulse_params):
             op.H(wires=0)
             Gates.CRX(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
@@ -1013,7 +1086,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_CRY(self, init_pulse_params: jnp.ndarray = None):
+    def create_CRY(self):
+        """Create pulse and target circuits for the CRY gate."""
+
         def pulse_circuit(w, pulse_params):
             op.H(wires=0)
             Gates.CRY(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
@@ -1024,7 +1099,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_CRZ(self, init_pulse_params: jnp.ndarray = None):
+    def create_CRZ(self):
+        """Create pulse and target circuits for the CRZ gate."""
+
         def pulse_circuit(w, pulse_params):
             op.H(wires=0)
             op.H(wires=1)
@@ -1037,15 +1114,20 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def optimize_all(self, sel_gates, make_log):
-        log_history = {}
+    def optimize_all(self, sel_gates: str, make_log: bool) -> None:
+        """Optimise all selected gates and optionally write a log CSV.
 
-        gates_1q = ["RX", "RY", "RZ", "Rot", "H"]
-        gates_2q = ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"]
+        Args:
+            sel_gates: Comma-separated gate names or ``"all"``.
+            make_log: If ``True``, write per-gate loss histories to
+                ``qml_essentials/qoc_logs.csv``.
+        """
+        log_history: Dict[str, list] = {}
 
-        for gate in gates_1q + gates_2q:
+        for gate in self.GATES_1Q + self.GATES_2Q:
             if gate in sel_gates or "all" in sel_gates:
-                opt = self.optimize(wires=1 if gate in gates_1q else 2)
+                n_wires = 1 if gate in self.GATES_1Q else 2
+                opt = self.optimize(wires=n_wires)
                 gate_factory = getattr(self, f"create_{gate}")
                 log.info(f"Optimizing {gate} gate...")
                 optimized_pulse_params, loss_history = opt(gate_factory)()
@@ -1089,20 +1171,28 @@ default_qoc_params = {
 
 if __name__ == "__main__":
     # argparse the selected gate
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Quantum Optimal Control — pulse-level gate synthesis."
+    )
     parser.add_argument(
         "--gates",
         type=str,
+        nargs="+",
         default=["RX", "RY", "RZ", "CZ"],
-        choices=["all", "RX", "RY", "RZ", "CZ"],
+        choices=QOC.GATES_1Q + QOC.GATES_2Q + ["all"],
         help="Gate(s) to optimize.",
     )
     parser.add_argument(
         "--log",
-        type=str,
+        action="store_true",
         default=True,
-        choices=[True, False],
-        help="Log results to file.",
+        help="Log results to file (default: True).",
+    )
+    parser.add_argument(
+        "--no-log",
+        action="store_false",
+        dest="log",
+        help="Disable logging results to file.",
     )
     parser.add_argument(
         "--envelope",
@@ -1115,9 +1205,7 @@ if __name__ == "__main__":
         "--costs",
         type=str,
         nargs="+",
-        default=default_qoc_params[
-            "cost_fns"
-        ],  # be aware of the numerical precision limit!
+        default=default_qoc_params["cost_fns"],
         help=(
             "Cost functions and weights as 'name:w1,w2,...' strings. "
             "If weights are omitted the registry defaults are used. "
@@ -1128,7 +1216,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--t_target",
         type=float,
-        default=default_qoc_params["t_target"],  # referenz is the RZ gate
+        default=default_qoc_params["t_target"],
         help=(
             "Target evolution time for the 'evolution_time' cost function. "
             "All gates will be softly encouraged towards this common time."
@@ -1181,9 +1269,7 @@ if __name__ == "__main__":
         "--file_dir",
         type=str,
         default=default_qoc_params["file_dir"],
-        help=(
-            "Directory to save qoc_results.csv. " "Defaults to the package directory."
-        ),
+        help="Directory to save qoc_results.csv. Defaults to the package directory.",
     )
     parser.add_argument(
         "--n_restarts",
@@ -1241,8 +1327,8 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    sel_gates = str(args.gates)
-    make_log = bool(args.log)
+    sel_gates = args.gates  # already a list from nargs="+"
+    make_log = args.log
 
     # Parse cost function specs from CLI
     cost_fns = [CostFnRegistry.parse_cost_arg(spec) for spec in args.costs]
