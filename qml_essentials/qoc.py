@@ -624,6 +624,177 @@ class QOC:
         grid = jnp.array(list(itertools.product(*axes)))
         return grid
 
+    def stage_0_opt(self, init_pulse_params: jnp.ndarray, fidelity_only_cost):
+        def fidelity_only_cost_log(log_params, *args):
+            return fidelity_only_cost(self._from_log_space(log_params), *args)
+
+        best_scan_params = init_pulse_params
+        best_scan_loss = fidelity_only_cost(init_pulse_params)
+
+        if self.scan_steps > 0:
+            log.info(
+                f"Stage 0: Grid scan with {self.scan_grid_size}^"
+                f"{len(init_pulse_params)} candidates, "
+                f"{self.scan_steps} steps each"
+            )
+
+            grid = self._build_scan_grid(len(init_pulse_params))
+            log.info(f"  Total candidates: {len(grid)}")
+
+            # Use a fast, constant-LR Adam for the scan phase
+            scan_optimizer = optax.chain(
+                optax.clip_by_global_norm(
+                    self.grad_clip if self.grad_clip > 0 else 1.0
+                ),
+                optax.adam(self.learning_rate * 5),  # aggressive LR
+            )
+
+            @jax.jit
+            def scan_step(opt_state, log_params):
+                loss, grads = jax.value_and_grad(fidelity_only_cost_log)(log_params)
+                updates, opt_state = scan_optimizer.update(grads, opt_state, log_params)
+                log_params = optax.apply_updates(log_params, updates)
+                return log_params, opt_state, loss
+
+            for ci, candidate in enumerate(grid):
+                log_candidate = self._to_log_space(candidate)
+                opt_state = scan_optimizer.init(log_candidate)
+
+                log_p = log_candidate
+                for _ in range(self.scan_steps):
+                    log_p, opt_state, loss = scan_step(opt_state, log_p)
+
+                # Evaluate final loss
+                physical_p = self._from_log_space(log_p)
+                loss = fidelity_only_cost(physical_p)
+
+                if loss < best_scan_loss:
+                    best_scan_loss = loss
+                    best_scan_params = physical_p
+                    log.info(
+                        f"  Candidate {ci + 1}/{len(grid)}: "
+                        f"loss={loss.item():.3e} improved with "
+                        f"params={physical_p}"
+                    )
+
+            log.info(
+                f"Stage 0 complete. Best fidelity-only loss: "
+                f"{best_scan_loss.item():.3e}, "
+                f"params: {best_scan_params}"
+            )
+
+        return best_scan_params
+
+    def stage_1_opt(self, best_scan_params: jnp.ndarray, total_costs):
+        # Wrap the cost function with log-space reparameterisation
+        def total_costs_log(log_params, *args):
+            return total_costs(self._from_log_space(log_params), *args)
+
+        # Build learning rate schedule
+        warmup_steps = int(self.n_steps * self.warmup_ratio)
+        end_value = self.learning_rate * self.end_lr_ratio
+
+        if warmup_steps > 0 or self.end_lr_ratio < 1.0:
+            schedule = optax.warmup_cosine_decay_schedule(
+                init_value=(end_value if warmup_steps > 0 else self.learning_rate),
+                peak_value=self.learning_rate,
+                warmup_steps=warmup_steps,
+                decay_steps=self.n_steps,
+                end_value=end_value,
+            )
+        else:
+            schedule = self.learning_rate
+
+        # Build optimiser chain with gradient clipping
+        if self.grad_clip and self.grad_clip > 0 and jnp.isfinite(self.grad_clip):
+            optimizer = optax.chain(
+                optax.clip_by_global_norm(self.grad_clip),
+                optax.adamw(schedule),
+            )
+        else:
+            optimizer = optax.adamw(schedule)
+
+        @jax.jit
+        def opt_step(opt_state, log_params, *args):
+            loss, grads = jax.value_and_grad(total_costs_log)(log_params, *args)
+            updates, opt_state = optimizer.update(grads, opt_state, log_params)
+            log_params = optax.apply_updates(log_params, updates)
+            return log_params, opt_state, loss
+
+        # Use the best from grid scan as starting point
+        start_params = best_scan_params
+
+        global_best_loss = jnp.inf
+        global_best_params = start_params
+        global_best_history = []
+        restart_key = self.random_key
+
+        for restart in range(self.n_restarts):
+            if restart == 0:
+                params = start_params
+            else:
+                # Perturb the starting point
+                restart_key, sub_key = jax.random.split(restart_key)
+                noise = jax.random.normal(sub_key, shape=start_params.shape)
+                scale = (
+                    jnp.maximum(jnp.abs(start_params), 0.1) * self.restart_noise_scale
+                )
+                params = start_params + noise * scale
+                # Ensure all params that should be positive stay so
+                params = params.at[-1].set(jnp.abs(params[-1]))
+                if self.log_scale_params:
+                    n = len(params)
+                    for idx in self.log_scale_params:
+                        i = idx if idx >= 0 else n + idx
+                        params = params.at[i].set(jnp.abs(params[i]))
+                log.info(
+                    f"Restart {restart + 1}/{self.n_restarts} for "
+                    f"with perturbed params: {params}"
+                )
+
+            # Convert to log-space for optimisation
+            log_params = self._to_log_space(params)
+            opt_state = optimizer.init(log_params)
+
+            loss = total_costs(params)
+            loss_history = [loss]
+            best_loss = loss
+            best_pulse_params = params
+
+            for step in range(self.n_steps):
+                if step % self.log_interval == 0:
+                    restart_tag = (
+                        f" [restart {restart + 1}/{self.n_restarts}]"
+                        if self.n_restarts > 1
+                        else ""
+                    )
+                    log.info(
+                        f"Step {step}/{self.n_steps}, "
+                        f"Loss: {loss_history[-1].item():.3e}"
+                        f"{restart_tag}"
+                    )
+
+                log_params, opt_state, loss = opt_step(opt_state, log_params)
+
+                if loss < best_loss:
+                    log.debug(f"Best set of params found at step {step}")
+                    best_loss = loss
+                    best_pulse_params = self._from_log_space(log_params)
+
+                loss_history.append(loss)
+
+            log.info(
+                f"Restart {restart + 1}/{self.n_restarts} finished "
+                f"with best loss: {best_loss.item():.3e}"
+            )
+
+            if best_loss < global_best_loss:
+                global_best_loss = best_loss
+                global_best_params = best_pulse_params
+                global_best_history = loss_history
+
+        return global_best_params, global_best_history, global_best_loss
+
     def optimize(self, wires):
         def decorator(create_circuits):
             def wrapper(init_pulse_params: jnp.ndarray = None):
@@ -665,9 +836,6 @@ class QOC:
 
                 if init_pulse_params is None:
                     init_pulse_params = PulseInformation.gate_by_name(gate_name).params
-                    log.warning(
-                        f"Using initial pulse parameters for {gate_name} : {init_pulse_params}"
-                    )
                 log.debug(
                     f"Initial pulse parameters for {gate_name}: {init_pulse_params}"
                 )
@@ -713,189 +881,23 @@ class QOC:
                     },
                 )
 
-                # Wrap the cost function with log-space reparameterisation
-                def total_costs_log(log_params, *args):
-                    return total_costs(self._from_log_space(log_params), *args)
-
-                def fidelity_only_cost_log(log_params, *args):
-                    return fidelity_only_cost(self._from_log_space(log_params), *args)
-
                 # ============================================================
                 # Stage 0: Coarse grid scan (optional)
                 # ============================================================
-                best_scan_params = init_pulse_params
-                best_scan_loss = fidelity_only_cost(init_pulse_params)
-
-                if self.scan_steps > 0:
-                    log.info(
-                        f"Stage 0: Grid scan with {self.scan_grid_size}^"
-                        f"{len(init_pulse_params)} candidates, "
-                        f"{self.scan_steps} steps each"
-                    )
-
-                    grid = self._build_scan_grid(len(init_pulse_params))
-                    log.info(f"  Total candidates: {len(grid)}")
-
-                    # Use a fast, constant-LR Adam for the scan phase
-                    scan_optimizer = optax.chain(
-                        optax.clip_by_global_norm(
-                            self.grad_clip if self.grad_clip > 0 else 1.0
-                        ),
-                        optax.adam(self.learning_rate * 5),  # aggressive LR
-                    )
-
-                    @jax.jit
-                    def scan_step(opt_state, log_params):
-                        loss, grads = jax.value_and_grad(fidelity_only_cost_log)(
-                            log_params
-                        )
-                        updates, opt_state = scan_optimizer.update(
-                            grads, opt_state, log_params
-                        )
-                        log_params = optax.apply_updates(log_params, updates)
-                        return log_params, opt_state, loss
-
-                    for ci, candidate in enumerate(grid):
-                        log_candidate = self._to_log_space(candidate)
-                        opt_state = scan_optimizer.init(log_candidate)
-
-                        log_p = log_candidate
-                        for _ in range(self.scan_steps):
-                            log_p, opt_state, loss = scan_step(opt_state, log_p)
-
-                        # Evaluate final loss
-                        physical_p = self._from_log_space(log_p)
-                        loss = fidelity_only_cost(physical_p)
-
-                        if loss < best_scan_loss:
-                            best_scan_loss = loss
-                            best_scan_params = physical_p
-                            log.info(
-                                f"  Candidate {ci + 1}/{len(grid)}: "
-                                f"loss={loss.item():.3e} improved with "
-                                f"params={physical_p}"
-                            )
-
-                    log.info(
-                        f"Stage 0 complete. Best fidelity-only loss: "
-                        f"{best_scan_loss.item():.3e}, "
-                        f"params: {best_scan_params}"
-                    )
+                best_scan_params = self.stage_0_opt(
+                    init_pulse_params,
+                    fidelity_only_cost,
+                )
 
                 # ============================================================
                 # Stage 1: Multi-restart gradient optimisation
                 # ============================================================
-
-                # Build learning rate schedule
-                warmup_steps = int(self.n_steps * self.warmup_ratio)
-                end_value = self.learning_rate * self.end_lr_ratio
-
-                if warmup_steps > 0 or self.end_lr_ratio < 1.0:
-                    schedule = optax.warmup_cosine_decay_schedule(
-                        init_value=(
-                            end_value if warmup_steps > 0 else self.learning_rate
-                        ),
-                        peak_value=self.learning_rate,
-                        warmup_steps=warmup_steps,
-                        decay_steps=self.n_steps,
-                        end_value=end_value,
+                global_best_params, global_best_history, global_best_loss = (
+                    self.stage_1_opt(
+                        best_scan_params,
+                        total_costs,
                     )
-                else:
-                    schedule = self.learning_rate
-
-                # Build optimiser chain with gradient clipping
-                if (
-                    self.grad_clip
-                    and self.grad_clip > 0
-                    and jnp.isfinite(self.grad_clip)
-                ):
-                    optimizer = optax.chain(
-                        optax.clip_by_global_norm(self.grad_clip),
-                        optax.adamw(schedule),
-                    )
-                else:
-                    optimizer = optax.adamw(schedule)
-
-                @jax.jit
-                def opt_step(opt_state, log_params, *args):
-                    loss, grads = jax.value_and_grad(total_costs_log)(log_params, *args)
-                    updates, opt_state = optimizer.update(grads, opt_state, log_params)
-                    log_params = optax.apply_updates(log_params, updates)
-                    return log_params, opt_state, loss
-
-                # Use the best from grid scan as starting point
-                start_params = best_scan_params
-
-                global_best_loss = jnp.inf
-                global_best_params = start_params
-                global_best_history = []
-                restart_key = self.random_key
-
-                for restart in range(self.n_restarts):
-                    if restart == 0:
-                        params = start_params
-                    else:
-                        # Perturb the starting point
-                        restart_key, sub_key = jax.random.split(restart_key)
-                        noise = jax.random.normal(sub_key, shape=start_params.shape)
-                        scale = (
-                            jnp.maximum(jnp.abs(start_params), 0.1)
-                            * self.restart_noise_scale
-                        )
-                        params = start_params + noise * scale
-                        # Ensure all params that should be positive stay so
-                        params = params.at[-1].set(jnp.abs(params[-1]))
-                        if self.log_scale_params:
-                            n = len(params)
-                            for idx in self.log_scale_params:
-                                i = idx if idx >= 0 else n + idx
-                                params = params.at[i].set(jnp.abs(params[i]))
-                        log.info(
-                            f"Restart {restart + 1}/{self.n_restarts} for "
-                            f"{gate_name} with perturbed params: {params}"
-                        )
-
-                    # Convert to log-space for optimisation
-                    log_params = self._to_log_space(params)
-                    opt_state = optimizer.init(log_params)
-
-                    loss = total_costs(params)
-                    loss_history = [loss]
-                    best_loss = loss
-                    best_pulse_params = params
-
-                    for step in range(self.n_steps):
-                        if step % self.log_interval == 0:
-                            restart_tag = (
-                                f" [restart {restart + 1}/{self.n_restarts}]"
-                                if self.n_restarts > 1
-                                else ""
-                            )
-                            log.info(
-                                f"Step {step}/{self.n_steps}, "
-                                f"Loss: {loss_history[-1].item():.3e}"
-                                f"{restart_tag}"
-                            )
-
-                        log_params, opt_state, loss = opt_step(opt_state, log_params)
-
-                        if loss < best_loss:
-                            log.debug(f"Best set of params found at step {step}")
-                            best_loss = loss
-                            best_pulse_params = self._from_log_space(log_params)
-
-                        loss_history.append(loss)
-
-                    log.info(
-                        f"Restart {restart + 1}/{self.n_restarts} finished "
-                        f"with best loss: {best_loss.item():.3e}"
-                    )
-
-                    if best_loss < global_best_loss:
-                        global_best_loss = best_loss
-                        global_best_params = best_pulse_params
-                        global_best_history = loss_history
-
+                )
                 self.save_results(
                     gate=gate_name,
                     fidelity=1 - global_best_loss.item(),
