@@ -1154,7 +1154,7 @@ default_qoc_params = {
     "t_target": 0.5,
     "n_steps": 1500,
     "n_samples": 20,
-    "learning_rate": 0.001,
+    "learning_rate": 0.001,  # start slightly higher than usual, as we have sched.
     "warmup_ratio": 0.05,
     "end_lr_ratio": 0.01,
     "log_interval": 50,
@@ -1162,7 +1162,7 @@ default_qoc_params = {
     "n_restarts": 3,
     "restart_noise_scale": 0.5,
     "grad_clip": 1.0,
-    "random_seed": 42,
+    "random_seed": 1000,
     "scan_steps": 30,
     "scan_grid_size": 5,
     "scan_ranges": None,
@@ -1325,10 +1325,30 @@ if __name__ == "__main__":
             "Total candidates = scan_grid_size^n_params."
         ),
     )
+    parser.add_argument(
+        "--scan_ranges",
+        type=str,
+        nargs="*",
+        default=default_qoc_params["scan_ranges"],
+        help=(
+            "Per-parameter (lo,hi) ranges for the grid scan, given as "
+            "'lo,hi' strings. One pair per pulse parameter. "
+            "Example: --scan_ranges 0.5,30.0 0.05,2.0 0.05,2.0 "
+            "If omitted, heuristic defaults are used."
+        ),
+    )
 
     args = parser.parse_args()
     sel_gates = args.gates  # already a list from nargs="+"
     make_log = args.log
+
+    # Parse scan_ranges from CLI (list of "lo,hi" strings -> list of tuples)
+    scan_ranges = None
+    if args.scan_ranges is not None:
+        scan_ranges = []
+        for pair in args.scan_ranges:
+            lo, hi = pair.split(",")
+            scan_ranges.append((float(lo), float(hi)))
 
     # Parse cost function specs from CLI
     cost_fns = [CostFnRegistry.parse_cost_arg(spec) for spec in args.costs]
@@ -1356,6 +1376,7 @@ if __name__ == "__main__":
         random_seed=args.random_seed,
         scan_steps=args.scan_steps,
         scan_grid_size=args.scan_grid_size,
+        scan_ranges=scan_ranges,
     )
 
     qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)
