@@ -1154,7 +1154,7 @@ default_qoc_params = {
     "t_target": 0.5,
     "n_steps": 1500,
     "n_samples": 20,
-    "learning_rate": 0.001,  # start slightly higher than usual, as we have sched.
+    "learning_rate": 0.0001,
     "warmup_ratio": 0.05,
     "end_lr_ratio": 0.01,
     "log_interval": 50,
