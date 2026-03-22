@@ -1148,8 +1148,8 @@ default_qoc_params = {
     "envelope": "gaussian",
     "cost_fns": [
         ("fidelity", (0.49999999, 0.49999999)),
-        # ("pulse_width", 0.000000015),
-        # ("evolution_time", 0.000000005),
+        ("pulse_width", 0.000000015),
+        ("evolution_time", 0.000000005),
     ],
     "t_target": 0.5,
     "n_steps": 1500,
