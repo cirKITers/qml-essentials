@@ -1058,7 +1058,7 @@ class Model:
                   Only meaningful for pulse-mode models.
 
             **kwargs: Extra options forwarded to the drawing backend
-                (e.g. ``gate_values=True``, ``inputs_symbols="x"``).
+                (e.g. ``gate_values=True``).
 
         Returns:
             Depends on figure:

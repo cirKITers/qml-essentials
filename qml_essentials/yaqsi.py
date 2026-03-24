@@ -1376,8 +1376,6 @@ class Script:
 
                 - ``gate_values`` (bool): Show numeric gate angles instead of
                   symbolic \\theta_i labels.  Default ``False``.
-                - ``inputs_symbols`` (str | list): Symbol(s) used for input
-                  gates.  Default ``"x"``.
                 - ``show_carrier`` (bool): For ``"pulse"`` mode, overlay the
                   carrier-modulated waveform.  Default ``False``.
 

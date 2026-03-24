@@ -84,9 +84,6 @@ def _ctrl_target_name(name: str) -> str:
     return name.replace("C", "")
 
 
-# Text drawing
-
-
 def _format_param(val: float) -> str:
     """Format a numeric parameter for text display.
 
@@ -117,9 +114,6 @@ def _gate_label(op: Operation) -> str:
         param_str = ", ".join(_format_param(p) for p in params)
         return f"{name}({param_str})"
     return name
-
-
-# TikZ drawing
 
 
 def _tikz_param_str(val: float, op_name: str) -> str:
@@ -265,7 +259,6 @@ def draw_tikz(
     ops: List[Operation],
     n_qubits: int,
     gate_values: bool = False,
-    inputs_symbols: Union[str, List[str]] = "x",
     **kwargs: Any,
 ) -> Any:
     """Render a circuit tape as LaTeX/TikZ ``quantikz`` code.
@@ -274,8 +267,7 @@ def draw_tikz(
         ops: Ordered list of gate operations (noise channels excluded).
         n_qubits: Total number of qubits.
         gate_values: If ``True``, show numeric angles; otherwise use
-            symbolic θ_i labels.
-        inputs_symbols: Symbol(s) for input-encoding gates.
+            symbolic \\theta_i labels.
 
     Returns:
         A :class:`~qml_essentials.drawing.TikzFigure` object.
