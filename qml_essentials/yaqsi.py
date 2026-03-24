@@ -1366,7 +1366,7 @@ class Script:
                 - ``"text"``  — ASCII art (returned as a ``str``).
                 - ``"mpl"``   — Matplotlib figure (returns ``(fig, ax)``).
                 - ``"tikz"``  — LaTeX/TikZ code via ``quantikz``
-                  (returns a :class:`QuanTikz.TikzFigure`).
+                  (returns a :class:`TikzFigure`).
                 - ``"pulse"`` — Pulse schedule plot (returns ``(fig, axes)``).
 
             args: Positional arguments forwarded to the circuit function
@@ -1386,7 +1386,7 @@ class Script:
 
             - ``"text"``  -> ``str``
             - ``"mpl"``   -> ``(matplotlib.figure.Figure, matplotlib.axes.Axes)``
-            - ``"tikz"``  -> :class:`QuanTikz.TikzFigure`
+            - ``"tikz"``  -> :class:`TikzFigure`
             - ``"pulse"`` -> ``(matplotlib.figure.Figure, numpy.ndarray)``
 
         Raises:

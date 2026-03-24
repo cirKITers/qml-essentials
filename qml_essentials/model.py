@@ -1053,7 +1053,7 @@ class Model:
                 * ``"text"``  - ASCII art (returned as a ``str``).
                 * ``"mpl"``   - Matplotlib figure (returns ``(fig, ax)``).
                 * ``"tikz"``  - LaTeX/TikZ ``quantikz`` code (returns a
-                  :class:`QuanTikz.TikzFigure`).
+                  :class:`TikzFigure`).
                 * ``"pulse"`` - Pulse schedule (returns ``(fig, axes)``).
                   Only meaningful for pulse-mode models.
 
@@ -1065,7 +1065,7 @@ class Model:
 
             * ``"text"``  -> ``str``
             * ``"mpl"``   -> ``(matplotlib.figure.Figure, matplotlib.axes.Axes)``
-            * ``"tikz"``  -> :class:`QuanTikz.TikzFigure`
+            * ``"tikz"``  -> :class:`TikzFigure`
 
         Raises:
             ValueError: If figure is not one of the supported modes.
