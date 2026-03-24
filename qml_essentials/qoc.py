@@ -104,6 +104,9 @@ def fidelity_cost_fn(
     )
     phase_diff = jnp.mean(jnp.abs(phase_difference(pulse_states, target_states)))
 
+    # TODO: in future we could consider some sort of log based loss for the small values
+    # or utilize gradient ascent if we run into numerical limitations
+
     return (abs_diff, phase_diff)
 
 
@@ -114,7 +117,7 @@ def pulse_width_cost_fn(
     """
     Cost function penalising the pulse width (sigma / width).
 
-    The pulse width is taken as the **last** envelope parameter. For
+    The pulse width is taken as the last envelope parameter. For
     envelopes with no envelope parameters (e.g. ``"general"``), the cost
     is zero.
 
@@ -143,7 +146,7 @@ def evolution_time_cost_fn(
     """
     Cost function penalising deviation of the evolution time from a target.
 
-    The evolution time is always the **last** element of the pulse parameter
+    The evolution time is always the last element of the pulse parameter
     vector.  The cost is the squared relative deviation from ``t_target``:
 
         cost = ((t - t_target) / t_target) ** 2
@@ -333,18 +336,23 @@ class QOC:
     """Quantum Optimal Control for pulse-level gate synthesis.
 
     Optimises pulse parameters to reproduce the unitary of standard
-    quantum gates using a two-stage strategy:
-
-    * **Stage 0** – coarse grid scan (optional).
-    * **Stage 1** – multi-restart gradient optimisation with AdamW.
+    quantum gates using a two-stage strategy.
 
     Attributes:
         GATES_1Q: Names of supported single-qubit gates.
         GATES_2Q: Names of supported two-qubit gates.
+        DEFAULT_PARAM_RANGES: Default parameter ranges for each gate.
     """
 
     GATES_1Q: List[str] = ["RX", "RY", "RZ", "Rot", "H"]
     GATES_2Q: List[str] = ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"]
+
+    DEFAULT_PARAM_RANGES = {
+        1: [(0.05, 2.0)],  # evolution time
+        2: [(0.5, 2.0), (0.05, 2.0)],  # not typically used
+        3: [(0.5, 30.0), (0.05, 2.0), (0.05, 2.0)],  # A, σ, t
+        4: [(0.5, 30.0), (0.05, 2.0), (0.01, 0.5), (0.05, 2.0)],  # DRAG
+    }
 
     def __init__(
         self,
@@ -418,7 +426,7 @@ class QOC:
             scan_steps (int): Number of short gradient-descent steps to
                 run for each candidate in the coarse grid search
                 (Stage 0).  Set to 0 to disable the grid scan entirely
-                and rely solely on restarts.  A value of 20–50 is
+                and rely solely on restarts.  A value of 20-50 is
                 usually enough to identify promising basins.  Defaults
                 to 0.
             scan_grid_size (int): Number of points per parameter
@@ -620,13 +628,7 @@ class QOC:
             )
         else:
             # [amplitude, sigma/width, evolution_time]
-            default_ranges = {
-                1: [(0.05, 2.0)],  # evolution time only (general)
-                2: [(0.5, 2.0), (0.05, 2.0)],  # not typically used
-                3: [(0.5, 30.0), (0.05, 2.0), (0.05, 2.0)],  # A, σ, t
-                4: [(0.5, 30.0), (0.05, 2.0), (0.01, 0.5), (0.05, 2.0)],  # DRAG
-            }
-            ranges = default_ranges.get(
+            ranges = self.DEFAULT_PARAM_RANGES.get(
                 n_params,
                 [(0.1, 10.0)] * n_params,  # fallback
             )
