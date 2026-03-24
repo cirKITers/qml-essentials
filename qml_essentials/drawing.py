@@ -232,21 +232,13 @@ def _tikz_cell_barrier(
     op: Operation,
     circuit_tikz: List[List[str]],
 ) -> None:
-    """Align all wires and append a ``\\slice`` barrier marker.
+    """Align all wires so that subsequent gates start in the same column.
 
-    The barrier itself is invisible in the circuit output but forces all
-    wires to the same column so that subsequent gates are aligned.
-    A ``\\slice`` annotation is appended to the first wire of the barrier
-    to produce a thin vertical separator line in the rendered diagram.
+    The barrier is a no-op visually — it only pads shorter wires so that
+    every wire has the same number of cells at this point.
     """
     all_wires = list(range(len(circuit_tikz)))
     _tikz_align_wires(circuit_tikz, all_wires)
-
-    # Append the slice marker on the first barrier wire
-    barrier_str = (
-        "\\slice[style={draw=black, solid, double distance=2pt, " "line width=0.5pt}]{}"
-    )
-    circuit_tikz[op.wires[0]][-1] += barrier_str
 
 
 def _tikz_build_string(circuit_tikz: List[List[str]], n_qubits: int) -> str:
