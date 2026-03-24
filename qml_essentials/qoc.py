@@ -69,9 +69,9 @@ def fidelity_cost_fn(
 ) -> Tuple[float, float]:
     """
     Cost function returning (1 - fidelity) and |phase_difference| averaged
-    over *n_samples* uniformly spaced rotation angles in [0, 2\\pi].
+    over n_samples uniformly spaced rotation angles in [0, 2\\pi].
 
-    Uses batched (vmapped) circuit execution: all *n_samples* rotation
+    Uses batched (vmapped) circuit execution: all n_samples rotation
     angles are evaluated in a single vectorised call per script, replacing
     ``n_samples`` sequential Python-level circuit executions with one
     JIT-compiled XLA program each.
@@ -175,7 +175,7 @@ def spectral_density_cost_fn(
     Cost function penalising the spectral width of a given pulse.
 
     Samples the pulse envelope in the time domain over ``[0, t_evol]``
-    (where ``t_evol`` is the last element of *pulse_params*), computes its
+    (where ``t_evol`` is the last element of pulse_params), computes its
     power spectral density via FFT, and returns the normalised RMS bandwidth
     (square root of the second central moment of the PSD).
 
@@ -267,7 +267,7 @@ class CostFnRegistry:
 
     @classmethod
     def get(cls, name: str) -> dict:
-        """Look up cost-function metadata by *name*.
+        """Look up cost-function metadata by name.
 
         Args:
             name: Registered cost function name.
@@ -277,7 +277,7 @@ class CostFnRegistry:
             ``default_weight``, ``ckwargs_keys``.
 
         Raises:
-            ValueError: If *name* is not registered.
+            ValueError: If name is not registered.
         """
         if name not in cls._REGISTRY:
             raise ValueError(
@@ -383,7 +383,7 @@ class QOC:
                 Must be one of the registered envelopes in PulseEnvelope
                 (e.g. 'gaussian', 'square', 'cosine', 'drag', 'sech').
             cost_fns (list): List of ``(name, weight)`` tuples that select
-                which cost functions to use and their weights.  *name* must
+                which cost functions to use and their weights.  name must
                 be a key in :class:`CostFnRegistry`.  *weight* is either a
                 single float or a tuple of floats matching the number of
                 return values of the cost function.
