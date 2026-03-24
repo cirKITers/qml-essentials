@@ -9,6 +9,7 @@ import jax.scipy.linalg
 import numpy as np  # needed to prevent jitting some operations
 
 from qml_essentials.operations import (
+    Barrier,
     Hermitian,
     ParametrizedHamiltonian,
     Operation,
@@ -761,6 +762,8 @@ class Script:
         # hits on _einsum_subscript) from the hot loop.
         compiled = []
         for op in tape:
+            if isinstance(op, Barrier):
+                continue
             k = len(op.wires)
             gt = op._gate_tensor(k)
             sub = _einsum_subscript(n_qubits, k, tuple(op.wires))

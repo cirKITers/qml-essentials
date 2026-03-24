@@ -316,7 +316,7 @@ class Operation:
     def apply_to_state(self, state: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
         """Apply this gate to a statevector via tensor contraction.
 
-        The statevector (shape ``(2**n,)``) is reshaped into a rank-*n* tensor
+        The statevector (shape ``(2**n,)``) is reshaped into a rank-n tensor
         of shape ``(2,)*n``.  The gate (shape ``(2**k, 2**k)``) is reshaped to
         ``(2,)*2k`` and contracted against the k target wire axes.
 
@@ -339,7 +339,7 @@ class Operation:
     def apply_to_state_tensor(self, psi: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
         """Apply this gate to a statevector already in tensor form.
 
-        Like :meth:`apply_to_state` but expects the state in rank-*n* tensor
+        Like :meth:`apply_to_state` but expects the state in rank-n tensor
         form ``(2,)*n`` and returns the result in the same form.  This avoids
         the ``reshape`` calls at the per-gate level when the simulation loop
         keeps the state in tensor form throughout.
@@ -381,7 +381,7 @@ class Operation:
         """Apply this gate to a density matrix via \\rho -> U\\rho U\\dagger.
 
         The density matrix (shape ``(2**n, 2**n)``) is treated as a rank-*2n*
-        tensor with *n* "ket" axes (0..n-1) and *n* "bra" axes (n..2n-1).
+        tensor with n "ket" axes (0..n-1) and n "bra" axes (n..2n-1).
         U acts on the ket half; U* acts on the bra half.  Both contractions
         use the shared :func:`_contract_and_restore` helper, keeping the
         operation allocation-free with respect to building full unitaries.
@@ -627,6 +627,10 @@ class Barrier(Operation):
     def apply_to_state(self, state: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
         """No-op: return the state unchanged."""
         return state
+
+    def apply_to_state_tensor(self, psi: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
+        """No-op: return the state tensor unchanged."""
+        return psi
 
     def apply_to_density(self, rho: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
         """No-op: return the density matrix unchanged."""
@@ -1498,7 +1502,7 @@ def _permute_matrix(mat: jnp.ndarray, perm: list, n_qubits: int) -> jnp.ndarray:
 def pauli_decompose(matrix: jnp.ndarray, wire_order: Optional[List[int]] = None):
     r"""Decompose a Hermitian matrix into a sum of Pauli tensor products.
 
-    For an *n*-qubit matrix (``2**n x 2**n``), returns the dominant Pauli
+    For an n-qubit matrix (``2**n x 2**n``), returns the dominant Pauli
     term (the one with the largest absolute coefficient), wrapped as an
     :class:`Operation`.  This is sufficient for the Fourier-tree algorithm
     which only needs the single non-zero Pauli term produced by Clifford
