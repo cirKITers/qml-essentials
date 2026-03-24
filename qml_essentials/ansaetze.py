@@ -327,9 +327,11 @@ class Block:
         Applies the block to the given circuit.
 
         Args:
-            n_qubits (int): Number of qubits, the block is applied to (starting at idx 0).
-            w (np.ndarray, optional): Weights to use for rotational gates. Defaults to None.
-            w_idx (int, optional): Index of weights to use for rotational gates. Defaults to None.
+            n_qubits (int): Number of qubits, the block is applied to.
+            w (np.ndarray, optional): Weights to use for rotational gates.
+                Defaults to None.
+            w_idx (int, optional): Index of weights to use for rotational gates.
+                Defaults to None.
             **kwargs: Keyword arguments passed to the gate.
 
         Returns:
