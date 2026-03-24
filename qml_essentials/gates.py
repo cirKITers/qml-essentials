@@ -13,6 +13,7 @@ from qml_essentials.pulses import (
     PulseInformation,
     PulseParamManager,
 )
+from qml_essentials.operations import Barrier as BarrierOp
 
 import logging
 
@@ -28,6 +29,11 @@ class GatesMeta(type):
         # Dirty way to preserve information about the gate name
         handler.__name__ = gate_name
         return handler
+
+
+def Barrier(wires: Union[int, List[int]], *args, **kwargs):
+    """Thin wrapper for BarrierOp"""
+    return BarrierOp(wires)
 
 
 class Gates(metaclass=GatesMeta):
@@ -64,6 +70,9 @@ class Gates(metaclass=GatesMeta):
 
     @staticmethod
     def _inner_getattr(gate_name, *args, **kwargs):
+        if gate_name == "Barrier":
+            return Barrier(*args, **kwargs)
+
         gate_mode = kwargs.pop("gate_mode", "unitary")
 
         # Backend selection and kwargs filtering
