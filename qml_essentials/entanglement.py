@@ -17,7 +17,7 @@ class Entanglement:
     def meyer_wallach(
         model: Model,
         n_samples: Optional[int | None],
-        seed: Optional[int],
+        random_key: Optional[jax.random.PRNGKey] = None,
         scale: bool = False,
         **kwargs: Any,
     ) -> float:
@@ -29,7 +29,9 @@ class Entanglement:
             model (Model): The quantum circuit model.
             n_samples (Optional[int]): Number of samples per qubit.
                 If None or < 0, the current parameters of the model are used.
-            seed (Optional[int]): Seed for the random number generator.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for
+                parameter initialization. If None, uses the model's internal
+                random key.
             scale (bool): Whether to scale the number of samples.
             kwargs (Any): Additional keyword arguments for the model function.
 
@@ -46,13 +48,8 @@ class Entanglement:
         if scale:
             n_samples = jnp.power(2, model.n_qubits) * n_samples
 
-        random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:
-            assert seed is not None, "Seed must be provided when samples > 0"
             random_key = model.initialize_params(random_key, repeat=n_samples)
-        else:
-            if seed is not None:
-                log.warning("Seed is ignored when samples is 0")
 
         # implicitly set input to none in case it's not needed
         kwargs.setdefault("inputs", None)
@@ -104,7 +101,11 @@ class Entanglement:
 
     @staticmethod
     def bell_measurements(
-        model: Model, n_samples: int, seed: int, scale: bool = False, **kwargs: Any
+        model: Model,
+        n_samples: int,
+        random_key: Optional[jax.random.PRNGKey] = None,
+        scale: bool = False,
+        **kwargs: Any,
     ) -> float:
         """
         Compute the Bell measurement for a given model.
@@ -116,7 +117,9 @@ class Entanglement:
         Args:
             model (Model): The quantum circuit model.
             n_samples (int): The number of samples to compute the measure for.
-            seed (int): The seed for the random number generator.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for
+                parameter initialization. If None, uses the model's internal
+                random key.
             scale (bool): Whether to scale the number of samples
                 according to the number of qubits.
             **kwargs (Any): Additional keyword arguments for the model function.
@@ -173,15 +176,10 @@ class Entanglement:
 
         bell_script = ys.Script(f=_bell_circuit, n_qubits=2 * n)
 
-        random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:
-            assert seed is not None, "Seed must be provided when samples > 0"
             random_key = model.initialize_params(random_key, repeat=n_samples)
             params = model.params
         else:
-            if seed is not None:
-                log.warning("Seed is ignored when samples is 0")
-
             if len(model.params.shape) <= 2:
                 params = model.params.reshape(1, *model.params.shape)
             else:
@@ -234,7 +232,7 @@ class Entanglement:
         model: Model,
         n_samples: int,
         n_sigmas: int,
-        seed: Optional[int],
+        random_key: Optional[jax.random.PRNGKey] = None,
         scale: bool = False,
         **kwargs: Any,
     ) -> float:
@@ -258,7 +256,9 @@ class Entanglement:
             n_samples (int): Number of samples per qubit.
                 If <= 0, the current parameters of the model are used.
             n_sigmas (int): Number of random separable pure states to compare against.
-            seed (Optional[int]): Seed for the random number generator.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for
+                parameter initialization. If None, uses the model's internal
+                random key.
             scale (bool): Whether to scale the number of samples.
             kwargs (Any): Additional keyword arguments for the model function.
 
@@ -271,7 +271,8 @@ class Entanglement:
             n_samples = dim * n_samples
             n_sigmas = dim * n_sigmas
 
-        random_key = jax.random.key(seed)
+        if random_key is None:
+            random_key = model.random_key
 
         # Random separable states
         log_sigmas = sample_random_separable_states(
@@ -281,12 +282,8 @@ class Entanglement:
         random_key, _ = jax.random.split(random_key)
 
         if n_samples is not None and n_samples > 0:
-            assert seed is not None, "Seed must be provided when samples > 0"
             model.initialize_params(random_key, repeat=n_samples)
         else:
-            if seed is not None:
-                log.warning("Seed is ignored when samples is 0")
-
             if len(model.params.shape) <= 2:
                 model.params = model.params.reshape(1, *model.params.shape)
             else:
@@ -385,7 +382,7 @@ class Entanglement:
     def entanglement_of_formation(
         model: Model,
         n_samples: int,
-        seed: Optional[int],
+        random_key: Optional[jax.random.PRNGKey] = None,
         scale: bool = False,
         always_decompose: bool = False,
         **kwargs: Any,
@@ -409,7 +406,9 @@ class Entanglement:
         Args:
             model (Model): The quantum circuit model.
             n_samples (int): Number of samples per qubit.
-            seed (Optional[int]): Seed for the random number generator.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for
+                parameter initialization. If None, uses the model's internal
+                random key.
             scale (bool): Whether to scale the number of samples.
             always_decompose (bool): Whether to explicitly compute the
                 entantlement of formation for the eigendecomposition of a pure
@@ -424,14 +423,9 @@ class Entanglement:
         if scale:
             n_samples = jnp.power(2, model.n_qubits) * n_samples
 
-        random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:
-            assert seed is not None, "Seed must be provided when samples > 0"
             model.initialize_params(random_key, repeat=n_samples)
         else:
-            if seed is not None:
-                log.warning("Seed is ignored when samples is 0")
-
             if len(model.params.shape) <= 2:
                 model.params = model.params.reshape(1, *model.params.shape)
             else:
@@ -480,7 +474,11 @@ class Entanglement:
 
     @staticmethod
     def concentratable_entanglement(
-        model: Model, n_samples: int, seed: int, scale: bool = False, **kwargs: Any
+        model: Model,
+        n_samples: int,
+        random_key: Optional[jax.random.PRNGKey] = None,
+        scale: bool = False,
+        **kwargs: Any,
     ) -> float:
         """
         Computes the concentratable entanglement of a given model.
@@ -492,7 +490,9 @@ class Entanglement:
         Args:
             model (Model): The quantum circuit model.
             n_samples (int): The number of samples to compute the measure for.
-            seed (int): The seed for the random number generator.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for
+                parameter initialization. If None, uses the model's internal
+                random key.
             scale (bool): Whether to scale the number of samples according to
                 the number of qubits.
             **kwargs (Any): Additional keyword arguments for the model function.
@@ -560,14 +560,9 @@ class Entanglement:
 
         swap_script = ys.Script(f=_swap_test_circuit, n_qubits=3 * n)
 
-        random_key = jax.random.key(seed)
         if n_samples is not None and n_samples > 0:
-            assert seed is not None, "Seed must be provided when samples > 0"
-            model.initialize_params(random_key, repeat=n_samples)
+            random_key = model.initialize_params(random_key, repeat=n_samples)
         else:
-            if seed is not None:
-                log.warning("Seed is ignored when samples is 0")
-
             if len(model.params.shape) <= 2:
                 model.params = model.params.reshape(1, *model.params.shape)
             else:

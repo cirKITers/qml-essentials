@@ -17,17 +17,17 @@ model = Model(
         )
 
 ent_cap = Entanglement.meyer_wallach(
-    model, n_samples=1000, seed=1000
+    model, n_samples=1000, random_key=jax.random.key(1000)
 )
 ```
 
-Here, `n_samples` is the number of samples for the parameters, sampled according to the default initialization strategy of the model, and `seed` is the random number generator seed.
+Here, `n_samples` is the number of samples for the parameters, sampled according to the default initialization strategy of the model, and `random_key` is an optional JAX random key for parameter initialization. If not provided, the model's internal random key is used.
 
 Note, that every function in this class accepts keyword-arguments which are being passed to the model call, so you could e.g. enable caching by
 
 ```python
 ent_cap = Entanglement.meyer_wallach(
-    model, n_samples=1000, seed=1000
+    model, n_samples=1000, random_key=jax.random.key(1000)
 )
 ```
 
@@ -40,7 +40,7 @@ We can utilize this by
 
 ```python
 ent_cap = Entanglement.bell_measurements(
-    model, n_samples=1000, seed=1000
+    model, n_samples=1000, random_key=jax.random.key(1000)
 )
 ```
 
@@ -51,7 +51,7 @@ To account for this, you can use the *Relative Entropy* method as follows:
 
 ```python
 ent_cap = Entanglement.relative_entropy(
-    model, n_samples=1000, n_sigmas=10, seed=1000, noise_params={"BitFlip": 0.1}
+    model, n_samples=1000, n_sigmas=10, random_key=jax.random.key(1000), noise_params={"BitFlip": 0.1}
 )
 ```
 
@@ -71,7 +71,7 @@ Similar to the relative entropy of entanglement, this measure presents an approx
 
 ```python
 ent_cap = Entanglement.entanglement_of_formation(
-    model, n_samples=1000, seed=1000, noise_params={"BitFlip": 0.1}
+    model, n_samples=1000, random_key=jax.random.key(1000), noise_params={"BitFlip": 0.1}
 )
 ```
 
@@ -92,6 +92,6 @@ This measure, introduced in [Computable and operationally meaningful multipartit
 
 ```python
 ent_cap = Entanglement.concentratable_entanglement(
-    model, n_samples=1000, seed=1000
+    model, n_samples=1000, random_key=jax.random.key(1000)
 )
 ```

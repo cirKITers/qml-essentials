@@ -142,7 +142,7 @@ def test_expressibility(layers) -> None:
 
         # Calculate the mean (over all inputs, if required)
         kl_dist = Expressibility.kl_divergence_to_haar(
-            seed=1000,
+            random_key=jax.random.key(1000),
             n_bins=75,
             n_samples=5000,
             model=model,
@@ -197,7 +197,6 @@ def test_scaling() -> None:
     )
 
     _, z = Expressibility.state_fidelities(
-        seed=1000,
         n_bins=4,
         n_samples=10,
         model=model,

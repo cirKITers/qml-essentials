@@ -1,7 +1,8 @@
 import jax.numpy as jnp
 from jax import random
+import jax
 import numpy as np
-from typing import Tuple, List, Any
+from typing import Tuple, List, Any, Optional
 from scipy import integrate
 from scipy.linalg import sqrtm
 from scipy.special import rel_entr
@@ -14,8 +15,8 @@ class Expressibility:
     def _sample_state_fidelities(
         model: Model,
         n_samples: int,
-        seed: int,
-        kwargs: Any,
+        random_key: Optional[jax.random.PRNGKey] = None,
+        kwargs: Any = None,
     ) -> jnp.ndarray:
         """
         Compute the fidelities for each parameter set.
@@ -23,14 +24,14 @@ class Expressibility:
         Args:
             model (Callable): Function that models the quantum circuit.
             n_samples (int): Number of parameter sets to generate.
-            seed (int): Random number generator seed.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for
+                parameter initialization. If None, uses the model's internal
+                random key.
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
             jnp.ndarray: Array of shape (n_samples,) containing the fidelities.
         """
-        random_key = random.key(seed)
-
         # Generate random parameter sets
         # We need two sets of parameters, as we are computing fidelities for a
         # pair of random state vectors
@@ -66,10 +67,10 @@ class Expressibility:
 
     @staticmethod
     def state_fidelities(
-        seed: int,
         n_samples: int,
         n_bins: int,
         model: Model,
+        random_key: Optional[jax.random.PRNGKey] = None,
         scale: bool = False,
         **kwargs: Any,
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -77,10 +78,12 @@ class Expressibility:
         Sample the state fidelities and histogram them into a 2D array.
 
         Args:
-            seed (int): Random number generator seed.
             n_samples (int): Number of parameter sets to generate.
             n_bins (int): Number of histogram bins.
             model (Callable): Function that models the quantum circuit.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for
+                parameter initialization. If None, uses the model's internal
+                random key.
             scale (bool): Whether to scale the number of samples and bins.
             kwargs (Any): Additional keyword arguments for the model function.
 
@@ -94,7 +97,7 @@ class Expressibility:
 
         fidelities = Expressibility._sample_state_fidelities(
             n_samples=n_samples,
-            seed=seed,
+            random_key=random_key,
             model=model,
             kwargs=kwargs,
         )
@@ -232,9 +235,9 @@ class Expressibility:
 
     def kl_divergence_to_haar(
         model: Model,
-        seed: int,
         n_samples: int,
         n_bins: int,
+        random_key: Optional[jax.random.PRNGKey] = None,
         scale: bool = False,
         **kwargs: Any,
     ) -> float:
@@ -247,9 +250,11 @@ class Expressibility:
 
         Args:
             model (Model): Function that models the quantum circuit.
-            seed (int): Random number generator seed.
             n_samples (int): Number of parameter sets to generate.
             n_bins (int): Number of histogram bins.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for
+                parameter initialization. If None, uses the model's internal
+                random key.
             scale (bool): Whether to scale the number of samples and bins.
             kwargs (Any): Additional keyword arguments for the model function.
 
@@ -259,7 +264,7 @@ class Expressibility:
         """
         _, fidelities = Expressibility.state_fidelities(
             model=model,
-            seed=seed,
+            random_key=random_key,
             n_samples=n_samples,
             n_bins=n_bins,
             scale=scale,
