@@ -1,5 +1,4 @@
 from fractions import Fraction
-from itertools import cycle
 from typing import Any, Dict, List, Tuple, Union
 from dataclasses import dataclass
 from typing import Optional
@@ -12,26 +11,27 @@ from qml_essentials.operations import (
 )
 
 
-class QuanTikz:
-    class TikzFigure:
-        def __init__(self, quantikz_str: str):
-            self.quantikz_str = quantikz_str
+class TikzFigure:
+    """Wrapper around a ``quantikz`` LaTeX string with export helpers."""
 
-        def __repr__(self):
-            return self.quantikz_str
+    def __init__(self, quantikz_str: str):
+        self.quantikz_str = quantikz_str
 
-        def __str__(self):
-            return self.quantikz_str
+    def __repr__(self):
+        return self.quantikz_str
 
-        def wrap_figure(self):
-            """
-            Wraps the quantikz string in a LaTeX figure environment.
+    def __str__(self):
+        return self.quantikz_str
 
-            Returns:
-                str: A formatted LaTeX string representing the TikZ figure containing
-                the quantum circuit diagram.
-            """
-            return f"""
+    def wrap_figure(self):
+        """
+        Wraps the quantikz string in a LaTeX figure environment.
+
+        Returns:
+            str: A formatted LaTeX string representing the TikZ figure containing
+            the quantum circuit diagram.
+        """
+        return f"""
 \\begin{{figure}}
     \\centering
     \\begin{{tikzpicture}}
@@ -43,19 +43,19 @@ class QuanTikz:
     \\end{{tikzpicture}}
 \\end{{figure}}"""
 
-        def export(self, destination: str, full_document=False, mode="w") -> None:
-            """
-            Export a LaTeX document with a quantum circuit in stick notation.
+    def export(self, destination: str, full_document=False, mode="w") -> None:
+        """
+        Export a LaTeX document with a quantum circuit in stick notation.
 
-            Parameters
-            ----------
-            quantikz_strs : str or list[str]
-                LaTeX string for the quantum circuit or a list of LaTeX strings.
-            destination : str
-                Path to the destination file.
-            """
-            if full_document:
-                latex_code = f"""
+        Parameters
+        ----------
+        quantikz_strs : str or list[str]
+            LaTeX string for the quantum circuit or a list of LaTeX strings.
+        destination : str
+            Path to the destination file.
+        """
+        if full_document:
+            latex_code = f"""
 \\documentclass{{article}}
 \\usepackage{{quantikz}}
 \\usepackage{{tikz}}
@@ -65,355 +65,23 @@ class QuanTikz:
 \\begin{{document}}
 {self.wrap_figure()}
 \\end{{document}}"""
-            else:
-                latex_code = self.quantikz_str + "\n"
-
-            with open(destination, mode) as f:
-                f.write(latex_code)
-
-    @staticmethod
-    def ground_state() -> str:
-        """
-        Generate the LaTeX representation of the |0⟩ ground state in stick notation.
-
-        Returns
-        -------
-        str
-            LaTeX string for the |0⟩ state.
-        """
-        return "\\lstick{\\ket{0}}"
-
-    @staticmethod
-    def measure(op):
-        if len(op.wires) > 1:
-            raise NotImplementedError("Multi-wire measurements are not supported yet")
         else:
-            return "\\meter{}"
+            latex_code = self.quantikz_str + "\n"
 
-    @staticmethod
-    def search_pi_fraction(w, op_name):
-        w_pi = Fraction(w / jnp.pi).limit_denominator(100)
-        # Not a small nice Fraction
-        if w_pi.denominator > 12:
-            return f"\\gate{{{op_name}({w:.2f})}}"
-        # Pi
-        elif w_pi.denominator == 1 and w_pi.numerator == 1:
-            return f"\\gate{{{op_name}(\\pi)}}"
-        # 0
-        elif w_pi.numerator == 0:
-            return f"\\gate{{{op_name}(0)}}"
-        # Multiple of Pi
-        elif w_pi.denominator == 1:
-            return f"\\gate{{{op_name}({w_pi.numerator}\\pi)}}"
-        # Nice Fraction of pi
-        elif w_pi.numerator == 1:
-            return (
-                f"\\gate{{{op_name}\\left("
-                f"\\frac{{\\pi}}{{{w_pi.denominator}}}\\right)}}"
-            )
-        # Small nice Fraction
-        else:
-            return (
-                f"\\gate{{{op_name}\\left("
-                f"\\frac{{{w_pi.numerator}\\pi}}{{{w_pi.denominator}}}"
-                f"\\right)}}"
-            )
+        with open(destination, mode) as f:
+            f.write(latex_code)
 
-    @staticmethod
-    def gate(op, index=None, gate_values=False, inputs_symbols="x") -> str:
-        """
-        Generate LaTeX for a quantum gate in stick notation.
 
-        Parameters
-        ----------
-        op : Operation
-            The quantum gate to represent.
-        index : int, optional
-            Gate index in the circuit.
-        gate_values : bool, optional
-            Include gate values in the representation.
-        inputs_symbols : str, optional
-            Symbols for the inputs in the representation.
-
-        Returns
-        -------
-        str
-            LaTeX string for the gate.
-        """
-        op_name = op.name
-        match op.name:
-            case "H":
-                op_name = "H"
-            case "RX" | "RY" | "RZ":
-                pass
-            case "Rot":
-                op_name = "R"
-
-        if gate_values and len(op.parameters) > 0:
-            w = float(op.parameters[0].item())
-            return QuanTikz.search_pi_fraction(w, op_name)
-        else:
-            # Is gate with parameter
-            if op.parameters == [] or op.parameters[0].shape == ():
-                if index is None:
-                    return f"\\gate{{{op_name}}}"
-                else:
-                    return f"\\gate{{{op_name}(\\theta_{{{index}}})}}"
-            # Is gate with input
-            elif op.parameters[0].shape == (1,):
-                return f"\\gate{{{op_name}({inputs_symbols})}}"
-
-    @staticmethod
-    def cgate(op, index=None, gate_values=False, inputs_symbols="x") -> Tuple[str, str]:
-        """
-        Generate LaTeX for a controlled quantum gate in stick notation.
-
-        Parameters
-        ----------
-        op : Operation
-            The quantum gate operation to represent.
-        index : int, optional
-            Gate index in the circuit.
-        gate_values : bool, optional
-            Include gate values in the representation.
-        inputs_symbols : str, optional
-            Symbols for the inputs in the representation.
-
-        Returns
-        -------
-        Tuple[str, str]
-            - LaTeX string for the control gate
-            - LaTeX string for the target gate
-        """
-        match op.name:
-            case "CRX" | "CRY" | "CRZ" | "CX" | "CY" | "CZ":
-                op_name = op.name[1:]
-            case _:
-                pass
-        targ = "\\targ{}"
-        if op.name in ["CRX", "CRY", "CRZ"]:
-            if gate_values and len(op.parameters) > 0:
-                w = float(op.parameters[0].item())
-                targ = QuanTikz.search_pi_fraction(w, op_name)
-            else:
-                # Is gate with parameter
-                if op.parameters[0].shape == ():
-                    if index is None:
-                        targ = f"\\gate{{{op_name}}}"
-                    else:
-                        targ = f"\\gate{{{op_name}(\\theta_{{{index}}})}}"
-                # Is gate with input
-                elif op.parameters[0].shape == (1,):
-                    targ = f"\\gate{{{op_name}({inputs_symbols})}}"
-        elif op.name in ["CX", "CY", "CZ"]:
-            targ = "\\control{}"
-
-        distance = op.wires[1] - op.wires[0]
-        return f"\\ctrl{{{distance}}}", targ
-
-    @staticmethod
-    def barrier(op) -> str:
-        """
-        Generate LaTeX for a barrier in stick notation.
-
-        Parameters
-        ----------
-        op : Operation
-            The barrier operation to represent.
-
-        Returns
-        -------
-        str
-            LaTeX string for the barrier.
-        """
-        return (
-            "\\slice[style={{draw=black, solid, double distance=2pt, "
-            "line width=0.5pt}}]{{}}"
-        )
-
-    @staticmethod
-    def _build_tikz_circuit(
-        tape: List[Operation],
-        n_qubits: int,
-        gate_values=False,
-        inputs_symbols="x",
-    ):
-        """
-        Builds a LaTeX representation of a quantum circuit in TikZ format.
-
-        This static method constructs a TikZ circuit diagram from a given list
-        of operations.  It processes gates, controlled gates, and barriers.
-        The resulting structure is a list of LaTeX strings, each representing a
-        wire in the circuit.
-
-        Parameters
-        ----------
-        tape : List[Operation]
-            The list of operations in the circuit.
-        n_qubits : int
-            The number of qubits in the circuit.
-        gate_values : bool, optional
-            If True, include gate parameter values in the representation.
-        inputs_symbols : str, optional
-            Symbols to represent the inputs in the circuit.
-
-        Returns
-        -------
-        circuit_tikz : list of list of str
-            A nested list where each inner list contains LaTeX strings representing
-            the operations on a single wire of the circuit.
-        """
-
-        circuit_tikz = [[QuanTikz.ground_state()] for _ in range(n_qubits)]
-
-        index = iter(range(len(tape)))
-        for op in tape:
-            # catch barriers
-            if op.name == "Barrier":
-                # get the maximum length of all wires
-                max_len = max(len(circuit_tikz[cw]) for cw in range(len(circuit_tikz)))
-
-                # extend the wires by the number of missing operations
-                for ow in range(len(circuit_tikz)):
-                    circuit_tikz[ow].extend(
-                        "" for _ in range(max_len - len(circuit_tikz[ow]))
-                    )
-
-                circuit_tikz[op.wires[0]][-1] += QuanTikz.barrier(op)
-            # single qubit gate?
-            elif len(op.wires) == 1:
-                # build and append standard gate
-                circuit_tikz[op.wires[0]].append(
-                    QuanTikz.gate(
-                        op,
-                        index=next(index),
-                        gate_values=gate_values,
-                        inputs_symbols=next(inputs_symbols),
-                    )
-                )
-            # controlled gate?
-            elif len(op.wires) == 2:
-                # build the controlled gate
-                if op.name in ["CRX", "CRY", "CRZ"]:
-                    ctrl, targ = QuanTikz.cgate(
-                        op,
-                        index=next(index),
-                        gate_values=gate_values,
-                        inputs_symbols=next(inputs_symbols),
-                    )
-                else:
-                    ctrl, targ = QuanTikz.cgate(op)
-
-                # get the wires that this cgate spans over
-                crossing_wires = [i for i in range(min(op.wires), max(op.wires) + 1)]
-                # get the maximum length of all operations currently on this wire
-                max_len = max([len(circuit_tikz[cw]) for cw in crossing_wires])
-
-                # extend the affected wires by the number of missing operations
-                for ow in range(min(op.wires), max(op.wires) + 1):
-                    circuit_tikz[ow].extend(
-                        "" for _ in range(max_len - len(circuit_tikz[ow]))
-                    )
-
-                # finally append the cgate operation
-                circuit_tikz[op.wires[0]].append(ctrl)
-                circuit_tikz[op.wires[1]].append(targ)
-
-                # extend the non-affected wires by the number of missing operations
-                non_gate_wires = [w for w in crossing_wires if w not in op.wires]
-                for cw in non_gate_wires:
-                    circuit_tikz[cw].append("")
-            else:
-                raise NotImplementedError(">2-wire gates are not supported yet")
-
-        return circuit_tikz
-
-    @staticmethod
-    def build(
-        script,
-        params,
-        inputs,
-        enc_params=None,
-        gate_values=False,
-        inputs_symbols="x",
-    ) -> str:
-        """
-        Generate LaTeX for a quantum circuit in stick notation.
-
-        Parameters
-        ----------
-        script : Script
-            A yaqsi Script wrapping the circuit function.
-        params : array
-            Weight parameters for the circuit.
-        inputs : array
-            Inputs for the circuit.
-        enc_params : array
-            Encoding weight parameters for the circuit.
-        gate_values : bool, optional
-            Toggle for gate values or theta variables in the representation.
-        inputs_symbols : str, optional
-            Symbols for the inputs in the representation.
-
-        Returns
-        -------
-        str
-            LaTeX string for the circuit.
-        """
-        if enc_params is not None:
-            tape = script._record(params=params, inputs=inputs, enc_params=enc_params)
-        else:
-            tape = script._record(params=params, inputs=inputs)
-
-        # Infer n_qubits from the tape
-        n_qubits = max((max(op.wires) + 1 for op in tape if op.wires), default=1)
-
-        if isinstance(inputs_symbols, str) and inputs.size > 1:
-            inputs_symbols = cycle(
-                [f"{inputs_symbols}_{i}" for i in range(inputs.size)]
-            )
-        elif isinstance(inputs_symbols, list):
-            assert (
-                len(inputs_symbols) == inputs.size
-            ), f"The number of input symbols {len(inputs_symbols)} \
-                must match the number of inputs {inputs.size}."
-            inputs_symbols = cycle(inputs_symbols)
-        else:
-            inputs_symbols = cycle([inputs_symbols])
-
-        circuit_tikz = QuanTikz._build_tikz_circuit(
-            tape, n_qubits, gate_values=gate_values, inputs_symbols=inputs_symbols
-        )
-        quantikz_str = ""
-
-        # get the maximum length of all wires
-        max_len = max(len(circuit_tikz[cw]) for cw in range(len(circuit_tikz)))
-
-        # extend the wires by the number of missing operations
-        for ow in range(len(circuit_tikz)):
-            circuit_tikz[ow].extend("" for _ in range(max_len - len(circuit_tikz[ow])))
-
-        for wire_idx, wire_ops in enumerate(circuit_tikz):
-            for op_idx, op in enumerate(wire_ops):
-                # if not last operation on wire
-                if op_idx < len(wire_ops) - 1:
-                    quantikz_str += f"{op} & "
-                else:
-                    quantikz_str += f"{op}"
-                    # if not last wire
-                    if wire_idx < len(circuit_tikz) - 1:
-                        quantikz_str += " \\\\\n"
-
-        return QuanTikz.TikzFigure(quantikz_str)
+# Backwards-compatible alias so existing ``QuanTikz.TikzFigure`` references
+# keep working without changes in downstream code.
+class QuanTikz:
+    TikzFigure = TikzFigure
 
 
 def _ctrl_target_name(name: str) -> str:
     """Strip the leading 'C' from a controlled gate name to get the target name."""
     # CRX -> RX, CX -> X, etc.
     return name.replace("C", "")
-
-
-# Text drawing
 
 
 def _format_param(val: float) -> str:
@@ -446,6 +114,180 @@ def _gate_label(op: Operation) -> str:
         param_str = ", ".join(_format_param(p) for p in params)
         return f"{name}({param_str})"
     return name
+
+
+def _tikz_param_str(val: float, op_name: str) -> str:
+    """Format a rotation angle as a LaTeX string for quantikz gates."""
+    try:
+        frac = Fraction(float(val) / float(jnp.pi)).limit_denominator(100)
+        if frac.denominator > 12:
+            return f"\\gate{{{op_name}({float(val):.2f})}}"
+        if frac.denominator == 1 and frac.numerator == 1:
+            return f"\\gate{{{op_name}(\\pi)}}"
+        if frac.numerator == 0:
+            return f"\\gate{{{op_name}(0)}}"
+        if frac.denominator == 1:
+            return f"\\gate{{{op_name}({frac.numerator}\\pi)}}"
+        if frac.numerator == 1:
+            return (
+                f"\\gate{{{op_name}\\left("
+                f"\\frac{{\\pi}}{{{frac.denominator}}}\\right)}}"
+            )
+        return (
+            f"\\gate{{{op_name}\\left("
+            f"\\frac{{{frac.numerator}\\pi}}{{{frac.denominator}}}"
+            f"\\right)}}"
+        )
+    except (ValueError, ZeroDivisionError):
+        return f"\\gate{{{op_name}({float(val):.2f})}}"
+
+
+def _tikz_align_wires(circuit_tikz: List[List[str]], wires: List[int]) -> None:
+    """Pad all *wires* to the same column length in-place."""
+    max_len = max(len(circuit_tikz[w]) for w in wires)
+    for w in wires:
+        circuit_tikz[w].extend("" for _ in range(max_len - len(circuit_tikz[w])))
+
+
+def _tikz_cell_controlled(
+    op: Operation,
+    circuit_tikz: List[List[str]],
+    param_index: int,
+    gate_values: bool,
+) -> int:
+    """Append cells for a 2-wire controlled gate; return updated param_index."""
+    ctrl_wire = op.wires[0]
+    targ_wire = op.wires[1]
+    distance = targ_wire - ctrl_wire
+    target_name = _ctrl_target_name(op.name)
+
+    # Build target cell
+    if op.parameters and target_name in ("RX", "RY", "RZ"):
+        if gate_values:
+            targ_cell = _tikz_param_str(float(op.parameters[0]), target_name)
+        else:
+            targ_cell = f"\\gate{{{target_name}(\\theta_{{{param_index}}})}}"
+        param_index += 1
+    elif target_name in ("X", "Y", "Z"):
+        targ_cell = "\\targ{}" if target_name == "X" else "\\control{}"
+    else:
+        targ_cell = f"\\gate{{{target_name}}}"
+
+    crossing = list(range(min(op.wires), max(op.wires) + 1))
+    _tikz_align_wires(circuit_tikz, crossing)
+
+    circuit_tikz[ctrl_wire].append(f"\\ctrl{{{distance}}}")
+    circuit_tikz[targ_wire].append(targ_cell)
+
+    # Pad intermediate wires
+    for w in crossing:
+        if w != ctrl_wire and w != targ_wire:
+            circuit_tikz[w].append("")
+
+    return param_index
+
+
+def _tikz_cell_single(
+    op: Operation,
+    circuit_tikz: List[List[str]],
+    param_index: int,
+    gate_values: bool,
+) -> int:
+    """Append a cell for a single-qubit gate; return updated param_index."""
+    w = op.wires[0]
+    name = op.name
+    if name == "Hadamard":
+        name = "H"
+
+    if gate_values and op.parameters:
+        cell = _tikz_param_str(float(op.parameters[0]), name)
+    elif op.parameters:
+        cell = f"\\gate{{{name}(\\theta_{{{param_index}}})}}"
+        param_index += 1
+    else:
+        cell = f"\\gate{{{name}}}"
+
+    circuit_tikz[w].append(cell)
+    return param_index
+
+
+def _tikz_cell_multiqubit(
+    op: Operation,
+    circuit_tikz: List[List[str]],
+) -> None:
+    """Append cells for a multi-qubit (>2 wire) gate."""
+    _tikz_align_wires(circuit_tikz, list(op.wires))
+    label = _gate_label(op)
+    for w in op.wires:
+        circuit_tikz[w].append(f"\\gate{{{label}}}")
+
+
+def _tikz_cell_barrier(
+    op: Operation,
+    circuit_tikz: List[List[str]],
+) -> None:
+    """Align all wires so that subsequent gates start in the same column.
+
+    The barrier is a no-op visually — it only pads shorter wires so that
+    every wire has the same number of cells at this point.
+    """
+    all_wires = list(range(len(circuit_tikz)))
+    _tikz_align_wires(circuit_tikz, all_wires)
+
+
+def _tikz_build_string(circuit_tikz: List[List[str]], n_qubits: int) -> str:
+    """Render the column grid to a quantikz LaTeX string."""
+    # Equalise wire lengths
+    max_len = max(len(wire) for wire in circuit_tikz)
+    for wire in circuit_tikz:
+        wire.extend("" for _ in range(max_len - len(wire)))
+
+    quantikz_str = ""
+    for wire_idx, wire_ops in enumerate(circuit_tikz):
+        for op_idx, cell in enumerate(wire_ops):
+            if op_idx < len(wire_ops) - 1:
+                quantikz_str += f"{cell} & "
+            else:
+                quantikz_str += f"{cell}"
+                if wire_idx < n_qubits - 1:
+                    quantikz_str += " \\\\\n"
+
+    return quantikz_str
+
+
+def draw_tikz(
+    ops: List[Operation],
+    n_qubits: int,
+    gate_values: bool = False,
+    **kwargs: Any,
+) -> Any:
+    """Render a circuit tape as LaTeX/TikZ ``quantikz`` code.
+
+    Args:
+        ops: Ordered list of gate operations (noise channels excluded).
+        n_qubits: Total number of qubits.
+        gate_values: If ``True``, show numeric angles; otherwise use
+            symbolic \\theta_i labels.
+
+    Returns:
+        A :class:`~qml_essentials.drawing.TikzFigure` object.
+    """
+    circuit_tikz: List[List[str]] = [["\\lstick{\\ket{0}}"] for _ in range(n_qubits)]
+    param_index = 0
+
+    for op in ops:
+        if op.is_controlled and len(op.wires) == 2:
+            param_index = _tikz_cell_controlled(
+                op, circuit_tikz, param_index, gate_values
+            )
+        elif len(op.wires) == 1:
+            param_index = _tikz_cell_single(op, circuit_tikz, param_index, gate_values)
+        elif op.name == "Barrier":
+            _tikz_cell_barrier(op, circuit_tikz)
+        else:
+            _tikz_cell_multiqubit(op, circuit_tikz)
+
+    return TikzFigure(_tikz_build_string(circuit_tikz, n_qubits))
 
 
 def draw_text(ops: List[Operation], n_qubits: int) -> str:
@@ -654,170 +496,6 @@ def draw_mpl(
     return fig, ax
 
 
-# TikZ drawing
-
-
-def _tikz_param_str(val: float, op_name: str) -> str:
-    """Format a rotation angle as a LaTeX string for quantikz gates."""
-    try:
-        frac = Fraction(float(val) / float(jnp.pi)).limit_denominator(100)
-        if frac.denominator > 12:
-            return f"\\gate{{{op_name}({float(val):.2f})}}"
-        if frac.denominator == 1 and frac.numerator == 1:
-            return f"\\gate{{{op_name}(\\pi)}}"
-        if frac.numerator == 0:
-            return f"\\gate{{{op_name}(0)}}"
-        if frac.denominator == 1:
-            return f"\\gate{{{op_name}({frac.numerator}\\pi)}}"
-        if frac.numerator == 1:
-            return (
-                f"\\gate{{{op_name}\\left("
-                f"\\frac{{\\pi}}{{{frac.denominator}}}\\right)}}"
-            )
-        return (
-            f"\\gate{{{op_name}\\left("
-            f"\\frac{{{frac.numerator}\\pi}}{{{frac.denominator}}}"
-            f"\\right)}}"
-        )
-    except (ValueError, ZeroDivisionError):
-        return f"\\gate{{{op_name}({float(val):.2f})}}"
-
-
-def _tikz_align_wires(circuit_tikz: List[List[str]], wires: List[int]) -> None:
-    """Pad all *wires* to the same column length in-place."""
-    max_len = max(len(circuit_tikz[w]) for w in wires)
-    for w in wires:
-        circuit_tikz[w].extend("" for _ in range(max_len - len(circuit_tikz[w])))
-
-
-def _tikz_cell_controlled(
-    op: Operation,
-    circuit_tikz: List[List[str]],
-    param_index: int,
-    gate_values: bool,
-) -> int:
-    """Append cells for a 2-wire controlled gate; return updated param_index."""
-    ctrl_wire = op.wires[0]
-    targ_wire = op.wires[1]
-    distance = targ_wire - ctrl_wire
-    target_name = _ctrl_target_name(op.name)
-
-    # Build target cell
-    if op.parameters and target_name in ("RX", "RY", "RZ"):
-        if gate_values:
-            targ_cell = _tikz_param_str(float(op.parameters[0]), target_name)
-        else:
-            targ_cell = f"\\gate{{{target_name}(\\theta_{{{param_index}}})}}"
-        param_index += 1
-    elif target_name in ("X", "Y", "Z"):
-        targ_cell = "\\targ{}" if target_name == "X" else "\\control{}"
-    else:
-        targ_cell = f"\\gate{{{target_name}}}"
-
-    crossing = list(range(min(op.wires), max(op.wires) + 1))
-    _tikz_align_wires(circuit_tikz, crossing)
-
-    circuit_tikz[ctrl_wire].append(f"\\ctrl{{{distance}}}")
-    circuit_tikz[targ_wire].append(targ_cell)
-
-    # Pad intermediate wires
-    for w in crossing:
-        if w != ctrl_wire and w != targ_wire:
-            circuit_tikz[w].append("")
-
-    return param_index
-
-
-def _tikz_cell_single(
-    op: Operation,
-    circuit_tikz: List[List[str]],
-    param_index: int,
-    gate_values: bool,
-) -> int:
-    """Append a cell for a single-qubit gate; return updated param_index."""
-    w = op.wires[0]
-    name = op.name
-    if name == "Hadamard":
-        name = "H"
-
-    if gate_values and op.parameters:
-        cell = _tikz_param_str(float(op.parameters[0]), name)
-    elif op.parameters:
-        cell = f"\\gate{{{name}(\\theta_{{{param_index}}})}}"
-        param_index += 1
-    else:
-        cell = f"\\gate{{{name}}}"
-
-    circuit_tikz[w].append(cell)
-    return param_index
-
-
-def _tikz_cell_multiqubit(
-    op: Operation,
-    circuit_tikz: List[List[str]],
-) -> None:
-    """Append cells for a multi-qubit (>2 wire) gate."""
-    _tikz_align_wires(circuit_tikz, list(op.wires))
-    label = _gate_label(op)
-    for w in op.wires:
-        circuit_tikz[w].append(f"\\gate{{{label}}}")
-
-
-def _tikz_build_string(circuit_tikz: List[List[str]], n_qubits: int) -> str:
-    """Render the column grid to a quantikz LaTeX string."""
-    # Equalise wire lengths
-    max_len = max(len(wire) for wire in circuit_tikz)
-    for wire in circuit_tikz:
-        wire.extend("" for _ in range(max_len - len(wire)))
-
-    quantikz_str = ""
-    for wire_idx, wire_ops in enumerate(circuit_tikz):
-        for op_idx, cell in enumerate(wire_ops):
-            if op_idx < len(wire_ops) - 1:
-                quantikz_str += f"{cell} & "
-            else:
-                quantikz_str += f"{cell}"
-                if wire_idx < n_qubits - 1:
-                    quantikz_str += " \\\\\n"
-
-    return quantikz_str
-
-
-def draw_tikz(
-    ops: List[Operation],
-    n_qubits: int,
-    gate_values: bool = False,
-    inputs_symbols: Union[str, List[str]] = "x",
-    **kwargs: Any,
-) -> Any:
-    """Render a circuit tape as LaTeX/TikZ ``quantikz`` code.
-
-    Args:
-        ops: Ordered list of gate operations (noise channels excluded).
-        n_qubits: Total number of qubits.
-        gate_values: If ``True``, show numeric angles; otherwise use
-            symbolic θ_i labels.
-        inputs_symbols: Symbol(s) for input-encoding gates.
-
-    Returns:
-        A :class:`~qml_essentials.utils.QuanTikz.TikzFigure` object.
-    """
-    circuit_tikz: List[List[str]] = [["\\lstick{\\ket{0}}"] for _ in range(n_qubits)]
-    param_index = 0
-
-    for op in ops:
-        if op.is_controlled and len(op.wires) == 2:
-            param_index = _tikz_cell_controlled(
-                op, circuit_tikz, param_index, gate_values
-            )
-        elif len(op.wires) == 1:
-            param_index = _tikz_cell_single(op, circuit_tikz, param_index, gate_values)
-        else:
-            _tikz_cell_multiqubit(op, circuit_tikz)
-
-    return QuanTikz.TikzFigure(_tikz_build_string(circuit_tikz, n_qubits))
-
-
 @dataclass
 class PulseEvent:
     """Single pulse applied to one or more wires.
@@ -958,57 +636,71 @@ def _make_event_label(gate: str, parent: Optional[str]) -> str:
     return gate
 
 
+def _sample_envelope(ev: PulseEvent, t_lo: float, t_hi: float, n_samples: int):
+    """Sample the envelope over [t_lo, t_hi] and return (t_arr, signal).
+
+    Uses vectorised JAX operations instead of a Python loop.
+    """
+    t_c = ev.duration / 2
+    t_arr = jnp.linspace(t_lo, t_hi, n_samples)
+    env = ev.envelope_fn(ev.envelope_params, t_arr, t_c)
+    signal = env * ev.w
+    return t_arr, signal
+
+
 def _compute_display_window(
     ev: PulseEvent,
     n_samples: int,
-    threshold: float = 0.05,
-    max_display_mult: float = 6.0,
+    envelope_width: float = 1.0,
 ) -> Tuple[float, float, float]:
     """Compute the (t_lo, t_hi, amp_max) display window for a physical pulse.
 
-    Uses binary search to find the half-width where the envelope drops
-    to *threshold* of its peak.  The result is capped at
-    ``max_display_mult * duration`` so that very broad envelopes
-    (sigma >> duration) still produce a compact plot while showing enough
-    of the bell curve to be visually distinguishable from a rectangle.
+    The display window is chosen adaptively based on how much the envelope
+    decays within the evolution window ``[0, duration]``.  If the envelope
+    is essentially zero at the edges, the evolution window is used as-is.
+    Otherwise the window is widened until the envelope drops to
+    ``edge_ratio ** 10`` of its peak, where ``edge_ratio`` is the
+    amplitude at the window edge relative to the center.
+
+    The ``envelope_width`` parameter scales the resulting extension beyond
+    the evolution window.  ``1.0`` gives the default adaptive width,
+    values ``> 1`` widen further, values ``< 1`` tighten, and ``0``
+    clamps the display exactly to the evolution window ``[0, duration]``.
 
     Returns:
         ``(t_lo, t_hi, amp_max)`` — local time bounds and peak amplitude.
     """
     t_c = ev.duration / 2
-    val_center = float(ev.envelope_fn(ev.envelope_params, t_c, t_c))
 
-    if abs(val_center) < 1e-12:
+    if envelope_width == 0:
         t_lo, t_hi = 0.0, ev.duration
     else:
-        val_edge = float(ev.envelope_fn(ev.envelope_params, 0.0, t_c))
+        val_center = float(ev.envelope_fn(ev.envelope_params, t_c, t_c))
 
-        if abs(val_edge / val_center) < (1.0 - threshold):
-            # Envelope already decays visibly within the evolution window
+        if abs(val_center) < 1e-12:
             t_lo, t_hi = 0.0, ev.duration
         else:
-            # Binary-search for the half-width where the envelope drops
-            # to `threshold` of its peak.
-            lo, hi = ev.duration / 2, ev.duration * 200
-            for _ in range(40):
-                mid = (lo + hi) / 2
-                val = float(ev.envelope_fn(ev.envelope_params, t_c + mid, t_c))
-                if abs(val / val_center) > threshold:
-                    lo = mid
-                else:
-                    hi = mid
-            # Cap: show enough to see the shape, but stay compact.
-            natural_half = hi * 1.1
-            max_half = max_display_mult * ev.duration
-            half_width = min(natural_half, max_half)
-            t_lo = t_c - half_width
-            t_hi = t_c + half_width
+            val_edge = float(ev.envelope_fn(ev.envelope_params, 0.0, t_c))
+            edge_ratio = abs(val_edge / val_center)
 
-    t_arr = jnp.linspace(t_lo, t_hi, n_samples)
-    env = jnp.array(
-        [float(ev.envelope_fn(ev.envelope_params, ti, t_c)) for ti in t_arr]
-    )
-    amp = float(jnp.max(jnp.abs(env)) * abs(ev.w) * 1.1)
+            if edge_ratio < 0.01:
+                t_lo, t_hi = 0.0, ev.duration
+            else:
+                target = edge_ratio**10
+                lo, hi = ev.duration / 2, ev.duration * 50
+                for _ in range(30):
+                    mid = (lo + hi) / 2
+                    val = float(ev.envelope_fn(ev.envelope_params, t_c + mid, t_c))
+                    if abs(val / val_center) > target:
+                        lo = mid
+                    else:
+                        hi = mid
+                half_width = ev.duration / 2 + (hi - ev.duration / 2) * envelope_width
+                t_lo = t_c - half_width
+                t_hi = t_c + half_width
+
+    _, signal = _sample_envelope(ev, t_lo, t_hi, n_samples)
+    amp = float(jnp.max(jnp.abs(signal))) * 1.1
     return t_lo, t_hi, amp
 
 
@@ -1024,13 +716,8 @@ def _draw_physical_pulse(
     show_carrier: bool,
 ) -> None:
     """Draw a physical (RX/RY) pulse envelope on the given axes."""
-    t_c = ev.duration / 2
-    t_arr = jnp.linspace(t_lo, t_hi, n_samples)
-    env = jnp.array(
-        [float(ev.envelope_fn(ev.envelope_params, ti, t_c)) for ti in t_arr]
-    )
-    signal = env * ev.w
-    t_display = t_arr - t_c + t_start + ev.duration / 2
+    t_arr, signal = _sample_envelope(ev, t_lo, t_hi, n_samples)
+    t_display = t_arr + t_start
 
     for wire in ev.wires:
         ax = axes[wire]
@@ -1044,14 +731,14 @@ def _draw_physical_pulse(
                 color=color,
                 linestyle="--",
                 linewidth=0.8,
-                alpha=0.5,
+                alpha=0.7,
                 zorder=4,
             )
 
         if show_carrier:
             modulated = signal * jnp.cos(omega_c * t_arr + ev.carrier_phase)
             ax.plot(
-                t_display, modulated, color=color, linewidth=0.5, alpha=0.4, zorder=2
+                t_display, modulated, color=color, linewidth=0.8, alpha=0.8, zorder=2
             )
 
         peak_idx = jnp.argmax(jnp.abs(signal))
@@ -1074,23 +761,33 @@ def _draw_virtual_z(
     t_mid = t_start + ev.duration / 2
     for wire in ev.wires:
         ax = axes[wire]
-        ax.axvline(
-            t_mid, color=color, linestyle="--", linewidth=1.0, alpha=0.7, zorder=2
+        ax.vlines(
+            t_mid,
+            -amp_max * 0.6,
+            amp_max * 0.6,
+            color=color,
+            linestyle="--",
+            linewidth=1.2,
+            alpha=0.8,
+            zorder=2,
         )
         ax.annotate(
             _make_event_label(ev.gate, ev.parent),
             xy=(t_mid, amp_max * 0.85),
-            fontsize=6,
+            fontsize=7,
             ha="center",
             va="bottom",
             color=color,
-            fontstyle="italic",
+            # fontstyle="italic",
             zorder=5,
         )
 
 
-def _draw_cz(ev: PulseEvent, t_start: float, axes, color: str, amp_max: float) -> None:
-    """Draw a CZ gate as a shaded rectangle spanning its wires."""
+def _draw_block(
+    ev: PulseEvent, t_start: float, axes, color: str, amp_max: float
+) -> None:
+    """Draw a gate as a labelled rectangular block on each of its wires."""
+    label = _make_event_label(ev.gate, ev.parent)
     for wire in ev.wires:
         ax = axes[wire]
         rect = mpatches.Rectangle(
@@ -1105,9 +802,8 @@ def _draw_cz(ev: PulseEvent, t_start: float, axes, color: str, amp_max: float) -
         )
         ax.add_patch(rect)
 
-    ax = axes[ev.wires[0]]
-    ax.annotate(
-        _make_event_label(ev.gate, ev.parent),
+    axes[ev.wires[0]].annotate(
+        label,
         xy=(t_start + ev.duration / 2, amp_max * 0.7),
         fontsize=7,
         ha="center",
@@ -1122,7 +818,9 @@ def draw_pulse_schedule(
     events: List[PulseEvent],
     n_qubits: int,
     n_samples: int = 200,
-    show_carrier: bool = False,
+    show_carrier: bool = True,
+    show_envelope: bool = True,
+    envelope_width: float = 0.0,
     **kwargs: Any,
 ) -> Tuple:
     """Render a pulse schedule as a Matplotlib figure.
@@ -1139,6 +837,13 @@ def draw_pulse_schedule(
         n_samples: Number of time samples per pulse envelope.
         show_carrier: If ``True``, overlay the carrier-modulated waveform
             (envelope x cos) as a thin line.
+        show_envelope: If ``True``, draw the full envelope shape for
+            physical pulses.  If ``False``, show them as simple
+            rectangular blocks indicating duration only.
+        envelope_width: Scales how far the displayed envelope extends
+            beyond the evolution window.  ``1.0`` (default) uses the
+            adaptive width, ``> 1`` widens further, ``< 1`` tightens,
+            and ``0`` clamps the envelope exactly to the pulse duration.
         **kwargs: Forwarded to ``plt.subplots``.
 
     Returns:
@@ -1161,11 +866,10 @@ def draw_pulse_schedule(
     t_total = max(wire_cursor.values()) if wire_cursor else 1.0
 
     gate_colors = {
-        "RX": "#4e79a7",
-        "RY": "#f28e2b",
-        "RZ": "#76b7b2",
-        "CZ": "#e15759",
-        "H": "#59a14f",
+        "RX": "#1F78B4",
+        "RY": "#E69F00",
+        "RZ": "#009371",
+        "CZ": "#ED665A",
     }
 
     fig, axes = plt.subplots(
@@ -1188,23 +892,22 @@ def draw_pulse_schedule(
 
     axes[-1].set_xlabel("Time", fontsize=11)
 
-    # Pre-compute display windows and amplitude range for physical pulses
+    # Pre-compute display windows, amplitude range, and x-limits
     display_windows: Dict[int, Tuple[float, float]] = {}
     amp_max = 1.0
-    for idx, (ev, _) in enumerate(scheduled):
-        if ev.envelope_fn is not None and ev.gate in ("RX", "RY"):
-            t_lo, t_hi, amp = _compute_display_window(ev, n_samples)
+    x_lo, x_hi = 0.0, t_total
+
+    if show_envelope:
+        for idx, (ev, t_start) in enumerate(scheduled):
+            if ev.envelope_fn is None or ev.gate not in ("RX", "RY"):
+                continue
+            t_lo, t_hi, amp = _compute_display_window(ev, n_samples, envelope_width)
             display_windows[idx] = (t_lo, t_hi)
             amp_max = max(amp_max, amp)
+            # Map local display bounds to global time coordinates
+            x_lo = min(x_lo, t_lo + t_start)
+            x_hi = max(x_hi, t_hi + t_start)
 
-    # Compute effective x-limits accounting for widened display windows
-    x_lo, x_hi = 0.0, t_total
-    for idx, (ev, t_start) in enumerate(scheduled):
-        if idx in display_windows:
-            t_c = ev.duration / 2
-            dw_lo, dw_hi = display_windows[idx]
-            x_lo = min(x_lo, dw_lo - t_c + t_start + ev.duration / 2)
-            x_hi = max(x_hi, dw_hi - t_c + t_start + ev.duration / 2)
     x_margin = (x_hi - x_lo) * 0.05
     for q in range(n_qubits):
         axes[q].set_xlim(x_lo - x_margin, x_hi + x_margin)
@@ -1214,8 +917,8 @@ def draw_pulse_schedule(
     for idx, (ev, t_start) in enumerate(scheduled):
         color = gate_colors.get(ev.gate, "#bab0ac")
 
-        if ev.gate in ("RX", "RY") and ev.envelope_fn is not None:
-            t_lo, t_hi = display_windows.get(idx, (0.0, ev.duration))
+        if ev.gate in ("RX", "RY") and ev.envelope_fn is not None and show_envelope:
+            t_lo, t_hi = display_windows[idx]
             _draw_physical_pulse(
                 ev,
                 t_start,
@@ -1229,17 +932,24 @@ def draw_pulse_schedule(
             )
         elif ev.gate == "RZ":
             _draw_virtual_z(ev, t_start, axes, color, amp_max)
-        elif ev.gate == "CZ":
-            _draw_cz(ev, t_start, axes, color, amp_max)
+        else:
+            _draw_block(ev, t_start, axes, color, amp_max)
 
     # Legend
-    handles = []
     used_gates = {ev.gate for ev, _ in scheduled}
-    for gate, color in gate_colors.items():
-        if gate in used_gates:
-            handles.append(mpatches.Patch(color=color, alpha=0.5, label=gate))
+    handles = [
+        mpatches.Patch(color=c, alpha=0.7, label=g)
+        for g, c in gate_colors.items()
+        if g in used_gates
+    ]
     if handles:
-        axes[0].legend(handles=handles, loc="upper right", fontsize=8, framealpha=0.7)
+        fig.legend(
+            handles=handles,
+            loc="lower right",
+            ncol=len(handles),
+            fontsize=8,
+            framealpha=0.8,
+        )
 
     fig.suptitle(
         f"Pulse Schedule ({PulseInformation.get_envelope()} envelope)",

@@ -1,48 +1,57 @@
 import argparse
-from typing import Dict, List, Callable, Union, Tuple
-
-import os
 import csv
+import itertools
+import logging
+import os
+from typing import Callable, Dict, List, Optional, Tuple, Union
+
 import jax
 from jax import numpy as jnp
 import optax
-
 
 from qml_essentials.gates import Gates, PulseInformation, PulseEnvelope
 from qml_essentials import operations as op
 from qml_essentials import yaqsi as ys
 from qml_essentials.math import phase_difference, fidelity
-import logging
 
 jax.config.update("jax_enable_x64", True)
 log = logging.getLogger(__name__)
 
 
 class Cost:
+    """Weighted wrapper around a cost function.
+
+    Combines a cost callable with a scalar or tuple weight and optional
+    constant keyword arguments.  Multiple ``Cost`` instances can be
+    composed via the ``+`` operator to build a combined objective.
+
+    Args:
+        cost: Callable ``(pulse_params, **ckwargs) -> scalar | tuple``.
+        weight: Scalar or tuple of per-component weights.
+        ckwargs: Constant keyword arguments injected into every call.
+    """
+
     def __init__(
         self,
         cost: Callable,
         weight: Union[float, Tuple],
-        ckwargs: dict = {},
+        ckwargs: Optional[dict] = None,
     ):
         self.cost = cost
         self.weight = weight
-        self.ckwargs = ckwargs
-
-    def cost(self, *args, **kwargs):
-        raise NotImplementedError
+        self.ckwargs = ckwargs if ckwargs is not None else {}
 
     def __call__(self, *args, **kwargs):
-        # inject constant args in cost function
+        """Evaluate the cost function with injected kwargs and apply weights."""
         cost = self.cost(*args, **kwargs, **self.ckwargs)
         if isinstance(self.weight, tuple):
             return jnp.array(
                 [c * w for c, w in zip(cost, self.weight, strict=True)]
             ).sum()
-        else:
-            return cost * self.weight
+        return cost * self.weight
 
     def __add__(self, other):
+        """Compose two cost terms into a single callable that sums them."""
         if other is None:
             return lambda *args, **kwargs: self(*args, **kwargs)
         if callable(other):
@@ -60,9 +69,9 @@ def fidelity_cost_fn(
 ) -> Tuple[float, float]:
     """
     Cost function returning (1 - fidelity) and |phase_difference| averaged
-    over *n_samples* uniformly spaced rotation angles in [0, 2\\pi].
+    over n_samples uniformly spaced rotation angles in [0, 2\\pi].
 
-    Uses batched (vmapped) circuit execution: all *n_samples* rotation
+    Uses batched (vmapped) circuit execution: all n_samples rotation
     angles are evaluated in a single vectorised call per script, replacing
     ``n_samples`` sequential Python-level circuit executions with one
     JIT-compiled XLA program each.
@@ -95,6 +104,9 @@ def fidelity_cost_fn(
     )
     phase_diff = jnp.mean(jnp.abs(phase_difference(pulse_states, target_states)))
 
+    # TODO: in future we could consider some sort of log based loss for the small values
+    # or utilize gradient ascent if we run into numerical limitations
+
     return (abs_diff, phase_diff)
 
 
@@ -105,7 +117,7 @@ def pulse_width_cost_fn(
     """
     Cost function penalising the pulse width (sigma / width).
 
-    The pulse width is taken as the **last** envelope parameter. For
+    The pulse width is taken as the last envelope parameter. For
     envelopes with no envelope parameters (e.g. ``"general"``), the cost
     is zero.
 
@@ -134,7 +146,7 @@ def evolution_time_cost_fn(
     """
     Cost function penalising deviation of the evolution time from a target.
 
-    The evolution time is always the **last** element of the pulse parameter
+    The evolution time is always the last element of the pulse parameter
     vector.  The cost is the squared relative deviation from ``t_target``:
 
         cost = ((t - t_target) / t_target) ** 2
@@ -145,20 +157,16 @@ def evolution_time_cost_fn(
 
     Args:
         pulse_params: Pulse parameters for the gate.
-        envelope: Name of the active pulse envelope (unused).
-        t_target (float): Target evolution time (passed via ``**kwargs``).
+        t_target: Target evolution time.
 
     Returns:
         Scalar evolution-time cost.
-
-    Raises:
-        ValueError: If ``t_target`` is not provided in ``kwargs``.
     """
     t = pulse_params[-1]
     return ((t - t_target) / t_target) ** 2
 
 
-def sepctral_density_cost_fn(
+def spectral_density_cost_fn(
     pulse_params: jnp.ndarray,
     envelope: str,
     n_fft: int = 1024,
@@ -167,7 +175,7 @@ def sepctral_density_cost_fn(
     Cost function penalising the spectral width of a given pulse.
 
     Samples the pulse envelope in the time domain over ``[0, t_evol]``
-    (where ``t_evol`` is the last element of *pulse_params*), computes its
+    (where ``t_evol`` is the last element of pulse_params), computes its
     power spectral density via FFT, and returns the normalised RMS bandwidth
     (square root of the second central moment of the PSD).
 
@@ -218,6 +226,10 @@ def sepctral_density_cost_fn(
     return jnp.array(rms_bw, dtype=jnp.float64)
 
 
+# Backward-compatible alias for the old misspelled name
+sepctral_density_cost_fn = spectral_density_cost_fn
+
+
 class CostFnRegistry:
     """Registry of cost functions available for pulse optimisation.
 
@@ -242,7 +254,7 @@ class CostFnRegistry:
             "ckwargs_keys": ["t_target"],
         },
         "spectral_density": {
-            "fn": sepctral_density_cost_fn,
+            "fn": spectral_density_cost_fn,
             "default_weight": 1.0,
             "ckwargs_keys": ["envelope"],
         },
@@ -255,7 +267,7 @@ class CostFnRegistry:
 
     @classmethod
     def get(cls, name: str) -> dict:
-        """Look up cost-function metadata by *name*.
+        """Look up cost-function metadata by name.
 
         Args:
             name: Registered cost function name.
@@ -265,7 +277,7 @@ class CostFnRegistry:
             ``default_weight``, ``ckwargs_keys``.
 
         Raises:
-            ValueError: If *name* is not registered.
+            ValueError: If name is not registered.
         """
         if name not in cls._REGISTRY:
             raise ValueError(
@@ -321,6 +333,27 @@ class CostFnRegistry:
 
 
 class QOC:
+    """Quantum Optimal Control for pulse-level gate synthesis.
+
+    Optimises pulse parameters to reproduce the unitary of standard
+    quantum gates using a two-stage strategy.
+
+    Attributes:
+        GATES_1Q: Names of supported single-qubit gates.
+        GATES_2Q: Names of supported two-qubit gates.
+        DEFAULT_PARAM_RANGES: Default parameter ranges for each gate.
+    """
+
+    GATES_1Q: List[str] = ["RX", "RY", "RZ", "Rot", "H"]
+    GATES_2Q: List[str] = ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"]
+
+    DEFAULT_PARAM_RANGES = {
+        1: [(0.05, 2.0)],  # evolution time
+        2: [(0.5, 2.0), (0.05, 2.0)],  # not typically used
+        3: [(0.5, 30.0), (0.05, 2.0), (0.05, 2.0)],  # A, σ, t
+        4: [(0.5, 30.0), (0.05, 2.0), (0.01, 0.5), (0.05, 2.0)],  # DRAG
+    }
+
     def __init__(
         self,
         envelope: str,
@@ -333,6 +366,14 @@ class QOC:
         file_dir: str = None,
         warmup_ratio: float = 0.0,
         end_lr_ratio: float = 1.0,
+        n_restarts: int = 1,
+        restart_noise_scale: float = 0.5,
+        grad_clip: float = 1.0,
+        random_seed: int = 42,
+        scan_steps: int = 0,
+        scan_grid_size: int = 5,
+        scan_ranges: Optional[List[Tuple[float, float]]] = None,
+        log_scale_params: Optional[List[int]] = None,
     ):
         """
         Initialize Quantum Optimal Control with Pulse-level Gates.
@@ -342,7 +383,7 @@ class QOC:
                 Must be one of the registered envelopes in PulseEnvelope
                 (e.g. 'gaussian', 'square', 'cosine', 'drag', 'sech').
             cost_fns (list): List of ``(name, weight)`` tuples that select
-                which cost functions to use and their weights.  *name* must
+                which cost functions to use and their weights.  name must
                 be a key in :class:`CostFnRegistry`.  *weight* is either a
                 single float or a tuple of floats matching the number of
                 return values of the cost function.
@@ -366,9 +407,51 @@ class QOC:
                 LR at the start of warmup.  Set to 0.0 for full cosine
                 decay to zero; set to 1.0 (together with
                 ``warmup_ratio=0.0``) to recover a constant LR.
+            n_restarts (int): Number of random restarts for the
+                optimisation.  The first run uses the initial parameters
+                as-is; subsequent runs add scaled random perturbations.
+                The best result across all restarts is kept.
+                Set to 1 to disable restarts (default behaviour).
+            restart_noise_scale (float): Standard deviation of the
+                Gaussian noise added to the initial parameters for each
+                restart (relative to the absolute value of each parameter).
+                Defaults to 0.5 (50 % relative perturbation).
+            grad_clip (float): Maximum global gradient norm.  Gradients
+                are clipped to this value before being passed to the
+                optimiser, which stabilises training when the loss
+                landscape has steep regions.  Set to ``float('inf')`` or
+                0.0 to disable.  Defaults to 1.0.
+            random_seed (int): Base random seed for generating restart
+                perturbations.  Defaults to 42.
+            scan_steps (int): Number of short gradient-descent steps to
+                run for each candidate in the coarse grid search
+                (Stage 0).  Set to 0 to disable the grid scan entirely
+                and rely solely on restarts.  A value of 20-50 is
+                usually enough to identify promising basins.  Defaults
+                to 0.
+            scan_grid_size (int): Number of points per parameter
+                dimension in the coarse grid.  The total number of
+                candidates is ``scan_grid_size ** n_params``, so keep
+                this small for high-dimensional parameter spaces.
+                Defaults to 5.
+            scan_ranges (Optional[List[Tuple[float, float]]]): Per-
+                parameter ``(lo, hi)`` ranges for the grid scan.  If
+                ``None``, heuristic ranges are used based on the
+                envelope type: amplitude in ``[0.5, 30]``, width/sigma
+                in ``[0.05, 2]``, and evolution time in ``[0.05, 2]``.
+                Must have length equal to the number of pulse parameters
+                if provided.
+            log_scale_params (Optional[List[int]]): Indices of pulse
+                parameters that should be optimised in log-space.  For
+                these parameters the optimizer sees ``log(p)`` and the
+                actual parameter used in the simulation is ``exp(log_p)``.
+                This dramatically improves convergence when the optimal
+                value may differ from the initial value by an order of
+                magnitude (e.g. amplitude, evolution time).
+                If ``None``, defaults to ``[0, -1]`` (amplitude and
+                evolution time) for envelopes with ≥ 2 envelope params,
+                or ``[]`` otherwise.
         """
-        self.ws = jnp.linspace(0, 2 * jnp.pi, n_samples)
-
         self.envelope = envelope
         self.n_steps = n_steps
         self.n_samples = n_samples
@@ -379,20 +462,46 @@ class QOC:
         self.file_dir = (
             file_dir if file_dir else os.path.dirname(os.path.realpath(__file__))
         )
-        self.current_gate = None
         self.t_target = t_target
+        self.n_restarts = max(1, n_restarts)
+        self.restart_noise_scale = restart_noise_scale
+        self.grad_clip = grad_clip
+        self.random_key = jax.random.PRNGKey(random_seed)
+        self.scan_steps = scan_steps
+        self.scan_grid_size = scan_grid_size
+        self.scan_ranges = scan_ranges
+
+        # Determine log-scale param indices
+        envelope_info = PulseEnvelope.get(envelope)
+        n_env = envelope_info["n_envelope_params"]
+        if log_scale_params is not None:
+            self.log_scale_params = log_scale_params
+        elif n_env >= 2:
+            # Default: amplitude (index 0) and evolution time (last)
+            self.log_scale_params = [0, -1]
+        else:
+            self.log_scale_params = []
 
         log.info(
-            f"Training parameters: {self.n_steps} steps, {self.n_samples} samples\
-                {self.learning_rate} learning rate"
+            f"Training parameters: {self.n_steps} steps, "
+            f"{self.n_samples} samples, {self.learning_rate} learning rate"
         )
         log.info(
-            f"LR schedule: warmup_ratio={self.warmup_ratio},\
-                end_lr_ratio={self.end_lr_ratio}"
+            f"LR schedule: warmup_ratio={self.warmup_ratio}, "
+            f"end_lr_ratio={self.end_lr_ratio}"
         )
 
         log.info(f"Envelope: {self.envelope}")
         log.info(f"Target evolution time: {self.t_target}")
+        log.info(
+            f"Restarts: {self.n_restarts}, noise_scale={self.restart_noise_scale}, "
+            f"grad_clip={self.grad_clip}"
+        )
+        log.info(
+            f"Grid scan: scan_steps={self.scan_steps}, "
+            f"scan_grid_size={self.scan_grid_size}, "
+            f"log_scale_params={self.log_scale_params}"
+        )
         log.info(f"Using cost function(s) {cost_fns}")
 
         # Validate each entry against the registry
@@ -400,7 +509,6 @@ class QOC:
         for name, _weight in cost_fns:
             CostFnRegistry.get(name)  # raises ValueError if unknown
             summed_weights += sum(_weight) if isinstance(_weight, tuple) else _weight
-            # check sume of weights
         assert jnp.isclose(
             summed_weights, 1.0, rtol=1e-8
         ), f"Cost function weights must sum to 1. Got {summed_weights}"
@@ -410,19 +518,17 @@ class QOC:
         # Configure the pulse system with the selected envelope
         PulseInformation.set_envelope(self.envelope)
 
-    def save_results(self, gate, fidelity, pulse_params):
-        """
-        Saves the optimized pulse parameters and fidelity for a given gate to a CSV file
+    def save_results(self, gate: str, fidelity: float, pulse_params) -> None:
+        """Save optimised pulse parameters and fidelity for a gate to CSV.
+
+        If the gate already exists in the file, its entry is overwritten
+        regardless of whether the new fidelity is higher.  A warning is
+        logged when the existing fidelity was better.
 
         Args:
-            gate (str): Name of the gate.
-            fidelity (float): Fidelity of the optimized pulse parameters.
-            pulse_params (list): Optimized pulse parameters for the gate.
-
-        Notes:
-            If the gate already exists in the file and
-            the newly optimized pulse parameters have a higher fidelity,
-            the existing entry will be overwritten.
+            gate: Name of the gate (e.g. ``"RX"``).
+            fidelity: Achieved fidelity of the optimised pulse.
+            pulse_params: Optimised pulse parameters for the gate.
         """
         if self.file_dir is not None:
             os.makedirs(self.file_dir, exist_ok=True)
@@ -456,24 +562,338 @@ class QOC:
                 if not match:
                     writer.writerow(entry)
 
+    def _to_log_space(self, params: jnp.ndarray) -> jnp.ndarray:
+        """Convert selected parameters to log-space for optimisation.
+
+        Parameters at indices in ``self.log_scale_params`` are replaced
+        by ``log(|p| + eps)`` so the optimiser operates on a
+        logarithmic scale.  All other parameters are left unchanged.
+
+        Args:
+            params: Pulse parameters in physical space.
+
+        Returns:
+            Parameters with selected entries in log-space.
+        """
+        if not self.log_scale_params:
+            return params
+        n = len(params)
+        log_params = params.copy()
+        for idx in self.log_scale_params:
+            # Normalise negative indices
+            i = idx if idx >= 0 else n + idx
+            log_params = log_params.at[i].set(jnp.log(jnp.abs(params[i]) + 1e-12))
+        return log_params
+
+    def _from_log_space(self, log_params: jnp.ndarray) -> jnp.ndarray:
+        """Convert selected parameters back from log-space.
+
+        Inverse of :meth:`_to_log_space`.  Parameters at indices in
+        ``self.log_scale_params`` are exponentiated; all others are
+        passed through unchanged.
+
+        Args:
+            log_params: Parameters with selected entries in log-space.
+
+        Returns:
+            Parameters in physical space (all positive for log-scaled
+            entries).
+        """
+        if not self.log_scale_params:
+            return log_params
+        n = len(log_params)
+        params = log_params.copy()
+        for idx in self.log_scale_params:
+            i = idx if idx >= 0 else n + idx
+            params = params.at[i].set(jnp.exp(log_params[i]))
+        return params
+
+    def _build_scan_grid(self, n_params: int) -> jnp.ndarray:
+        """Build a coarse parameter grid for the initial scan phase.
+
+        Uses either user-supplied ``scan_ranges`` or heuristic defaults
+        based on typical Gaussian pulse parameter ranges.
+
+        Args:
+            n_params: Number of pulse parameters.
+
+        Returns:
+            Array of shape ``(n_candidates, n_params)`` with grid points.
+        """
+        if self.scan_ranges is not None:
+            ranges = self.scan_ranges
+            assert len(ranges) == n_params, (
+                f"scan_ranges has {len(ranges)} entries but gate has "
+                f"{n_params} parameters."
+            )
+        else:
+            # [amplitude, sigma/width, evolution_time]
+            ranges = self.DEFAULT_PARAM_RANGES.get(
+                n_params,
+                [(0.1, 10.0)] * n_params,  # fallback
+            )
+
+        # Build log-spaced grids for each parameter
+        axes = []
+        for lo, hi in ranges:
+            axes.append(jnp.logspace(jnp.log10(lo), jnp.log10(hi), self.scan_grid_size))
+
+        # Cartesian product of all axes
+        grid = jnp.array(list(itertools.product(*axes)))
+        return grid
+
+    def stage_0_opt(self, init_pulse_params: jnp.ndarray, fidelity_only_cost):
+        """Run the coarse grid-scan phase (Stage 0).
+
+        Evaluates a Cartesian grid of parameter candidates using only the
+        fidelity cost (ignoring phase).  Each candidate is refined with a
+        few fast gradient steps.  Returns the best-found parameters.
+
+        Args:
+            init_pulse_params: Initial pulse parameters to compare against.
+            fidelity_only_cost: Cost callable using fidelity only.
+
+        Returns:
+            Best pulse parameters found during the scan.
+        """
+
+        def fidelity_only_cost_log(log_params, *args):
+            return fidelity_only_cost(self._from_log_space(log_params), *args)
+
+        best_scan_params = init_pulse_params
+        best_scan_loss = fidelity_only_cost(init_pulse_params)
+
+        if self.scan_steps > 0:
+            log.info(
+                f"Stage 0: Grid scan with {self.scan_grid_size}^"
+                f"{len(init_pulse_params)} candidates, "
+                f"{self.scan_steps} steps each"
+            )
+
+            grid = self._build_scan_grid(len(init_pulse_params))
+            log.info(f"  Total candidates: {len(grid)}")
+
+            # Use a fast, constant-LR Adam for the scan phase
+            scan_optimizer = optax.chain(
+                optax.clip_by_global_norm(
+                    self.grad_clip if self.grad_clip > 0 else 1.0
+                ),
+                optax.adam(self.learning_rate * 5),  # aggressive LR
+            )
+
+            @jax.jit
+            def scan_step(opt_state, log_params):
+                loss, grads = jax.value_and_grad(fidelity_only_cost_log)(log_params)
+                updates, opt_state = scan_optimizer.update(grads, opt_state, log_params)
+                log_params = optax.apply_updates(log_params, updates)
+                return log_params, opt_state, loss
+
+            for ci, candidate in enumerate(grid):
+                log_candidate = self._to_log_space(candidate)
+                opt_state = scan_optimizer.init(log_candidate)
+
+                log_p = log_candidate
+                for _ in range(self.scan_steps):
+                    log_p, opt_state, loss = scan_step(opt_state, log_p)
+
+                # Evaluate final loss
+                physical_p = self._from_log_space(log_p)
+                loss = fidelity_only_cost(physical_p)
+
+                if loss < best_scan_loss:
+                    best_scan_loss = loss
+                    best_scan_params = physical_p
+                    log.info(
+                        f"  Candidate {ci + 1}/{len(grid)}: "
+                        f"loss={loss.item():.3e} improved with "
+                        f"params={physical_p}"
+                    )
+
+            log.info(
+                f"Stage 0 complete. Best fidelity-only loss: "
+                f"{best_scan_loss.item():.3e}, "
+                f"params: {best_scan_params}"
+            )
+
+        return best_scan_params
+
+    def stage_1_opt(self, best_scan_params: jnp.ndarray, total_costs):
+        """Run multi-restart gradient optimisation (Stage 1).
+
+        Performs ``n_restarts`` independent AdamW runs with the full
+        (weighted) cost function.  The first restart uses
+        ``best_scan_params`` directly; subsequent restarts add random
+        perturbations.  Parameters specified in ``log_scale_params`` are
+        optimised in log-space.
+
+        Args:
+            best_scan_params: Starting parameters (typically from Stage 0).
+            total_costs: Combined cost callable.
+
+        Returns:
+            Tuple of ``(best_params, loss_history, best_loss)``.
+        """
+
+        # Wrap the cost function with log-space reparameterisation
+        def total_costs_log(log_params, *args):
+            return total_costs(self._from_log_space(log_params), *args)
+
+        # Build learning rate schedule
+        warmup_steps = int(self.n_steps * self.warmup_ratio)
+        end_value = self.learning_rate * self.end_lr_ratio
+
+        if warmup_steps > 0 or self.end_lr_ratio < 1.0:
+            schedule = optax.warmup_cosine_decay_schedule(
+                init_value=(end_value if warmup_steps > 0 else self.learning_rate),
+                peak_value=self.learning_rate,
+                warmup_steps=warmup_steps,
+                decay_steps=self.n_steps,
+                end_value=end_value,
+            )
+        else:
+            schedule = self.learning_rate
+
+        # Build optimiser chain with gradient clipping
+        use_clip = (
+            self.grad_clip and self.grad_clip > 0 and jnp.isfinite(self.grad_clip)
+        )
+        if use_clip:
+            optimizer = optax.chain(
+                optax.clip_by_global_norm(self.grad_clip),
+                optax.adamw(schedule),
+            )
+        else:
+            optimizer = optax.adamw(schedule)
+
+        @jax.jit
+        def opt_step(opt_state, log_params, *args):
+            loss, grads = jax.value_and_grad(total_costs_log)(log_params, *args)
+            updates, opt_state = optimizer.update(grads, opt_state, log_params)
+            log_params = optax.apply_updates(log_params, updates)
+            return log_params, opt_state, loss
+
+        # Use the best from grid scan as starting point
+        start_params = best_scan_params
+
+        global_best_loss = jnp.inf
+        global_best_params = start_params
+        global_best_history = []
+        restart_key = self.random_key
+
+        for restart in range(self.n_restarts):
+            if restart == 0:
+                params = start_params
+            else:
+                # Perturb the starting point
+                restart_key, sub_key = jax.random.split(restart_key)
+                noise = jax.random.normal(sub_key, shape=start_params.shape)
+                scale = (
+                    jnp.maximum(jnp.abs(start_params), 0.1) * self.restart_noise_scale
+                )
+                params = start_params + noise * scale
+                # Ensure log-scaled params remain positive before
+                # conversion (evolution time at index -1 is always
+                # included since _to_log_space uses jnp.abs anyway,
+                # but we keep values positive for readability).
+                params = params.at[-1].set(jnp.abs(params[-1]))
+                for idx in self.log_scale_params:
+                    i = idx if idx >= 0 else len(params) + idx
+                    params = params.at[i].set(jnp.abs(params[i]))
+                log.info(
+                    f"Restart {restart + 1}/{self.n_restarts} "
+                    f"with perturbed params: {params}"
+                )
+
+            # Convert to log-space for optimisation
+            log_params = self._to_log_space(params)
+            opt_state = optimizer.init(log_params)
+
+            loss = total_costs(params)
+            loss_history = [loss]
+            best_loss = loss
+            best_pulse_params = params
+
+            for step in range(self.n_steps):
+                if step % self.log_interval == 0:
+                    restart_tag = (
+                        f" [restart {restart + 1}/{self.n_restarts}]"
+                        if self.n_restarts > 1
+                        else ""
+                    )
+                    log.info(
+                        f"Step {step}/{self.n_steps}, "
+                        f"Loss: {loss_history[-1].item():.3e}"
+                        f"{restart_tag}"
+                    )
+
+                log_params, opt_state, loss = opt_step(opt_state, log_params)
+
+                if loss < best_loss:
+                    log.debug(f"Best set of params found at step {step}")
+                    best_loss = loss
+                    best_pulse_params = self._from_log_space(log_params)
+
+                loss_history.append(loss)
+
+            log.info(
+                f"Restart {restart + 1}/{self.n_restarts} finished "
+                f"with best loss: {best_loss.item():.3e}"
+            )
+
+            if best_loss < global_best_loss:
+                global_best_loss = best_loss
+                global_best_params = best_pulse_params
+                global_best_history = loss_history
+
+        return global_best_params, global_best_history, global_best_loss
+
     def optimize(self, wires):
+        """Decorator factory that optimises pulse parameters for a gate.
+
+        Usage::
+
+            opt = qoc.optimize(wires=1)
+            best_params, loss_history = opt(qoc.create_RX)()
+
+        Args:
+            wires: Number of qubits the gate acts on.
+
+        Returns:
+            A decorator that accepts a circuit-factory function and
+            returns a callable ``(init_pulse_params=None) ->
+            (best_params, loss_history)``.
+        """
+
         def decorator(create_circuits):
             def wrapper(init_pulse_params: jnp.ndarray = None):
                 """
-                This function is a wrapper for the create_circuits method.
-                It takes a simulator and wires as input and optimizes
-                the pulse parameters using the cost function defined
-                in the QOC class.
+                Optimise pulse parameters for a quantum gate using a
+                multi-phase strategy:
+
+                Stage 0 - Grid scan (if ``scan_steps > 0``):
+                    Evaluate a coarse grid of parameter candidates using
+                    only the fidelity cost (ignoring phase).  Each
+                    candidate is refined with a few fast gradient steps.
+                    The best candidate becomes the starting point for
+                    Stage 1, unless the user-supplied init_pulse_params
+                    are already better.
+
+                Stage 1 - Multi-restart gradient optimisation:
+                    Run ``n_restarts`` independent Adam optimisation runs
+                    with the full cost function.  The first restart uses
+                    the best point found so far; subsequent restarts add
+                    random perturbations.  Parameters at indices in
+                    ``log_scale_params`` are optimised in log-space to
+                    handle order-of-magnitude differences in scale.
 
                 Args:
-                    create_circuits (callable): A function to generate the pulse and
-                        target circuits for the gate.
-                    init_pulse_params (array): Initial pulse parameters to use for
-                        the pulse-based gate.
+                    init_pulse_params (array): Initial pulse parameters.
+                        If ``None``, uses the envelope defaults from
+                        :class:`PulseInformation`.
 
                 Returns:
-                    tuple: Optimized pulse parameters and list of loss values
-                        at each iteration.
+                    tuple: ``(best_params, loss_history)`` from the best
+                        restart.
                 """
                 pulse_circuit, target_circuit = create_circuits()
 
@@ -483,10 +903,6 @@ class QOC:
                 gate_name = create_circuits.__name__.split("_")[1]
 
                 if init_pulse_params is None:
-                    log.warning(
-                        f"Using initial pulse parameters for {gate_name} \
-                            from `ansaetze.py`"
-                    )
                     init_pulse_params = PulseInformation.gate_by_name(gate_name).params
                 log.debug(
                     f"Initial pulse parameters for {gate_name}: {init_pulse_params}"
@@ -499,86 +915,54 @@ class QOC:
                     "n_samples": self.n_samples,
                     "t_target": self.t_target,
                 }
-                # Build the composite cost from self.cost_fns
+
+                def _build_cost(name, weight):
+                    """Build a Cost from a registry entry, filtering ckwargs."""
+                    meta = CostFnRegistry.get(name)
+                    return Cost(
+                        cost=meta["fn"],
+                        weight=weight,
+                        ckwargs={
+                            k: v
+                            for k, v in all_ckwargs.items()
+                            if k in meta["ckwargs_keys"]
+                        },
+                    )
+
                 total_costs = None
                 for name, weight in self.cost_fns:
-                    meta = CostFnRegistry.get(name)
-                    total_costs = (
-                        Cost(
-                            cost=meta["fn"],
-                            weight=weight,
-                            ckwargs={
-                                k: v
-                                for k, v in all_ckwargs.items()
-                                if k in meta["ckwargs_keys"]
-                            },
-                        )
-                        + total_costs
-                    )
+                    total_costs = _build_cost(name, weight) + total_costs
 
-                params = init_pulse_params
-
-                # Build learning rate schedule
-                warmup_steps = int(self.n_steps * self.warmup_ratio)
-                end_value = self.learning_rate * self.end_lr_ratio
-
-                if warmup_steps > 0 or self.end_lr_ratio < 1.0:
-                    schedule = optax.warmup_cosine_decay_schedule(
-                        init_value=(
-                            end_value if warmup_steps > 0 else self.learning_rate
-                        ),
-                        peak_value=self.learning_rate,
-                        warmup_steps=warmup_steps,
-                        decay_steps=self.n_steps,
-                        end_value=end_value,
-                    )
-                else:
-                    schedule = self.learning_rate
-
-                optimizer = optax.adamw(schedule)
-                opt_state = optimizer.init(params)
-
-                loss = total_costs(params)
-                loss_history = [loss]
-                best_loss = loss
-                best_pulse_params = params
-
-                @jax.jit
-                def opt_step(opt_state, params, *args):
-                    loss, grads = jax.value_and_grad(total_costs)(params, *args)
-                    updates, opt_state = optimizer.update(grads, opt_state, params)
-                    params = optax.apply_updates(params, updates)
-                    return params, opt_state, loss
-
-                for step in range(self.n_steps):
-                    if step % self.log_interval == 0:
-                        log.info(
-                            f"Step {step}/{self.n_steps},\
-                                Loss: {loss_history[-1].item():.3e}"
-                        )
-
-                    params, opt_state, loss = opt_step(opt_state, params)
-
-                    if loss < best_loss:
-                        log.debug(f"Best set of params found at step {step}")
-                        best_loss = loss
-                        best_pulse_params = params
-
-                    loss_history.append(loss)
-
-                self.save_results(
-                    gate=gate_name,
-                    fidelity=1 - best_loss.item(),
-                    pulse_params=best_pulse_params,
+                fidelity_only_cost = _build_cost(
+                    "fidelity", (1.0, 0.0)  # 100% fidelity, 0% phase
                 )
 
-                return best_pulse_params, loss_history
+                best_scan_params = self.stage_0_opt(
+                    init_pulse_params,
+                    fidelity_only_cost,
+                )
+
+                global_best_params, global_best_history, global_best_loss = (
+                    self.stage_1_opt(
+                        best_scan_params,
+                        total_costs,
+                    )
+                )
+                self.save_results(
+                    gate=gate_name,
+                    fidelity=1 - global_best_loss.item(),
+                    pulse_params=global_best_params,
+                )
+
+                return global_best_params, global_best_history
 
             return wrapper
 
         return decorator
 
-    def create_RX(self, init_pulse_params: jnp.ndarray = None):
+    def create_RX(self):
+        """Create pulse and target circuits for the RX gate."""
+
         def pulse_circuit(w, pulse_params):
             Gates.RX(w, 0, pulse_params=pulse_params, gate_mode="pulse")
 
@@ -587,7 +971,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_RY(self, init_pulse_params: jnp.ndarray = None):
+    def create_RY(self):
+        """Create pulse and target circuits for the RY gate."""
+
         def pulse_circuit(w, pulse_params):
             Gates.RY(w, 0, pulse_params=pulse_params, gate_mode="pulse")
 
@@ -596,7 +982,13 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_RZ(self, init_pulse_params: jnp.ndarray = None):
+    def create_RZ(self):
+        """Create pulse and target circuits for the RZ gate.
+
+        Both circuits are sandwiched between Hadamard gates to make the
+        RZ rotation observable in the computational basis.
+        """
+
         def pulse_circuit(w, pulse_params):
             op.H(wires=0)
             Gates.RZ(w, 0, pulse_params=pulse_params, gate_mode="pulse")
@@ -609,7 +1001,12 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_H(self, init_pulse_params: jnp.ndarray = None):
+    def create_H(self):
+        """Create pulse and target circuits for the Hadamard gate.
+
+        An RY rotation is prepended to break symmetry.
+        """
+
         def pulse_circuit(w, pulse_params):
             op.RY(w, wires=0)
             Gates.H(0, pulse_params=pulse_params, gate_mode="pulse")
@@ -620,7 +1017,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_Rot(self, init_pulse_params: jnp.ndarray = None):
+    def create_Rot(self):
+        """Create pulse and target circuits for the general Rot gate."""
+
         def pulse_circuit(w, pulse_params):
             op.H(wires=0)
             Gates.Rot(w, w * 2, w * 3, 0, pulse_params=pulse_params, gate_mode="pulse")
@@ -631,7 +1030,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_CX(self, init_pulse_params: jnp.ndarray = None):
+    def create_CX(self):
+        """Create pulse and target circuits for the CX (CNOT) gate."""
+
         def pulse_circuit(w, pulse_params):
             op.RY(w, wires=0)
             op.H(wires=1)
@@ -644,7 +1045,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_CY(self, init_pulse_params: jnp.ndarray = None):
+    def create_CY(self):
+        """Create pulse and target circuits for the CY gate."""
+
         def pulse_circuit(w, pulse_params):
             op.RX(w, wires=0)
             op.H(wires=1)
@@ -657,7 +1060,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_CZ(self, init_pulse_params: jnp.ndarray = None):
+    def create_CZ(self):
+        """Create pulse and target circuits for the CZ gate."""
+
         def pulse_circuit(w, pulse_params):
             op.RY(w, wires=0)
             op.H(wires=1)
@@ -670,7 +1075,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_CRX(self, init_pulse_params: jnp.ndarray = None):
+    def create_CRX(self):
+        """Create pulse and target circuits for the CRX gate."""
+
         def pulse_circuit(w, pulse_params):
             op.H(wires=0)
             Gates.CRX(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
@@ -681,7 +1088,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_CRY(self, init_pulse_params: jnp.ndarray = None):
+    def create_CRY(self):
+        """Create pulse and target circuits for the CRY gate."""
+
         def pulse_circuit(w, pulse_params):
             op.H(wires=0)
             Gates.CRY(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
@@ -692,7 +1101,9 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def create_CRZ(self, init_pulse_params: jnp.ndarray = None):
+    def create_CRZ(self):
+        """Create pulse and target circuits for the CRZ gate."""
+
         def pulse_circuit(w, pulse_params):
             op.H(wires=0)
             op.H(wires=1)
@@ -705,15 +1116,20 @@ class QOC:
 
         return pulse_circuit, target_circuit
 
-    def optimize_all(self, sel_gates, make_log):
-        log_history = {}
+    def optimize_all(self, sel_gates: str, make_log: bool) -> None:
+        """Optimise all selected gates and optionally write a log CSV.
 
-        gates_1q = ["RX", "RY", "RZ", "Rot", "H"]
-        gates_2q = ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"]
+        Args:
+            sel_gates: Comma-separated gate names or ``"all"``.
+            make_log: If ``True``, write per-gate loss histories to
+                ``qml_essentials/qoc_logs.csv``.
+        """
+        log_history: Dict[str, list] = {}
 
-        for gate in gates_1q + gates_2q:
+        for gate in self.GATES_1Q + self.GATES_2Q:
             if gate in sel_gates or "all" in sel_gates:
-                opt = self.optimize(wires=1 if gate in gates_1q else 2)
+                n_wires = 1 if gate in self.GATES_1Q else 2
+                opt = self.optimize(wires=n_wires)
                 gate_factory = getattr(self, f"create_{gate}")
                 log.info(f"Optimizing {gate} gate...")
                 optimized_pulse_params, loss_history = opt(gate_factory)()
@@ -745,24 +1161,40 @@ default_qoc_params = {
     "end_lr_ratio": 0.01,
     "log_interval": 50,
     "file_dir": None,
+    "n_restarts": 3,
+    "restart_noise_scale": 0.5,
+    "grad_clip": 1.0,
+    "random_seed": 1000,
+    "scan_steps": 30,
+    "scan_grid_size": 5,
+    "scan_ranges": None,
+    "log_scale_params": None,
 }
 
 if __name__ == "__main__":
     # argparse the selected gate
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Quantum Optimal Control — pulse-level gate synthesis."
+    )
     parser.add_argument(
         "--gates",
         type=str,
+        nargs="+",
         default=["RX", "RY", "RZ", "CZ"],
-        choices=["all", "RX", "RY", "RZ", "CZ"],
+        choices=QOC.GATES_1Q + QOC.GATES_2Q + ["all"],
         help="Gate(s) to optimize.",
     )
     parser.add_argument(
         "--log",
-        type=str,
+        action="store_true",
         default=True,
-        choices=[True, False],
-        help="Log results to file.",
+        help="Log results to file (default: True).",
+    )
+    parser.add_argument(
+        "--no-log",
+        action="store_false",
+        dest="log",
+        help="Disable logging results to file.",
     )
     parser.add_argument(
         "--envelope",
@@ -775,9 +1207,7 @@ if __name__ == "__main__":
         "--costs",
         type=str,
         nargs="+",
-        default=default_qoc_params[
-            "cost_fns"
-        ],  # be aware of the numerical precision limit!
+        default=default_qoc_params["cost_fns"],
         help=(
             "Cost functions and weights as 'name:w1,w2,...' strings. "
             "If weights are omitted the registry defaults are used. "
@@ -788,7 +1218,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--t_target",
         type=float,
-        default=default_qoc_params["t_target"],  # referenz is the RZ gate
+        default=default_qoc_params["t_target"],
         help=(
             "Target evolution time for the 'evolution_time' cost function. "
             "All gates will be softly encouraged towards this common time."
@@ -841,14 +1271,86 @@ if __name__ == "__main__":
         "--file_dir",
         type=str,
         default=default_qoc_params["file_dir"],
+        help="Directory to save qoc_results.csv. Defaults to the package directory.",
+    )
+    parser.add_argument(
+        "--n_restarts",
+        type=int,
+        default=default_qoc_params["n_restarts"],
         help=(
-            "Directory to save qoc_results.csv. " "Defaults to the package directory."
+            "Number of random restarts for the optimisation. "
+            "The first run uses the initial parameters as-is; "
+            "subsequent runs add random perturbations. "
+            "The best result across all restarts is kept."
+        ),
+    )
+    parser.add_argument(
+        "--restart_noise_scale",
+        type=float,
+        default=default_qoc_params["restart_noise_scale"],
+        help=(
+            "Standard deviation of Gaussian noise added to the initial "
+            "parameters for each restart, relative to parameter magnitude."
+        ),
+    )
+    parser.add_argument(
+        "--grad_clip",
+        type=float,
+        default=default_qoc_params["grad_clip"],
+        help=(
+            "Maximum global gradient norm. Gradients are clipped to this "
+            "value before being passed to the optimiser. "
+            "Set to 0 to disable."
+        ),
+    )
+    parser.add_argument(
+        "--random_seed",
+        type=int,
+        default=default_qoc_params["random_seed"],
+        help="Base random seed for restart perturbations.",
+    )
+    parser.add_argument(
+        "--scan_steps",
+        type=int,
+        default=default_qoc_params["scan_steps"],
+        help=(
+            "Number of short gradient-descent steps per candidate in the "
+            "coarse grid scan (Stage 0).  Set to 0 to disable the grid scan."
+        ),
+    )
+    parser.add_argument(
+        "--scan_grid_size",
+        type=int,
+        default=default_qoc_params["scan_grid_size"],
+        help=(
+            "Number of points per parameter dimension in the coarse grid. "
+            "Total candidates = scan_grid_size^n_params."
+        ),
+    )
+    parser.add_argument(
+        "--scan_ranges",
+        type=str,
+        nargs="*",
+        default=default_qoc_params["scan_ranges"],
+        help=(
+            "Per-parameter (lo,hi) ranges for the grid scan, given as "
+            "'lo,hi' strings. One pair per pulse parameter. "
+            "Example: --scan_ranges 0.5,30.0 0.05,2.0 0.05,2.0 "
+            "If omitted, heuristic defaults are used."
         ),
     )
 
     args = parser.parse_args()
-    sel_gates = str(args.gates)
-    make_log = bool(args.log)
+    sel_gates = args.gates  # already a list from nargs="+"
+    make_log = args.log
+
+    # Parse scan_ranges from CLI (list of "lo,hi" strings -> list of tuples)
+    scan_ranges = None
+    if args.scan_ranges is not None:
+        scan_ranges = []
+        for pair in args.scan_ranges:
+            lo, hi = pair.split(",")
+            scan_ranges.append((float(lo), float(hi)))
 
     # Parse cost function specs from CLI
     cost_fns = [CostFnRegistry.parse_cost_arg(spec) for spec in args.costs]
@@ -870,6 +1372,13 @@ if __name__ == "__main__":
         end_lr_ratio=args.end_lr_ratio,
         log_interval=args.log_interval,
         file_dir=args.file_dir,
+        n_restarts=args.n_restarts,
+        restart_noise_scale=args.restart_noise_scale,
+        grad_clip=args.grad_clip,
+        random_seed=args.random_seed,
+        scan_steps=args.scan_steps,
+        scan_grid_size=args.scan_grid_size,
+        scan_ranges=scan_ranges,
     )
 
     qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)
