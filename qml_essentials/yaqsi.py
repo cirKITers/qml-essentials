@@ -9,6 +9,7 @@ import jax.scipy.linalg
 import numpy as np  # needed to prevent jitting some operations
 
 from qml_essentials.operations import (
+    Barrier,
     Hermitian,
     ParametrizedHamiltonian,
     Operation,
@@ -164,7 +165,7 @@ class Yaqsi:
         return Hermitian(matrix=mat, wires=qubit_group, record=False)
 
     @classmethod
-    def evolve(cls, hamiltonian, **odeint_kwargs):
+    def evolve(cls, hamiltonian, name=None, **odeint_kwargs):
         """Return a gate-factory for Hamiltonian time evolution.
 
         Supports two modes:
@@ -207,9 +208,9 @@ class Yaqsi:
                 ``ParametrizedHamiltonian``.
         """
         if isinstance(hamiltonian, Hermitian):
-            return cls._evolve_static(hamiltonian)
+            return cls._evolve_static(hamiltonian, name=name)
         elif isinstance(hamiltonian, ParametrizedHamiltonian):
-            return cls._evolve_parametrized(hamiltonian, **odeint_kwargs)
+            return cls._evolve_parametrized(hamiltonian, name=name, **odeint_kwargs)
         else:
             raise TypeError(
                 f"evolve() expects a Hermitian or ParametrizedHamiltonian, "
@@ -217,19 +218,19 @@ class Yaqsi:
             )
 
     @staticmethod
-    def _evolve_static(hermitian: Hermitian) -> Callable:
+    def _evolve_static(hermitian: Hermitian, name=None) -> Callable:
         """Gate factory for static Hamiltonian evolution U = exp(-i t H)."""
         H_mat = hermitian.matrix
 
         def _apply(t: float, wires: Union[int, List[int]] = 0) -> Operation:
             U = jax.scipy.linalg.expm(-1j * t * H_mat)
-            return Operation(wires=wires, matrix=U)
+            return Operation(wires=wires, matrix=U, name=name)
 
         return _apply
 
     @classmethod
     def _evolve_parametrized(
-        cls, ph: ParametrizedHamiltonian, **odeint_kwargs
+        cls, ph: ParametrizedHamiltonian, name=None, **odeint_kwargs
     ) -> Callable:
         """Gate factory for time-dependent Hamiltonian evolution.
 
@@ -347,7 +348,7 @@ class Yaqsi:
 
             U = _solve(neg_iH, params, t0, t1)
 
-            return Operation(wires=wires, matrix=U)
+            return Operation(wires=wires, matrix=U, name=name)
 
         return _apply
 
@@ -761,6 +762,8 @@ class Script:
         # hits on _einsum_subscript) from the hot loop.
         compiled = []
         for op in tape:
+            if isinstance(op, Barrier):
+                continue
             k = len(op.wires)
             gt = op._gate_tensor(k)
             sub = _einsum_subscript(n_qubits, k, tuple(op.wires))
@@ -1366,7 +1369,7 @@ class Script:
                 - ``"text"``  — ASCII art (returned as a ``str``).
                 - ``"mpl"``   — Matplotlib figure (returns ``(fig, ax)``).
                 - ``"tikz"``  — LaTeX/TikZ code via ``quantikz``
-                  (returns a :class:`QuanTikz.TikzFigure`).
+                  (returns a :class:`TikzFigure`).
                 - ``"pulse"`` — Pulse schedule plot (returns ``(fig, axes)``).
 
             args: Positional arguments forwarded to the circuit function
@@ -1376,8 +1379,6 @@ class Script:
 
                 - ``gate_values`` (bool): Show numeric gate angles instead of
                   symbolic \\theta_i labels.  Default ``False``.
-                - ``inputs_symbols`` (str | list): Symbol(s) used for input
-                  gates.  Default ``"x"``.
                 - ``show_carrier`` (bool): For ``"pulse"`` mode, overlay the
                   carrier-modulated waveform.  Default ``False``.
 
@@ -1386,7 +1387,7 @@ class Script:
 
             - ``"text"``  -> ``str``
             - ``"mpl"``   -> ``(matplotlib.figure.Figure, matplotlib.axes.Axes)``
-            - ``"tikz"``  -> :class:`QuanTikz.TikzFigure`
+            - ``"tikz"``  -> :class:`TikzFigure`
             - ``"pulse"`` -> ``(matplotlib.figure.Figure, numpy.ndarray)``
 
         Raises:

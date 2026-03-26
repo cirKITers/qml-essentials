@@ -399,12 +399,6 @@ def test_advanced_draw() -> None:
     quantikz_str = model.draw(figure="tikz", gate_values=False)
     quantikz_str.export("./tikz_test.tex", full_document=False, mode="a")
 
-    # No gate values, custom input symbols
-    quantikz_str = model.draw(
-        figure="tikz", gate_values=False, inputs_symbols=["x", "y"]
-    )
-    quantikz_str.export("./tikz_test.tex", full_document=False, mode="a")
-
 
 @pytest.mark.smoketest
 def test_initialization() -> None:

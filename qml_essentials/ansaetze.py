@@ -217,7 +217,8 @@ class DeclarativeCircuit(Circuit):
         structure = cls.structure()
         w_idx = 0
         for block in structure:
-            w_idx = block.apply(w, w_idx, n_qubits, **kwargs)
+            w_idx = block.apply(n_qubits, w, w_idx, **kwargs)
+            Gates.Barrier(wires=list(range(n_qubits)), **kwargs)
 
 
 class Block:
@@ -319,7 +320,23 @@ class Block:
                 )
         return n_pulse_params * n_qubits
 
-    def apply(self, w: np.ndarray, w_idx: int, n_qubits: int, **kwargs) -> int:
+    def apply(
+        self, n_qubits: int, w: np.ndarray = None, w_idx: int = None, **kwargs
+    ) -> int:
+        """
+        Applies the block to the given circuit.
+
+        Args:
+            n_qubits (int): Number of qubits, the block is applied to.
+            w (np.ndarray, optional): Weights to use for rotational gates.
+                Defaults to None.
+            w_idx (int, optional): Index of weights to use for rotational gates.
+                Defaults to None.
+            **kwargs: Keyword arguments passed to the gate.
+
+        Returns:
+            int: The new index of weights after applying the block.
+        """
         assert n_qubits > 0, "Number of qubits must be positive"
 
         iterator = (
@@ -338,6 +355,9 @@ class Block:
                 continue
 
             if self.is_rotational:
+                assert w is not None, "w must be provided for rotational gates"
+                assert w_idx is not None, "w_idx must be provided for rotational gates"
+
                 if self.gate.__name__ == "Rot":
                     self.gate(
                         w[w_idx], w[w_idx + 1], w[w_idx + 2], wires=wires, **kwargs
