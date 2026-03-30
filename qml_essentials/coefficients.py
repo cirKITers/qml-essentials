@@ -1122,9 +1122,7 @@ class FCC:
         return fourier_fingerprint, freqs
 
     @staticmethod
-    def calculate_fcc(
-        fourier_fingerprint: jnp.ndarray,
-    ) -> float:
+    def calculate_fcc(fourier_fingerprint: jnp.ndarray, n_freqs=-1) -> float:
         """
         Method to calculate the FCC based on an existing correlation matrix.
         Calculate absolute and then the average over this matrix.
@@ -1135,8 +1133,9 @@ class FCC:
         Returns:
             float: The FCC
         """
-        # apply the mask on the fingerprint
-        return jnp.nanmean(jnp.abs(fourier_fingerprint))
+        n_freqs = n_freqs if n_freqs > 0 else jnp.sum(jnp.isfinite(fourier_fingerprint))
+
+        return jnp.nansum(jnp.abs(fourier_fingerprint)) / n_freqs
 
     def _calculate_mask(freqs: jnp.ndarray) -> jnp.ndarray:
         """
