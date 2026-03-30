@@ -1005,7 +1005,7 @@ class FCC:
     def get_fcc(
         model: Model,
         n_samples: int,
-        seed: int,
+        random_key: Optional[random.PRNGKey] = None,
         method: Optional[str] = "pearson",
         scale: Optional[bool] = False,
         weight: Optional[bool] = False,
@@ -1016,7 +1016,7 @@ class FCC:
         Shortcut method to get just the FCC.
         This includes
         1. What is done in `get_fourier_fingerprint`:
-            1. Calculating the coefficients (using `n_samples` and `seed`)
+            1. Calculating the coefficients (using `n_samples`)
             2. Correlating the result from 1) using `method`
             3. Weighting the correlation matrix (if `weight` is True)
             4. Remove redundancies
@@ -1027,7 +1027,8 @@ class FCC:
         Args:
             model (Model): The QFM model
             n_samples (int): Number of samples to calculate average of coefficients
-            seed (int): Seed to initialize random parameters
+            random_key (Optional[random.PRNGKey]): JAX random key for parameter
+                initialization. If None, uses the model's internal random key.
             method (Optional[str], optional): Correlation method. Defaults to "pearson".
             scale (Optional[bool], optional): Whether to scale the number of samples.
                 Defaults to False.
@@ -1043,7 +1044,7 @@ class FCC:
         fourier_fingerprint, _ = FCC.get_fourier_fingerprint(
             model,
             n_samples,
-            seed,
+            random_key,
             method,
             scale,
             weight,
@@ -1056,7 +1057,7 @@ class FCC:
     def get_fourier_fingerprint(
         model: Model,
         n_samples: int,
-        seed: int,
+        random_key: Optional[random.PRNGKey] = None,
         method: Optional[str] = "pearson",
         scale: Optional[bool] = False,
         weight: Optional[bool] = False,
@@ -1067,7 +1068,7 @@ class FCC:
         """
         Shortcut method to get just the fourier fingerprint.
         This includes
-        1. Calculating the coefficients (using `n_samples` and `seed`)
+        1. Calculating the coefficients (using `n_samples`)
         2. Correlating the result from 1) using `method`
         3. Weighting the correlation matrix (if `weight` is True)
         4. Remove redundancies (if `trim_redundant` is True)
@@ -1075,7 +1076,8 @@ class FCC:
         Args:
             model (Model): The QFM model
             n_samples (int): Number of samples to calculate average of coefficients
-            seed (int): Seed to initialize random parameters
+            random_key (Optional[random.PRNGKey]): JAX random key for parameter
+                initialization. If None, uses the model's internal random key.
             method (Optional[str], optional): Correlation method. Defaults to "pearson".
             scale (Optional[bool], optional): Whether to scale the number of samples.
                 Defaults to False.
@@ -1092,7 +1094,7 @@ class FCC:
             and the frequency indices
         """
         _, coeffs, freqs = FCC._calculate_coefficients(
-            model, n_samples, seed, scale, **kwargs
+            model, n_samples, random_key, scale, **kwargs
         )
 
         fourier_fingerprint = FCC._correlate(coeffs.transpose(), method=method)
@@ -1177,19 +1179,20 @@ class FCC:
     def _calculate_coefficients(
         model: Model,
         n_samples: int,
-        seed: int,
+        random_key: Optional[random.PRNGKey] = None,
         scale: bool = False,
         **kwargs,
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Calculates the Fourier coefficients of a given model
-        using `n_samples` and `seed`.
+        using `n_samples`.
         Optionally, `noise_params` can be passed to perform noisy simulation.
 
         Args:
             model (Model): The QFM model
             n_samples (int): Number of samples to calculate average of coefficients
-            seed (int): Seed to initialize random parameters
+            random_key (Optional[random.PRNGKey]): JAX random key for parameter
+                initialization. If None, uses the model's internal random key.
             scale (bool, optional): Whether to scale the number of samples.
                 Defaults to False.
             **kwargs: Additional keyword arguments for the model function.
@@ -1205,7 +1208,6 @@ class FCC:
                 log.info(f"Using {total_samples} samples.")
             else:
                 total_samples = n_samples
-            random_key = random.key(seed)
             model.initialize_params(random_key, repeat=total_samples)
         else:
             total_samples = 1

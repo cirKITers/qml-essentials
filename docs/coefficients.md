@@ -210,7 +210,7 @@ model = Model(
 fcc = FCC.get_fcc(
     model=model,
     n_samples=500,
-    seed=1000,
+    random_key=jax.random.key(1000),
 )
 ```
 Returns `0.1442` as already in Fig. 3a of aforementioned paper.
@@ -224,7 +224,7 @@ As described in our paper, the FCC is calculated as the mean of the Fourier fing
 fingerprint = FCC.get_fourier_fingerprint(
     model=model,
     n_samples=500,
-    seed=1000,
+    random_key=jax.random.key(1000),
 )
 ```
 

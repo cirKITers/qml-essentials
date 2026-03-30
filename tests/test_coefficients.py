@@ -511,7 +511,7 @@ class TestFCC:
             output_qubit=-1,
             encoding=["RY"],
         )
-        fcc = FCC.get_fcc(model=model, n_samples=500, seed=1000, scale=True)
+        fcc = FCC.get_fcc(model=model, n_samples=500, scale=True)
 
         assert jnp.isclose(
             fcc, expected_fcc, atol=3.0e-2
@@ -537,7 +537,6 @@ class TestFCC:
         _ = FCC.get_fourier_fingerprint(
             model=model,
             n_samples=500,
-            seed=1000,
             scale=True,
         )
 
@@ -563,7 +562,6 @@ class TestFCC:
         fcc = FCC.get_fcc(
             model=model,
             n_samples=250,
-            seed=1000,
             scale=True,
         )
         assert jnp.isclose(
@@ -592,7 +590,6 @@ class TestFCC:
         fcc = FCC.get_fcc(
             model=model,
             n_samples=500,
-            seed=1000,
             scale=True,
             weight=True,
         )
