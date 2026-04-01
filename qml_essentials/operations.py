@@ -294,6 +294,19 @@ class Operation:
 
         return op
 
+    def __add__(self, other: "Operation") -> "Operation":
+        if sorted(self.wires) != sorted(other.wires):
+            raise ValueError(f"{self.name} can only be added to operations acting on same set of wires")
+
+        # TODO: Check if this works
+        op = Operation(wires=self.wires, matrix=self.matrix + other.matrix, record=False)
+        self._update_tape_operation(op)
+        return op
+
+    def __matmul__(self, other: "Operation") -> "Operation":
+        # TODO: implement tensor product of operations
+        pass
+
     def lifted_matrix(self, n_qubits: int) -> jnp.ndarray:
         """Return the full ``2**n x 2**n`` matrix embedding this gate.
 
@@ -580,6 +593,20 @@ class S(Operation):
             wires: Qubit index or list of qubit indices this gate acts on.
         """
         super().__init__(wires=wires)
+
+class SWAP(Operation):
+    """SWAP gate."""
+
+    _matrix = jnp.array([[1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 1]], dtype=_cdtype())
+    _num_wires = 2
+
+    def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
+        """Initialise a SWAP gate.
+
+        Args:
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
+        super().__init__(wires=wires, **kwargs)
 
 
 class RandomUnitary(Operation):

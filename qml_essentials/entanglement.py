@@ -9,6 +9,8 @@ from qml_essentials.math import logm_v
 from qml_essentials.model import Model
 import logging
 
+from qml_essentials.operations import Hermitian
+
 log = logging.getLogger(__name__)
 
 
@@ -598,6 +600,130 @@ class Entanglement:
 
         log.debug(f"Variance of measure: {ent.var()}")
 
+        return float(ent.mean())
+
+
+    @staticmethod
+    def concentratable_entanglement_estimation(
+        model: Model,
+        n_samples: int,
+        random_key: Optional[jax.random.PRNGKey] = None,
+        scale: bool = False,
+        **kwargs: Any,
+    ) -> float:
+        """
+        Computes the concentratable entanglement of a given model.
+
+        This method utilizes the Concentratable Entanglement measure from
+        https://arxiv.org/abs/2104.06923.  The swap test is implemented
+        directly in yaqsi using a ``3 * n_qubits`` circuit.
+
+        Args:
+            model (Model): The quantum circuit model.
+            n_samples (int): The number of samples to compute the measure for.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for
+                parameter initialization. If None, uses the model's internal
+                random key.
+            scale (bool): Whether to scale the number of samples according to
+                the number of qubits.
+            **kwargs (Any): Additional keyword arguments for the model function.
+
+        Returns:
+            float: Entangling capability of the given circuit, guaranteed
+                to be between 0.0 and 1.0.
+        """
+        n = model.n_qubits
+        N = 2**n
+
+        if scale:
+            n_samples = N * n_samples
+
+        def _shift_and_append(tape_ops, offset):
+            """Re-register *tape_ops* on the active tape with wires shifted."""
+            from qml_essentials.tape import active_tape as _active_tape
+
+            current = _active_tape()
+            if current is None:
+                return
+            for o in tape_ops:
+                shifted = o.__class__.__new__(o.__class__)
+                shifted.__dict__.update(o.__dict__)
+                shifted._wires = [w + offset for w in o.wires]
+                current.append(shifted)
+
+        def _bell_basis_measurement(
+            params, inputs, pulse_params=None, random_key=None, **kw
+        ):
+            """Swap-test circuit on 3*n qubits."""
+            from qml_essentials.tape import recording as _recording
+
+            # First copy on wires n..2n-1
+            with _recording() as copy1_tape:
+                model._variational(
+                    params,
+                    inputs,
+                    pulse_params=pulse_params,
+                    random_key=random_key,
+                    **kw,
+                )
+            _shift_and_append(copy1_tape, n)
+
+            # Second copy on wires 2n..3n-1
+            with _recording() as copy2_tape:
+                model._variational(
+                    params,
+                    inputs,
+                    pulse_params=pulse_params,
+                    random_key=random_key,
+                    **kw,
+                )
+            _shift_and_append(copy2_tape, 2 * n)
+
+            for i in range(n):
+                op.CX(wires=[i, i + n])
+                op.H(wires=i)
+
+        bell_basis_script = ys.Script(f=_bell_basis_measurement, n_qubits=2 * n)
+
+        if n_samples is not None and n_samples > 0:
+            random_key = model.initialize_params(random_key, repeat=n_samples)
+        else:
+            if len(model.params.shape) <= 2:
+                model.params = model.params.reshape(1, *model.params.shape)
+            else:
+                log.info(f"Using sample size of model params: {model.params.shape[0]}")
+
+        params = model.params
+        inputs = model._inputs_validation(kwargs.get("inputs", None))
+        n_batch = params.shape[0]
+
+        # Construct observable for measuring CE
+        CE_observable = op.Id()
+        for i in range(n):
+            CE_observable = CE_observable @ (op.Id([i, i + n]) + op.SWAP([i, i + n]))
+
+        expvals = []
+        if n_batch > 1:
+            from qml_essentials.utils import safe_random_split
+
+            random_keys = safe_random_split(random_key, num=n_batch)
+            expvals = bell_basis_script.execute(
+                type="expval",
+                obs=[CE_observable],
+                args=(params, inputs, model.pulse_params, random_keys),
+                in_axes=(0, None, None, 0),
+                kwargs=kwargs,
+            )
+        else:
+            expvals = bell_basis_script.execute(
+                type="expval",
+                obs=[CE_observable],
+                args=(params, inputs, model.pulse_params, random_key),
+                kwargs=kwargs,
+            )
+
+        ent = 1 - expvals
+        log.debug(f"Variance of measure: {ent.var()}")
         return float(ent.mean())
 
 
