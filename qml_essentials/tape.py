@@ -87,3 +87,26 @@ def pulse_recording() -> Iterator[list]:
         yield tape
     finally:
         stack.pop()
+
+
+def shift_and_append(tape_ops: List["Operation"], offset: int) -> None:
+    """Re-register *tape_ops* on the active tape with wires shifted by *offset*.
+
+    Each operation is shallow-copied so that the original tape is not
+    mutated.  This is useful for constructing multi-register circuits
+    where the same sub-circuit must be placed on different qubit
+    registers.
+
+    Args:
+        tape_ops: List of :class:`Operation` instances (typically captured
+            via :func:`recording`).
+        offset: Integer added to every wire index of every operation.
+    """
+    current = active_tape()
+    if current is None:
+        return
+    for o in tape_ops:
+        shifted = o.__class__.__new__(o.__class__)
+        shifted.__dict__.update(o.__dict__)
+        shifted._wires = [w + offset for w in o.wires]
+        current.append(shifted)

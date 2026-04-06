@@ -509,24 +509,12 @@ class Entanglement:
         if scale:
             n_samples = N * n_samples
 
-        def _shift_and_append(tape_ops, offset):
-            """Re-register *tape_ops* on the active tape with wires shifted."""
-            from qml_essentials.tape import active_tape as _active_tape
-
-            current = _active_tape()
-            if current is None:
-                return
-            for o in tape_ops:
-                shifted = o.__class__.__new__(o.__class__)
-                shifted.__dict__.update(o.__dict__)
-                shifted._wires = [w + offset for w in o.wires]
-                current.append(shifted)
-
         def _swap_test_circuit(
             params, inputs, pulse_params=None, random_key=None, **kw
         ):
             """Swap-test circuit on 3*n qubits."""
             from qml_essentials.tape import recording as _recording
+            from qml_essentials.tape import shift_and_append
 
             # First copy on wires n..2n-1
             with _recording() as copy1_tape:
@@ -537,7 +525,7 @@ class Entanglement:
                     random_key=random_key,
                     **kw,
                 )
-            _shift_and_append(copy1_tape, n)
+            shift_and_append(copy1_tape, n)
 
             # Second copy on wires 2n..3n-1
             with _recording() as copy2_tape:
@@ -548,7 +536,7 @@ class Entanglement:
                     random_key=random_key,
                     **kw,
                 )
-            _shift_and_append(copy2_tape, 2 * n)
+            shift_and_append(copy2_tape, 2 * n)
 
             # Swap test: H on ancilla register (wires 0..n-1)
             for i in range(n):
@@ -602,7 +590,6 @@ class Entanglement:
 
         return float(ent.mean())
 
-
     @staticmethod
     def concentratable_entanglement_estimation(
         model: Model,
@@ -638,24 +625,12 @@ class Entanglement:
         if scale:
             n_samples = N * n_samples
 
-        def _shift_and_append(tape_ops, offset):
-            """Re-register *tape_ops* on the active tape with wires shifted."""
-            from qml_essentials.tape import active_tape as _active_tape
-
-            current = _active_tape()
-            if current is None:
-                return
-            for o in tape_ops:
-                shifted = o.__class__.__new__(o.__class__)
-                shifted.__dict__.update(o.__dict__)
-                shifted._wires = [w + offset for w in o.wires]
-                current.append(shifted)
-
         def _bell_basis_measurement(
             params, inputs, pulse_params=None, random_key=None, **kw
         ):
             """Swap-test circuit on 3*n qubits."""
             from qml_essentials.tape import recording as _recording
+            from qml_essentials.tape import shift_and_append
 
             # First copy on wires n..2n-1
             with _recording() as copy1_tape:
@@ -666,7 +641,7 @@ class Entanglement:
                     random_key=random_key,
                     **kw,
                 )
-            _shift_and_append(copy1_tape, n)
+            shift_and_append(copy1_tape, n)
 
             # Second copy on wires 2n..3n-1
             with _recording() as copy2_tape:
@@ -677,7 +652,7 @@ class Entanglement:
                     random_key=random_key,
                     **kw,
                 )
-            _shift_and_append(copy2_tape, 2 * n)
+            shift_and_append(copy2_tape, 2 * n)
 
             for i in range(n):
                 op.CX(wires=[i, i + n])
@@ -747,7 +722,7 @@ def sample_random_separable_states(
     """
     model = Model(n_qubits, 1, "No_Entangling", data_reupload=False)
     model.initialize_params(random_key, repeat=n_samples)
-    # explicitly set execution type because everything else won't work
+    # explicitly set execution type because anything else won't work
     sigmas = model(execution_type="density", inputs=None)
     if take_log:
         sigmas = logm_v(sigmas) / jnp.log(2.0 + 0j)
