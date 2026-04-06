@@ -317,8 +317,28 @@ class Operation:
         return op
 
     def __matmul__(self, other: "Operation") -> "Operation":
-        # TODO: implement tensor product of operations
-        pass
+        """Tensor (Kronecker) product of two operations.
+
+        The resulting operation acts on the union of both wire sets and
+        carries the Kronecker product of both matrices.  Wire sets must
+        be disjoint.
+
+        Returns:
+            A new :class:`Operation` whose matrix is ``self.matrix ⊗ other.matrix``
+            and whose wires are the concatenation of both wire lists.
+
+        Raises:
+            ValueError: If the two operations share any wires.
+        """
+        if set(self.wires) & set(other.wires):
+            raise ValueError(
+                f"Cannot take tensor product: overlapping wires "
+                f"{self.wires} and {other.wires}"
+            )
+        new_matrix = jnp.kron(self.matrix, other.matrix)
+        new_wires = self.wires + other.wires
+        op = Operation(wires=new_wires, matrix=new_matrix, record=False)
+        return op
 
     def lifted_matrix(self, n_qubits: int) -> jnp.ndarray:
         """Return the full ``2**n x 2**n`` matrix embedding this gate.
