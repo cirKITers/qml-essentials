@@ -535,17 +535,28 @@ class ParametrizedHamiltonian:
 
 
 class Id(Operation):
-    """Identity gate."""
+    """Identity gate.
+
+    Supports an arbitrary number of wires.  When more than one wire is
+    given the matrix is the ``2**k x 2**k`` identity (where *k* is the
+    number of wires).
+    """
 
     _matrix = jnp.eye(2, dtype=_cdtype())
-    _num_wires = 1
+    _num_wires = None  # accept any number of wires
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise an identity gate.
 
         Args:
             wires: Qubit index or list of qubit indices this gate acts on.
+                When multiple wires are given the matrix is automatically
+                expanded to the matching ``2**k × 2**k`` identity.
         """
+        w = list(wires) if isinstance(wires, (list, tuple)) else [wires]
+        k = len(w)
+        if k > 1:
+            kwargs["matrix"] = jnp.eye(2**k, dtype=_cdtype())
         super().__init__(wires=wires, **kwargs)
 
 
@@ -627,10 +638,13 @@ class S(Operation):
         """
         super().__init__(wires=wires)
 
+
 class SWAP(Operation):
     """SWAP gate."""
 
-    _matrix = jnp.array([[1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 1]], dtype=_cdtype())
+    _matrix = jnp.array(
+        [[1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 1]], dtype=_cdtype()
+    )
     _num_wires = 2
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
