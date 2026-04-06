@@ -295,12 +295,25 @@ class Operation:
         return op
 
     def __add__(self, other: "Operation") -> "Operation":
-        if sorted(self.wires) != sorted(other.wires):
-            raise ValueError(f"{self.name} can only be added to operations acting on same set of wires")
+        """Element-wise addition of two operations on the same wires.
 
-        # TODO: Check if this works
-        op = Operation(wires=self.wires, matrix=self.matrix + other.matrix, record=False)
-        self._update_tape_operation(op)
+        Returns:
+            A new :class:`Operation` whose matrix is the sum of both matrices.
+
+        Raises:
+            ValueError: If the wire sets differ.
+        """
+        if sorted(self.wires) != sorted(other.wires):
+            raise ValueError(
+                f"Can only add operations acting on the same set of wires, "
+                f"got {self.wires} and {other.wires}"
+            )
+
+        op = Operation(
+            wires=self.wires,
+            matrix=self.matrix + other.matrix,
+            record=False,
+        )
         return op
 
     def __matmul__(self, other: "Operation") -> "Operation":
