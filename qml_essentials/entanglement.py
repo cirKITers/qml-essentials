@@ -142,34 +142,20 @@ class Entanglement:
 
         def _bell_circuit(params, inputs, pulse_params=None, random_key=None, **kw):
             """Bell measurement circuit on 2*n qubits."""
-            # First copy on wires 0..n-1
-            model._variational(
-                params, inputs, pulse_params=pulse_params, random_key=random_key, **kw
+            from qml_essentials.tape import copy_to_tape
+
+            vari = lambda: model._variational(
+                params,
+                inputs,
+                pulse_params=pulse_params,
+                random_key=random_key,
+                **kw,
             )
 
-            # TODO: this is very user-unfriendly and we should find a better way
-
-            # Second copy on wires n..2n-1: record the tape then shift wires
-            from qml_essentials.tape import recording as _recording
-
-            with _recording() as shifted_tape:
-                model._variational(
-                    params,
-                    inputs,
-                    pulse_params=pulse_params,
-                    random_key=random_key,
-                    **kw,
-                )
-            for o in shifted_tape:
-                shifted_op = o.__class__.__new__(o.__class__)
-                shifted_op.__dict__.update(o.__dict__)
-                shifted_op._wires = [w + n for w in o.wires]
-                # Re-register on the active tape
-                from qml_essentials.tape import active_tape as _active_tape
-
-                tape = _active_tape()
-                if tape is not None:
-                    tape.append(shifted_op)
+            # First copy on wires 0..n-1
+            vari()
+            # Second copy on wires n..2n-1
+            copy_to_tape(vari, offset=n)
 
             # Bell measurement: CNOT + H
             for q in range(n):
@@ -513,30 +499,20 @@ class Entanglement:
             params, inputs, pulse_params=None, random_key=None, **kw
         ):
             """Swap-test circuit on 3*n qubits."""
-            from qml_essentials.tape import recording as _recording
-            from qml_essentials.tape import shift_and_append
+            from qml_essentials.tape import copy_to_tape
+
+            vari = lambda: model._variational(
+                params,
+                inputs,
+                pulse_params=pulse_params,
+                random_key=random_key,
+                **kw,
+            )
 
             # First copy on wires n..2n-1
-            with _recording() as copy1_tape:
-                model._variational(
-                    params,
-                    inputs,
-                    pulse_params=pulse_params,
-                    random_key=random_key,
-                    **kw,
-                )
-            shift_and_append(copy1_tape, n)
-
+            copy_to_tape(vari, offset=n)
             # Second copy on wires 2n..3n-1
-            with _recording() as copy2_tape:
-                model._variational(
-                    params,
-                    inputs,
-                    pulse_params=pulse_params,
-                    random_key=random_key,
-                    **kw,
-                )
-            shift_and_append(copy2_tape, 2 * n)
+            copy_to_tape(vari, offset=2 * n)
 
             # Swap test: H on ancilla register (wires 0..n-1)
             for i in range(n):
@@ -628,31 +604,21 @@ class Entanglement:
         def _bell_basis_measurement(
             params, inputs, pulse_params=None, random_key=None, **kw
         ):
-            """Swap-test circuit on 3*n qubits."""
-            from qml_essentials.tape import recording as _recording
-            from qml_essentials.tape import shift_and_append
+            """Bell-basis measurement circuit on 3*n qubits."""
+            from qml_essentials.tape import copy_to_tape
+
+            vari = lambda: model._variational(
+                params,
+                inputs,
+                pulse_params=pulse_params,
+                random_key=random_key,
+                **kw,
+            )
 
             # First copy on wires n..2n-1
-            with _recording() as copy1_tape:
-                model._variational(
-                    params,
-                    inputs,
-                    pulse_params=pulse_params,
-                    random_key=random_key,
-                    **kw,
-                )
-            shift_and_append(copy1_tape, n)
-
+            copy_to_tape(vari, offset=n)
             # Second copy on wires 2n..3n-1
-            with _recording() as copy2_tape:
-                model._variational(
-                    params,
-                    inputs,
-                    pulse_params=pulse_params,
-                    random_key=random_key,
-                    **kw,
-                )
-            shift_and_append(copy2_tape, 2 * n)
+            copy_to_tape(vari, offset=2 * n)
 
             for i in range(n):
                 op.CX(wires=[i, i + n])

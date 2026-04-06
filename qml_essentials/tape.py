@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Iterator, List, Optional
+from typing import TYPE_CHECKING, Callable, Iterator, List, Optional
 
 if TYPE_CHECKING:
     from qml_essentials.operations import Operation
@@ -90,7 +90,7 @@ def pulse_recording() -> Iterator[list]:
 
 
 def shift_and_append(tape_ops: List["Operation"], offset: int) -> None:
-    """Re-register *tape_ops* on the active tape with wires shifted by *offset*.
+    """Re-register tape_ops on the active tape with wires shifted by offset.
 
     Each operation is shallow-copied so that the original tape is not
     mutated.  This is useful for constructing multi-register circuits
@@ -110,3 +110,29 @@ def shift_and_append(tape_ops: List["Operation"], offset: int) -> None:
         shifted.__dict__.update(o.__dict__)
         shifted._wires = [w + offset for w in o.wires]
         current.append(shifted)
+
+
+def copy_to_tape(fn: Callable, offset: int) -> None:
+    """Record *fn* into a side tape and replay it shifted onto the active tape.
+
+    This is a convenience wrapper around :func:`recording` and
+    :func:`shift_and_append`.  It captures every operation emitted by
+    *fn* on a temporary tape, then appends shifted copies (wires
+    incremented by *offset*) to the currently active tape.
+
+    Typical usage inside a circuit function::
+
+        def my_circuit(params, inputs, ...):
+            # first copy on wires 0..n-1 (recorded directly)
+            model._variational(params, inputs, ...)
+            # second copy shifted to wires n..2n-1
+            copy_to_tape(lambda: model._variational(params, inputs, ...), offset=n)
+
+    Args:
+        fn: Zero-argument callable whose body instantiates ``Operation``
+            objects (they will be captured on the side tape).
+        offset: Integer added to every wire index before replaying.
+    """
+    with recording() as side_tape:
+        fn()
+    shift_and_append(side_tape, offset)
