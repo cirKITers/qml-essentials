@@ -615,10 +615,10 @@ class Entanglement:
                 **kw,
             )
 
-            # First copy on wires n..2n-1
+            # First copy on wires 0..n-1
+            copy_to_tape(vari, offset=0)
+            # Second copy on wires n..2n-1
             copy_to_tape(vari, offset=n)
-            # Second copy on wires 2n..3n-1
-            copy_to_tape(vari, offset=2 * n)
 
             for i in range(n):
                 op.CX(wires=[i, i + n])
@@ -639,9 +639,11 @@ class Entanglement:
         n_batch = params.shape[0]
 
         # Construct observable for measuring CE
-        CE_observable = op.Id()
-        for i in range(n):
-            CE_observable = CE_observable @ (op.Id([i, i + n]) + op.SWAP([i, i + n]))
+        SWAP = jnp.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1]]) # SWAP operator in Bell-basis
+        CE_observable = op.Id([0, n]) + op.Operation([0, n], SWAP)
+        for i in range(1, n):
+            CE_observable = CE_observable @ (op.Id([i, i + n]) + op.Operation([i, i + n], SWAP))
+        CE_observable = (1/N) * CE_observable
 
         expvals = []
         if n_batch > 1:
