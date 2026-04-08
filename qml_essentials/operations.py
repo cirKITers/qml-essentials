@@ -295,13 +295,13 @@ class Operation:
         return op
 
     def __mul__(self, factor: float) -> "Operation":
-        """Return a new operation, the product between x a scalar and U (``x*U``)
+        """Return a new operation, the product between U and a scalar (``U*x``)
         Usage inside a circuit function::
 
-            x * PauliX(wires=0)
+            PauliX(wires=0) * x
 
         Returns:
-            A new :class:`Operation` with matrix ``x*U`` acting on the same wires.
+            A new :class:`Operation` with matrix ``U*x`` acting on the same wires.
         """
         mat = factor * self._matrix
         op = Operation(wires=self.wires, matrix=mat, record=False)
