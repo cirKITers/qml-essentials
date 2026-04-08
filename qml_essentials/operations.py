@@ -294,6 +294,25 @@ class Operation:
 
         return op
 
+    def __mul__(self, factor: float) -> "Operation":
+        """Return a new operation, the product between x a scalar and U (``x*U``)
+        Usage inside a circuit function::
+
+            x * PauliX(wires=0)
+
+        Returns:
+            A new :class:`Operation` with matrix ``x*U`` acting on the same wires.
+        """
+        mat = factor * self._matrix
+        op = Operation(wires=self.wires, matrix=mat, record=False)
+
+        self._update_tape_operation(op)
+
+        return op
+
+    # Also overwrite * for right operands
+    __rmul__ = __mul__
+
     def __add__(self, other: "Operation") -> "Operation":
         """Element-wise addition of two operations on the same wires.
 
