@@ -638,8 +638,9 @@ class Entanglement:
         inputs = model._inputs_validation(kwargs.get("inputs", None))
         n_batch = params.shape[0]
 
+        # SWAP operator in Bell-basis
+        SWAP = jnp.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1]])
         # Construct observable for measuring CE
-        SWAP = jnp.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1]]) # SWAP operator in Bell-basis
         CE_observable = op.Id([0, n]) + op.Operation([0, n], SWAP)
         for i in range(1, n):
             CE_observable = CE_observable @ (op.Id([i, i + n]) + op.Operation([i, i + n], SWAP))
