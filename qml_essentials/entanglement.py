@@ -144,13 +144,14 @@ class Entanglement:
             """Bell measurement circuit on 2*n qubits."""
             from qml_essentials.tape import copy_to_tape
 
-            vari = lambda: model._variational(
-                params,
-                inputs,
-                pulse_params=pulse_params,
-                random_key=random_key,
-                **kw,
-            )
+            def vari():
+                model._variational(
+                    params,
+                    inputs,
+                    pulse_params=pulse_params,
+                    random_key=random_key,
+                    **kw
+                )
 
             # First copy on wires 0..n-1
             vari()
@@ -501,13 +502,14 @@ class Entanglement:
             """Swap-test circuit on 3*n qubits."""
             from qml_essentials.tape import copy_to_tape
 
-            vari = lambda: model._variational(
-                params,
-                inputs,
-                pulse_params=pulse_params,
-                random_key=random_key,
-                **kw,
-            )
+            def vari():
+                model._variational(
+                    params,
+                    inputs,
+                    pulse_params=pulse_params,
+                    random_key=random_key,
+                    **kw
+                )
 
             # First copy on wires n..2n-1
             copy_to_tape(vari, offset=n)
@@ -607,13 +609,14 @@ class Entanglement:
             """Bell-basis measurement circuit on 3*n qubits."""
             from qml_essentials.tape import copy_to_tape
 
-            vari = lambda: model._variational(
-                params,
-                inputs,
-                pulse_params=pulse_params,
-                random_key=random_key,
-                **kw,
-            )
+            def vari():
+                model._variational(
+                    params,
+                    inputs,
+                    pulse_params=pulse_params,
+                    random_key=random_key,
+                    **kw,
+                )
 
             # First copy on wires 0..n-1
             copy_to_tape(vari, offset=0)
@@ -643,7 +646,8 @@ class Entanglement:
         # Construct observable for measuring CE
         CE_observable = op.Id([0, n]) + op.Operation([0, n], SWAP)
         for i in range(1, n):
-            CE_observable = CE_observable @ (op.Id([i, i + n]) + op.Operation([i, i + n], SWAP))
+            CE_observable = (CE_observable @
+                             (op.Id([i, i + n]) + op.Operation([i, i + n], SWAP)))
         CE_observable = (1/N) * CE_observable
 
         expvals = []
