@@ -627,6 +627,157 @@ class TestNoise:
         assert purity <= 1.0 + 1e-10, f"purity {purity} > 1"
         assert purity < 1.0 - 1e-6, f"purity {purity} ≈ 1: channel had no effect?"
 
+    @pytest.mark.unittest
+    @pytest.mark.parametrize(
+        "n_qubits,noise_channel,pl_channel,param",
+        [
+            (2, BitFlip, qml.BitFlip, 0.1),
+            (3, BitFlip, qml.BitFlip, 0.1),
+            (2, DepolarizingChannel, qml.DepolarizingChannel, 0.05),
+            (3, DepolarizingChannel, qml.DepolarizingChannel, 0.05),
+            (2, AmplitudeDamping, qml.AmplitudeDamping, 0.15),
+            (3, PhaseFlip, qml.PhaseFlip, 0.2),
+        ],
+        ids=[
+            "2q-BitFlip",
+            "3q-BitFlip",
+            "2q-Depolarizing",
+            "3q-Depolarizing",
+            "2q-AmplitudeDamping",
+            "3q-PhaseFlip",
+        ],
+    )
+    def test_multi_qubit_noisy_circuit_matches_pennylane(
+        self, n_qubits, noise_channel, pl_channel, param
+    ) -> None:
+        """Multi-qubit noisy circuits (gate-noise-gate-noise pattern)
+        must match PennyLane default.mixed density matrices."""
+        theta = 0.7
+
+        def yaqsi_circuit(t):
+            for i in range(n_qubits):
+                RX(t, wires=i)
+                noise_channel(param, wires=i)
+            for i in range(n_qubits - 1):
+                CX(wires=[i, i + 1])
+                noise_channel(param, wires=i)
+            for i in range(n_qubits):
+                RY(t * 0.5, wires=i)
+                noise_channel(param, wires=i)
+
+        def pl_circuit():
+            for i in range(n_qubits):
+                qml.RX(theta, wires=i)
+                pl_channel(param, wires=i)
+            for i in range(n_qubits - 1):
+                qml.CNOT(wires=[i, i + 1])
+                pl_channel(param, wires=i)
+            for i in range(n_qubits):
+                qml.RY(theta * 0.5, wires=i)
+                pl_channel(param, wires=i)
+
+        script = Script(f=yaqsi_circuit)
+        rho_ours = np.array(script.execute(type="density", args=(jnp.array(theta),)))
+        rho_pl = _pennylane_density(pl_circuit, n_qubits=n_qubits)
+
+        assert np.allclose(rho_ours, rho_pl, atol=1e-7), (
+            f"{n_qubits}q {noise_channel.__name__} mismatch:\n"
+            f"max |diff| = {np.max(np.abs(rho_ours - rho_pl))}"
+        )
+
+    @pytest.mark.unittest
+    @pytest.mark.parametrize(
+        "n_qubits,noise_channel,pl_channel,param",
+        [
+            (2, BitFlip, qml.BitFlip, 0.1),
+            (3, DepolarizingChannel, qml.DepolarizingChannel, 0.05),
+        ],
+        ids=["2q-BitFlip-expval", "3q-Depolarizing-expval"],
+    )
+    def test_noisy_expval_matches_pennylane(
+        self, n_qubits, noise_channel, pl_channel, param
+    ) -> None:
+        """Noisy circuit expectation values must match PennyLane."""
+        theta = 1.2
+
+        def yaqsi_circuit(t):
+            for i in range(n_qubits):
+                RX(t, wires=i)
+                noise_channel(param, wires=i)
+            for i in range(n_qubits - 1):
+                CX(wires=[i, i + 1])
+
+        def pl_circuit():
+            for i in range(n_qubits):
+                qml.RX(theta, wires=i)
+                pl_channel(param, wires=i)
+            for i in range(n_qubits - 1):
+                qml.CNOT(wires=[i, i + 1])
+
+        script = Script(f=yaqsi_circuit)
+        obs = [PauliZ(wires=i, record=False) for i in range(n_qubits)]
+        expval_ours = np.array(
+            script.execute(type="expval", obs=obs, args=(jnp.array(theta),))
+        )
+
+        dev = qml.device("default.mixed", wires=n_qubits)
+
+        @qml.qnode(dev)
+        def pl_qnode():
+            pl_circuit()
+            return [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)]
+
+        expval_pl = np.array(pl_qnode())
+
+        assert np.allclose(expval_ours, expval_pl, atol=1e-7), (
+            f"{n_qubits}q noisy expval mismatch:\n"
+            f"ours = {expval_ours}\nPL = {expval_pl}"
+        )
+
+    @pytest.mark.unittest
+    def test_hybrid_simulation_gives_correct_result(self) -> None:
+        """Verify that the hybrid (pure-prefix + mixed-suffix) optimisation
+        in _simulate_mixed gives the same result as full density-matrix
+        evolution.
+
+        We build a tape manually and compare against a PennyLane circuit
+        where several unitary gates precede the first noise channel.
+        """
+        theta1, theta2, theta3 = 0.5, 1.1, 0.3
+        p = 0.1
+
+        # Large pure prefix: 3 gates, then noise, then more gates + noise
+        def yaqsi_circuit(t1, t2, t3):
+            RX(t1, wires=0)
+            RY(t2, wires=1)
+            CX(wires=[0, 1])
+            # First noise channel — triggers switch to density-matrix
+            BitFlip(p, wires=0)
+            RZ(t3, wires=0)
+            PhaseFlip(p, wires=1)
+
+        def pl_circuit():
+            qml.RX(theta1, wires=0)
+            qml.RY(theta2, wires=1)
+            qml.CNOT(wires=[0, 1])
+            qml.BitFlip(p, wires=0)
+            qml.RZ(theta3, wires=0)
+            qml.PhaseFlip(p, wires=1)
+
+        script = Script(f=yaqsi_circuit)
+        rho_ours = np.array(
+            script.execute(
+                type="density",
+                args=(jnp.array(theta1), jnp.array(theta2), jnp.array(theta3)),
+            )
+        )
+        rho_pl = _pennylane_density(pl_circuit, n_qubits=2)
+
+        assert np.allclose(rho_ours, rho_pl, atol=1e-8), (
+            f"Hybrid simulation mismatch:\n"
+            f"max |diff| = {np.max(np.abs(rho_ours - rho_pl))}"
+        )
+
 
 class TestBatch:
     @pytest.mark.unittest
@@ -1060,6 +1211,232 @@ def test_mode_performances(benchmark, mode, speedup) -> None:
 
     assert jnp.allclose(res_ys, res_pl_arr, atol=1e-10), "Results do not match"
     logger.info("Results match")
+
+
+@pytest.mark.benchmark
+@pytest.mark.unittest
+@pytest.mark.parametrize(
+    "mode,speedup",
+    [("probs", 5), ("expval", 5), ("density", 5)],
+)
+def test_noisy_mode_performances(benchmark, mode, speedup) -> None:
+    """Benchmark noisy circuit performance against PennyLane default.mixed.
+
+    Uses a circuit with interleaved gate-noise pattern (the typical pattern
+    from UnitaryGates.Noise) and compares execution time and correctness.
+
+    Note, this test requires codspeed to be activated. Run with
+    pytest tests/test_yaqsi.py::test_noisy_mode_performances -x -s --codspeed
+    """
+    n_qubits = 4
+    n_iters = 50
+    batch_size = 10
+    noise_p = 0.05
+    rng = jax.random.PRNGKey(2000)
+    rng, subkey = jax.random.split(rng)
+
+    all_phis = jax.random.uniform(
+        subkey, shape=(n_iters, batch_size), minval=-jnp.pi, maxval=jnp.pi
+    )
+
+    # --- Yaqsi noisy circuit ---
+    def yaqsi_noisy_circuit(phi):
+        for i in range(n_qubits):
+            RX(phi, wires=i)
+            BitFlip(noise_p, wires=i)
+        for i in range(n_qubits - 1):
+            CX(wires=[i, i + 1])
+            DepolarizingChannel(noise_p, wires=i)
+        for i in range(n_qubits):
+            RY(phi * 0.5, wires=i)
+            PhaseFlip(noise_p, wires=i)
+
+    script = Script(f=yaqsi_noisy_circuit)
+    obs = [PauliZ(wires=i, record=False) for i in range(n_qubits)]
+
+    # Warm-up
+    _ = script.execute(
+        type=mode,
+        obs=obs,
+        args=(all_phis[0],),
+        in_axes=(0,),
+    )
+
+    def ys_benchmark():
+        ys_times = []
+        for i in range(n_iters):
+            t0 = time.perf_counter()
+            res_ys = script.execute(
+                type=mode,
+                obs=obs,
+                args=(all_phis[i],),
+                in_axes=(0,),
+            )
+            ys_times.append(time.perf_counter() - t0)
+        return ys_times, res_ys
+
+    ys_times, res_ys = benchmark(ys_benchmark)
+    t_ys = float(np.mean(ys_times))
+    std_ys = float(np.std(ys_times))
+
+    logger.info(
+        f"Yaqsi noisy {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
+        f"{t_ys*1000:.2f} ± {std_ys*1000:.2f} ms"
+    )
+
+    # --- PennyLane noisy circuit ---
+    dev = qml.device("default.mixed", wires=n_qubits)
+
+    pl_return_map = {
+        "density": lambda: qml.density_matrix(wires=range(n_qubits)),
+        "probs": lambda: qml.probs(wires=range(n_qubits)),
+        "expval": lambda: [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)],
+    }
+
+    @qml.qnode(dev)
+    def pl_noisy_circuit(phi):
+        for i in range(n_qubits):
+            qml.RX(phi, wires=i)
+            qml.BitFlip(noise_p, wires=i)
+        for i in range(n_qubits - 1):
+            qml.CNOT(wires=[i, i + 1])
+            qml.DepolarizingChannel(noise_p, wires=i)
+        for i in range(n_qubits):
+            qml.RY(phi * 0.5, wires=i)
+            qml.PhaseFlip(noise_p, wires=i)
+        return pl_return_map[mode]()
+
+    # Warm-up
+    _ = pl_noisy_circuit(all_phis[0][0])
+
+    def pl_benchmark():
+        pl_times = []
+        for i in range(n_iters):
+            t0 = time.perf_counter()
+            res_pl = pl_noisy_circuit(all_phis[i][0])
+            pl_times.append(time.perf_counter() - t0)
+        t_pl = float(np.mean(pl_times))
+        std_pl = float(np.std(pl_times))
+        return t_pl, std_pl, res_pl
+
+    t_pl, std_pl, res_pl = pl_benchmark()
+
+    logger.info(
+        f"PennyLane noisy {mode} ({n_qubits}q, single, avg {n_iters}): "
+        f"{t_pl*1000:.2f} ± {std_pl*1000:.2f} ms"
+    )
+    ratio = t_pl / t_ys
+    logger.info(f"Ratio pl/yaqsi (noisy {mode}): {ratio:.2f}x")
+    assert ratio >= speedup, (
+        f"Yaqsi noisy {mode} not significantly faster than PennyLane. "
+        f"{ratio:.2f}x (expected >= {speedup}x)"
+    )
+
+    # Correctness check: compare single-sample results
+    single_res = script.execute(
+        type=mode,
+        obs=obs,
+        args=(all_phis[0][0],),
+    )
+    res_pl_single = np.array(pl_noisy_circuit(float(all_phis[0][0])))
+    single_res_np = np.array(single_res)
+
+    if res_pl_single.shape != single_res_np.shape:
+        res_pl_single = res_pl_single.T
+
+    assert np.allclose(single_res_np, res_pl_single, atol=1e-7), (
+        f"Noisy {mode} results do not match PennyLane:\n"
+        f"ours = {single_res_np}\nPL = {res_pl_single}"
+    )
+    logger.info(f"Noisy {mode} results match PennyLane")
+
+
+@pytest.mark.benchmark
+@pytest.mark.unittest
+@pytest.mark.parametrize("n_qubits", [2, 4, 6])
+def test_noisy_vs_noiseless_overhead(benchmark, n_qubits) -> None:
+    """Measure the overhead factor of noisy vs noiseless circuits.
+
+    This test quantifies how much slower noisy simulation is compared to
+    noiseless simulation. The overhead should be bounded: density-matrix
+    simulation is inherently O(4^n) per gate vs O(2^n) for statevector,
+    but the hybrid optimisation (pure prefix + mixed suffix) should keep
+    the overhead manageable.
+
+    Note, this test requires codspeed to be activated. Run with
+    pytest tests/test_yaqsi.py::test_noisy_vs_noiseless_overhead -x -s --codspeed
+    """
+    n_iters = 50
+    noise_p = 0.05
+    rng = jax.random.PRNGKey(3000)
+    rng, subkey = jax.random.split(rng)
+
+    all_thetas = jax.random.uniform(
+        subkey, shape=(n_iters,), minval=-jnp.pi, maxval=jnp.pi
+    )
+
+    # --- Noiseless circuit ---
+    def noiseless_circuit(theta):
+        for i in range(n_qubits):
+            RX(theta, wires=i)
+        for i in range(n_qubits - 1):
+            CX(wires=[i, i + 1])
+
+    script_clean = Script(f=noiseless_circuit)
+    obs = [PauliZ(wires=i, record=False) for i in range(n_qubits)]
+
+    # Warm-up
+    _ = script_clean.execute(type="expval", obs=obs, args=(all_thetas[0],))
+
+    clean_times = []
+    for i in range(n_iters):
+        t0 = time.perf_counter()
+        _ = script_clean.execute(type="expval", obs=obs, args=(all_thetas[i],))
+        clean_times.append(time.perf_counter() - t0)
+    t_clean = float(np.mean(clean_times))
+
+    # --- Noisy circuit ---
+    def noisy_circuit(theta):
+        for i in range(n_qubits):
+            RX(theta, wires=i)
+            BitFlip(noise_p, wires=i)
+        for i in range(n_qubits - 1):
+            CX(wires=[i, i + 1])
+            DepolarizingChannel(noise_p, wires=i)
+
+    script_noisy = Script(f=noisy_circuit)
+
+    # Warm-up
+    _ = script_noisy.execute(type="expval", obs=obs, args=(all_thetas[0],))
+
+    def noisy_benchmark():
+        noisy_times = []
+        for i in range(n_iters):
+            t0 = time.perf_counter()
+            _ = script_noisy.execute(type="expval", obs=obs, args=(all_thetas[i],))
+            noisy_times.append(time.perf_counter() - t0)
+        return noisy_times
+
+    noisy_times = benchmark(noisy_benchmark)
+    t_noisy = float(np.mean(noisy_times))
+
+    overhead = t_noisy / t_clean if t_clean > 0 else float("inf")
+
+    logger.info(
+        f"Noise overhead ({n_qubits}q): "
+        f"clean={t_clean*1000:.2f}ms, noisy={t_noisy*1000:.2f}ms, "
+        f"overhead={overhead:.1f}x"
+    )
+
+    # The overhead should be bounded. Density-matrix evolution is inherently
+    # more expensive, but the hybrid simulation keeps it reasonable.
+    # For small qubit counts the overhead is dominated by Python dispatch;
+    # for larger counts the O(4^n) vs O(2^n) gap dominates.
+    max_overhead = 4**n_qubits / 2**n_qubits * 5  # generous upper bound
+    assert overhead < max_overhead, (
+        f"Noisy overhead {overhead:.1f}x exceeds max {max_overhead:.0f}x "
+        f"for {n_qubits} qubits"
+    )
 
 
 class TestShots:
