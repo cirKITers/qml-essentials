@@ -196,6 +196,7 @@ def test_no_sampling() -> None:
     _ = Entanglement.relative_entropy(model, n_samples=None, n_sigmas=10)
     _ = Entanglement.entanglement_of_formation(model, n_samples=None)
     _ = Entanglement.concentratable_entanglement(model, n_samples=None)
+    _ = Entanglement.concentratable_entanglement_estimation(model, n_samples=None)
 
 
 @pytest.mark.unittest
@@ -326,56 +327,6 @@ def test_scaling() -> None:
 
 
 @pytest.mark.smoketest
-def test_relative_entropy() -> None:
-    separable_model = Model(
-        n_qubits=3,
-        n_layers=1,
-        circuit_type="Circuit_1",
-    )
-
-    entangled_model = Model(
-        n_qubits=3,
-        n_layers=1,
-        circuit_type="Strongly_Entangling",
-    )
-
-    ghz_model = Model(
-        n_qubits=3,
-        n_layers=1,
-        circuit_type="GHZ",
-        data_reupload=False,
-    )
-
-    separable_ent = Entanglement.relative_entropy(
-        separable_model,
-        n_samples=10,
-        n_sigmas=20,
-        random_key=jax.random.key(1000),
-        scale=False,
-    )
-    entangled_ent = Entanglement.relative_entropy(
-        entangled_model,
-        n_samples=10,
-        n_sigmas=20,
-        random_key=jax.random.key(1000),
-        scale=False,
-    )
-    ghz_ent = Entanglement.relative_entropy(
-        ghz_model,
-        n_samples=10,
-        n_sigmas=20,
-        random_key=jax.random.key(1000),
-        scale=False,
-    )
-
-    assert 0.0 < separable_ent < entangled_ent < ghz_ent == 1.0, (
-        f"Order of entanglement should be 0 < Circuit_1 < Strongly Entangling < "
-        f"GHZ = 1, but got values 0 < {separable_ent} < {entangled_ent} < {ghz_ent} "
-        f"< 1"
-    )
-
-
-@pytest.mark.smoketest
 def test_relative_entropy_order() -> None:
 
     circuits = [
@@ -425,39 +376,6 @@ def test_relative_entropy_order() -> None:
 
 
 @pytest.mark.smoketest
-def test_entanglement_of_formation() -> None:
-    separable_model = Model(
-        n_qubits=3,
-        n_layers=1,
-        circuit_type="Circuit_1",
-    )
-
-    entangled_model = Model(
-        n_qubits=3,
-        n_layers=1,
-        circuit_type="Strongly_Entangling",
-    )
-
-    separable_ent = Entanglement.entanglement_of_formation(
-        separable_model,
-        n_samples=500,
-        random_key=jax.random.key(1000),
-        noise_params={"Depolarizing": 0.01},
-    )
-    entangled_ent = Entanglement.entanglement_of_formation(
-        entangled_model,
-        n_samples=500,
-        random_key=jax.random.key(1000),
-        noise_params={"Depolarizing": 0.01},
-    )
-
-    assert 0.0 <= separable_ent < entangled_ent <= 1.0, (
-        f"Order of entanglement should be 0 < Circuit_1 < Strongly Entangling < "
-        f"GHZ = 1, but got values 0 < {separable_ent} < {entangled_ent} < 1"
-    )
-
-
-@pytest.mark.smoketest
 def test_entanglement_of_formation_order() -> None:
 
     circuits = [
@@ -486,37 +404,6 @@ def test_entanglement_of_formation_order() -> None:
 
 
 @pytest.mark.smoketest
-def test_concentratable_entanglement() -> None:
-    separable_model = Model(
-        n_qubits=3,
-        n_layers=1,
-        circuit_type="Circuit_1",
-    )
-
-    entangled_model = Model(
-        n_qubits=3,
-        n_layers=1,
-        circuit_type="Strongly_Entangling",
-    )
-
-    separable_ent = Entanglement.concentratable_entanglement(
-        separable_model,
-        n_samples=100,
-        random_key=jax.random.key(1000),
-    )
-    entangled_ent = Entanglement.concentratable_entanglement(
-        entangled_model,
-        n_samples=100,
-        random_key=jax.random.key(1000),
-    )
-
-    assert 0.0 <= separable_ent < entangled_ent <= 1.0, (
-        f"Order of entanglement should be 0 < Circuit_1 < Strongly Entangling < "
-        f"GHZ = 1, but got values 0 < {separable_ent} < {entangled_ent} < 1"
-    )
-
-
-@pytest.mark.smoketest
 def test_concentratable_entanglement_order() -> None:
 
     circuits = [
@@ -532,6 +419,34 @@ def test_concentratable_entanglement_order() -> None:
         model = Model(n_qubits=3, n_layers=1, circuit_type=circuit)
 
         ent = Entanglement.concentratable_entanglement(
+            model,
+            n_samples=500,
+            random_key=jax.random.key(1000),
+        )
+        entanglement.append(ent)
+
+    assert all(
+        entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
+    ), f"Order of entanglement should be\
+        {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."
+
+
+@pytest.mark.smoketest
+def test_concentratable_entanglement_estimation_order() -> None:
+
+    circuits = [
+        "Circuit_1",
+        "Circuit_16",
+        "Circuit_19",
+        "Circuit_15",
+        "Strongly_Entangling",
+    ]
+
+    entanglement = []
+    for circuit in circuits:
+        model = Model(n_qubits=3, n_layers=1, circuit_type=circuit)
+
+        ent = Entanglement.concentratable_entanglement_estimation(
             model,
             n_samples=500,
             random_key=jax.random.key(1000),
