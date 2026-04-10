@@ -422,7 +422,7 @@ class Script:
         ``complex64`` (8 bytes) and floats are ``float32`` (4 bytes),
         halving memory usage compared to the x64 path.
 
-        A 1.5× safety factor is applied to cover XLA compiler temporaries,
+        A 1.5x safety factor is applied to cover XLA compiler temporaries,
         padding, and other allocations not directly visible to Python.
 
         This is a pure Python arithmetic calculation with no JAX calls —
@@ -449,10 +449,10 @@ class Script:
         sv_bytes = batch_size * dim * elem
 
         # Simulation intermediate: when density-matrix simulation is used,
-        # the full rho (dim × dim) must be held during gate evolution —
+        # the full rho (dim x dim) must be held during gate evolution —
         # even if the final output is only probs or expval.
         # apply_to_density contracts both U and U* against rho, so at least
-        # two intermediate (dim × dim) buffers are alive simultaneously.
+        # two intermediate (dim x dim) buffers are alive simultaneously.
         if use_density:
             sim_bytes = 2 * batch_size * dim * dim * elem
         else:
@@ -482,7 +482,7 @@ class Script:
         out_peak = out_bytes
         raw = max(sim_peak, out_peak)
 
-        # 1.5× safety factor for XLA compiler temporaries, padding, etc.
+        # 1.5x safety factor for XLA compiler temporaries, padding, etc.
         return int(raw * 1.5)
 
     @staticmethod
@@ -780,11 +780,30 @@ class Script:
         """Density-matrix simulation kernel.
 
         Starts from \\rho  = \\vert 0\\rangle\\langle 0\\vert and
-        applies each gate in *tape* via
-        :meth:`~qml_essentials.operations.Operation.apply_to_density`
+        applies each gate in *tape* via tensor contraction
         (\\rho  -> U\\rho U† for unitaries, \\Sigma_k K_k \\rho  K_k\\dagger
         for Kraus channels).
         Required for noisy circuits.
+
+        **Performance optimisations** (compared to per-gate method dispatch):
+
+        1. *Hybrid simulation*: gates before the first noise channel are
+           simulated as a statevector (cost O(depth x 2^n) instead of
+           O(depth x 4^n)), then promoted to a density matrix via an outer
+           product once.  This is especially beneficial for circuits that
+           have a large initial unitary block followed by a few noise
+           channels (the common pattern when ``UnitaryGates.Noise`` is
+           appended *after* each gate).
+
+        2. *Tensor-form hot loop*: the density matrix is kept in rank-2n
+           tensor form ``(2,)*2n`` throughout the mixed-state portion,
+           eliminating per-gate ``reshape`` overhead — analogous to how
+           ``_simulate_pure`` keeps ψ in ``(2,)*n`` form.
+
+        3. *Pre-compiled einsum data*: gate tensors and einsum subscript
+           strings are extracted from the tape before the simulation loop
+           so that each iteration performs only ``jnp.einsum`` calls with
+           zero additional Python method/property dispatch.
 
         Args:
             tape: Ordered list of gate or channel operations to apply.
@@ -794,10 +813,92 @@ class Script:
             Density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
         """
         dim = 2**n_qubits
-        rho = jnp.zeros((dim, dim), dtype=_cdtype()).at[0, 0].set(1.0)
-        for op in tape:
-            rho = op.apply_to_density(rho, n_qubits)
-        return rho
+        rank = 2 * n_qubits  # rank of density-matrix tensor
+
+        # 1. split tape into pure prefix + mixed suffix
+        first_noise_idx = None
+        for i, op in enumerate(tape):
+            if isinstance(op, (Barrier, KrausChannel)):
+                if isinstance(op, KrausChannel):
+                    first_noise_idx = i
+                    break
+            # regular unitary — keep scanning
+
+        if first_noise_idx is None:
+            # No noise channels at all — pure statevector simulation + outer
+            # product is cheaper than evolving the full density matrix.
+            state = Script._simulate_pure(tape, n_qubits)
+            return jnp.outer(state, jnp.conj(state))
+
+        pure_prefix = tape[:first_noise_idx]
+        mixed_suffix = tape[first_noise_idx:]
+
+        # Simulate the pure prefix as a statevector (O(2^n) per gate).
+        if pure_prefix:
+            compiled_prefix = []
+            for op in pure_prefix:
+                if isinstance(op, Barrier):
+                    continue
+                k = len(op.wires)
+                gt = op._gate_tensor(k)
+                sub = _einsum_subscript(n_qubits, k, tuple(op.wires))
+                compiled_prefix.append((gt, sub))
+
+            psi = (
+                jnp.zeros(dim, dtype=_cdtype()).at[0].set(1.0).reshape((2,) * n_qubits)
+            )
+            for gt, sub in compiled_prefix:
+                psi = jnp.einsum(sub, gt, psi)
+            state = psi.reshape(dim)
+            rho_t = jnp.outer(state, jnp.conj(state)).reshape((2,) * rank)
+        else:
+            rho_t = (
+                jnp.zeros((dim, dim), dtype=_cdtype())
+                .at[0, 0]
+                .set(1.0)
+                .reshape((2,) * rank)
+            )
+
+        # 2. pre-compile the mixed suffix
+        compiled_mixed = []
+        for op in mixed_suffix:
+            if isinstance(op, Barrier):
+                continue
+            k = len(op.wires)
+            ket_wires = list(op.wires)
+            bra_wires = [w + n_qubits for w in op.wires]
+            ket_sub = _einsum_subscript(rank, k, tuple(ket_wires))
+            bra_sub = _einsum_subscript(rank, k, tuple(bra_wires))
+
+            if isinstance(op, KrausChannel):
+                # Pre-extract all Kraus tensors and their conjugates
+                kraus_data = []
+                for K in op.kraus_matrices():
+                    K_t = K.reshape((2,) * 2 * k)
+                    K_conj_t = jnp.conj(K_t)
+                    kraus_data.append((K_t, K_conj_t))
+                compiled_mixed.append(("kraus", kraus_data, ket_sub, bra_sub))
+            else:
+                gt = op._gate_tensor(k)
+                gt_conj = jnp.conj(gt)
+                compiled_mixed.append(("unitary", gt, gt_conj, ket_sub, bra_sub))
+
+        # 3.: hot loop over the mixed suffix
+        for entry in compiled_mixed:
+            if entry[0] == "unitary":
+                _, gt, gt_conj, ket_sub, bra_sub = entry
+                rho_t = jnp.einsum(ket_sub, gt, rho_t)
+                rho_t = jnp.einsum(bra_sub, gt_conj, rho_t)
+            else:  # kraus
+                _, kraus_data, ket_sub, bra_sub = entry
+                rho_acc = jnp.zeros_like(rho_t)
+                for K_t, K_conj_t in kraus_data:
+                    tmp = jnp.einsum(ket_sub, K_t, rho_t)
+                    tmp = jnp.einsum(bra_sub, K_conj_t, tmp)
+                    rho_acc = rho_acc + tmp
+                rho_t = rho_acc
+
+        return rho_t.reshape(dim, dim)
 
     @staticmethod
     def _simulate_and_measure(
