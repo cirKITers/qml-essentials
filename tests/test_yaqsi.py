@@ -15,6 +15,7 @@ from qml_essentials.yaqsi import (
     build_parity_observable,
 )
 from qml_essentials.operations import (
+    Operation,
     H,
     CX,
     CCX,
@@ -28,7 +29,9 @@ from qml_essentials.operations import (
     RY,
     RZ,
     PauliX,
+    PauliY,
     PauliZ,
+    Id,
     Hermitian,
     ParametrizedHamiltonian,
     # noise channels
@@ -1614,6 +1617,143 @@ class TestGateOperations:
         script = Script(circuit)
         res = script.execute(type="expval", obs=obs)
         assert jnp.allclose(res, 1), "Dagger should undo operation"
+
+    @pytest.mark.unittest
+    def test_mul_scalar_right(self):
+        """PauliX * 2 should produce a matrix equal to 2 * X."""
+        x = PauliX(wires=0, record=False)
+        result = x * 2.0
+        expected = 2.0 * PauliX._matrix
+        assert jnp.allclose(result.matrix, expected, atol=1e-10)
+        assert result.wires == [0]
+
+    @pytest.mark.unittest
+    def test_mul_scalar_left(self):
+        """2 * PauliX should produce a matrix equal to 2 * X (rmul)."""
+        x = PauliX(wires=0, record=False)
+        result = 2.0 * x
+        expected = 2.0 * PauliX._matrix
+        assert jnp.allclose(result.matrix, expected, atol=1e-10)
+        assert result.wires == [0]
+
+    @pytest.mark.unittest
+    def test_mul_updates_tape(self):
+        """Scalar multiplication inside a circuit replaces the op on the tape."""
+        from qml_essentials.tape import recording
+
+        with recording() as tape:
+            PauliX(wires=0) * 0.5
+
+        assert len(tape) == 1, f"Expected 1 op on tape, got {len(tape)}"
+        expected = 0.5 * PauliX._matrix
+        assert jnp.allclose(tape[0].matrix, expected, atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_mul_in_circuit(self):
+        """Scaled gate inside a circuit produces the expected expectation value.
+
+        0.5 * X has eigenvalues ±0.5, so ⟨0| (0.5·X) |0⟩ should still be 0.
+        """
+
+        def circuit():
+            PauliX(wires=0) * 0.5
+
+        script = Script(circuit)
+        # Use the scaled operator as observable
+        obs = [Operation(wires=0, matrix=0.5 * PauliX._matrix, record=False)]
+        res = script.execute(type="expval", obs=obs)
+        assert jnp.allclose(res, jnp.array([0.0]), atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_add_same_wires(self):
+        """X + Z on the same wire should produce element-wise sum."""
+        x = PauliX(wires=0, record=False)
+        z = PauliZ(wires=0, record=False)
+        result = x + z
+        expected = PauliX._matrix + PauliZ._matrix
+        assert jnp.allclose(result.matrix, expected, atol=1e-10)
+        assert result.wires == [0]
+
+    @pytest.mark.unittest
+    def test_add_preserves_hermiticity(self):
+        """Sum of two Hermitian operators is Hermitian: (X+Z)\\dagger = X+Z."""
+        x = PauliX(wires=0, record=False)
+        z = PauliZ(wires=0, record=False)
+        result = x + z
+        assert jnp.allclose(
+            result.matrix, jnp.conj(result.matrix).T, atol=1e-10
+        ), "Sum of Hermitian operators should be Hermitian"
+
+    @pytest.mark.unittest
+    def test_add_different_wires_raises(self):
+        """Adding operations on different wires must raise ValueError."""
+        x = PauliX(wires=0, record=False)
+        z = PauliZ(wires=1, record=False)
+        with pytest.raises(ValueError, match="same set of wires"):
+            _ = x + z
+
+    @pytest.mark.unittest
+    def test_add_self(self):
+        """X + X = 2 * X."""
+        x = PauliX(wires=0, record=False)
+        result = x + x
+        expected = 2.0 * PauliX._matrix
+        assert jnp.allclose(result.matrix, expected, atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_add_commutative(self):
+        """Addition should be commutative: X + Y == Y + X."""
+        x = PauliX(wires=0, record=False)
+        y = PauliY(wires=0, record=False)
+        assert jnp.allclose((x + y).matrix, (y + x).matrix, atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_matmul_disjoint_wires(self):
+        """X(0) \\otimes Z(1) produces a 4x4 Kronecker product on wires [0, 1]."""
+        x = PauliX(wires=0, record=False)
+        z = PauliZ(wires=1, record=False)
+        result = x @ z
+        expected = jnp.kron(PauliX._matrix, PauliZ._matrix)
+        assert jnp.allclose(result.matrix, expected, atol=1e-10)
+        assert result.wires == [0, 1]
+
+    @pytest.mark.unittest
+    def test_matmul_overlapping_wires_raises(self):
+        """Tensor product with overlapping wires must raise ValueError."""
+        x = PauliX(wires=0, record=False)
+        z = PauliZ(wires=0, record=False)
+        with pytest.raises(ValueError, match="overlapping wires"):
+            _ = x @ z
+
+    @pytest.mark.unittest
+    def test_matmul_identity(self):
+        """X(0) \\otimes I(1) should equal X \\otimes I."""
+        x = PauliX(wires=0, record=False)
+        i = Id(wires=1, record=False)
+        result = x @ i
+        expected = jnp.kron(PauliX._matrix, Id._matrix)
+        assert jnp.allclose(result.matrix, expected, atol=1e-10)
+        assert result.wires == [0, 1]
+
+    @pytest.mark.unittest
+    def test_matmul_dimension(self):
+        """Tensor product of two 2x2 gates yields a 4x4 matrix."""
+        x = PauliX(wires=0, record=False)
+        y = PauliY(wires=1, record=False)
+        result = x @ y
+        assert result.matrix.shape == (4, 4)
+
+    @pytest.mark.unittest
+    def test_matmul_three_qubits(self):
+        """X(0) \\otimes Y(1) \\otimes Z(2) yields an 8x8 matrix on wires [0, 1, 2]."""
+        x = PauliX(wires=0, record=False)
+        y = PauliY(wires=1, record=False)
+        z = PauliZ(wires=2, record=False)
+        result = (x @ y) @ z
+        expected = jnp.kron(jnp.kron(PauliX._matrix, PauliY._matrix), PauliZ._matrix)
+        assert jnp.allclose(result.matrix, expected, atol=1e-10)
+        assert result.wires == [0, 1, 2]
+        assert result.matrix.shape == (8, 8)
 
 
 class TestMemory:

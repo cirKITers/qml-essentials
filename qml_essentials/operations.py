@@ -294,6 +294,71 @@ class Operation:
 
         return op
 
+    def __mul__(self, factor: float) -> "Operation":
+        """Return a new operation, the product between U and a scalar (``U*x``)
+        Usage inside a circuit function::
+
+            PauliX(wires=0) * x
+
+        Returns:
+            A new :class:`Operation` with matrix ``U*x`` acting on the same wires.
+        """
+        mat = factor * self._matrix
+        op = Operation(wires=self.wires, matrix=mat, record=False)
+
+        self._update_tape_operation(op)
+
+        return op
+
+    # Also overwrite * for right operands
+    __rmul__ = __mul__
+
+    def __add__(self, other: "Operation") -> "Operation":
+        """Element-wise addition of two operations on the same wires.
+
+        Returns:
+            A new :class:`Operation` whose matrix is the sum of both matrices.
+
+        Raises:
+            ValueError: If the wire sets differ.
+        """
+        if sorted(self.wires) != sorted(other.wires):
+            raise ValueError(
+                f"Can only add operations acting on the same set of wires, "
+                f"got {self.wires} and {other.wires}"
+            )
+
+        op = Operation(
+            wires=self.wires,
+            matrix=self.matrix + other.matrix,
+            record=False,
+        )
+        return op
+
+    def __matmul__(self, other: "Operation") -> "Operation":
+        """Tensor (Kronecker) product of two operations.
+
+        The resulting operation acts on the union of both wire sets and
+        carries the Kronecker product of both matrices.  Wire sets must
+        be disjoint.
+
+        Returns:
+            A new :class:`Operation` whose matrix is ``self.matrix ⊗ other.matrix``
+            and whose wires are the concatenation of both wire lists.
+
+        Raises:
+            ValueError: If the two operations share any wires.
+        """
+        if set(self.wires) & set(other.wires):
+            raise ValueError(
+                f"Cannot take tensor product: overlapping wires "
+                f"{self.wires} and {other.wires}"
+            )
+        new_matrix = jnp.kron(self.matrix, other.matrix)
+        new_wires = self.wires + other.wires
+        op = Operation(wires=new_wires, matrix=new_matrix, record=False)
+        return op
+
     def lifted_matrix(self, n_qubits: int) -> jnp.ndarray:
         """Return the full ``2**n x 2**n`` matrix embedding this gate.
 
@@ -489,17 +554,28 @@ class ParametrizedHamiltonian:
 
 
 class Id(Operation):
-    """Identity gate."""
+    """Identity gate.
+
+    Supports an arbitrary number of wires.  When more than one wire is
+    given the matrix is the ``2**k x 2**k`` identity (where *k* is the
+    number of wires).
+    """
 
     _matrix = jnp.eye(2, dtype=_cdtype())
-    _num_wires = 1
+    _num_wires = None  # accept any number of wires
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise an identity gate.
 
         Args:
             wires: Qubit index or list of qubit indices this gate acts on.
+                When multiple wires are given the matrix is automatically
+                expanded to the matching ``2**k × 2**k`` identity.
         """
+        w = list(wires) if isinstance(wires, (list, tuple)) else [wires]
+        k = len(w)
+        if k > 1:
+            kwargs["matrix"] = jnp.eye(2**k, dtype=_cdtype())
         super().__init__(wires=wires, **kwargs)
 
 
@@ -580,6 +656,23 @@ class S(Operation):
             wires: Qubit index or list of qubit indices this gate acts on.
         """
         super().__init__(wires=wires)
+
+
+class SWAP(Operation):
+    """SWAP gate."""
+
+    _matrix = jnp.array(
+        [[1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 1]], dtype=_cdtype()
+    )
+    _num_wires = 2
+
+    def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
+        """Initialise a SWAP gate.
+
+        Args:
+            wires: Qubit index or list of qubit indices this gate acts on.
+        """
+        super().__init__(wires=wires, **kwargs)
 
 
 class RandomUnitary(Operation):
