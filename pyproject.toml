@@ -58,10 +58,9 @@ dev = [
 docs = [
     "ipykernel>=6.31.0",
     "markdown-include>=0.8.1",
-    "mkdocs<2.0.0",
     "mkdocs-glightbox>=0.4.0",
-    "mkdocs-material>=9.7.1",
     "mkdocstrings-python>=1.19.0",
+    "zensical>=0.0.33",
 ]
 
 [build-system]
