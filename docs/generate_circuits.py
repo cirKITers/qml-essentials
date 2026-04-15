@@ -1,5 +1,4 @@
 import os
-import matplotlib as plt
 
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze

@@ -66,7 +66,9 @@ class Entanglement:
         return ent.mean()
 
     @classmethod
-    def _compute_meyer_wallach_meas(cls, rhos: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
+    def _compute_meyer_wallach_meas(
+        cls, rhos: jnp.ndarray, n_qubits: int
+    ) -> jnp.ndarray:
         """
         Computes the Meyer-Wallach entangling capability measure for a given
         set of density matrices.
@@ -304,7 +306,9 @@ class Entanglement:
         return entangling_capability.mean()
 
     @classmethod
-    def _compute_log_density(cls, model: Model, **kwargs) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    def _compute_log_density(
+        cls, model: Model, **kwargs
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Obtains the density matrix of a model and computes its logarithm.
 
