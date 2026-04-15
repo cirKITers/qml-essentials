@@ -23,7 +23,7 @@ class TikzFigure:
     def __str__(self):
         return self.quantikz_str
 
-    def wrap_figure(self):
+    def wrap_figure(self) -> str:
         """
         Wraps the quantikz string in a LaTeX figure environment.
 
@@ -43,7 +43,7 @@ class TikzFigure:
     \\end{{tikzpicture}}
 \\end{{figure}}"""
 
-    def export(self, destination: str, full_document=False, mode="w") -> None:
+    def export(self, destination: str, full_document: bool = False, mode: str = "w") -> None:
         """
         Export a LaTeX document with a quantum circuit in stick notation.
 

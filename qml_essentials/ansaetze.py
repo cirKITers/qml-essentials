@@ -93,7 +93,7 @@ class Circuit(ABC):
         else:
             return w.take(np.array(indices))
 
-    def _build(self, w: np.ndarray, n_qubits: int, **kwargs) -> Any:
+    def _build(self, w: np.ndarray, n_qubits: int, **kwargs: Any) -> Any:
         """
         Build one layer of the circuit using unitary or pulse-level parameters.
 
@@ -133,7 +133,7 @@ class Circuit(ABC):
             return self.build(w, n_qubits, **kwargs)
 
     @abstractmethod
-    def build(self, w: np.ndarray, n_qubits: int, **kwargs) -> Any:
+    def build(self, w: np.ndarray, n_qubits: int, **kwargs: Any) -> Any:
         """
         Build one layer of the quantum circuit.
 
@@ -213,7 +213,7 @@ class DeclarativeCircuit(Circuit):
         return controlled_indices
 
     @classmethod
-    def build(cls, w: np.ndarray, n_qubits: int, **kwargs) -> None:
+    def build(cls, w: np.ndarray, n_qubits: int, **kwargs: Any) -> None:
         structure = cls.structure()
         w_idx = 0
         for block in structure:
@@ -235,7 +235,7 @@ class Block:
             gate (str): Name of the Gate class to use.
             topology (Any, optional): Topology of the gate for entangling gates.
                 Defaults to None.
-            kwargs: Additional keyword arguments passed to the topology function.
+            kwargs (Any): Additional keyword arguments passed to the topology function.
         """
         if isinstance(gate, str):
             self.gate = getattr(Gates, gate)
@@ -332,7 +332,7 @@ class Block:
                 Defaults to None.
             w_idx (int, optional): Index of weights to use for rotational gates.
                 Defaults to None.
-            **kwargs: Keyword arguments passed to the gate.
+            **kwargs (Any): Keyword arguments passed to the gate.
 
         Returns:
             int: The new index of weights after applying the block.

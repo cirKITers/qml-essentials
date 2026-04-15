@@ -320,7 +320,7 @@ class FourierTree:
                 sin_list (List[int]): Current number of sine contributions for each
                     parameter. Has the same length as the parameters, as each
                     position corresponds to one parameter.
-                cos_list (List[int]):  Current number of cosine contributions for
+                cos_list (List[int]): Current number of cosine contributions for
                     each parameter. Has the same length as the parameters, as each
                     position corresponds to one parameter.
                 existing_leafs (List[TreeLeaf]): Current list of leaf nodes from
@@ -374,7 +374,7 @@ class FourierTree:
             sin_indices (List[int]): Current number of sine contributions for each
                 parameter. Has the same length as the parameters, as each
                 position corresponds to one parameter.
-            cos_list (List[int]):  Current number of cosine contributions for
+            cos_indices (List[int]): Current number of cosine contributions for
                 each parameter. Has the same length as the parameters, as each
                 position corresponds to one parameter.
             term (jnp.complex): Constant factor of the leaf, depending on the
@@ -1036,7 +1036,7 @@ class FCC:
                 Defaults to False.
             trim_redundant (Optional[bool], optional): Whether to remove redundant
                 correlations. Defaults to False.
-            **kwargs: Additional keyword arguments for the model function.
+            **kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
             float: The FCC
@@ -1063,7 +1063,7 @@ class FCC:
         weight: Optional[bool] = False,
         trim_redundant: Optional[bool] = True,
         nan_to_one: Optional[bool] = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Shortcut method to get just the fourier fingerprint.
@@ -1131,7 +1131,7 @@ class FCC:
         The Fingerprint can be obtained via `get_fourier_fingerprint`
 
         Args:
-            coeff_coeff_correlation (jnp.ndarray): Correlation matrix of coefficients
+            fourier_fingerprint (jnp.ndarray): Correlation matrix of coefficients
         Returns:
             float: The FCC
         """
@@ -1181,7 +1181,7 @@ class FCC:
         n_samples: int,
         random_key: Optional[random.PRNGKey] = None,
         scale: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Calculates the Fourier coefficients of a given model
