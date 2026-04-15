@@ -9,7 +9,6 @@ from qml_essentials.unitary import UnitaryGates
 from qml_essentials.pulses import (
     PulseGates,
     PulseParams,
-    PulseEnvelope,
     PulseInformation,
     PulseParamManager,
 )

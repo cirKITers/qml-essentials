@@ -2,7 +2,6 @@ from typing import List, Tuple, Optional
 import jax
 import jax.numpy as jnp
 from qml_essentials.operations import (
-    _cdtype,
     Operation,
     PauliX,
     PauliY,
@@ -20,7 +19,6 @@ from qml_essentials.operations import (
     pauli_decompose,
     pauli_string_from_operation,
 )
-from scipy.linalg import logm
 from collections import defaultdict
 
 

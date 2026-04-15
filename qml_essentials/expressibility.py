@@ -1,8 +1,7 @@
 import jax.numpy as jnp
-from jax import random
 import jax
 import numpy as np
-from typing import Tuple, List, Any, Optional
+from typing import Tuple, Any, Optional
 from scipy import integrate
 from scipy.linalg import sqrtm
 from scipy.special import rel_entr

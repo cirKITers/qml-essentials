@@ -17,9 +17,9 @@ jobs:
           # cache: "uv"
       - name: Install dependencies
         run: pipx run uv sync --group dev
-      - name: Lint with flake8
+      - name: Lint with ruff
         run: |
-          pipx run uv run flake8 qml_essentials
-          pipx run uv run flake8 tests
+          pipx run uv run ruff check qml_essentials
+          pipx run uv run ruff check tests
       - name: Running license check
         run: pipx run uv run licensecheck --zero --license mit
