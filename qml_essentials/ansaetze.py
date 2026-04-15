@@ -165,8 +165,10 @@ class DeclarativeCircuit(Circuit):
     `get_control_indices`, and `build` are derived automatically.
     """
 
-    @staticmethod
-    def structure() -> Tuple[Any, ...]:
+
+
+    @classmethod
+    def structure(cls) -> Tuple[Any, ...]:
         """Override in subclass to return the structure tuple."""
         raise NotImplementedError
 
@@ -408,41 +410,53 @@ class Ansaetze:
         return ansaetze
 
     class No_Ansatz(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return ()
 
     class GHZ(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.H),
                 Block(gate=Gates.CX, topology=Topology.stairs, reverse=True),
             )
 
-        @staticmethod
-        def build(w: np.ndarray, n_qubits: int, **kwargs):
+
+
+        @classmethod
+        def build(cls, w: np.ndarray, n_qubits: int, **kwargs):
             Gates.H(wires=0, **kwargs)
             for q in range(n_qubits - 1):
                 Gates.CX(wires=[q, q + 1], **kwargs)
 
-        @staticmethod
-        def n_pulse_params_per_layer(n_qubits: int) -> int:
+
+
+        @classmethod
+        def n_pulse_params_per_layer(cls, n_qubits: int) -> int:
             n_params = PulseInformation.num_params("H")  # only 1 H
             n_params += (n_qubits - 1) * PulseInformation.num_params(Gates.CX)
             return n_params
 
     class Circuit_1(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
             )
 
     class Circuit_2(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
@@ -453,8 +467,10 @@ class Ansaetze:
             )
 
     class Circuit_3(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
@@ -462,8 +478,10 @@ class Ansaetze:
             )
 
     class Circuit_4(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
@@ -471,8 +489,10 @@ class Ansaetze:
             )
 
     class Circuit_5(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
@@ -482,8 +502,10 @@ class Ansaetze:
             )
 
     class Circuit_6(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
@@ -493,8 +515,10 @@ class Ansaetze:
             )
 
     class Circuit_7(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
@@ -512,8 +536,10 @@ class Ansaetze:
             )
 
     class Circuit_8(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
@@ -531,8 +557,10 @@ class Ansaetze:
             )
 
     class Circuit_9(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.H),
                 Block(gate="CZ", topology=Topology.stairs),
@@ -540,8 +568,10 @@ class Ansaetze:
             )
 
     class Circuit_10(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RY),
                 Block(gate="CZ", topology=Topology.stairs, offset=-1, wrap=True),
@@ -549,8 +579,10 @@ class Ansaetze:
             )
 
     class Circuit_13(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RY),
                 Block(
@@ -573,8 +605,10 @@ class Ansaetze:
             )
 
     class Circuit_14(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RY),
                 Block(
@@ -597,8 +631,10 @@ class Ansaetze:
             )
 
     class Circuit_15(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RY),
                 Block(
@@ -621,8 +657,10 @@ class Ansaetze:
             )
 
     class Circuit_16(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
@@ -638,8 +676,10 @@ class Ansaetze:
             )
 
     class Circuit_17(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
@@ -655,8 +695,10 @@ class Ansaetze:
             )
 
     class Circuit_18(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
@@ -669,8 +711,10 @@ class Ansaetze:
             )
 
     class Circuit_19(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RX),
                 Block(gate=Gates.RZ),
@@ -683,8 +727,10 @@ class Ansaetze:
             )
 
     class Circuit_20(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RY),
                 Block(
@@ -706,13 +752,17 @@ class Ansaetze:
             )
 
     class No_Entangling(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (Block(gate=Gates.Rot),)
 
     class Hardware_Efficient(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.RY),
                 Block(gate=Gates.RZ),
@@ -733,8 +783,10 @@ class Ansaetze:
             )
 
     class Strongly_Entangling(DeclarativeCircuit):
-        @staticmethod
-        def structure():
+
+
+        @classmethod
+        def structure(cls):
             return (
                 Block(gate=Gates.Rot),
                 Block(

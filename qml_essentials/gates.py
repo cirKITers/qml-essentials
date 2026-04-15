@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 class GatesMeta(type):
     def __getattr__(cls, gate_name):
         def handler(*args, **kwargs):
-            return Gates._inner_getattr(gate_name, *args, **kwargs)
+            return cls._inner_getattr(gate_name, *args, **kwargs)
 
         # Dirty way to preserve information about the gate name
         handler.__name__ = gate_name
@@ -67,8 +67,8 @@ class Gates(metaclass=GatesMeta):
 
         return handler
 
-    @staticmethod
-    def _inner_getattr(gate_name, *args, **kwargs):
+    @classmethod
+    def _inner_getattr(cls, gate_name, *args, **kwargs):
         if gate_name == "Barrier":
             return Barrier(*args, **kwargs)
 
@@ -103,7 +103,7 @@ class Gates(metaclass=GatesMeta):
 
         kwargs = {k: v for k, v in kwargs.items() if k in allowed_args}
         pulse_params = kwargs.get("pulse_params")
-        pulse_mgr = getattr(Gates, "_pulse_mgr", None)
+        pulse_mgr = getattr(cls, "_pulse_mgr", None)
 
         # TODO: rework this part to convert to valid PulseParams earlier
         # Type check on pulse parameters
@@ -160,22 +160,23 @@ class Gates(metaclass=GatesMeta):
 
         return gate(*args, **kwargs)
 
-    @staticmethod
+    @classmethod
     @contextmanager
-    def pulse_manager_context(pulse_params: jnp.ndarray):
+    def pulse_manager_context(cls, pulse_params: jnp.ndarray):
         """Temporarily set the global pulse manager for circuit building."""
-        Gates._pulse_mgr = PulseParamManager(pulse_params)
+        cls._pulse_mgr = PulseParamManager(pulse_params)
         try:
             yield
         finally:
-            Gates._pulse_mgr = None
+            cls._pulse_mgr = None
 
-    @staticmethod
+    @classmethod
     def parse_gates(
+        cls,
         gates: Union[str, Callable, List[Union[str, Callable]]],
         set_of_gates=None,
     ):
-        set_of_gates = set_of_gates or Gates
+        set_of_gates = set_of_gates or cls
 
         if isinstance(gates, str):
             # if str, use the pennylane fct
@@ -205,8 +206,8 @@ class Gates(metaclass=GatesMeta):
             )
         return parsed_gates
 
-    @staticmethod
-    def is_rotational(gate):
+    @classmethod
+    def is_rotational(cls, gate):
         return gate.__name__ in [
             "RX",
             "RY",
@@ -217,6 +218,6 @@ class Gates(metaclass=GatesMeta):
             "CRZ",
         ]
 
-    @staticmethod
-    def is_entangling(gate):
+    @classmethod
+    def is_entangling(cls, gate):
         return gate.__name__ in ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"]

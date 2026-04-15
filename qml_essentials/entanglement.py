@@ -13,8 +13,9 @@ log = logging.getLogger(__name__)
 
 
 class Entanglement:
-    @staticmethod
+    @classmethod
     def meyer_wallach(
+        cls,
         model: Model,
         n_samples: Optional[int | None],
         random_key: Optional[jax.random.PRNGKey] = None,
@@ -58,14 +59,14 @@ class Entanglement:
             -1, 2**model.n_qubits, 2**model.n_qubits
         )
 
-        ent = Entanglement._compute_meyer_wallach_meas(rhos, model.n_qubits)
+        ent = cls._compute_meyer_wallach_meas(rhos, model.n_qubits)
 
         log.debug(f"Variance of measure: {ent.var()}")
 
         return ent.mean()
 
-    @staticmethod
-    def _compute_meyer_wallach_meas(rhos: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
+    @classmethod
+    def _compute_meyer_wallach_meas(cls, rhos: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
         """
         Computes the Meyer-Wallach entangling capability measure for a given
         set of density matrices.
@@ -99,8 +100,9 @@ class Entanglement:
 
         return jax.vmap(_f)(rhos)
 
-    @staticmethod
+    @classmethod
     def bell_measurements(
+        cls,
         model: Model,
         n_samples: int,
         random_key: Optional[jax.random.PRNGKey] = None,
@@ -214,8 +216,9 @@ class Entanglement:
 
         return entangling_capability
 
-    @staticmethod
+    @classmethod
     def relative_entropy(
+        cls,
         model: Model,
         n_samples: int,
         n_sigmas: int,
@@ -276,19 +279,19 @@ class Entanglement:
             else:
                 log.info(f"Using sample size of model params: {model.params.shape[0]}")
 
-        rhos, log_rhos = Entanglement._compute_log_density(model, **kwargs)
+        rhos, log_rhos = cls._compute_log_density(model, **kwargs)
 
         rel_entropies = jnp.zeros((n_sigmas, model.params.shape[0]))
 
         for i, log_sigma in enumerate(log_sigmas):
             rel_entropies = rel_entropies.at[i].set(
-                Entanglement._compute_rel_entropies(rhos, log_rhos, log_sigma)
+                cls._compute_rel_entropies(rhos, log_rhos, log_sigma)
             )
 
         # Entropy of GHZ states should be maximal
         ghz_model = Model(model.n_qubits, 1, "GHZ", data_reupload=False)
-        rho_ghz, log_rho_ghz = Entanglement._compute_log_density(ghz_model, **kwargs)
-        ghz_entropies = Entanglement._compute_rel_entropies(
+        rho_ghz, log_rho_ghz = cls._compute_log_density(ghz_model, **kwargs)
+        ghz_entropies = cls._compute_rel_entropies(
             rho_ghz, log_rho_ghz, log_sigmas
         )
 
@@ -300,8 +303,8 @@ class Entanglement:
 
         return entangling_capability.mean()
 
-    @staticmethod
-    def _compute_log_density(model: Model, **kwargs) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    @classmethod
+    def _compute_log_density(cls, model: Model, **kwargs) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Obtains the density matrix of a model and computes its logarithm.
 
@@ -321,8 +324,9 @@ class Entanglement:
         log_rho = logm_v(rho) / jnp.log(2)
         return rho, log_rho
 
-    @staticmethod
+    @classmethod
     def _compute_rel_entropies(
+        cls,
         rhos: jnp.ndarray,
         log_rhos: jnp.ndarray,
         log_sigmas: jnp.ndarray,
@@ -365,8 +369,9 @@ class Entanglement:
             rel_entropies = rel_entropies.reshape(n_sigmas, n_rhos)
         return rel_entropies
 
-    @staticmethod
+    @classmethod
     def entanglement_of_formation(
+        cls,
         model: Model,
         n_samples: int,
         random_key: Optional[jax.random.PRNGKey] = None,
@@ -422,13 +427,14 @@ class Entanglement:
         kwargs.setdefault("inputs", None)
         rhos = model(execution_type="density", **kwargs)
         rhos = rhos.reshape(-1, 2**model.n_qubits, 2**model.n_qubits)
-        ent = Entanglement._compute_entanglement_of_formation(
+        ent = cls._compute_entanglement_of_formation(
             rhos, model.n_qubits, always_decompose
         )
         return ent.mean()
 
-    @staticmethod
+    @classmethod
     def _compute_entanglement_of_formation(
+        cls,
         rhos: jnp.ndarray,
         n_qubits: int,
         always_decompose: bool,
@@ -450,17 +456,18 @@ class Entanglement:
         """
         eigenvalues, eigenvectors = jnp.linalg.eigh(rhos)
         if not always_decompose and jnp.isclose(eigenvalues, 1.0).any(axis=-1).all():
-            return Entanglement._compute_meyer_wallach_meas(rhos, n_qubits)
+            return cls._compute_meyer_wallach_meas(rhos, n_qubits)
 
         rhos = np.einsum("sij,sik->sijk", eigenvectors, eigenvectors.conjugate())
-        measures = Entanglement._compute_meyer_wallach_meas(
+        measures = cls._compute_meyer_wallach_meas(
             rhos.reshape(-1, 2**n_qubits, 2**n_qubits), n_qubits
         )
         ent = np.einsum("si,si->s", measures.reshape(-1, 2**n_qubits), eigenvalues)
         return ent
 
-    @staticmethod
+    @classmethod
     def concentratable_entanglement(
+        cls,
         model: Model,
         n_samples: int,
         random_key: Optional[jax.random.PRNGKey] = None,
@@ -566,8 +573,9 @@ class Entanglement:
 
         return float(ent.mean())
 
-    @staticmethod
+    @classmethod
     def concentratable_entanglement_estimation(
+        cls,
         model: Model,
         n_samples: int,
         random_key: Optional[jax.random.PRNGKey] = None,
