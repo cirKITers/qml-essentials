@@ -415,7 +415,9 @@ class PulseEnvelope:
         return PulseEnvelope.REGISTRY[name]
 
     @staticmethod
-    def build_coeff_fns(envelope_fn: Callable, omega_c: float) -> Tuple[Callable, Callable]:
+    def build_coeff_fns(
+        envelope_fn: Callable, omega_c: float
+    ) -> Tuple[Callable, Callable]:
         """Build ``(coeff_Sx, coeff_Sy)`` for a given envelope function.
 
         Each returned function has a unique ``__code__`` object so that

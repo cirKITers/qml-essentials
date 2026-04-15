@@ -43,7 +43,9 @@ class TikzFigure:
     \\end{{tikzpicture}}
 \\end{{figure}}"""
 
-    def export(self, destination: str, full_document: bool = False, mode: str = "w") -> None:
+    def export(
+            self, destination: str, full_document: bool = False, mode: str = "w"
+    ) -> None:
         """
         Export a LaTeX document with a quantum circuit in stick notation.
 
