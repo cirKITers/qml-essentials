@@ -1269,9 +1269,16 @@ class FCC:
         Compute Pearson correlation between columns of `mat`,
         permitting missing values (NaN or ±Inf).
 
+        If the input is complex, real and imaginary parts are stacked along
+        the sample axis so that both components contribute to the correlation
+        without discarding information.
+
         Args:
             mat : array_like, shape (N, K)
                 Input data.
+            cov : bool, optional
+                If True, return the sample covariance matrix instead of
+                correlation. Defaults to False.
             minp : int, optional
                 Minimum number of paired observations required to form a correlation.
                 If the number of valid pairs for (i, j) is < minp, the result is NaN.
@@ -1280,60 +1287,69 @@ class FCC:
             corr : ndarray, shape (K, K)
                 Pearson correlation matrix.
         """
+        # Preserve complex information by splitting into real / imag samples
+        if jnp.iscomplexobj(mat):
+            mat = jnp.concatenate([mat.real, mat.imag], axis=0)
 
-        mat = jnp.asarray(mat, dtype=jnp.float64)
+        mat = jnp.asarray(mat)
         N, K = mat.shape
 
-        # pre‐compute finite‐mask
+        # pre-compute finite mask  (N, K)
         mask = jnp.isfinite(mat)
+        fmask = mask.astype(mat.dtype)
 
-        # output
-        result = np.empty((K, K), dtype=jnp.float64)
+        # Replace non-finite entries with 0 so arithmetic is safe;
+        # the mask keeps track of validity.
+        safe = jnp.where(mask, mat, 0.0)
 
-        # TODO: optimize in future iterations
-        # loop over column‐pairs
-        for i in range(K):
-            for j in range(i + 1):
-                # find rows where both columns are finite
-                m = mask[:, i] & mask[:, j]
-                n = jnp.count_nonzero(m)
-                if n < minp:
-                    # too few pairs
-                    value = jnp.nan
-                else:
-                    x = mat[m, i]
-                    y = mat[m, j]
+        # Pairwise valid-observation counts  (K, K)
+        nobs = fmask.T @ fmask
 
-                    # compute means
-                    mean_x = x.mean()
-                    mean_y = y.mean()
+        # Pairwise sums (only over mutually valid rows)
+        # For columns i, j the "valid" rows are mask[:,i] & mask[:,j].
+        # sum_x[i,j] = sum of mat[:,i] where both i and j are valid.
+        # Using: safe[:,i] * mask[:,j] zeroes out rows invalid for j.
+        # Then summing over N gives sum_x[i,j].
+        # safe.T @ fmask  gives (K, K) where entry (i,j) = sum of safe[:,i]*mask[:,j]
+        sum_x = safe.T @ fmask   # (K, K) – row-var sums
+        sum_y = fmask.T @ safe   # (K, K) – col-var sums
 
-                    # demeaned data
-                    dx = x - mean_x
-                    dy = y - mean_y
+        # Means per pair
+        mean_x = jnp.where(nobs > 0, sum_x / nobs, 0.0)  # (K, K)
+        mean_y = jnp.where(nobs > 0, sum_y / nobs, 0.0)  # (K, K)
 
-                    # sum of squares and cross‐prod
-                    ssx = jnp.dot(dx, dx)
-                    ssy = jnp.dot(dy, dy)
-                    cxy = jnp.dot(dx, dy)
+        # Cross products, sum-of-squares
+        # For each pair (i, j) we need:
+        #   ssx = sum (x - mean_x)^2,  ssy = sum (y - mean_y)^2,
+        #   sxy = sum (x - mean_x)(y - mean_y)
+        # Expanding:  sxy = sum(x*y) - n*mean_x*mean_y
+        # with masked entries:
+        #   sum_xy[i,j] = sum_n safe[n,i]*safe[n,j] * mask[n,i]*mask[n,j]
+        masked = safe * fmask  # same as safe but explicit
+        sum_xy = masked.T @ masked          # (K, K)
 
-                    if cov:
-                        # sample covariance (denominator n−1)
-                        value = cxy / (n - 1) if n > 1 else jnp.nan
-                    else:
-                        # Pearson r = cov / (σx σy)
-                        denom = jnp.sqrt(ssx * ssy)
-                        if denom == 0.0:
-                            value = jnp.nan
-                        else:
-                            value = cxy / denom
-                            # clip numerical drift
-                            if value > 1.0:
-                                value = 1.0
-                            elif value < -1.0:
-                                value = -1.0
+        # ssx[i,j] = sum_xx_ij - nobs * mean_x^2   (but sum_xx_ij uses pair mask)
+        # We need sum of x^2 over the *pair* mask, not just column mask.
+        # sum_x2[i,j] = sum_n  safe[n,i]^2 * mask[n,i] * mask[n,j]
+        safe_sq = safe ** 2
+        sum_x2 = safe_sq.T @ fmask  # (K, K)
+        sum_y2 = fmask.T @ safe_sq  # (K, K)
 
-                result[i, j] = result[j, i] = value
+        ssx = sum_x2 - sum_x ** 2 / jnp.where(nobs > 0, nobs, 1.0)
+        ssy = sum_y2 - sum_y ** 2 / jnp.where(nobs > 0, nobs, 1.0)
+        sxy = sum_xy - (sum_x * sum_y) / jnp.where(nobs > 0, nobs, 1.0)
+
+        if cov:
+            denom = jnp.where(nobs > 1, nobs - 1, jnp.nan)
+            result = sxy / denom
+        else:
+            denom = jnp.sqrt(ssx * ssy)
+            result = jnp.where(denom > 0, sxy / denom, jnp.nan)
+            # clip numerical drift to [-1, 1]
+            result = jnp.clip(result, -1.0, 1.0)
+
+        # Enforce minp: set entries with too few observations to NaN
+        result = jnp.where(nobs < minp, jnp.nan, result)
 
         return result
 
@@ -1344,6 +1360,10 @@ class FCC:
 
         Compute Spearman correlation between columns of `mat`,
         permitting missing values (NaN or ±Inf).
+
+        If the input is complex, real and imaginary parts are stacked along
+        the sample axis so that both components contribute to the correlation
+        without discarding information.
 
         Args:
             mat : array_like, shape (N, K)
@@ -1356,47 +1376,61 @@ class FCC:
             corr : ndarray, shape (K, K)
                 Spearman correlation matrix.
         """
+        # Preserve complex information by splitting into real / imag samples
+        if jnp.iscomplexobj(mat):
+            mat = jnp.concatenate([mat.real, mat.imag], axis=0)
+
+        mat = jnp.asarray(mat)
         N, K = mat.shape
+
         # trivial all-NaN answer if too few rows
         if N < minp:
-            return jnp.full((K, K), jnp.nan, dtype=float)
+            return jnp.full((K, K), jnp.nan)
 
         # mask of finite entries
         mask = jnp.isfinite(mat)  # shape (N, K), dtype=bool
 
         # precompute ranks column-wise ignoring NaNs
-        ranks = np.full((N, K), jnp.nan, dtype=float)
+        ranks = np.full((N, K), np.nan)
         for j in range(K):
             valid = mask[:, j]
             if valid.any():
-                # rankdata by default gives average ranks for ties
                 ranks[valid, j] = rankdata(mat[valid, j], method="average")
 
-        # allocate result
-        result = np.empty((K, K), dtype=float)
+        ranks = jnp.asarray(ranks)
 
-        # TODO: optimize in future iterations
-        # loop lower triangle (including diagonal)
-        for i in range(K):
-            for j in range(i + 1):
-                # find rows where both columns are finite
-                valid = mask[:, i] & mask[:, j]
-                nobs = valid.sum()
+        # Vectorised Pearson on the ranks
+        # Replace NaN ranks with 0; use mask to track validity.
+        rank_mask = jnp.isfinite(ranks)
+        safe_ranks = jnp.where(rank_mask, ranks, 0.0)
 
-                if nobs < minp:
-                    rho = jnp.nan
-                else:
-                    xi = ranks[valid, i]
-                    yj = ranks[valid, j]
-                    # subtract means
-                    xi = xi - xi.mean()
-                    yj = yj - yj.mean()
-                    num = jnp.dot(xi, yj)
-                    den = jnp.sqrt(jnp.dot(xi, xi) * jnp.dot(yj, yj))
-                    rho = num / den if den > 0 else jnp.nan
+        # Pairwise valid-observation counts  (K, K)
+        fmask = rank_mask.astype(ranks.dtype)
+        nobs = fmask.T @ fmask
 
-                result[i, j] = rho
-                result[j, i] = rho
+        # Pairwise sums over mutually-valid rows
+        sum_x = safe_ranks.T @ fmask           # (K, K)
+        sum_y = fmask.T @ safe_ranks            # (K, K)
+
+        # Pairwise products
+        masked_ranks = safe_ranks * fmask       # same as safe_ranks
+        sum_xy = masked_ranks.T @ masked_ranks  # (K, K)
+
+        safe_sq = safe_ranks ** 2
+        sum_x2 = safe_sq.T @ fmask              # (K, K)
+        sum_y2 = fmask.T @ safe_sq              # (K, K)
+
+        nobs_safe = jnp.where(nobs > 0, nobs, 1.0)
+        ssx = sum_x2 - sum_x ** 2 / nobs_safe
+        ssy = sum_y2 - sum_y ** 2 / nobs_safe
+        sxy = sum_xy - (sum_x * sum_y) / nobs_safe
+
+        denom = jnp.sqrt(ssx * ssy)
+        result = jnp.where(denom > 0, sxy / denom, jnp.nan)
+        result = jnp.clip(result, -1.0, 1.0)
+
+        # Enforce minp
+        result = jnp.where(nobs < minp, jnp.nan, result)
 
         return result
 

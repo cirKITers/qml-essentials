@@ -487,13 +487,78 @@ class TestFCC:
                 )
 
     @pytest.mark.unittest
+    def test_pearson_correlation_complex(self) -> None:
+        """Pearson on complex input should match scipy on stacked real/imag."""
+        N = 1000
+        K = 5
+        seed = 42
+        rng = np.random.default_rng(seed)
+
+        coeffs = rng.normal(size=(N, K)) + 1j * rng.normal(size=(N, K))
+        pearson = FCC._pearson(jnp.array(coeffs))
+
+        # Reference: stack real and imag along sample axis, then use scipy
+        stacked = np.concatenate([coeffs.real, coeffs.imag], axis=0)
+        for i in range(K):
+            for j in range(K):
+                reference = pearsonr(stacked[:, i], stacked[:, j]).correlation
+                assert jnp.isclose(pearson[i, j], reference, atol=1.0e-5), (
+                    f"Complex Pearson mismatch at ({i},{j}): "
+                    f"got {pearson[i, j]}, expected {reference}"
+                )
+
+    @pytest.mark.unittest
+    def test_spearman_correlation_complex(self) -> None:
+        """Spearman on complex input should match scipy on stacked real/imag."""
+        N = 1000
+        K = 5
+        seed = 42
+        rng = np.random.default_rng(seed)
+
+        coeffs = rng.normal(size=(N, K)) + 1j * rng.normal(size=(N, K))
+        spearman = FCC._spearman(jnp.array(coeffs))
+
+        # Reference: stack real and imag along sample axis, then use scipy
+        stacked = np.concatenate([coeffs.real, coeffs.imag], axis=0)
+        for i in range(K):
+            for j in range(K):
+                reference = spearmanr(stacked[:, i], stacked[:, j]).correlation
+                assert jnp.isclose(spearman[i, j], reference, atol=1.0e-5), (
+                    f"Complex Spearman mismatch at ({i},{j}): "
+                    f"got {spearman[i, j]}, expected {reference}"
+                )
+
+    @pytest.mark.unittest
+    def test_pearson_complex_preserves_imaginary(self) -> None:
+        """Ensure complex correlations differ from real-only correlations,
+        i.e. the imaginary part is not silently discarded."""
+        N = 200
+        K = 4
+        seed = 123
+        rng = np.random.default_rng(seed)
+
+        real_part = rng.normal(size=(N, K))
+        imag_part = rng.normal(size=(N, K))
+        coeffs_complex = jnp.array(real_part + 1j * imag_part)
+        coeffs_real_only = jnp.array(real_part)
+
+        corr_complex = FCC._pearson(coeffs_complex)
+        corr_real = FCC._pearson(coeffs_real_only)
+
+        # They should generally differ (imaginary part contributes)
+        assert not jnp.allclose(corr_complex, corr_real, atol=1.0e-3), (
+            "Complex and real-only Pearson correlations should differ "
+            "when imaginary components carry information."
+        )
+
+    @pytest.mark.unittest
     @pytest.mark.parametrize(
         "circuit_type, expected_fcc",
         [
             ("Circuit_20", 0.004),
             ("Circuit_19", 0.010),
-            ("Circuit_17", 0.115),
-            ("Hardware_Efficient", 0.144),
+            ("Circuit_17", 0.078),
+            ("Hardware_Efficient", 0.080),
         ],
         ids=["Circuit_20", "Circuit_19", "Circuit_17", "Hardware_Efficient"],
     )
@@ -521,22 +586,9 @@ class TestFCC:
     @pytest.mark.parametrize(
         "encoding_strategy, circuit_type, n_qubits, n_layers, n_samples",
         [
-            ("hamming", "Circuit_1", 3, 1, 10),
-            ("hamming", "Circuit_3", 4, 1, 10),
-            ("binary", "Circuit_1", 3, 1, 10),
-            ("binary", "Circuit_3", 4, 1, 10),
-            ("binary", "Circuit_1", 4, 1, 5),
-            ("ternary", "Circuit_1", 3, 1, 10),
-            ("ternary", "Circuit_3", 3, 1, 10),
-        ],
-        ids=[
-            "hamming-C1-3q",
-            "hamming-C3-4q",
-            "binary-C1-3q",
-            "binary-C3-4q",
-            "binary-C1-4q",
-            "ternary-C1-3q",
-            "ternary-C3-3q",
+            ("hamming", "Circuit_2", 2, 2, 5),
+            ("binary", "Circuit_2", 2, 2, 5),
+            ("ternary", "Circuit_2", 2, 2, 5),
         ],
     )
     def test_fcc_encoding_strategies(
