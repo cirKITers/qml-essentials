@@ -517,6 +517,87 @@ class TestFCC:
             fcc, expected_fcc, atol=3.0e-2
         ), f"Wrong FCC for {circuit_type}. Got {fcc}, expected {expected_fcc}."
 
+    @pytest.mark.unittest
+    @pytest.mark.parametrize(
+        "encoding_strategy, circuit_type, n_qubits, n_layers, n_samples",
+        [
+            ("hamming", "Circuit_1", 3, 1, 10),
+            ("hamming", "Circuit_3", 4, 1, 10),
+            ("binary", "Circuit_1", 3, 1, 10),
+            ("binary", "Circuit_3", 4, 1, 10),
+            ("binary", "Circuit_1", 4, 1, 5),
+            ("ternary", "Circuit_1", 3, 1, 10),
+            ("ternary", "Circuit_3", 3, 1, 10),
+        ],
+        ids=[
+            "hamming-C1-3q",
+            "hamming-C3-4q",
+            "binary-C1-3q",
+            "binary-C3-4q",
+            "binary-C1-4q",
+            "ternary-C1-3q",
+            "ternary-C3-3q",
+        ],
+    )
+    def test_fcc_encoding_strategies(
+        self, encoding_strategy, circuit_type, n_qubits, n_layers, n_samples
+    ) -> None:
+        """
+        Test that the FCC is bounded in [0, 1] for Hamming, Binary,
+        and Ternary encoding strategies.
+        """
+        enc = Encoding(encoding_strategy, "RX")
+        model = Model(
+            n_qubits=n_qubits,
+            n_layers=n_layers,
+            circuit_type=circuit_type,
+            encoding=enc,
+            output_qubit=-1,
+        )
+
+        # Verify spectrum computation succeeds
+        model.initialize_params(repeat=n_samples)
+        coeffs, freqs = Coefficients.get_spectrum(
+            model, shift=True, trim=True, force_mean=True, execution_type="expval"
+        )
+        assert coeffs.shape[0] == model.degree[0], (
+            f"Wrong number of coefficients for {encoding_strategy}: "
+            f"{coeffs.shape[0]}, expected {model.degree[0]}"
+        )
+
+        # Verify correlation values are bounded
+        fp_pearson = FCC._correlate(coeffs.transpose(), method="pearson")
+        assert np.all(np.abs(fp_pearson[np.isfinite(fp_pearson)]) <= 1.0 + 1e-10), (
+            f"Pearson correlation out of [-1, 1] for {encoding_strategy}. "
+            f"Max |r| = {np.max(np.abs(fp_pearson[np.isfinite(fp_pearson)]))}"
+        )
+
+        fp_spearman = FCC._correlate(coeffs.transpose(), method="spearman")
+        assert np.all(
+            np.abs(fp_spearman[np.isfinite(fp_spearman)]) <= 1.0 + 1e-10
+        ), (
+            f"Spearman correlation out of [-1, 1] for {encoding_strategy}. "
+            f"Max |rho| = {np.max(np.abs(fp_spearman[np.isfinite(fp_spearman)]))}"
+        )
+
+        # Verify FCC is bounded in [0, 1] with both methods
+        for method in ["pearson", "spearman"]:
+            fcc = FCC.get_fcc(
+                model, n_samples=n_samples, method=method, trim_redundant=True
+            )
+            assert 0.0 <= float(fcc) <= 1.0, (
+                f"FCC out of [0, 1] for {encoding_strategy}/{method}: {float(fcc)}"
+            )
+
+            # Also test without trimming
+            fcc_untrimmed = FCC.get_fcc(
+                model, n_samples=n_samples, method=method, trim_redundant=False
+            )
+            assert 0.0 <= float(fcc_untrimmed) <= 1.0, (
+                f"FCC (untrimmed) out of [0, 1] for "
+                f"{encoding_strategy}/{method}: {float(fcc_untrimmed)}"
+            )
+
     @pytest.mark.smoketest
     @pytest.mark.parametrize(
         "circuit_type",
