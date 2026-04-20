@@ -1314,17 +1314,14 @@ class FCC:
         sum_x = safe.T @ fmask   # (K, K) – row-var sums
         sum_y = fmask.T @ safe   # (K, K) – col-var sums
 
-        # Means per pair
-        mean_x = jnp.where(nobs > 0, sum_x / nobs, 0.0)  # (K, K)
-        mean_y = jnp.where(nobs > 0, sum_y / nobs, 0.0)  # (K, K)
+        # Note: explicit means (sum_x/nobs, sum_y/nobs) are not needed as
+        # separate variables — the computational formula used below
+        # (e.g. ssx = Σx² − (Σx)²/n) implicitly handles mean-centering.
 
-        # Cross products, sum-of-squares
-        # For each pair (i, j) we need:
-        #   ssx = sum (x - mean_x)^2,  ssy = sum (y - mean_y)^2,
-        #   sxy = sum (x - mean_x)(y - mean_y)
-        # Expanding:  sxy = sum(x*y) - n*mean_x*mean_y
-        # with masked entries:
-        #   sum_xy[i,j] = sum_n safe[n,i]*safe[n,j] * mask[n,i]*mask[n,j]
+        # Cross products, sum-of-squares via computational formula:
+        #   ssx = Σx² − (Σx)²/n,  ssy = Σy² − (Σy)²/n,
+        #   sxy = Σxy − (Σx)(Σy)/n
+        # All sums are taken over the pairwise-valid subset for each (i,j).
         masked = safe * fmask  # same as safe but explicit
         sum_xy = masked.T @ masked          # (K, K)
 
