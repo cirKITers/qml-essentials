@@ -263,6 +263,8 @@ class Yaqsi:
         to avoid complex arithmetic inside the ODE RHS.
         Avoids dynamic ``jnp.where`` branching for the time span.
 
+        TODO: switch backonce diffrax is stable with complex arithmetic
+
         Args:
             ph: A :class:`ParametrizedHamiltonian` holding the coefficient
                 function, the Hamiltonian matrix, and wire indices.
