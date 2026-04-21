@@ -714,7 +714,7 @@ class DiagonalQubitUnitary(Operation):
 
     Args:
         diag: 1-D array of ``2**k`` complex values on the unit circle.
-        wires: Qubit indices this gate acts on (must satisfy ``2**len(wires) == len(diag)``).
+        wires: Qubit indices this gate acts on (s.t. ``2**len(wires) == len(diag)``).
         **kwargs: Forwarded to :class:`Operation`.
     """
 
