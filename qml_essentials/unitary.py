@@ -580,7 +580,7 @@ class UnitaryGates:
         """
         wires_list = list(wires) if isinstance(wires, (list, tuple)) else [wires]
         d = 2 ** len(wires_list)
-        marks = jnp.array(golomb_ruler(d), dtype=jnp.float64)
+        marks = jnp.array(golomb_ruler(d), dtype=float)
 
         # Apply gate error to the input angle
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
