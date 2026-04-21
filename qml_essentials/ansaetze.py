@@ -785,22 +785,26 @@ class Encoding:
         ValueError
             If there is an error parsing the Gates.
         """
-        if strategy not in ["hamming", "binary", "ternary"]:
+        if strategy not in ["hamming", "binary", "ternary", "golomb"]:
             raise ValueError(
                 f"Encoding strategy {strategy} not implemented. "
-                "Available options: ['hamming', 'binary', 'ternary']"
+                "Available options: ['hamming', 'binary', 'ternary', 'golomb']"
             )
         self._strategy = strategy
-        strategy = getattr(self, strategy)
+        strategy_fn = getattr(self, strategy)
 
-        log.debug(f"Using encoding strategy: '{strategy.__name__}'")
+        log.debug(f"Using encoding strategy: '{strategy_fn.__name__}'")
 
-        try:
-            self._gates = Gates.parse_gates(gates, Gates)
-        except ValueError as e:
-            raise ValueError(f"Error parsing encodings: {e}")
+        if self._strategy == "golomb":
+            self._gates = []
+            self.callable = [strategy_fn(None)]
+        else:
+            try:
+                self._gates = Gates.parse_gates(gates, Gates)
+            except ValueError as e:
+                raise ValueError(f"Error parsing encodings: {e}")
 
-        self.callable = [strategy(g) for g in self._gates]
+            self.callable = [strategy_fn(g) for g in self._gates]
 
     def __len__(self):
         return len(self.callable)
@@ -829,6 +833,18 @@ class Encoding:
             return int(2 ** (omegas + 1) - 1)
         elif self._strategy == "ternary":
             return int(3 ** (omegas))
+        elif self._strategy == "golomb":
+            from qml_essentials.unitary import golomb_ruler
+
+            n_qubits = getattr(self, "_n_qubits", None)
+            if n_qubits is None:
+                # Fallback: treat omegas as number of encoding gates
+                # and assume 2 qubits minimum
+                return int(2 * omegas + 1)
+            d = 2 ** n_qubits
+            marks = golomb_ruler(d)
+            max_mark = max(marks)
+            return int(2 * omegas * max_mark + 1)
         else:
             raise NotImplementedError
 
@@ -839,6 +855,8 @@ class Encoding:
         Hamming: {-n_q -(n_q-1), ..., n_q}
         Binary: {-2^{n_q}+1, ..., 2^{n_q}-1}
         Ternary: {-floor(3^{n_q}/2), ..., floor(3^(n_q)/2)}
+        Golomb: all pairwise differences of Golomb ruler marks,
+                scaled by the number of encoding applications
 
         See https://doi.org/10.22331/q-2023-12-20-1210 for more details.
 
@@ -858,6 +876,17 @@ class Encoding:
             return np.arange(-(2**omegas) + 1, 2**omegas)
         elif self._strategy == "ternary":
             limit = int(np.floor(3**omegas / 2))
+            return np.arange(-limit, limit + 1)
+        elif self._strategy == "golomb":
+            from qml_essentials.unitary import golomb_ruler
+
+            n_qubits = getattr(self, "_n_qubits", None)
+            if n_qubits is None:
+                return np.arange(-omegas, omegas + 1)
+            d = 2 ** n_qubits
+            marks = golomb_ruler(d)
+            max_mark = max(marks)
+            limit = omegas * max_mark
             return np.arange(-limit, limit + 1)
         else:
             raise NotImplementedError
@@ -932,5 +961,41 @@ class Encoding:
 
         return _enc
 
+    @property
+    def is_golomb(self):
+        """Whether this encoding uses the Golomb (multi-qubit diagonal) strategy."""
+        return self._strategy == "golomb"
+
     def golomb(self, enc):
-        raise NotImplementedError
+        """Golomb encoding strategy.
+
+        Returns a callable that applies a multi-qubit diagonal unitary
+        ``S(x) = exp(-i H x)`` where ``H = diag(golomb_marks)`` to all
+        qubits simultaneously.  This produces the largest possible
+        ``|Ω| = d(d-1)+1`` for any *d*-dimensional Hamiltonian, with
+        ``|R(k)| = 1`` for all nonzero frequencies *k*.
+
+        Unlike the other strategies, Golomb encoding does *not* wrap a
+        per-qubit gate.  Instead, the model's ``_iec`` method detects
+        ``is_golomb`` and applies a single ``GolombEncoding`` gate on
+        all qubits.
+
+        See Peters et al., arXiv:2209.05523, Sec. 3.1 and Appendix C.4.
+
+        Parameters
+        ----------
+        enc : Callable or None
+            Ignored (Golomb encoding uses its own multi-qubit gate).
+
+        Returns
+        -------
+        Callable
+            A callable with the same signature as per-qubit encoding
+            functions but that applies ``Gates.GolombEncoding``.
+        """
+
+        def _enc(inputs, wires, **kwargs):
+            # `wires` here is a list of all qubit indices, set by _iec
+            Gates.GolombEncoding(w=inputs, wires=wires, **kwargs)
+
+        return _enc

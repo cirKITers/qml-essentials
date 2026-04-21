@@ -216,6 +216,7 @@ class Gates(metaclass=GatesMeta):
             "CRX",
             "CRY",
             "CRZ",
+            "GolombEncoding",
         ]
 
     @staticmethod
