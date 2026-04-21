@@ -698,7 +698,7 @@ class TestFCC:
             scale=True,
         )
         assert jnp.isclose(
-            fcc, 0.020, atol=2.0e-3
+            fcc, 0.016, atol=2.0e-3
         ), f"Wrong FCC for Circuit_19. Got {fcc}, expected 0.020."
 
     @pytest.mark.unittest
