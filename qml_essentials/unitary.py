@@ -56,8 +56,8 @@ def golomb_ruler(d: int) -> Tuple[int, ...]:
     A Golomb ruler is a set of *d* non-negative integers such that all
     pairwise differences are distinct.  When used as the diagonal of a
     data-encoding Hamiltonian ``H = diag(marks)``, the resulting Fourier
-    spectrum ``Ω`` has ``|Ω| = d(d-1) + 1`` distinct frequencies with
-    ``|R(k)| = 1`` for all ``k ≠ 0`` — the minimal possible degeneracy
+    spectrum ``\\Omega`` has ``|\\Omega| = d(d-1) + 1`` distinct frequencies 
+    with ``|R(k)| = 1`` for all ``k ≠ 0`` — the minimal possible degeneracy
     for any *d*-dimensional Hamiltonian.
 
     Uses a greedy construction that always produces a valid ruler.
@@ -561,7 +561,7 @@ class UnitaryGates:
         ``H = diag(g_0, g_1, ..., g_{d-1})`` and the ``g_j`` are the marks
         of a Golomb ruler of order ``d = 2^len(wires)``.  This produces a
         maximally non-degenerate Fourier spectrum with
-        ``|Ω| = d(d-1) + 1`` distinct frequencies, each with degeneracy
+        ``|\\Omega| = d(d-1) + 1`` distinct frequencies, each with degeneracy
         ``|R(k)| = 1``.
 
         See Peters et al., arXiv:2209.05523, Sec. 3.1 and Appendix C.4.
