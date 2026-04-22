@@ -708,6 +708,89 @@ class RandomUnitary(Operation):
         super().__init__(wires, matrix=H, record=record)
 
 
+class DiagonalQubitUnitary(Operation):
+    """A diagonal unitary gate specified by its diagonal entries.
+
+    Implements ``U = diag(d_0, d_1, ..., d_{2^k-1})`` where each ``d_i`` lies
+    on the unit circle.  This is the natural gate for data-encoding
+    Hamiltonians of the form ``S(x) = exp(-i H x)`` where *H* is diagonal in
+    the computational basis (see Peters et al., arXiv:2209.05523).
+
+    The Golomb encoding strategy uses this gate with diagonal entries
+    ``exp(-i * golomb_marks * x)`` to achieve a maximally non-degenerate
+    Fourier spectrum.
+
+    Args:
+        diag: 1-D array of ``2**k`` complex values on the unit circle.
+        wires: Qubit indices this gate acts on (s.t. ``2**len(wires) == len(diag)``).
+        **kwargs: Forwarded to :class:`Operation`.
+    """
+
+    # Do NOT list "diag" in _param_names — the array is not a scalar
+    # parameter and would break drawing helpers that call float(p).
+    _param_names = ()
+
+    def __init__(
+        self,
+        diag: jnp.ndarray,
+        wires: Union[int, List[int]] = 0,
+        **kwargs,
+    ) -> None:
+        self.diag = diag
+        wires_list = list(wires) if isinstance(wires, (list, tuple)) else [wires]
+        expected_dim = 2 ** len(wires_list)
+        if diag.shape != (expected_dim,):
+            raise ValueError(
+                f"DiagonalQubitUnitary expects {expected_dim} diagonal entries "
+                f"for {len(wires_list)} wire(s), got shape {diag.shape}"
+            )
+        mat = jnp.diag(diag)
+        # Use a descriptive name for drawing
+        kwargs.setdefault("name", "DiagU")
+        super().__init__(wires=wires, matrix=mat, **kwargs)
+
+    def apply_to_state(self, state: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
+        """Apply diagonal gate via element-wise multiplication.
+
+        For a diagonal unitary, the full ``2^n``-dimensional diagonal is
+        constructed by appropriate Kronecker-product embedding and the gate
+        is applied as an element-wise product, which is significantly cheaper
+        than generic matrix contraction for large qubit counts.
+
+        Args:
+            state: Statevector of shape ``(2**n_qubits,)``.
+            n_qubits: Total number of qubits in the circuit.
+
+        Returns:
+            Updated statevector of shape ``(2**n_qubits,)``.
+        """
+        k = len(self.wires)
+        if k == n_qubits and self.wires == list(range(n_qubits)):
+            # Gate acts on all qubits in order — direct element-wise multiply
+            return state * self.diag
+        # Fall back to general tensor contraction for arbitrary wire subsets
+        return super().apply_to_state(state, n_qubits)
+
+    def apply_to_density(self, rho: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
+        """Apply diagonal gate to density matrix: rho -> U rho U†.
+
+        For diagonal U the transformation is
+        ``rho_ij -> d_i * conj(d_j) * rho_ij``.
+
+        Args:
+            rho: Density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
+            n_qubits: Total number of qubits in the circuit.
+
+        Returns:
+            Updated density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
+        """
+        k = len(self.wires)
+        if k == n_qubits and self.wires == list(range(n_qubits)):
+            d = self.diag
+            return d[:, None] * jnp.conj(d)[None, :] * rho
+        return super().apply_to_density(rho, n_qubits)
+
+
 class Barrier(Operation):
     """Barrier operation — a no-op used for visual circuit separation.
 
