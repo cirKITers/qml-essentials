@@ -630,3 +630,33 @@ def test_cphase_gate():
     # 8) Gates.is_entangling and is_rotational recognize CPhase
     assert Gates.is_entangling(Gates.CPhase), "CPhase should be entangling"
     assert Gates.is_rotational(Gates.CPhase), "CPhase should be rotational"
+
+
+cphase_pulse_testdata = [0.0, np.pi / 4, np.pi / 2, np.pi]
+
+
+@pytest.mark.unittest
+@pytest.mark.parametrize("w", cphase_pulse_testdata)
+def test_cphase_pulse_gate(w):
+    """Validate CPhase pulse decomposition against the unitary gate.
+
+    Note: The pulse decomposition of CPhase introduces a global phase
+    of exp(i*w/4) relative to the exact diagonal unitary. Since global
+    phase is physically unobservable, we only check fidelity here.
+    """
+    gate = "CPhase"
+    qoc = QOC(**default_qoc_params)
+    pulse_circuit, target_circuit = qoc.create_CPhase()
+    pulse_script = ys.Script(pulse_circuit, n_qubits=2)
+    target_script = ys.Script(target_circuit, n_qubits=2)
+
+    state_pulse = pulse_script.execute(
+        type="state", args=(w, pinfo.gate_by_name(gate).params)
+    )
+    state_target = target_script.execute(type="state", args=(w,))
+
+    fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
+    assert fidelity <= 1.0 + 1e-6, f"Fidelity of {gate} can't be larger 1 for w={w}"
+    assert np.isclose(
+        fidelity, 1.0, atol=1e-2
+    ), f"Fidelity too low for w={w}: {fidelity}"
