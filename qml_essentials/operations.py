@@ -343,7 +343,7 @@ class Operation:
         be disjoint.
 
         Returns:
-            A new :class:`Operation` whose matrix is 
+            A new :class:`Operation` whose matrix is
             ``self.matrix \\otimes other.matrix``
             and whose wires are the concatenation of both wire lists.
 
