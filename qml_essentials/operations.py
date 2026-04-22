@@ -500,16 +500,16 @@ class Hermitian(Operation):
             record=record,
         )
 
-    def __rmul__(self, coeff_fn):
+    def __rmul__(self, coeff_fn: Callable) -> "ParametrizedHamiltonian":
         """Support ``coeff_fn * Hermitian`` -> :class:`ParametrizedHamiltonian`.
 
         Args:
-            coeff_fn: A callable ``(params, t) -> scalar`` giving the
+            coeff_fn (Callable): A callable ``(params, t) -> scalar`` giving the
                 time-dependent coefficient.
 
         Returns:
-            A :class:`ParametrizedHamiltonian` pairing *coeff_fn* with this
-            operator's matrix and wires.
+            ParametrizedHamiltonian: A :class:`ParametrizedHamiltonian` pairing
+                *coeff_fn* with this operator's matrix and wires.
 
         Raises:
             TypeError: If *coeff_fn* is not callable.
@@ -678,13 +678,21 @@ class SWAP(Operation):
 class RandomUnitary(Operation):
     """Creates a random hermitian matrix and applies it as a gate."""
 
-    def __init__(self, wires, key, scale=1.0, record=True):
+    def __init__(
+        self,
+        wires: Union[int, List[int]],
+        key: jax.random.PRNGKey,
+        scale: float = 1.0,
+        record: bool = True,
+    ) -> None:
         """Initialise a random unitary gate.
 
         Args:
-            wires: Qubit index or list of qubit indices this gate acts on.
-            jax.random.PRNGKey: PRNGKey for randomization
-            scale: Scale of the random unitary (default: 1.0)
+            wires (Union[int, List[int]]): Qubit index or list of qubit indices
+                this gate acts on.
+            key (jax.random.PRNGKey): PRNGKey for randomization.
+            scale (float): Scale of the random unitary (default: 1.0).
+            record (bool): Whether to record this gate on the active tape.
         """
         dim = 2 ** len(wires)
         key_a, key_b = jax.random.split(key)

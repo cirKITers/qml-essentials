@@ -24,8 +24,10 @@ log = logging.getLogger(__name__)
 
 
 class Coefficients:
-    @staticmethod
+
+    @classmethod
     def get_spectrum(
+        cls,
         model: Model,
         mfs: int = 1,
         mts: int = 1,
@@ -61,9 +63,7 @@ class Coefficients:
         kwargs.setdefault("force_mean", True)
         kwargs.setdefault("execution_type", "expval")
 
-        coeffs, freqs = Coefficients._fourier_transform(
-            model, mfs=mfs, mts=mts, **kwargs
-        )
+        coeffs, freqs = cls._fourier_transform(model, mfs=mfs, mts=mts, **kwargs)
 
         if not jnp.isclose(jnp.sum(coeffs).imag, 0.0, rtol=1.0e-5):
             raise ValueError(
@@ -94,9 +94,9 @@ class Coefficients:
 
         return coeffs, freqs
 
-    @staticmethod
+    @classmethod
     def _fourier_transform(
-        model: Model, mfs: int, mts: int, **kwargs: Any
+        cls, model: Model, mfs: int, mts: int, **kwargs: Any
     ) -> jnp.ndarray:
         # Create a frequency vector with as many frequencies as model degrees,
         # oversampled by mfs
@@ -138,8 +138,8 @@ class Coefficients:
             freqs,
         )
 
-    @staticmethod
-    def get_psd(coeffs: jnp.ndarray) -> jnp.ndarray:
+    @classmethod
+    def get_psd(cls, coeffs: jnp.ndarray) -> jnp.ndarray:
         """
         Calculates the power spectral density (PSD) from given Fourier coefficients.
 
@@ -157,8 +157,9 @@ class Coefficients:
         scale = 2.0 / (len(coeffs) ** 2)
         return scale * abs2(coeffs)
 
-    @staticmethod
+    @classmethod
     def evaluate_Fourier_series(
+        cls,
         coefficients: jnp.ndarray,
         frequencies: jnp.ndarray,
         inputs: Union[jnp.ndarray, list, float],
@@ -320,7 +321,7 @@ class FourierTree:
                 sin_list (List[int]): Current number of sine contributions for each
                     parameter. Has the same length as the parameters, as each
                     position corresponds to one parameter.
-                cos_list (List[int]):  Current number of cosine contributions for
+                cos_list (List[int]): Current number of cosine contributions for
                     each parameter. Has the same length as the parameters, as each
                     position corresponds to one parameter.
                 existing_leafs (List[TreeLeaf]): Current list of leaf nodes from
@@ -374,7 +375,7 @@ class FourierTree:
             sin_indices (List[int]): Current number of sine contributions for each
                 parameter. Has the same length as the parameters, as each
                 position corresponds to one parameter.
-            cos_list (List[int]):  Current number of cosine contributions for
+            cos_indices (List[int]): Current number of cosine contributions for
                 each parameter. Has the same length as the parameters, as each
                 position corresponds to one parameter.
             term (jnp.complex): Constant factor of the leaf, depending on the
@@ -1001,8 +1002,10 @@ class FourierTree:
 
 
 class FCC:
-    @staticmethod
+
+    @classmethod
     def get_fcc(
+        cls,
         model: Model,
         n_samples: int,
         random_key: Optional[random.PRNGKey] = None,
@@ -1036,12 +1039,13 @@ class FCC:
                 Defaults to False.
             trim_redundant (Optional[bool], optional): Whether to remove redundant
                 correlations. Defaults to False.
-            **kwargs: Additional keyword arguments for the model function.
+            **kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
             float: The FCC
         """
-        fourier_fingerprint, _ = FCC.get_fourier_fingerprint(
+
+        fourier_fingerprint, _ = cls.get_fourier_fingerprint(
             model,
             n_samples,
             random_key,
@@ -1052,9 +1056,11 @@ class FCC:
             **kwargs,
         )
 
-        return FCC.calculate_fcc(fourier_fingerprint)
+        return cls.calculate_fcc(fourier_fingerprint)
 
+    @classmethod
     def get_fourier_fingerprint(
+        cls,
         model: Model,
         n_samples: int,
         random_key: Optional[random.PRNGKey] = None,
@@ -1063,7 +1069,7 @@ class FCC:
         weight: Optional[bool] = False,
         trim_redundant: Optional[bool] = True,
         nan_to_one: Optional[bool] = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Shortcut method to get just the fourier fingerprint.
@@ -1093,11 +1099,11 @@ class FCC:
             Tuple[jnp.ndarray, jnp.ndarray]: The fourier fingerprint
             and the frequency indices
         """
-        _, coeffs, freqs = FCC._calculate_coefficients(
+        _, coeffs, freqs = cls._calculate_coefficients(
             model, n_samples, random_key, scale, **kwargs
         )
 
-        fourier_fingerprint = FCC._correlate(coeffs.transpose(), method=method)
+        fourier_fingerprint = cls._correlate(coeffs.transpose(), method=method)
 
         if nan_to_one:
             # set nan to 1
@@ -1105,11 +1111,11 @@ class FCC:
 
         # perform weighting if requested
         fourier_fingerprint = (
-            FCC._weighting(fourier_fingerprint) if weight else fourier_fingerprint
+            cls._weighting(fourier_fingerprint) if weight else fourier_fingerprint
         )
 
         if trim_redundant:
-            mask = FCC._calculate_mask(freqs)
+            mask = cls._calculate_mask(freqs)
 
             # apply the mask on the fingerprint
             fourier_fingerprint = mask * fourier_fingerprint
@@ -1121,8 +1127,9 @@ class FCC:
 
         return fourier_fingerprint, freqs
 
-    @staticmethod
+    @classmethod
     def calculate_fcc(
+        cls,
         fourier_fingerprint: jnp.ndarray,
     ) -> float:
         """
@@ -1131,14 +1138,15 @@ class FCC:
         The Fingerprint can be obtained via `get_fourier_fingerprint`
 
         Args:
-            coeff_coeff_correlation (jnp.ndarray): Correlation matrix of coefficients
+            fourier_fingerprint (jnp.ndarray): Correlation matrix of coefficients
         Returns:
             float: The FCC
         """
         # apply the mask on the fingerprint
         return jnp.nanmean(jnp.abs(fourier_fingerprint))
 
-    def _calculate_mask(freqs: jnp.ndarray) -> jnp.ndarray:
+    @classmethod
+    def _calculate_mask(cls, freqs: jnp.ndarray) -> jnp.ndarray:
         """
         Method to calculate a mask filtering out redundant elements
         of the Fourier correlation matrix, based on the provided frequency vector.
@@ -1175,13 +1183,14 @@ class FCC:
 
         return corr_mask
 
-    @staticmethod
+    @classmethod
     def _calculate_coefficients(
+        cls,
         model: Model,
         n_samples: int,
         random_key: Optional[random.PRNGKey] = None,
         scale: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Calculates the Fourier coefficients of a given model
@@ -1218,8 +1227,8 @@ class FCC:
 
         return model.params, coeffs, freqs
 
-    @staticmethod
-    def _correlate(mat: jnp.ndarray, method: str = "pearson") -> jnp.ndarray:
+    @classmethod
+    def _correlate(cls, mat: jnp.ndarray, method: str = "pearson") -> jnp.ndarray:
         """
         Correlates two arrays using `method`.
         Currently, `pearson` and `spearman` are supported.
@@ -1245,11 +1254,13 @@ class FCC:
         # such that after correlation, all positive indexed coefficients
         # will be in the bottom right quadrant
         if method == "pearson":
-            result = FCC._pearson(mat.reshape(mat.shape[0], -1))
-            # result = FCC._pearson(mat.reshape(mat.shape[-1], -1, order="F"))
+
+            result = cls._pearson(mat.reshape(mat.shape[0], -1))
+            # result = cls._pearson(mat.reshape(mat.shape[-1], -1, order="F"))
         elif method == "spearman":
-            result = FCC._spearman(mat.reshape(mat.shape[0], -1))
-            # result = FCC._spearman(mat.reshape(mat.shape[-1], -1, order="F"))
+
+            result = cls._spearman(mat.reshape(mat.shape[0], -1))
+            # result = cls._spearman(mat.reshape(mat.shape[-1], -1, order="F"))
         else:
             raise ValueError(
                 f"Unknown correlation method: {method}. \
@@ -1258,9 +1269,9 @@ class FCC:
 
         return result
 
-    @staticmethod
+    @classmethod
     def _pearson(
-        mat: jnp.ndarray, cov: Optional[bool] = False, minp: Optional[int] = 1
+        cls, mat: jnp.ndarray, cov: Optional[bool] = False, minp: Optional[int] = 1
     ) -> jnp.ndarray:
         """
         Based on Pandas correlation method as implemented here:
@@ -1269,9 +1280,16 @@ class FCC:
         Compute Pearson correlation between columns of `mat`,
         permitting missing values (NaN or ±Inf).
 
+        If the input is complex, real and imaginary parts are stacked along
+        the sample axis so that both components contribute to the correlation
+        without discarding information.
+
         Args:
             mat : array_like, shape (N, K)
                 Input data.
+            cov : bool, optional
+                If True, return the sample covariance matrix instead of
+                correlation. Defaults to False.
             minp : int, optional
                 Minimum number of paired observations required to form a correlation.
                 If the number of valid pairs for (i, j) is < minp, the result is NaN.
@@ -1280,70 +1298,80 @@ class FCC:
             corr : ndarray, shape (K, K)
                 Pearson correlation matrix.
         """
+        # Preserve complex information by splitting into real / imag samples
+        if jnp.iscomplexobj(mat):
+            mat = jnp.concatenate([mat.real, mat.imag], axis=0)
 
-        mat = jnp.asarray(mat, dtype=jnp.float64)
-        N, K = mat.shape
+        mat = jnp.asarray(mat)
 
-        # pre‐compute finite‐mask
+        # pre-compute finite mask  (N, K)
         mask = jnp.isfinite(mat)
+        fmask = mask.astype(mat.dtype)
 
-        # output
-        result = np.empty((K, K), dtype=jnp.float64)
+        # Replace non-finite entries with 0 so arithmetic is safe;
+        # the mask keeps track of validity.
+        safe = jnp.where(mask, mat, 0.0)
 
-        # TODO: optimize in future iterations
-        # loop over column‐pairs
-        for i in range(K):
-            for j in range(i + 1):
-                # find rows where both columns are finite
-                m = mask[:, i] & mask[:, j]
-                n = jnp.count_nonzero(m)
-                if n < minp:
-                    # too few pairs
-                    value = jnp.nan
-                else:
-                    x = mat[m, i]
-                    y = mat[m, j]
+        # Pairwise valid-observation counts  (K, K)
+        nobs = fmask.T @ fmask
 
-                    # compute means
-                    mean_x = x.mean()
-                    mean_y = y.mean()
+        # Pairwise sums (only over mutually valid rows)
+        # For columns i, j the "valid" rows are mask[:,i] & mask[:,j].
+        # sum_x[i,j] = sum of mat[:,i] where both i and j are valid.
+        # Using: safe[:,i] * mask[:,j] zeroes out rows invalid for j.
+        # Then summing over N gives sum_x[i,j].
+        # safe.T @ fmask  gives (K, K) where entry (i,j) = sum of safe[:,i]*mask[:,j]
+        sum_x = safe.T @ fmask  # (K, K) – row-var sums
+        sum_y = fmask.T @ safe  # (K, K) – col-var sums
 
-                    # demeaned data
-                    dx = x - mean_x
-                    dy = y - mean_y
+        # Note: explicit means (sum_x/nobs, sum_y/nobs) are not needed as
+        # separate variables — the computational formula used below
+        # (e.g. ssx = Σx² − (Σx)²/n) implicitly handles mean-centering.
 
-                    # sum of squares and cross‐prod
-                    ssx = jnp.dot(dx, dx)
-                    ssy = jnp.dot(dy, dy)
-                    cxy = jnp.dot(dx, dy)
+        # Cross products, sum-of-squares via computational formula:
+        #   ssx = Σx² − (Σx)²/n,  ssy = Σy² − (Σy)²/n,
+        #   sxy = Σxy − (Σx)(Σy)/n
+        # All sums are taken over the pairwise-valid subset for each (i,j).
+        masked = safe * fmask  # same as safe but explicit
+        sum_xy = masked.T @ masked  # (K, K)
 
-                    if cov:
-                        # sample covariance (denominator n−1)
-                        value = cxy / (n - 1) if n > 1 else jnp.nan
-                    else:
-                        # Pearson r = cov / (σx σy)
-                        denom = jnp.sqrt(ssx * ssy)
-                        if denom == 0.0:
-                            value = jnp.nan
-                        else:
-                            value = cxy / denom
-                            # clip numerical drift
-                            if value > 1.0:
-                                value = 1.0
-                            elif value < -1.0:
-                                value = -1.0
+        # ssx[i,j] = sum_xx_ij - nobs * mean_x^2   (but sum_xx_ij uses pair mask)
+        # We need sum of x^2 over the *pair* mask, not just column mask.
+        # sum_x2[i,j] = sum_n  safe[n,i]^2 * mask[n,i] * mask[n,j]
+        safe_sq = safe**2
+        sum_x2 = safe_sq.T @ fmask  # (K, K)
+        sum_y2 = fmask.T @ safe_sq  # (K, K)
 
-                result[i, j] = result[j, i] = value
+        ssx = sum_x2 - sum_x**2 / jnp.where(nobs > 0, nobs, 1.0)
+        ssy = sum_y2 - sum_y**2 / jnp.where(nobs > 0, nobs, 1.0)
+        sxy = sum_xy - (sum_x * sum_y) / jnp.where(nobs > 0, nobs, 1.0)
+
+        if cov:
+            denom = jnp.where(nobs > 1, nobs - 1, jnp.nan)
+            result = sxy / denom
+        else:
+            denom = jnp.sqrt(ssx * ssy)
+            result = jnp.where(denom > 0, sxy / denom, jnp.nan)
+            # clip numerical drift to [-1, 1]
+            result = jnp.clip(result, -1.0, 1.0)
+
+        # Enforce minp: set entries with too few observations to NaN
+        result = jnp.where(nobs < minp, jnp.nan, result)
 
         return result
 
-    def _spearman(mat: jnp.ndarray, minp: Optional[int] = 1) -> jnp.ndarray:
+    @classmethod
+    def _spearman(cls, mat: jnp.ndarray, minp: Optional[int] = 1) -> jnp.ndarray:
         """
         Based on Pandas correlation method as implemented here:
         https://github.com/pandas-dev/pandas/blob/main/pandas/_libs/algos.pyx
 
         Compute Spearman correlation between columns of `mat`,
         permitting missing values (NaN or ±Inf).
+
+        If the input is complex, real and imaginary parts are stacked along
+        the sample axis so that both components contribute to the correlation
+        without discarding information.
 
         Args:
             mat : array_like, shape (N, K)
@@ -1356,52 +1384,66 @@ class FCC:
             corr : ndarray, shape (K, K)
                 Spearman correlation matrix.
         """
+        # Preserve complex information by splitting into real / imag samples
+        if jnp.iscomplexobj(mat):
+            mat = jnp.concatenate([mat.real, mat.imag], axis=0)
+
+        mat = jnp.asarray(mat)
         N, K = mat.shape
+
         # trivial all-NaN answer if too few rows
         if N < minp:
-            return jnp.full((K, K), jnp.nan, dtype=float)
+            return jnp.full((K, K), jnp.nan)
 
         # mask of finite entries
         mask = jnp.isfinite(mat)  # shape (N, K), dtype=bool
 
         # precompute ranks column-wise ignoring NaNs
-        ranks = np.full((N, K), jnp.nan, dtype=float)
+        ranks = np.full((N, K), np.nan)
         for j in range(K):
             valid = mask[:, j]
             if valid.any():
-                # rankdata by default gives average ranks for ties
                 ranks[valid, j] = rankdata(mat[valid, j], method="average")
 
-        # allocate result
-        result = np.empty((K, K), dtype=float)
+        ranks = jnp.asarray(ranks)
 
-        # TODO: optimize in future iterations
-        # loop lower triangle (including diagonal)
-        for i in range(K):
-            for j in range(i + 1):
-                # find rows where both columns are finite
-                valid = mask[:, i] & mask[:, j]
-                nobs = valid.sum()
+        # Vectorised Pearson on the ranks
+        # Replace NaN ranks with 0; use mask to track validity.
+        rank_mask = jnp.isfinite(ranks)
+        safe_ranks = jnp.where(rank_mask, ranks, 0.0)
 
-                if nobs < minp:
-                    rho = jnp.nan
-                else:
-                    xi = ranks[valid, i]
-                    yj = ranks[valid, j]
-                    # subtract means
-                    xi = xi - xi.mean()
-                    yj = yj - yj.mean()
-                    num = jnp.dot(xi, yj)
-                    den = jnp.sqrt(jnp.dot(xi, xi) * jnp.dot(yj, yj))
-                    rho = num / den if den > 0 else jnp.nan
+        # Pairwise valid-observation counts  (K, K)
+        fmask = rank_mask.astype(ranks.dtype)
+        nobs = fmask.T @ fmask
 
-                result[i, j] = rho
-                result[j, i] = rho
+        # Pairwise sums over mutually-valid rows
+        sum_x = safe_ranks.T @ fmask  # (K, K)
+        sum_y = fmask.T @ safe_ranks  # (K, K)
+
+        # Pairwise products
+        masked_ranks = safe_ranks * fmask  # same as safe_ranks
+        sum_xy = masked_ranks.T @ masked_ranks  # (K, K)
+
+        safe_sq = safe_ranks**2
+        sum_x2 = safe_sq.T @ fmask  # (K, K)
+        sum_y2 = fmask.T @ safe_sq  # (K, K)
+
+        nobs_safe = jnp.where(nobs > 0, nobs, 1.0)
+        ssx = sum_x2 - sum_x**2 / nobs_safe
+        ssy = sum_y2 - sum_y**2 / nobs_safe
+        sxy = sum_xy - (sum_x * sum_y) / nobs_safe
+
+        denom = jnp.sqrt(ssx * ssy)
+        result = jnp.where(denom > 0, sxy / denom, jnp.nan)
+        result = jnp.clip(result, -1.0, 1.0)
+
+        # Enforce minp
+        result = jnp.where(nobs < minp, jnp.nan, result)
 
         return result
 
-    @staticmethod
-    def _weighting(fourier_fingerprint: jnp.ndarray) -> jnp.ndarray:
+    @classmethod
+    def _weighting(cls, fourier_fingerprint: jnp.ndarray) -> jnp.ndarray:
         """
         Performs weighting on the given correlation matrix.
         Here, low-frequent coefficients are weighted more heavily.
@@ -1455,8 +1497,10 @@ class FCC:
 
 
 class Datasets:
-    @staticmethod
+
+    @classmethod
     def generate_fourier_series(
+        cls,
         random_key: random.PRNGKey,
         model: Model,
         coefficients_min: float = 0.0,
@@ -1517,7 +1561,8 @@ class Datasets:
 
         # using the frequency information, sample coefficients for each dimension
         # shape: (input_dims, n_freqs_per_input_dim // 2 + 1)
-        coefficients = Datasets.uniform_circle(
+
+        coefficients = cls.uniform_circle(
             random_key,
             low=coefficients_min,
             high=coefficients_max,
@@ -1560,8 +1605,9 @@ class Datasets:
             coefficients.reshape(model.degree),
         ]
 
-    @staticmethod
+    @classmethod
     def uniform_circle(
+        cls,
         random_key: random.PRNGKey,
         size: Union[jnp.ndarray, List, int],
         low=0.0,

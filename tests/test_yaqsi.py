@@ -2362,7 +2362,6 @@ class TestPulse:
     @pytest.mark.unittest
     def test_pulse_recording_rx(self):
         """pulse_recording captures a PulseEvent for a single RX gate."""
-
         original = PulseInformation.get_envelope()
         try:
             PulseInformation.set_envelope("gaussian")

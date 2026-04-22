@@ -50,12 +50,12 @@ Publishing includes
 
 ## Documentation
 
-We use MkDocs for our documentation. To run a server locally, run:
+We use Zensical for our documentation. To run a server locally, run:
 ```
-uv run mkdocs serve
+uv run zensical serve
 ```
 This will automatically trigger a rebuild each time you make changes.
-See the [MkDocs Documentation](https://cirkiters.github.io/qml-essentials/usage/) for more details.
+See the [Zensical Documentation](https://cirkiters.github.io/qml-essentials/usage/) for more details.
 
 Publishing (and building) the documentation is done automagically using Github actions.
 Note that we're building with `--strict` mode enabled, meaning that any warnings that you might see will be treated as errors.
