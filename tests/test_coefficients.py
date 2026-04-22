@@ -487,13 +487,78 @@ class TestFCC:
                 )
 
     @pytest.mark.unittest
+    def test_pearson_correlation_complex(self) -> None:
+        """Pearson on complex input should match scipy on stacked real/imag."""
+        N = 1000
+        K = 5
+        seed = 42
+        rng = np.random.default_rng(seed)
+
+        coeffs = rng.normal(size=(N, K)) + 1j * rng.normal(size=(N, K))
+        pearson = FCC._pearson(jnp.array(coeffs))
+
+        # Reference: stack real and imag along sample axis, then use scipy
+        stacked = np.concatenate([coeffs.real, coeffs.imag], axis=0)
+        for i in range(K):
+            for j in range(K):
+                reference = pearsonr(stacked[:, i], stacked[:, j]).correlation
+                assert jnp.isclose(pearson[i, j], reference, atol=1.0e-5), (
+                    f"Complex Pearson mismatch at ({i},{j}): "
+                    f"got {pearson[i, j]}, expected {reference}"
+                )
+
+    @pytest.mark.unittest
+    def test_spearman_correlation_complex(self) -> None:
+        """Spearman on complex input should match scipy on stacked real/imag."""
+        N = 1000
+        K = 5
+        seed = 42
+        rng = np.random.default_rng(seed)
+
+        coeffs = rng.normal(size=(N, K)) + 1j * rng.normal(size=(N, K))
+        spearman = FCC._spearman(jnp.array(coeffs))
+
+        # Reference: stack real and imag along sample axis, then use scipy
+        stacked = np.concatenate([coeffs.real, coeffs.imag], axis=0)
+        for i in range(K):
+            for j in range(K):
+                reference = spearmanr(stacked[:, i], stacked[:, j]).correlation
+                assert jnp.isclose(spearman[i, j], reference, atol=1.0e-5), (
+                    f"Complex Spearman mismatch at ({i},{j}): "
+                    f"got {spearman[i, j]}, expected {reference}"
+                )
+
+    @pytest.mark.unittest
+    def test_pearson_complex_preserves_imaginary(self) -> None:
+        """Ensure complex correlations differ from real-only correlations,
+        i.e. the imaginary part is not silently discarded."""
+        N = 200
+        K = 4
+        seed = 123
+        rng = np.random.default_rng(seed)
+
+        real_part = rng.normal(size=(N, K))
+        imag_part = rng.normal(size=(N, K))
+        coeffs_complex = jnp.array(real_part + 1j * imag_part)
+        coeffs_real_only = jnp.array(real_part)
+
+        corr_complex = FCC._pearson(coeffs_complex)
+        corr_real = FCC._pearson(coeffs_real_only)
+
+        # They should generally differ (imaginary part contributes)
+        assert not jnp.allclose(corr_complex, corr_real, atol=1.0e-3), (
+            "Complex and real-only Pearson correlations should differ "
+            "when imaginary components carry information."
+        )
+
+    @pytest.mark.unittest
     @pytest.mark.parametrize(
         "circuit_type, expected_fcc",
         [
             ("Circuit_20", 0.004),
             ("Circuit_19", 0.010),
-            ("Circuit_17", 0.115),
-            ("Hardware_Efficient", 0.144),
+            ("Circuit_17", 0.078),
+            ("Hardware_Efficient", 0.080),
         ],
         ids=["Circuit_20", "Circuit_19", "Circuit_17", "Hardware_Efficient"],
     )
@@ -516,6 +581,74 @@ class TestFCC:
         assert jnp.isclose(
             fcc, expected_fcc, atol=3.0e-2
         ), f"Wrong FCC for {circuit_type}. Got {fcc}, expected {expected_fcc}."
+
+    @pytest.mark.unittest
+    @pytest.mark.parametrize(
+        "encoding_strategy, circuit_type, n_qubits, n_layers, n_samples",
+        [
+            ("hamming", "Circuit_2", 2, 2, 5),
+            ("binary", "Circuit_2", 2, 2, 5),
+            ("ternary", "Circuit_2", 2, 2, 5),
+        ],
+    )
+    def test_fcc_encoding_strategies(
+        self, encoding_strategy, circuit_type, n_qubits, n_layers, n_samples
+    ) -> None:
+        """
+        Test that the FCC is bounded in [0, 1] for Hamming, Binary,
+        and Ternary encoding strategies.
+        """
+        enc = Encoding(encoding_strategy, "RX")
+        model = Model(
+            n_qubits=n_qubits,
+            n_layers=n_layers,
+            circuit_type=circuit_type,
+            encoding=enc,
+            output_qubit=-1,
+        )
+
+        # Verify spectrum computation succeeds
+        model.initialize_params(repeat=n_samples)
+        coeffs, freqs = Coefficients.get_spectrum(
+            model, shift=True, trim=True, force_mean=True, execution_type="expval"
+        )
+        assert coeffs.shape[0] == model.degree[0], (
+            f"Wrong number of coefficients for {encoding_strategy}: "
+            f"{coeffs.shape[0]}, expected {model.degree[0]}"
+        )
+
+        # Verify correlation values are bounded
+        fp_pearson = FCC._correlate(coeffs.transpose(), method="pearson")
+        assert np.all(np.abs(fp_pearson[np.isfinite(fp_pearson)]) <= 1.0 + 1e-10), (
+            f"Pearson correlation out of [-1, 1] for {encoding_strategy}. "
+            f"Max |r| = {np.max(np.abs(fp_pearson[np.isfinite(fp_pearson)]))}"
+        )
+
+        fp_spearman = FCC._correlate(coeffs.transpose(), method="spearman")
+        assert np.all(
+            np.abs(fp_spearman[np.isfinite(fp_spearman)]) <= 1.0 + 1e-10
+        ), (
+            f"Spearman correlation out of [-1, 1] for {encoding_strategy}. "
+            f"Max |rho| = {np.max(np.abs(fp_spearman[np.isfinite(fp_spearman)]))}"
+        )
+
+        # Verify FCC is bounded in [0, 1] with both methods
+        for method in ["pearson", "spearman"]:
+            fcc = FCC.get_fcc(
+                model, n_samples=n_samples, method=method, trim_redundant=True
+            )
+            assert 0.0 <= float(fcc) <= 1.0, (
+                f"FCC out of [0, 1] for {encoding_strategy}/{method}: {float(fcc)}"
+            )
+
+            # Also test without trimming
+            fcc_untrimmed = FCC.get_fcc(
+                model, n_samples=n_samples, method=method, trim_redundant=False
+            )
+            assert 0.0 <= float(fcc_untrimmed) <= 1.0, (
+                f"FCC (untrimmed) out of [0, 1] for "
+                f"{encoding_strategy}/{method}: {float(fcc_untrimmed)}"
+            )
 
     @pytest.mark.smoketest
     @pytest.mark.parametrize(
@@ -565,7 +698,7 @@ class TestFCC:
             scale=True,
         )
         assert jnp.isclose(
-            fcc, 0.020, atol=2.0e-3
+            fcc, 0.016, atol=2.0e-3
         ), f"Wrong FCC for Circuit_19. Got {fcc}, expected 0.020."
 
     @pytest.mark.unittest
