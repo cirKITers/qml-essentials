@@ -63,10 +63,7 @@ class Coefficients:
         kwargs.setdefault("force_mean", True)
         kwargs.setdefault("execution_type", "expval")
 
-
-        coeffs, freqs = cls._fourier_transform(
-            model, mfs=mfs, mts=mts, **kwargs
-        )
+        coeffs, freqs = cls._fourier_transform(model, mfs=mfs, mts=mts, **kwargs)
 
         if not jnp.isclose(jnp.sum(coeffs).imag, 0.0, rtol=1.0e-5):
             raise ValueError(
@@ -97,10 +94,8 @@ class Coefficients:
 
         return coeffs, freqs
 
-
     @classmethod
     def _fourier_transform(
-
         cls, model: Model, mfs: int, mts: int, **kwargs: Any
     ) -> jnp.ndarray:
         # Create a frequency vector with as many frequencies as model degrees,
@@ -143,8 +138,6 @@ class Coefficients:
             freqs,
         )
 
-
-
     @classmethod
     def get_psd(cls, coeffs: jnp.ndarray) -> jnp.ndarray:
         """
@@ -164,10 +157,9 @@ class Coefficients:
         scale = 2.0 / (len(coeffs) ** 2)
         return scale * abs2(coeffs)
 
-
-
     @classmethod
-    def evaluate_Fourier_series(cls,
+    def evaluate_Fourier_series(
+        cls,
         coefficients: jnp.ndarray,
         frequencies: jnp.ndarray,
         inputs: Union[jnp.ndarray, list, float],
@@ -1064,7 +1056,6 @@ class FCC:
             **kwargs,
         )
 
-
         return cls.calculate_fcc(fourier_fingerprint)
 
     @classmethod
@@ -1136,7 +1127,6 @@ class FCC:
 
         return fourier_fingerprint, freqs
 
-
     @classmethod
     def calculate_fcc(
         cls,
@@ -1193,7 +1183,6 @@ class FCC:
 
         return corr_mask
 
-
     @classmethod
     def _calculate_coefficients(
         cls,
@@ -1238,8 +1227,6 @@ class FCC:
 
         return model.params, coeffs, freqs
 
-
-
     @classmethod
     def _correlate(cls, mat: jnp.ndarray, method: str = "pearson") -> jnp.ndarray:
         """
@@ -1268,11 +1255,9 @@ class FCC:
         # will be in the bottom right quadrant
         if method == "pearson":
 
-
             result = cls._pearson(mat.reshape(mat.shape[0], -1))
             # result = cls._pearson(mat.reshape(mat.shape[-1], -1, order="F"))
         elif method == "spearman":
-
 
             result = cls._spearman(mat.reshape(mat.shape[0], -1))
             # result = cls._spearman(mat.reshape(mat.shape[-1], -1, order="F"))
@@ -1284,10 +1269,8 @@ class FCC:
 
         return result
 
-
     @classmethod
     def _pearson(
-
         cls, mat: jnp.ndarray, cov: Optional[bool] = False, minp: Optional[int] = 1
     ) -> jnp.ndarray:
         """
@@ -1320,7 +1303,6 @@ class FCC:
             mat = jnp.concatenate([mat.real, mat.imag], axis=0)
 
         mat = jnp.asarray(mat)
-        N, K = mat.shape
 
         # pre-compute finite mask  (N, K)
         mask = jnp.isfinite(mat)
@@ -1339,8 +1321,8 @@ class FCC:
         # Using: safe[:,i] * mask[:,j] zeroes out rows invalid for j.
         # Then summing over N gives sum_x[i,j].
         # safe.T @ fmask  gives (K, K) where entry (i,j) = sum of safe[:,i]*mask[:,j]
-        sum_x = safe.T @ fmask   # (K, K) – row-var sums
-        sum_y = fmask.T @ safe   # (K, K) – col-var sums
+        sum_x = safe.T @ fmask  # (K, K) – row-var sums
+        sum_y = fmask.T @ safe  # (K, K) – col-var sums
 
         # Note: explicit means (sum_x/nobs, sum_y/nobs) are not needed as
         # separate variables — the computational formula used below
@@ -1351,17 +1333,17 @@ class FCC:
         #   sxy = Σxy − (Σx)(Σy)/n
         # All sums are taken over the pairwise-valid subset for each (i,j).
         masked = safe * fmask  # same as safe but explicit
-        sum_xy = masked.T @ masked          # (K, K)
+        sum_xy = masked.T @ masked  # (K, K)
 
         # ssx[i,j] = sum_xx_ij - nobs * mean_x^2   (but sum_xx_ij uses pair mask)
         # We need sum of x^2 over the *pair* mask, not just column mask.
         # sum_x2[i,j] = sum_n  safe[n,i]^2 * mask[n,i] * mask[n,j]
-        safe_sq = safe ** 2
+        safe_sq = safe**2
         sum_x2 = safe_sq.T @ fmask  # (K, K)
         sum_y2 = fmask.T @ safe_sq  # (K, K)
 
-        ssx = sum_x2 - sum_x ** 2 / jnp.where(nobs > 0, nobs, 1.0)
-        ssy = sum_y2 - sum_y ** 2 / jnp.where(nobs > 0, nobs, 1.0)
+        ssx = sum_x2 - sum_x**2 / jnp.where(nobs > 0, nobs, 1.0)
+        ssy = sum_y2 - sum_y**2 / jnp.where(nobs > 0, nobs, 1.0)
         sxy = sum_xy - (sum_x * sum_y) / jnp.where(nobs > 0, nobs, 1.0)
 
         if cov:
@@ -1435,20 +1417,20 @@ class FCC:
         nobs = fmask.T @ fmask
 
         # Pairwise sums over mutually-valid rows
-        sum_x = safe_ranks.T @ fmask           # (K, K)
-        sum_y = fmask.T @ safe_ranks            # (K, K)
+        sum_x = safe_ranks.T @ fmask  # (K, K)
+        sum_y = fmask.T @ safe_ranks  # (K, K)
 
         # Pairwise products
-        masked_ranks = safe_ranks * fmask       # same as safe_ranks
+        masked_ranks = safe_ranks * fmask  # same as safe_ranks
         sum_xy = masked_ranks.T @ masked_ranks  # (K, K)
 
-        safe_sq = safe_ranks ** 2
-        sum_x2 = safe_sq.T @ fmask              # (K, K)
-        sum_y2 = fmask.T @ safe_sq              # (K, K)
+        safe_sq = safe_ranks**2
+        sum_x2 = safe_sq.T @ fmask  # (K, K)
+        sum_y2 = fmask.T @ safe_sq  # (K, K)
 
         nobs_safe = jnp.where(nobs > 0, nobs, 1.0)
-        ssx = sum_x2 - sum_x ** 2 / nobs_safe
-        ssy = sum_y2 - sum_y ** 2 / nobs_safe
+        ssx = sum_x2 - sum_x**2 / nobs_safe
+        ssy = sum_y2 - sum_y**2 / nobs_safe
         sxy = sum_xy - (sum_x * sum_y) / nobs_safe
 
         denom = jnp.sqrt(ssx * ssy)
@@ -1459,8 +1441,6 @@ class FCC:
         result = jnp.where(nobs < minp, jnp.nan, result)
 
         return result
-
-
 
     @classmethod
     def _weighting(cls, fourier_fingerprint: jnp.ndarray) -> jnp.ndarray:
@@ -1518,9 +1498,9 @@ class FCC:
 
 class Datasets:
 
-
     @classmethod
-    def generate_fourier_series(cls,
+    def generate_fourier_series(
+        cls,
         random_key: random.PRNGKey,
         model: Model,
         coefficients_min: float = 0.0,
@@ -1625,10 +1605,9 @@ class Datasets:
             coefficients.reshape(model.degree),
         ]
 
-
-
     @classmethod
-    def uniform_circle(cls,
+    def uniform_circle(
+        cls,
         random_key: random.PRNGKey,
         size: Union[jnp.ndarray, List, int],
         low=0.0,
