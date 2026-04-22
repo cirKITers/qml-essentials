@@ -165,7 +165,12 @@ class Yaqsi:
         return Hermitian(matrix=mat, wires=qubit_group, record=False)
 
     @classmethod
-    def evolve(cls, hamiltonian, name=None, **odeint_kwargs):
+    def evolve(
+        cls,
+        hamiltonian: Union["Hermitian", "ParametrizedHamiltonian"],
+        name: Optional[str] = None,
+        **odeint_kwargs: Any,
+    ) -> Callable:
         """Return a gate-factory for Hamiltonian time evolution.
 
         Supports two modes:
@@ -218,7 +223,7 @@ class Yaqsi:
             )
 
     @staticmethod
-    def _evolve_static(hermitian: Hermitian, name=None) -> Callable:
+    def _evolve_static(hermitian: Hermitian, name: Optional[str] = None) -> Callable:
         """Gate factory for static Hamiltonian evolution U = exp(-i t H)."""
         H_mat = hermitian.matrix
 
@@ -230,7 +235,10 @@ class Yaqsi:
 
     @classmethod
     def _evolve_parametrized(
-        cls, ph: ParametrizedHamiltonian, name=None, **odeint_kwargs
+        cls,
+        ph: ParametrizedHamiltonian,
+        name: Optional[str] = None,
+        **odeint_kwargs: Any,
     ) -> Callable:
         """Gate factory for time-dependent Hamiltonian evolution.
 
@@ -431,7 +439,7 @@ class Script:
         >>> result = script.execute(type="expval", obs=[PauliZ(0)])
     """
 
-    def __init__(self, f: Callable, n_qubits: Optional[int] = None) -> None:
+    def __init__(self, f: Callable[..., None], n_qubits: Optional[int] = None) -> None:
         """Initialise a Script.
 
         Args:
@@ -753,8 +761,8 @@ class Script:
         pulse gates (RX, RY, RZ, CZ).
 
         Args:
-            *args: Forwarded to the circuit function.
-            **kwargs: Forwarded to the circuit function.
+            *args (Any): Forwarded to the circuit function.
+            **kwargs (Any): Forwarded to the circuit function.
 
         Returns:
             List of :class:`~qml_essentials.drawing.PulseEvent`.

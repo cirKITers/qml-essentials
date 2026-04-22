@@ -1,8 +1,7 @@
 import jax.numpy as jnp
-from jax import random
 import jax
 import numpy as np
-from typing import Tuple, List, Any, Optional
+from typing import Tuple, Any, Optional
 from scipy import integrate
 from scipy.linalg import sqrtm
 from scipy.special import rel_entr
@@ -11,8 +10,9 @@ import os
 
 
 class Expressibility:
-    @staticmethod
+    @classmethod
     def _sample_state_fidelities(
+        cls,
         model: Model,
         n_samples: int,
         random_key: Optional[jax.random.PRNGKey] = None,
@@ -65,8 +65,9 @@ class Expressibility:
 
         return fidelity
 
-    @staticmethod
+    @classmethod
     def state_fidelities(
+        cls,
         n_samples: int,
         n_bins: int,
         model: Model,
@@ -95,7 +96,7 @@ class Expressibility:
             n_samples = jnp.power(2, model.n_qubits) * n_samples
             n_bins = model.n_qubits * n_bins
 
-        fidelities = Expressibility._sample_state_fidelities(
+        fidelities = cls._sample_state_fidelities(
             n_samples=n_samples,
             random_key=random_key,
             model=model,
@@ -110,8 +111,8 @@ class Expressibility:
 
         return y, z
 
-    @staticmethod
-    def _haar_probability(fidelity: float, n_qubits: int) -> float:
+    @classmethod
+    def _haar_probability(cls, fidelity: float, n_qubits: int) -> float:
         """
         Calculates theoretical probability density function for random Haar states
         as proposed by Sim et al. (https://arxiv.org/abs/1905.10876).
@@ -128,8 +129,8 @@ class Expressibility:
         prob = (N - 1) * (1 - fidelity) ** (N - 2)
         return prob
 
-    @staticmethod
-    def _sample_haar_integral(n_qubits: int, n_bins: int) -> jnp.ndarray:
+    @classmethod
+    def _sample_haar_integral(cls, n_qubits: int, n_bins: int) -> jnp.ndarray:
         """
         Calculates theoretical probability density function for random Haar states
         as proposed by Sim et al. (https://arxiv.org/abs/1905.10876) and bins it
@@ -147,13 +148,14 @@ class Expressibility:
             v = idx / n_bins
             u = (idx + 1) / n_bins
             dist[idx], _ = integrate.quad(
-                Expressibility._haar_probability, v, u, args=(n_qubits,)
+                cls._haar_probability, v, u, args=(n_qubits,)
             )
 
         return dist
 
-    @staticmethod
+    @classmethod
     def haar_integral(
+        cls,
         n_qubits: int,
         n_bins: int,
         cache: bool = True,
@@ -194,15 +196,16 @@ class Expressibility:
                 y = jnp.load(file_path)
                 return x, y
 
-        y = Expressibility._sample_haar_integral(n_qubits, n_bins)
+        y = cls._sample_haar_integral(n_qubits, n_bins)
 
         if cache:
             jnp.save(file_path, y)
 
         return x, y
 
-    @staticmethod
+    @classmethod
     def kullback_leibler_divergence(
+        cls,
         vqc_prob_dist: jnp.ndarray,
         haar_dist: jnp.ndarray,
     ) -> jnp.ndarray:

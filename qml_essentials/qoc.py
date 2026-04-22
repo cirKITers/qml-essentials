@@ -528,7 +528,7 @@ class QOC:
         Args:
             gate: Name of the gate (e.g. ``"RX"``).
             fidelity: Achieved fidelity of the optimised pulse.
-            pulse_params: Optimised pulse parameters for the gate.
+            pulse_params (jnp.ndarray): Optimised pulse parameters for the gate.
         """
         if self.file_dir is not None:
             os.makedirs(self.file_dir, exist_ok=True)
@@ -642,7 +642,9 @@ class QOC:
         grid = jnp.array(list(itertools.product(*axes)))
         return grid
 
-    def stage_0_opt(self, init_pulse_params: jnp.ndarray, fidelity_only_cost):
+    def stage_0_opt(
+        self, init_pulse_params: jnp.ndarray, fidelity_only_cost: Callable
+    ) -> jnp.ndarray:
         """Run the coarse grid-scan phase (Stage 0).
 
         Evaluates a Cartesian grid of parameter candidates using only the
@@ -717,7 +719,9 @@ class QOC:
 
         return best_scan_params
 
-    def stage_1_opt(self, best_scan_params: jnp.ndarray, total_costs):
+    def stage_1_opt(
+        self, best_scan_params: jnp.ndarray, total_costs: Callable
+    ) -> Tuple[jnp.ndarray, list, jnp.ndarray]:
         """Run multi-restart gradient optimisation (Stage 1).
 
         Performs ``n_restarts`` independent AdamW runs with the full
@@ -847,7 +851,7 @@ class QOC:
 
         return global_best_params, global_best_history, global_best_loss
 
-    def optimize(self, wires):
+    def optimize(self, wires: int) -> Callable:
         """Decorator factory that optimises pulse parameters for a gate.
 
         Usage::

@@ -1,11 +1,9 @@
-from typing import Optional
 from jax import random, grad, numpy as jnp
 import numpy as np
 import random as pyrandom
 import optax
 from qml_essentials.model import Model
-from qml_essentials.ansaetze import Circuit, Ansaetze, Gates, Encoding
-from qml_essentials.gates import PulseInformation as pinfo
+from qml_essentials.ansaetze import Ansaetze, Gates, Encoding
 from qml_essentials.utils import PauliCircuit
 from qml_essentials.yaqsi import Script
 import pytest

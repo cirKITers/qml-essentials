@@ -31,7 +31,7 @@ jobs:
       #     restore-keys: |
       #       mkdocs-material-
       - name: Build Docs
-        run: pipx run uv run mkdocs build --strict
+        run: pipx run uv run zensical build --strict
   deploy:
     runs-on: self-hosted
     if: ${{ github.ref == 'refs/heads/main' }}
@@ -63,6 +63,6 @@ jobs:
           run-id: ${{ inputs.test-run-id }}
           path: docs/coverage/
       - name: Build Docs
-        run: pipx run uv run mkdocs build --strict
+        run: pipx run uv run zensical build --strict
       - name: Deploy
-        run: pipx run uv run mkdocs gh-deploy --force
+        run: pipx run uv run zensical gh-deploy --force
