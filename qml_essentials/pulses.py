@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass
-from typing import Optional, List, Union, Dict, Callable
+from typing import Optional, List, Union, Dict, Callable, Tuple
 import csv
 import jax.numpy as jnp
 import jax
@@ -415,7 +415,9 @@ class PulseEnvelope:
         return PulseEnvelope.REGISTRY[name]
 
     @staticmethod
-    def build_coeff_fns(envelope_fn, omega_c):
+    def build_coeff_fns(
+        envelope_fn: Callable, omega_c: float
+    ) -> Tuple[Callable, Callable]:
         """Build ``(coeff_Sx, coeff_Sy)`` for a given envelope function.
 
         Each returned function has a unique ``__code__`` object so that

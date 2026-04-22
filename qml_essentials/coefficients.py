@@ -24,8 +24,10 @@ log = logging.getLogger(__name__)
 
 
 class Coefficients:
-    @staticmethod
+
+    @classmethod
     def get_spectrum(
+        cls,
         model: Model,
         mfs: int = 1,
         mts: int = 1,
@@ -61,7 +63,8 @@ class Coefficients:
         kwargs.setdefault("force_mean", True)
         kwargs.setdefault("execution_type", "expval")
 
-        coeffs, freqs = Coefficients._fourier_transform(
+
+        coeffs, freqs = cls._fourier_transform(
             model, mfs=mfs, mts=mts, **kwargs
         )
 
@@ -94,9 +97,11 @@ class Coefficients:
 
         return coeffs, freqs
 
-    @staticmethod
+
+    @classmethod
     def _fourier_transform(
-        model: Model, mfs: int, mts: int, **kwargs: Any
+
+        cls, model: Model, mfs: int, mts: int, **kwargs: Any
     ) -> jnp.ndarray:
         # Create a frequency vector with as many frequencies as model degrees,
         # oversampled by mfs
@@ -138,8 +143,10 @@ class Coefficients:
             freqs,
         )
 
-    @staticmethod
-    def get_psd(coeffs: jnp.ndarray) -> jnp.ndarray:
+
+
+    @classmethod
+    def get_psd(cls, coeffs: jnp.ndarray) -> jnp.ndarray:
         """
         Calculates the power spectral density (PSD) from given Fourier coefficients.
 
@@ -157,8 +164,10 @@ class Coefficients:
         scale = 2.0 / (len(coeffs) ** 2)
         return scale * abs2(coeffs)
 
-    @staticmethod
-    def evaluate_Fourier_series(
+
+
+    @classmethod
+    def evaluate_Fourier_series(cls,
         coefficients: jnp.ndarray,
         frequencies: jnp.ndarray,
         inputs: Union[jnp.ndarray, list, float],
@@ -320,7 +329,7 @@ class FourierTree:
                 sin_list (List[int]): Current number of sine contributions for each
                     parameter. Has the same length as the parameters, as each
                     position corresponds to one parameter.
-                cos_list (List[int]):  Current number of cosine contributions for
+                cos_list (List[int]): Current number of cosine contributions for
                     each parameter. Has the same length as the parameters, as each
                     position corresponds to one parameter.
                 existing_leafs (List[TreeLeaf]): Current list of leaf nodes from
@@ -374,7 +383,7 @@ class FourierTree:
             sin_indices (List[int]): Current number of sine contributions for each
                 parameter. Has the same length as the parameters, as each
                 position corresponds to one parameter.
-            cos_list (List[int]):  Current number of cosine contributions for
+            cos_indices (List[int]): Current number of cosine contributions for
                 each parameter. Has the same length as the parameters, as each
                 position corresponds to one parameter.
             term (jnp.complex): Constant factor of the leaf, depending on the
@@ -1001,8 +1010,10 @@ class FourierTree:
 
 
 class FCC:
-    @staticmethod
+
+    @classmethod
     def get_fcc(
+        cls,
         model: Model,
         n_samples: int,
         random_key: Optional[random.PRNGKey] = None,
@@ -1036,12 +1047,13 @@ class FCC:
                 Defaults to False.
             trim_redundant (Optional[bool], optional): Whether to remove redundant
                 correlations. Defaults to False.
-            **kwargs: Additional keyword arguments for the model function.
+            **kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
             float: The FCC
         """
-        fourier_fingerprint, _ = FCC.get_fourier_fingerprint(
+
+        fourier_fingerprint, _ = cls.get_fourier_fingerprint(
             model,
             n_samples,
             random_key,
@@ -1052,9 +1064,12 @@ class FCC:
             **kwargs,
         )
 
-        return FCC.calculate_fcc(fourier_fingerprint)
 
+        return cls.calculate_fcc(fourier_fingerprint)
+
+    @classmethod
     def get_fourier_fingerprint(
+        cls,
         model: Model,
         n_samples: int,
         random_key: Optional[random.PRNGKey] = None,
@@ -1063,7 +1078,7 @@ class FCC:
         weight: Optional[bool] = False,
         trim_redundant: Optional[bool] = True,
         nan_to_one: Optional[bool] = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Shortcut method to get just the fourier fingerprint.
@@ -1093,11 +1108,11 @@ class FCC:
             Tuple[jnp.ndarray, jnp.ndarray]: The fourier fingerprint
             and the frequency indices
         """
-        _, coeffs, freqs = FCC._calculate_coefficients(
+        _, coeffs, freqs = cls._calculate_coefficients(
             model, n_samples, random_key, scale, **kwargs
         )
 
-        fourier_fingerprint = FCC._correlate(coeffs.transpose(), method=method)
+        fourier_fingerprint = cls._correlate(coeffs.transpose(), method=method)
 
         if nan_to_one:
             # set nan to 1
@@ -1105,11 +1120,11 @@ class FCC:
 
         # perform weighting if requested
         fourier_fingerprint = (
-            FCC._weighting(fourier_fingerprint) if weight else fourier_fingerprint
+            cls._weighting(fourier_fingerprint) if weight else fourier_fingerprint
         )
 
         if trim_redundant:
-            mask = FCC._calculate_mask(freqs)
+            mask = cls._calculate_mask(freqs)
 
             # apply the mask on the fingerprint
             fourier_fingerprint = mask * fourier_fingerprint
@@ -1121,8 +1136,10 @@ class FCC:
 
         return fourier_fingerprint, freqs
 
-    @staticmethod
+
+    @classmethod
     def calculate_fcc(
+        cls,
         fourier_fingerprint: jnp.ndarray,
     ) -> float:
         """
@@ -1131,14 +1148,15 @@ class FCC:
         The Fingerprint can be obtained via `get_fourier_fingerprint`
 
         Args:
-            coeff_coeff_correlation (jnp.ndarray): Correlation matrix of coefficients
+            fourier_fingerprint (jnp.ndarray): Correlation matrix of coefficients
         Returns:
             float: The FCC
         """
         # apply the mask on the fingerprint
         return jnp.nanmean(jnp.abs(fourier_fingerprint))
 
-    def _calculate_mask(freqs: jnp.ndarray) -> jnp.ndarray:
+    @classmethod
+    def _calculate_mask(cls, freqs: jnp.ndarray) -> jnp.ndarray:
         """
         Method to calculate a mask filtering out redundant elements
         of the Fourier correlation matrix, based on the provided frequency vector.
@@ -1175,13 +1193,15 @@ class FCC:
 
         return corr_mask
 
-    @staticmethod
+
+    @classmethod
     def _calculate_coefficients(
+        cls,
         model: Model,
         n_samples: int,
         random_key: Optional[random.PRNGKey] = None,
         scale: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Calculates the Fourier coefficients of a given model
@@ -1218,8 +1238,10 @@ class FCC:
 
         return model.params, coeffs, freqs
 
-    @staticmethod
-    def _correlate(mat: jnp.ndarray, method: str = "pearson") -> jnp.ndarray:
+
+
+    @classmethod
+    def _correlate(cls, mat: jnp.ndarray, method: str = "pearson") -> jnp.ndarray:
         """
         Correlates two arrays using `method`.
         Currently, `pearson` and `spearman` are supported.
@@ -1245,11 +1267,15 @@ class FCC:
         # such that after correlation, all positive indexed coefficients
         # will be in the bottom right quadrant
         if method == "pearson":
-            result = FCC._pearson(mat.reshape(mat.shape[0], -1))
-            # result = FCC._pearson(mat.reshape(mat.shape[-1], -1, order="F"))
+
+
+            result = cls._pearson(mat.reshape(mat.shape[0], -1))
+            # result = cls._pearson(mat.reshape(mat.shape[-1], -1, order="F"))
         elif method == "spearman":
-            result = FCC._spearman(mat.reshape(mat.shape[0], -1))
-            # result = FCC._spearman(mat.reshape(mat.shape[-1], -1, order="F"))
+
+
+            result = cls._spearman(mat.reshape(mat.shape[0], -1))
+            # result = cls._spearman(mat.reshape(mat.shape[-1], -1, order="F"))
         else:
             raise ValueError(
                 f"Unknown correlation method: {method}. \
@@ -1258,9 +1284,11 @@ class FCC:
 
         return result
 
-    @staticmethod
+
+    @classmethod
     def _pearson(
-        mat: jnp.ndarray, cov: Optional[bool] = False, minp: Optional[int] = 1
+
+        cls, mat: jnp.ndarray, cov: Optional[bool] = False, minp: Optional[int] = 1
     ) -> jnp.ndarray:
         """
         Based on Pandas correlation method as implemented here:
@@ -1337,7 +1365,8 @@ class FCC:
 
         return result
 
-    def _spearman(mat: jnp.ndarray, minp: Optional[int] = 1) -> jnp.ndarray:
+    @classmethod
+    def _spearman(cls, mat: jnp.ndarray, minp: Optional[int] = 1) -> jnp.ndarray:
         """
         Based on Pandas correlation method as implemented here:
         https://github.com/pandas-dev/pandas/blob/main/pandas/_libs/algos.pyx
@@ -1400,8 +1429,10 @@ class FCC:
 
         return result
 
-    @staticmethod
-    def _weighting(fourier_fingerprint: jnp.ndarray) -> jnp.ndarray:
+
+
+    @classmethod
+    def _weighting(cls, fourier_fingerprint: jnp.ndarray) -> jnp.ndarray:
         """
         Performs weighting on the given correlation matrix.
         Here, low-frequent coefficients are weighted more heavily.
@@ -1455,8 +1486,10 @@ class FCC:
 
 
 class Datasets:
-    @staticmethod
-    def generate_fourier_series(
+
+
+    @classmethod
+    def generate_fourier_series(cls,
         random_key: random.PRNGKey,
         model: Model,
         coefficients_min: float = 0.0,
@@ -1517,7 +1550,8 @@ class Datasets:
 
         # using the frequency information, sample coefficients for each dimension
         # shape: (input_dims, n_freqs_per_input_dim // 2 + 1)
-        coefficients = Datasets.uniform_circle(
+
+        coefficients = cls.uniform_circle(
             random_key,
             low=coefficients_min,
             high=coefficients_max,
@@ -1560,8 +1594,10 @@ class Datasets:
             coefficients.reshape(model.degree),
         ]
 
-    @staticmethod
-    def uniform_circle(
+
+
+    @classmethod
+    def uniform_circle(cls,
         random_key: random.PRNGKey,
         size: Union[jnp.ndarray, List, int],
         low=0.0,
