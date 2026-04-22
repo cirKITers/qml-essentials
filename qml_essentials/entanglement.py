@@ -9,7 +9,6 @@ from qml_essentials.math import logm_v
 from qml_essentials.model import Model
 import logging
 
-from qml_essentials.operations import Hermitian
 
 log = logging.getLogger(__name__)
 

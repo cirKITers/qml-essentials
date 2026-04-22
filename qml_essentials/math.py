@@ -1,4 +1,3 @@
-import jax
 import jax.numpy as jnp
 from qml_essentials.operations import _cdtype
 from scipy.linalg import logm

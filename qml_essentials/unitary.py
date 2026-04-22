@@ -56,7 +56,7 @@ def golomb_ruler(d: int) -> Tuple[int, ...]:
     A Golomb ruler is a set of *d* non-negative integers such that all
     pairwise differences are distinct.  When used as the diagonal of a
     data-encoding Hamiltonian ``H = diag(marks)``, the resulting Fourier
-    spectrum ``\\Omega`` has ``|\\Omega| = d(d-1) + 1`` distinct frequencies 
+    spectrum ``\\Omega`` has ``|\\Omega| = d(d-1) + 1`` distinct frequencies
     with ``|R(k)| = 1`` for all ``k ≠ 0`` — the minimal possible degeneracy
     for any *d*-dimensional Hamiltonian.
 

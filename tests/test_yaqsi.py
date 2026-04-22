@@ -47,7 +47,6 @@ from qml_essentials.gates import (
     PulseEnvelope,
     PulseInformation,
     PulseGates,
-    PulseParams,
 )
 
 import logging
@@ -2363,8 +2362,6 @@ class TestPulse:
     @pytest.mark.unittest
     def test_pulse_recording_rx(self):
         """pulse_recording captures a PulseEvent for a single RX gate."""
-        from qml_essentials.tape import pulse_recording
-        from qml_essentials.drawing import PulseEvent
 
         original = PulseInformation.get_envelope()
         try:
