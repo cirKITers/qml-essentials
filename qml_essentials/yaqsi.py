@@ -245,6 +245,18 @@ class Yaqsi:
         Solves the matrix ODE ``dU/dt = -i f(params, t) H * U`` with
         ``U(0) = I`` using ``diffrax.diffeqsolve`` (Dopri8 adaptive RK).
 
+        To avoid diffrax's experimental (and potentially incorrect) complex
+        dtype path, the ODE is reformulated in real arithmetic.  Writing
+        ``-iH = A + iB`` (real and imaginary parts) and ``U = U_re + i U_im``,
+        the system becomes::
+
+            d(U_re)/dt = f(p,t) * (A @ U_re - B @ U_im)
+            d(U_im)/dt = f(p,t) * (A @ U_im + B @ U_re)
+
+        The state is stacked as a ``(2, dim, dim)`` real array, integrated
+        with diffrax in pure ``float64`` (or ``float32`` when x64 is
+        disabled), and recombined into a complex unitary at the end.
+
         Performance improvements over the previous ``jax.experimental.ode``
         implementation:
 
@@ -255,9 +267,11 @@ class Yaqsi:
         different Hamiltonian matrices or parameters) reuse the same
         compiled XLA program.  This avoids O(n_gates) JIT compilations
         during pulse-mode tape recording.
-        Pre-computes ``-i*H`` once instead of multiplying at every RHS
-        evaluation.
+        Pre-computes ``-i*H`` once and splits into real/imaginary parts
+        to avoid complex arithmetic inside the ODE RHS.
         Avoids dynamic ``jnp.where`` branching for the time span.
+
+        TODO: switch backonce diffrax is stable with complex arithmetic
 
         Args:
             ph: A :class:`ParametrizedHamiltonian` holding the coefficient
@@ -269,8 +283,16 @@ class Yaqsi:
         wires = ph.wires
         dim = H_mat.shape[0]
 
-        # Pre-compute -i*H once (avoids repeated multiplication in RHS)
+        # Pre-compute -i*H and split into real / imaginary parts so the
+        # ODE RHS uses only real arithmetic (avoids diffrax complex warning).
         neg_iH = -1j * H_mat
+        neg_iH_re = jnp.real(neg_iH)  # A = Re(-iH)
+        neg_iH_im = jnp.imag(neg_iH)  # B = Im(-iH)
+        # Stack as (2, dim, dim): [A, B]
+        neg_iH_split = jnp.stack([neg_iH_re, neg_iH_im], axis=0)
+
+        # Real dtype matching the precision mode
+        _rdtype = jnp.float64 if jax.config.x64_enabled else jnp.float32
 
         atol = odeint_kwargs.pop("atol", 1.4e-8)
         rtol = odeint_kwargs.pop("rtol", 1.4e-8)
@@ -278,9 +300,10 @@ class Yaqsi:
         # Look up or build the JIT-compiled solver for this (coeff_fn, dim)
         # combination.  All pulse gates with the same pulse shape function
         # (e.g. all RX gates share Sx, all RY share Sy) reuse a single
-        # compiled XLA program, with neg_iH passed as a regular argument
-        # rather than captured in the closure.  This turns O(n_gates) JIT
-        # compilations into O(n_distinct_pulse_shapes) compilations.
+        # compiled XLA program, with neg_iH_split passed as a regular
+        # argument rather than captured in the closure.  This turns
+        # O(n_gates) JIT compilations into O(n_distinct_pulse_shapes)
+        # compilations.
         #
         # We key on the function's __code__ object rather than id(coeff_fn)
         # because each pulse gate call creates a new closure (capturing the
@@ -297,11 +320,34 @@ class Yaqsi:
             stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
 
             @jax.jit
-            def _solve(neg_iH, params, t0, t1):
-                """Solve dU/dt = f(params,t) * (-iH) * U from t0 to t1."""
+            def _solve(neg_iH_split, params, t0, t1):
+                """Solve dU/dt = f(params,t) * (-iH) * U from t0 to t1.
+
+                The state y has shape (2, dim, dim) where y[0] = Re(U)
+                and y[1] = Im(U).  The Hamiltonian data neg_iH_split
+                has the same layout: [Re(-iH), Im(-iH)].
+                """
+                A = neg_iH_split[0]  # Re(-iH)
+                B = neg_iH_split[1]  # Im(-iH)
 
                 def rhs(t, y, args):
-                    return coeff_fn(args, t) * (neg_iH @ y)
+                    c = coeff_fn(args, t)
+                    u_re = y[0]
+                    u_im = y[1]
+                    # d(U_re)/dt = c * (A @ U_re - B @ U_im)
+                    du_re = c * (A @ u_re - B @ u_im)
+                    # d(U_im)/dt = c * (A @ U_im + B @ U_re)
+                    du_im = c * (A @ u_im + B @ u_re)
+                    return jnp.stack([du_re, du_im], axis=0)
+
+                # Initial condition: U(0) = I  ->  Re(I) = I, Im(I) = 0
+                y0 = jnp.stack(
+                    [
+                        jnp.eye(dim, dtype=_rdtype),
+                        jnp.zeros((dim, dim), dtype=_rdtype),
+                    ],
+                    axis=0,
+                )  # (2, dim, dim)
 
                 sol = diffrax.diffeqsolve(
                     diffrax.ODETerm(rhs),
@@ -309,14 +355,16 @@ class Yaqsi:
                     t0=t0,
                     t1=t1,
                     dt0=None,  # let the controller choose the initial step
-                    y0=jnp.eye(dim, dtype=_cdtype()),
+                    y0=y0,
                     args=params,
                     stepsize_controller=stepsize_controller,
                     max_steps=4096,
                 )
 
-                # sol.ys has shape (1, dim, dim) for SaveAt(t1=True) (default)
-                return sol.ys[0]
+                # sol.ys has shape (1, 2, dim, dim) for SaveAt(t1=True)
+                y_final = sol.ys[0]  # (2, dim, dim)
+                # Recombine into complex unitary
+                return y_final[0] + 1j * y_final[1]
 
             with cls._evolve_solver_cache_lock:
                 # Double-check to avoid overwriting a concurrent build
@@ -354,7 +402,7 @@ class Yaqsi:
                 t0 = T_arr[0]
                 t1 = T_arr[1]
 
-            U = _solve(neg_iH, params, t0, t1)
+            U = _solve(neg_iH_split, params, t0, t1)
 
             return Operation(wires=wires, matrix=U, name=name)
 
