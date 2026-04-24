@@ -632,17 +632,14 @@ class PulseGates:
     omega_q = 10 * jnp.pi
     omega_c = 10 * jnp.pi
 
-    H_static = jnp.array(
-        [[jnp.exp(1j * omega_q / 2), 0], [0, jnp.exp(-1j * omega_q / 2)]]
-    )
-
-    Id = jnp.eye(2, dtype=jnp.complex64)
     X = jnp.array([[0, 1], [1, 0]])
     Y = jnp.array([[0, -1j], [1j, 0]])
     Z = jnp.array([[1, 0], [0, -1]])
 
-    _H_X = H_static.conj().T @ X @ H_static
-    _H_Y = H_static.conj().T @ Y @ H_static
+    phase_static = omega_q / 2
+    H_static = phase_static * Z
+
+    Id = jnp.eye(2, dtype=jnp.complex64)
 
     _H_CZ = (jnp.pi / 4) * (
         jnp.kron(Id, Id) - jnp.kron(Z, Id) - jnp.kron(Id, Z) + jnp.kron(Z, Z)
@@ -798,15 +795,18 @@ class PulseGates:
         pulse_params = PulseInformation.RX.split_params(pulse_params)
 
         PulseGates._record_pulse_event("RX", w, wires, pulse_params)
+        t = pulse_params[-1]
 
-        _H = op.Hermitian(PulseGates._H_X, wires=wires, record=False)
+        Hs_int = jax.scipy.linalg.expm(-1j * t * PulseGates.H_static)
+        H_int = Hs_int.conj() @ PulseGates.X @ Hs_int
+        _H = op.Hermitian(H_int, wires=wires, record=False)
         H_eff = PulseGates._coeff_Sx * _H
 
         # Pack: [envelope_params..., w] - evolution time is the last element
         # of pulse_params (pulse_params[-1]).
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         env_params = jnp.array([*pulse_params[:-1], w])
-        ys.evolve(H_eff, name="RX")([env_params], pulse_params[-1])
+        ys.evolve(H_eff, name="RX")([env_params], t)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -830,15 +830,18 @@ class PulseGates:
         pulse_params = PulseInformation.RY.split_params(pulse_params)
 
         PulseGates._record_pulse_event("RY", w, wires, pulse_params)
+        t = pulse_params[-1]
 
-        _H = op.Hermitian(PulseGates._H_Y, wires=wires, record=False)
+        Hs_int = jax.scipy.linalg.expm(-1j * t * PulseGates.H_static)
+        H_int = Hs_int.conj() @ PulseGates.Y @ Hs_int
+        _H = op.Hermitian(H_int, wires=wires, record=False)
         H_eff = PulseGates._coeff_Sy * _H
 
         # Pack w into the params so the coefficient function doesn't need
         # a closure - this enables JIT solver cache sharing across all RY calls.
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         env_params = jnp.array([*pulse_params[:-1], w])
-        ys.evolve(H_eff, name="RY")([env_params], pulse_params[-1])
+        ys.evolve(H_eff, name="RY")([env_params], t)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
