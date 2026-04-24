@@ -57,9 +57,9 @@ class PulseParams:
             decomposition: List of :class:`DecompositionStep` (composite gates).
                 Mutually exclusive with *params*.
         """
-        assert (params is None) != (
-            decomposition is None
-        ), "Exactly one of `params` or `decomposition` must be provided."
+        assert (params is None) != (decomposition is None), (
+            "Exactly one of `params` or `decomposition` must be provided."
+        )
 
         self.decomposition = decomposition
         # Derive _pulse_obj for backward compat with childs/leafs/split_params

@@ -24,7 +24,6 @@ log = logging.getLogger(__name__)
 
 
 class Coefficients:
-
     @classmethod
     def get_spectrum(
         cls,
@@ -249,9 +248,9 @@ class FourierTree:
             """
             self.parameter_idx = parameter_idx
 
-            assert not (
-                is_sine_factor and is_cosine_factor
-            ), "Cannot be sine and cosine at the same time"
+            assert not (is_sine_factor and is_cosine_factor), (
+                "Cannot be sine and cosine at the same time"
+            )
             self.is_sine_factor = is_sine_factor
             self.is_cosine_factor = is_cosine_factor
 
@@ -1002,7 +1001,6 @@ class FourierTree:
 
 
 class FCC:
-
     @classmethod
     def get_fcc(
         cls,
@@ -1254,11 +1252,9 @@ class FCC:
         # such that after correlation, all positive indexed coefficients
         # will be in the bottom right quadrant
         if method == "pearson":
-
             result = cls._pearson(mat.reshape(mat.shape[0], -1))
             # result = cls._pearson(mat.reshape(mat.shape[-1], -1, order="F"))
         elif method == "spearman":
-
             result = cls._spearman(mat.reshape(mat.shape[0], -1))
             # result = cls._spearman(mat.reshape(mat.shape[-1], -1, order="F"))
         else:
@@ -1457,11 +1453,13 @@ class FCC:
         assert (
             fourier_fingerprint.shape[0] % 2 != 0
             and fourier_fingerprint.shape[1] % 2 != 0
-        ), "Correlation matrix must have odd dimensions. \
+        ), (
+            "Correlation matrix must have odd dimensions. \
             Hint: use `trim` argument when calling `get_spectrum`."
-        assert (
-            fourier_fingerprint.shape[0] == fourier_fingerprint.shape[1]
-        ), "Correlation matrix must be square."
+        )
+        assert fourier_fingerprint.shape[0] == fourier_fingerprint.shape[1], (
+            "Correlation matrix must be square."
+        )
 
         def quadrant_to_matrix(a: jnp.ndarray) -> jnp.ndarray:
             """
@@ -1497,7 +1495,6 @@ class FCC:
 
 
 class Datasets:
-
     @classmethod
     def generate_fourier_series(
         cls,
