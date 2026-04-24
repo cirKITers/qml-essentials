@@ -152,7 +152,7 @@ class Entanglement:
                     inputs,
                     pulse_params=pulse_params,
                     random_key=random_key,
-                    **kw
+                    **kw,
                 )
 
             # First copy on wires 0..n-1
@@ -293,9 +293,7 @@ class Entanglement:
         # Entropy of GHZ states should be maximal
         ghz_model = Model(model.n_qubits, 1, "GHZ", data_reupload=False)
         rho_ghz, log_rho_ghz = cls._compute_log_density(ghz_model, **kwargs)
-        ghz_entropies = cls._compute_rel_entropies(
-            rho_ghz, log_rho_ghz, log_sigmas
-        )
+        ghz_entropies = cls._compute_rel_entropies(rho_ghz, log_rho_ghz, log_sigmas)
 
         normalised_entropies = rel_entropies / ghz_entropies
 
@@ -517,7 +515,7 @@ class Entanglement:
                     inputs,
                     pulse_params=pulse_params,
                     random_key=random_key,
-                    **kw
+                    **kw,
                 )
 
             # First copy on wires n..2n-1
@@ -656,9 +654,10 @@ class Entanglement:
         # Construct observable for measuring CE
         CE_observable = op.Id([0, n]) + op.Operation([0, n], SWAP)
         for i in range(1, n):
-            CE_observable = (CE_observable @
-                             (op.Id([i, i + n]) + op.Operation([i, i + n], SWAP)))
-        CE_observable = (1/N) * CE_observable
+            CE_observable = CE_observable @ (
+                op.Id([i, i + n]) + op.Operation([i, i + n], SWAP)
+            )
+        CE_observable = (1 / N) * CE_observable
 
         expvals = []
         if n_batch > 1:

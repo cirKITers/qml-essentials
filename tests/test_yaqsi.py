@@ -1382,12 +1382,12 @@ class TestGateOperations:
         x = PauliX(wires=0, record=False)
         y = PauliY(wires=1, record=False)
         z = PauliZ(wires=0, record=False)
-        
+
         result = prod(x, y, z)
         # X(0)*Z(0) \otimes Y(1)
         expected_xz = PauliX._matrix @ PauliZ._matrix
         expected = jnp.kron(expected_xz, PauliY._matrix)
-        
+
         assert jnp.allclose(result.matrix, expected, atol=1e-10)
         assert result.wires == [0, 1]
         assert result.name == "Prod(PauliX*PauliY*PauliZ)"
@@ -1398,11 +1398,11 @@ class TestGateOperations:
         x = PauliX(wires=0, record=False)
         y = PauliY(wires=1, record=False)
         z = PauliZ(wires=0, record=False)
-        
+
         result = x.prod(y, z)
         expected_xz = PauliX._matrix @ PauliZ._matrix
         expected = jnp.kron(expected_xz, PauliY._matrix)
-        
+
         assert jnp.allclose(result.matrix, expected, atol=1e-10)
         assert result.wires == [0, 1]
         assert result.name == "Prod(PauliX*PauliY*PauliZ)"
@@ -1410,15 +1410,16 @@ class TestGateOperations:
     @pytest.mark.unittest
     def test_prod_observable_execution(self):
         """prod operation can be used as an observable in Yaqsi."""
+
         def circuit():
             H(wires=0)
             H(wires=1)
-            
+
         script = Script(circuit, n_qubits=2)
         # <X0 X1> = 1.0 since state is |+>|+>
         obs_op = prod(PauliX(wires=0, record=False), PauliX(wires=1, record=False))
         res = script.execute(type="expval", obs=[obs_op])
-        
+
         assert jnp.allclose(res, jnp.array([1.0]), atol=1e-10)
 
     @pytest.mark.unittest

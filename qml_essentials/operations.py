@@ -342,7 +342,8 @@ class Operation:
         return op
 
     def prod(self, *ops: "Operation") -> "Operation":
-        """Construct the generalized product (tensor or matrix) of this operation with others.
+        """Construct the generalized product (tensor or matrix)
+        of this operation with others.
 
         The resulting operation acts on the union of all wire sets.
         If the wire sets are disjoint, this is a Kronecker product.
@@ -378,7 +379,9 @@ class Operation:
             mat = mat @ mat_other
 
         op_names = "*".join(op.name for op in all_ops)
-        return Operation(wires=all_wires, matrix=mat, name=f"Prod({op_names})", record=False)
+        return Operation(
+            wires=all_wires, matrix=mat, name=f"Prod({op_names})", record=False
+        )
 
     def __matmul__(self, other: "Operation") -> "Operation":
         """Tensor (Kronecker) product or matrix product of two operations.

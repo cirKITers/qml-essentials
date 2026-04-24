@@ -625,9 +625,7 @@ class TestFCC:
         )
 
         fp_spearman = FCC._correlate(coeffs.transpose(), method="spearman")
-        assert np.all(
-            np.abs(fp_spearman[np.isfinite(fp_spearman)]) <= 1.0 + 1e-10
-        ), (
+        assert np.all(np.abs(fp_spearman[np.isfinite(fp_spearman)]) <= 1.0 + 1e-10), (
             f"Spearman correlation out of [-1, 1] for {encoding_strategy}. "
             f"Max |rho| = {np.max(np.abs(fp_spearman[np.isfinite(fp_spearman)]))}"
         )
@@ -637,9 +635,9 @@ class TestFCC:
             fcc = FCC.get_fcc(
                 model, n_samples=n_samples, method=method, trim_redundant=True
             )
-            assert 0.0 <= float(fcc) <= 1.0, (
-                f"FCC out of [0, 1] for {encoding_strategy}/{method}: {float(fcc)}"
-            )
+            assert (
+                0.0 <= float(fcc) <= 1.0
+            ), f"FCC out of [0, 1] for {encoding_strategy}/{method}: {float(fcc)}"
 
             # Also test without trimming
             fcc_untrimmed = FCC.get_fcc(
