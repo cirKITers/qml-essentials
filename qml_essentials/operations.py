@@ -518,39 +518,125 @@ class Hermitian(Operation):
             raise TypeError(
                 f"Left operand of `* Hermitian` must be callable, got {type(coeff_fn)}"
             )
-        return ParametrizedHamiltonian(coeff_fn, self.matrix, self.wires)
+        return ParametrizedHamiltonian(terms=[(coeff_fn, self.matrix, self.wires)])
 
 
 class ParametrizedHamiltonian:
-    """A time-dependent Hamiltonian ``H(t) = f(params, t) · H_mat``.
+    """A time-dependent Hamiltonian as a sum of ``coeff * Hermitian`` terms.
 
-    Created by multiplying a callable coefficient function with a
-    :class:`Hermitian` operator::
+    Mathematically::
 
-        def coeff(p, t):
-            return p[0] * jnp.exp(-0.5 * ((t - t_c) / p[1]) ** 2)
+        H(t) = \\sum_i f_i(params_i, t) * H_i
 
-        H_td = coeff * Hermitian(matrix=sigma_x, wires=0)
+    Construction is always done from an explicit list of
+    ``(coeff_fn, H_mat, wires)`` triples passed as ``terms``.  The
+    common single-term shorthand is the operator form
+    ``coeff_fn * Hermitian(matrix, wires)`` (see
+    :meth:`Hermitian.__rmul__`), which returns a one-term instance.
+    Multi-term Hamiltonians are composed with ``+`` between
+    :class:`ParametrizedHamiltonian` instances::
 
-    The Hamiltonian is then used with :func:`evolve`::
+        H1 = coeff_x * Hermitian(X, wires=0)
+        H2 = coeff_y * Hermitian(Y, wires=0)
+        H_td = H1 + H2
 
-        evolve(H_td)(coeff_args=[A, sigma], T=1.0)
+        # evolve under the composite Hamiltonian; coeff_args is a list of
+        # parameter sets, one per term, in the order the terms were added:
+        evolve(H_td)([px, py], T=1.0)
 
     Attributes:
-        coeff_fn: Callable ``(params, t) -> scalar``.
-        H_mat: Static Hermitian matrix (JAX array).
-        wires: Qubit wire(s) this Hamiltonian acts on.
+        coeff_fns: Tuple of callables ``(params, t) -> scalar``, one per term.
+        H_mats: Tuple of static Hermitian matrices, one per term.
+        wires: Wires this Hamiltonian acts on (union across all terms; for
+            now all terms are required to share the same wire set).
     """
 
     def __init__(
         self,
-        coeff_fn: Callable,
-        H_mat: jnp.ndarray,
-        wires: Union[int, List[int]],
+        terms: List[Tuple[Callable, jnp.ndarray, Union[int, List[int]]]],
     ) -> None:
-        self.coeff_fn = coeff_fn
-        self.H_mat = H_mat
-        self.wires = wires
+        """Build a (possibly multi-term) parametrized Hamiltonian.
+
+        Args:
+            terms: List of ``(coeff_fn, H_mat, wires)`` triples.  Use the
+                ``coeff_fn * Hermitian(...)`` shorthand to build a
+                one-term instance; combine instances with ``+`` to add
+                terms.
+
+        Raises:
+            ValueError: If the term list is empty, or if terms act on
+                differing wire sets (multi-wire broadcasting is
+                deferred — see :mod:`yaqsi`), or if term matrices have
+                incompatible shapes.
+        """
+        if len(terms) == 0:
+            raise ValueError("ParametrizedHamiltonian needs at least one term.")
+
+        # Normalise wires (single int -> [int]) and validate consistency.
+        def _wlist(w):
+            return [w] if isinstance(w, int) else list(w)
+
+        first_wires = _wlist(terms[0][2])
+        for _, _, w in terms[1:]:
+            if _wlist(w) != first_wires:
+                raise ValueError(
+                    "All terms of a ParametrizedHamiltonian must currently "
+                    "act on the same wires; got "
+                    f"{_wlist(w)} vs. {first_wires}. "
+                    "Multi-wire broadcasting across terms is not yet supported."
+                )
+
+        # Validate matrix shape compatibility across terms.
+        first_dim = jnp.asarray(terms[0][1]).shape
+        for _, H, _ in terms[1:]:
+            if jnp.asarray(H).shape != first_dim:
+                raise ValueError(
+                    f"All term matrices must have the same shape; got "
+                    f"{jnp.asarray(H).shape} vs. {first_dim}."
+                )
+
+        self._terms: Tuple[Tuple[Callable, jnp.ndarray, List[int]], ...] = tuple(
+            (fn, jnp.asarray(H, dtype=_cdtype()), _wlist(w)) for fn, H, w in terms
+        )
+        self.wires: List[int] = list(first_wires)
+
+    # --- term accessors -------------------------------------------------
+
+    @property
+    def coeff_fns(self) -> Tuple[Callable, ...]:
+        """Tuple of coefficient functions, one per term."""
+        return tuple(fn for fn, _, _ in self._terms)
+
+    @property
+    def H_mats(self) -> Tuple[jnp.ndarray, ...]:
+        """Tuple of Hermitian matrices, one per term."""
+        return tuple(H for _, H, _ in self._terms)
+
+    @property
+    def n_terms(self) -> int:
+        """Number of terms in the Hamiltonian."""
+        return len(self._terms)
+
+    # --- composition ---------------------------------------------------
+
+    def __add__(self, other: "ParametrizedHamiltonian") -> "ParametrizedHamiltonian":
+        """Concatenate term lists: ``H = H1 + H2``."""
+        if not isinstance(other, ParametrizedHamiltonian):
+            return NotImplemented
+        return ParametrizedHamiltonian(terms=list(self._terms) + list(other._terms))
+
+    def __neg__(self) -> "ParametrizedHamiltonian":
+        """Negate every coefficient: ``-H`` = sum of ``(-f_i) * H_i``."""
+        new_terms = [
+            ((lambda f: (lambda p, t: -f(p, t)))(fn), H, w)
+            for fn, H, w in self._terms
+        ]
+        return ParametrizedHamiltonian(terms=new_terms)
+
+    def __sub__(self, other: "ParametrizedHamiltonian") -> "ParametrizedHamiltonian":
+        if not isinstance(other, ParametrizedHamiltonian):
+            return NotImplemented
+        return self + (-other)
 
 
 class Id(Operation):

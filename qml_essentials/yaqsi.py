@@ -240,77 +240,80 @@ class Yaqsi:
         name: Optional[str] = None,
         **odeint_kwargs: Any,
     ) -> Callable:
-        """Gate factory for time-dependent Hamiltonian evolution.
+        """Gate factory for time-dependent (multi-term) Hamiltonian evolution.
 
-        Solves the matrix ODE ``dU/dt = -i f(params, t) H * U`` with
-        ``U(0) = I`` using ``diffrax.diffeqsolve`` (Dopri8 adaptive RK).
+        Solves the matrix ODE
 
-        To avoid diffrax's experimental (and potentially incorrect) complex
-        dtype path, the ODE is reformulated in real arithmetic.  Writing
-        ``-iH = A + iB`` (real and imaginary parts) and ``U = U_re + i U_im``,
-        the system becomes::
+            dU/dt = -i [\\sum_i f_i(params_i, t) * H_i] * U,    U(0) = I
 
-            d(U_re)/dt = f(p,t) * (A @ U_re - B @ U_im)
-            d(U_im)/dt = f(p,t) * (A @ U_im + B @ U_re)
+        with ``diffrax.diffeqsolve`` (Dopri8 adaptive RK).  The Hamiltonian
+        may contain one or more ``coeff_fn * Hermitian`` terms (see
+        :class:`ParametrizedHamiltonian`); the single-term case is the
+        usual ``coeff_fn * Hermitian`` and is fully backward compatible.
 
-        The state is stacked as a ``(2, dim, dim)`` real array, integrated
-        with diffrax in pure ``float64`` (or ``float32`` when x64 is
-        disabled), and recombined into a complex unitary at the end.
+        Implementation notes:
 
-        Performance improvements over the previous ``jax.experimental.ode``
-        implementation:
+        - To avoid diffrax's experimental complex dtype path, the ODE is
+          reformulated in real arithmetic.  Writing ``-iH_i = A_i + i B_i``
+          and ``U = U_re + i U_im``, each term contributes::
 
-        Uses diffrax — a modern, well-maintained JAX ODE library with
-        better XLA compilation, adjoint methods, and step-size control.
-        The JIT-compiled solver is cached per coefficient function so
-        that multiple ``evolve()`` calls with the same pulse shape (but
-        different Hamiltonian matrices or parameters) reuse the same
-        compiled XLA program.  This avoids O(n_gates) JIT compilations
-        during pulse-mode tape recording.
-        Pre-computes ``-i*H`` once and splits into real/imaginary parts
-        to avoid complex arithmetic inside the ODE RHS.
-        Avoids dynamic ``jnp.where`` branching for the time span.
+              d(U_re)/dt += f_i(p_i,t) * (A_i @ U_re - B_i @ U_im)
+              d(U_im)/dt += f_i(p_i,t) * (A_i @ U_im + B_i @ U_re)
 
-        TODO: switch backonce diffrax is stable with complex arithmetic
+        - ``-iH_i`` is precomputed once per term and stacked into a
+          ``(n_terms, 2, dim, dim)`` real array, contracted via
+          ``einsum`` against the per-step coefficient vector
+          ``c = [f_0(p_0,t), ..., f_{n-1}(p_{n-1},t)]``.
+
+        - The JIT-compiled solver is cached per coefficient-function code
+          tuple (and ``dim``, tolerances) so multiple ``evolve()`` calls
+          with the same pulse shape — but different Hamiltonian matrices
+          or parameters — reuse the same compiled XLA program.
+
+        TODO: switch back once diffrax is stable with complex arithmetic.
 
         Args:
-            ph: A :class:`ParametrizedHamiltonian` holding the coefficient
-                function, the Hamiltonian matrix, and wire indices.
+            ph: A :class:`ParametrizedHamiltonian` (one or more terms).
             **odeint_kwargs: ``atol`` and ``rtol`` for the step-size controller.
         """
-        H_mat = ph.H_mat
-        coeff_fn = ph.coeff_fn
+        coeff_fns = ph.coeff_fns                       # tuple of callables
+        H_mats = ph.H_mats                             # tuple of (dim, dim)
         wires = ph.wires
-        dim = H_mat.shape[0]
+        n_terms = ph.n_terms
+        dim = H_mats[0].shape[0]
 
-        # Pre-compute -i*H and split into real / imaginary parts so the
-        # ODE RHS uses only real arithmetic (avoids diffrax complex warning).
-        neg_iH = -1j * H_mat
-        neg_iH_re = jnp.real(neg_iH)  # A = Re(-iH)
-        neg_iH_im = jnp.imag(neg_iH)  # B = Im(-iH)
-        # Stack as (2, dim, dim): [A, B]
-        neg_iH_split = jnp.stack([neg_iH_re, neg_iH_im], axis=0)
+        # Pre-compute -i*H_i for each term and split into real / imaginary
+        # parts so the ODE RHS uses only real arithmetic.  Final shape:
+        # (n_terms, 2, dim, dim).
+        neg_iH_split_per_term = []
+        for H_mat in H_mats:
+            neg_iH = -1j * H_mat
+            neg_iH_split_per_term.append(
+                jnp.stack([jnp.real(neg_iH), jnp.imag(neg_iH)], axis=0)
+            )
+        neg_iH_split = jnp.stack(neg_iH_split_per_term, axis=0)
 
         # Real dtype matching the precision mode
         _rdtype = jnp.float64 if jax.config.x64_enabled else jnp.float32
 
-        atol = odeint_kwargs.pop("atol", 1.4e-8)
-        rtol = odeint_kwargs.pop("rtol", 1.4e-8)
+        # Tolerances: by default pick values that leave headroom under the
+        # active precision mode.  Under float32 the Dopri8 error floor is
+        # ~1e-6, so tightening below 1.4e-8 wastes work.  Under x64 we can
+        # safely go to 1e-10 without stalling — and benchmarks confirmed
+        # the evolved unitary is already stable to ~1e-10 at the looser
+        # value, so this is purely headroom for future stiffer drives.
+        _default_tol = 1.0e-10 if jax.config.x64_enabled else 1.4e-8
+        atol = odeint_kwargs.pop("atol", _default_tol)
+        rtol = odeint_kwargs.pop("rtol", _default_tol)
 
-        # Look up or build the JIT-compiled solver for this (coeff_fn, dim)
-        # combination.  All pulse gates with the same pulse shape function
-        # (e.g. all RX gates share Sx, all RY share Sy) reuse a single
-        # compiled XLA program, with neg_iH_split passed as a regular
-        # argument rather than captured in the closure.  This turns
-        # O(n_gates) JIT compilations into O(n_distinct_pulse_shapes)
-        # compilations.
-        #
-        # We key on the function's __code__ object rather than id(coeff_fn)
-        # because each pulse gate call creates a new closure (capturing the
-        # rotation angle `w`), but the underlying code is identical.  Under
-        # JIT, the captured `w` is a tracer anyway, so the compiled program
-        # is generic over `w`.
-        cache_key = (id(coeff_fn.__code__), dim, atol, rtol)
+        # Cache key:  identity of every coeff fn's code object (same shape
+        # of pulse fns -> same JIT program) plus dim and tolerances.
+        cache_key = (
+            tuple(id(fn.__code__) for fn in coeff_fns),
+            dim,
+            atol,
+            rtol,
+        )
 
         with cls._evolve_solver_cache_lock:
             _solve = cls._evolve_solver_cache.get(cache_key)
@@ -319,25 +322,54 @@ class Yaqsi:
             solver = diffrax.Dopri8()
             stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
 
+            # Capture coeff_fns as a tuple in the closure.  n_terms is
+            # static (Python int) so the unrolled stack of coefficient
+            # evaluations specializes cleanly under JIT.
+            _coeff_fns = coeff_fns
+
             @jax.jit
             def _solve(neg_iH_split, params, t0, t1):
-                """Solve dU/dt = f(params,t) * (-iH) * U from t0 to t1.
+                """Solve dU/dt = sum_i f_i(p_i, t) * (-iH_i) * U from t0 to t1.
 
-                The state y has shape (2, dim, dim) where y[0] = Re(U)
-                and y[1] = Im(U).  The Hamiltonian data neg_iH_split
-                has the same layout: [Re(-iH), Im(-iH)].
+                ``neg_iH_split`` has shape ``(n_terms, 2, dim, dim)`` with
+                ``[:, 0]`` = Re(-iH_i) and ``[:, 1]`` = Im(-iH_i).
+                ``params`` is a list/tuple of length ``n_terms`` carrying
+                each term's coefficient parameters.  The state ``y`` has
+                shape ``(2, dim, dim)`` with ``y[0] = Re(U)`` and
+                ``y[1] = Im(U)``.
                 """
-                A = neg_iH_split[0]  # Re(-iH)
-                B = neg_iH_split[1]  # Im(-iH)
+                A_all = neg_iH_split[:, 0]  # (n_terms, dim, dim)
+                B_all = neg_iH_split[:, 1]  # (n_terms, dim, dim)
 
                 def rhs(t, y, args):
-                    c = coeff_fn(args, t)
+                    # args: list/tuple of length n_terms, args[i] are the
+                    # parameters for coeff_fns[i].
+                    # Each coefficient function must return a scalar value;
+                    # some call sites pass a shape-(1,) param array which
+                    # makes the result shape (1,) instead of ().  Coerce to
+                    # a true scalar before stacking so ``c`` is 1-D with
+                    # shape ``(n_terms,)``.
+                    c = jnp.stack(
+                        [
+                            jnp.asarray(
+                                _coeff_fns[i](args[i], t)
+                            ).reshape(())
+                            for i in range(n_terms)
+                        ]
+                    )  # (n_terms,)
                     u_re = y[0]
                     u_im = y[1]
-                    # d(U_re)/dt = c * (A @ U_re - B @ U_im)
-                    du_re = c * (A @ u_re - B @ u_im)
-                    # d(U_im)/dt = c * (A @ U_im + B @ U_re)
-                    du_im = c * (A @ u_im + B @ u_re)
+                    # Combine per-term coefficients into a single
+                    # effective ``-iH(t) = Σ_i c_i(-iH_i)`` matrix via a
+                    # weighted sum, then apply to the state with a pair
+                    # of real matmuls.  This is equivalent to an
+                    # einsum-based formulation but compiles to a fused
+                    # matmul under JIT, avoiding the per-step overhead
+                    # of ``jnp.einsum``.
+                    A_eff = jnp.tensordot(c, A_all, axes=1)  # (dim, dim)
+                    B_eff = jnp.tensordot(c, B_all, axes=1)  # (dim, dim)
+                    du_re = A_eff @ u_re - B_eff @ u_im
+                    du_im = A_eff @ u_im + B_eff @ u_re
                     return jnp.stack([du_re, du_im], axis=0)
 
                 # Initial condition: U(0) = I  ->  Re(I) = I, Im(I) = 0
@@ -375,23 +407,32 @@ class Yaqsi:
                     cls._evolve_solver_cache[cache_key] = _solve
 
         def _apply(coeff_args, T) -> Operation:
-            """Evolve under the time-dependent Hamiltonian.
+            """Evolve under the (multi-term) time-dependent Hamiltonian.
 
             Args:
-                coeff_args: List of parameter sets, one per Hamiltonian term.
-                    For static Hamiltonians, ``coeff_args[0]`` is
-                    forwarded to ``coeff_fn(params, t)`` as the first argument.
-                T: Total evolution time.  If scalar, the ODE is solved on
-                    ``[0, T]``.  If a 2-element array, on ``[T[0], T[1]]``.
+                coeff_args: List/tuple of parameter sets, one per term.
+                    For single-term Hamiltonians the legacy form
+                    ``[params]`` works unchanged; ``params`` is forwarded
+                    to the sole coefficient function.
+                T: Total evolution time.  Scalar -> integrate on
+                    ``[0, T]``; 2-element -> integrate on ``[T[0], T[1]]``.
 
             Returns:
                 An :class:`Operation` wrapping the computed unitary.
             """
-            # PennyLane convention: coeff_args is a list of param-sets,
-            # one per term.  Single term -> unpack the first.
-            params = (
-                coeff_args[0] if isinstance(coeff_args, (list, tuple)) else coeff_args
-            )
+            # Normalise to a tuple of length n_terms.  Accept a bare
+            # single-term arg for backward compat.
+            if isinstance(coeff_args, (list, tuple)):
+                params = tuple(coeff_args)
+            else:
+                params = (coeff_args,)
+
+            if len(params) != n_terms:
+                raise ValueError(
+                    f"Expected {n_terms} parameter set(s) for a "
+                    f"{n_terms}-term ParametrizedHamiltonian, "
+                    f"got {len(params)}."
+                )
 
             # Build time span — resolve at Python level to avoid traced branching
             T_arr = jnp.asarray(T, dtype=jnp.float64)

@@ -346,10 +346,10 @@ class PulseEnvelope:
             "n_envelope_params": 2,
             "defaults": {
                 "RX": jnp.array(
-                    [30.187402725219727, 0.32704535126686096, 0.320675790309906]
+                    [0.5138147373723073, 2.034985794872762, 2.0165642787020306]
                 ),
                 "RY": jnp.array(
-                    [10.794735903531707, 0.12725685459013134, 0.3157523181268348]
+                    [0.52382346, 2.04986864, 1.96646211]
                 ),
             },
         },
@@ -416,40 +416,74 @@ class PulseEnvelope:
 
     @staticmethod
     def build_coeff_fns(
-        envelope_fn: Callable, omega_c: float
-    ) -> Tuple[Callable, Callable]:
-        """Build ``(coeff_Sx, coeff_Sy)`` for a given envelope function.
+        envelope_fn: Callable, omega_c: float, omega_q: float
+    ) -> Tuple[Callable, Callable, Callable, Callable]:
+        """Build the four interaction-picture coefficient functions.
 
-        Each returned function has a unique ``__code__`` object so that
-        the yaqsi JIT solver cache (keyed on ``id(coeff_fn.__code__)``)
-        assigns a separate compiled XLA program per envelope shape.
+        For an on-resonance lab-frame drive
 
-        The rotation angle ``w`` is expected as the **last** element of the
-        parameter array ``p`` (i.e. ``p[-1]``).  Envelope parameters occupy
-        ``p[:-1]`` (excluding the evolution-time element that is passed
-        separately to ``ys.evolve``).
+            H_lab(τ) = (ω_q/2)·Z + Ω(τ)·cos(ω_c·τ + φ)·X
+
+        the proper interaction-picture transform with respect to
+        ``H_0 = (ω_q/2)·Z`` produces a Hamiltonian whose components on
+        X and Y are time-dependent::
+
+            H_I(τ) = Ω(τ)·cos(ω_c·τ + φ) ·
+                     [ cos(ω_q·τ)·X − sin(ω_q·τ)·Y ]
+
+        For RX (``φ = 0``) the slow (RWA) component drives +X; for RY
+        (``φ = +π/2``) it drives +Y.  The fast counter-rotating
+        component oscillates at ``2·ω_q`` and averages to zero on
+        resonance.
+
+        Each returned function has a unique ``__code__`` object so the
+        yaqsi solver cache assigns separate compiled XLA programs per
+        envelope shape and per (gate, component) pair.
+
+        The rotation angle ``w`` is expected as the **last** element of
+        the parameter array ``p`` (i.e. ``p[-1]``).  Envelope parameters
+        occupy ``p[:-1]``.
 
         Args:
             envelope_fn: Pure envelope function ``(p, t, t_c) -> scalar``.
             omega_c: Carrier frequency.
+            omega_q: Qubit frequency (interaction-picture rotation rate).
 
         Returns:
-            Tuple of ``(coeff_Sx, coeff_Sy)``.
+            Tuple ``(coeff_RX_X, coeff_RX_Y, coeff_RY_X, coeff_RY_Y)``
+            of coefficient functions for the X- and Y-components of the
+            RX and RY interaction-picture Hamiltonians.
         """
-
-        def _coeff_Sx(p, t):
+        # RX uses carrier phase phi = 0 so that after RWA
+        #   cos(ω_q τ)·cos(ω_q τ)  averages to +1/2  → drives +X
+        #   -cos(ω_q τ)·sin(ω_q τ) averages to  0    → Y cancels
+        # giving H_I^RWA ≈ (Ω/2)·X → U ≈ exp(-iθ/2 X), matching op.RX.
+        def _coeff_RX_X(p, t):
             t_c = t / 2
             env = envelope_fn(p, t, t_c)
-            carrier = jnp.cos(omega_c * t + jnp.pi)
-            return env * carrier * p[-1]
+            carrier = jnp.cos(omega_c * t)
+            return env * carrier * jnp.cos(omega_q * t) * p[-1]
 
-        def _coeff_Sy(p, t):
+        def _coeff_RX_Y(p, t):
             t_c = t / 2
             env = envelope_fn(p, t, t_c)
-            carrier = jnp.cos(omega_c * t - jnp.pi / 2)
-            return env * carrier * p[-1]
+            carrier = jnp.cos(omega_c * t)
+            return -env * carrier * jnp.sin(omega_q * t) * p[-1]
 
-        return _coeff_Sx, _coeff_Sy
+        # RY uses carrier phase phi = +pi/2 so the RWA component drives +Y.
+        def _coeff_RY_X(p, t):
+            t_c = t / 2
+            env = envelope_fn(p, t, t_c)
+            carrier = jnp.cos(omega_c * t + jnp.pi / 2)
+            return env * carrier * jnp.cos(omega_q * t) * p[-1]
+
+        def _coeff_RY_Y(p, t):
+            t_c = t / 2
+            env = envelope_fn(p, t, t_c)
+            carrier = jnp.cos(omega_c * t + jnp.pi / 2)
+            return -env * carrier * jnp.sin(omega_q * t) * p[-1]
+
+        return _coeff_RX_X, _coeff_RX_Y, _coeff_RY_X, _coeff_RY_Y
 
 
 class PulseInformation:
@@ -553,12 +587,20 @@ class PulseInformation:
         cls._build_leaf_gates()
         cls._build_composite_gates()
 
-        # Rebuild coefficient functions on PulseGates
-        coeff_Sx, coeff_Sy = PulseEnvelope.build_coeff_fns(
-            info["fn"], PulseGates.omega_c
+        # Rebuild interaction-picture coefficient functions on PulseGates.
+        # Four functions: (RX_X, RX_Y, RY_X, RY_Y) — one per (gate, Pauli)
+        # component of the proper interaction-picture drive Hamiltonian.
+        rx_x, rx_y, ry_x, ry_y = PulseEnvelope.build_coeff_fns(
+            info["fn"], PulseGates.omega_c, PulseGates.omega_q
         )
-        PulseGates._coeff_Sx = staticmethod(coeff_Sx)
-        PulseGates._coeff_Sy = staticmethod(coeff_Sy)
+        PulseGates._coeff_RX_X = staticmethod(rx_x)
+        PulseGates._coeff_RX_Y = staticmethod(rx_y)
+        PulseGates._coeff_RY_X = staticmethod(ry_x)
+        PulseGates._coeff_RY_Y = staticmethod(ry_y)
+        # Backward-compat aliases for older introspection (point at the
+        # X-component which dominates RX, Y-component which dominates RY).
+        PulseGates._coeff_Sx = staticmethod(rx_x)
+        PulseGates._coeff_Sy = staticmethod(ry_y)
         PulseGates._active_envelope = name
 
         log.info(f"Pulse envelope set to '{name}'")
@@ -636,9 +678,6 @@ class PulseGates:
     Y = jnp.array([[0, -1j], [1j, 0]])
     Z = jnp.array([[1, 0], [0, -1]])
 
-    phase_static = omega_q / 2
-    H_static = phase_static * Z
-
     Id = jnp.eye(2, dtype=jnp.complex64)
 
     _H_CZ = (jnp.pi / 4) * (
@@ -649,21 +688,46 @@ class PulseGates:
 
     _active_envelope: str = "gaussian"
 
-    @staticmethod
-    def _coeff_Sx(p, t):
-        """Coefficient function for RX pulse (active envelope)."""
-        t_c = t / 2
-        env = PulseEnvelope.gaussian(p, t, t_c)
-        carrier = jnp.cos(PulseGates.omega_c * t + jnp.pi)
-        return env * carrier * p[-1]
+    # Default coefficient functions for the gaussian envelope; the active
+    # envelope's `set_envelope` will overwrite these.  Each gate uses two
+    # coefficients (X- and Y-component of the proper interaction-picture
+    # drive Hamiltonian).
 
     @staticmethod
-    def _coeff_Sy(p, t):
-        """Coefficient function for RY pulse (active envelope)."""
+    def _coeff_RX_X(p, t):
+        """RX coefficient for the X term (gaussian default)."""
         t_c = t / 2
         env = PulseEnvelope.gaussian(p, t, t_c)
-        carrier = jnp.cos(PulseGates.omega_c * t - jnp.pi / 2)
-        return env * carrier * p[-1]
+        carrier = jnp.cos(PulseGates.omega_c * t)
+        return env * carrier * jnp.cos(PulseGates.omega_q * t) * p[-1]
+
+    @staticmethod
+    def _coeff_RX_Y(p, t):
+        """RX coefficient for the Y term (gaussian default)."""
+        t_c = t / 2
+        env = PulseEnvelope.gaussian(p, t, t_c)
+        carrier = jnp.cos(PulseGates.omega_c * t)
+        return -env * carrier * jnp.sin(PulseGates.omega_q * t) * p[-1]
+
+    @staticmethod
+    def _coeff_RY_X(p, t):
+        """RY coefficient for the X term (gaussian default)."""
+        t_c = t / 2
+        env = PulseEnvelope.gaussian(p, t, t_c)
+        carrier = jnp.cos(PulseGates.omega_c * t + jnp.pi / 2)
+        return env * carrier * jnp.cos(PulseGates.omega_q * t) * p[-1]
+
+    @staticmethod
+    def _coeff_RY_Y(p, t):
+        """RY coefficient for the Y term (gaussian default)."""
+        t_c = t / 2
+        env = PulseEnvelope.gaussian(p, t, t_c)
+        carrier = jnp.cos(PulseGates.omega_c * t + jnp.pi / 2)
+        return -env * carrier * jnp.sin(PulseGates.omega_q * t) * p[-1]
+
+    # Backward-compat aliases (resolve to the dominant component of each gate).
+    _coeff_Sx = _coeff_RX_X
+    _coeff_Sy = _coeff_RY_Y
 
     @staticmethod
     def _coeff_Sz(p, t):
@@ -797,16 +861,23 @@ class PulseGates:
         PulseGates._record_pulse_event("RX", w, wires, pulse_params)
         t = pulse_params[-1]
 
-        Hs_int = jax.scipy.linalg.expm(-1j * t * PulseGates.H_static)
-        H_int = Hs_int.conj() @ PulseGates.X @ Hs_int
-        _H = op.Hermitian(H_int, wires=wires, record=False)
-        H_eff = PulseGates._coeff_Sx * _H
+        # Proper interaction-picture drive Hamiltonian for RX:
+        #   H_I(τ) = Ω(τ)·cos(ω_c·τ) · [ cos(ω_q·τ)·X − sin(ω_q·τ)·Y ]
+        # which on resonance averages (RWA) to +(Ω/2)·X while the
+        # 2·ω_q counter-rotating part oscillates and cancels.
+        H_X = op.Hermitian(PulseGates.X, wires=wires, record=False)
+        H_Y = op.Hermitian(PulseGates.Y, wires=wires, record=False)
+        H_eff = (
+            PulseGates._coeff_RX_X * H_X
+            + PulseGates._coeff_RX_Y * H_Y
+        )
 
         # Pack: [envelope_params..., w] - evolution time is the last element
         # of pulse_params (pulse_params[-1]).
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         env_params = jnp.array([*pulse_params[:-1], w])
-        ys.evolve(H_eff, name="RX")([env_params], t)
+        # Both terms share the same parameter array.
+        ys.evolve(H_eff, name="RX")([env_params, env_params], t)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -832,16 +903,20 @@ class PulseGates:
         PulseGates._record_pulse_event("RY", w, wires, pulse_params)
         t = pulse_params[-1]
 
-        Hs_int = jax.scipy.linalg.expm(-1j * t * PulseGates.H_static)
-        H_int = Hs_int.conj() @ PulseGates.Y @ Hs_int
-        _H = op.Hermitian(H_int, wires=wires, record=False)
-        H_eff = PulseGates._coeff_Sy * _H
+        # See NOTE in RX: same proper interaction-picture form, with
+        # carrier phase ϕ = +π/2 so the slow RWA component drives +Y.
+        H_X = op.Hermitian(PulseGates.X, wires=wires, record=False)
+        H_Y = op.Hermitian(PulseGates.Y, wires=wires, record=False)
+        H_eff = (
+            PulseGates._coeff_RY_X * H_X
+            + PulseGates._coeff_RY_Y * H_Y
+        )
 
         # Pack w into the params so the coefficient function doesn't need
         # a closure - this enables JIT solver cache sharing across all RY calls.
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         env_params = jnp.array([*pulse_params[:-1], w])
-        ys.evolve(H_eff, name="RY")([env_params], t)
+        ys.evolve(H_eff, name="RY")([env_params, env_params], t)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
