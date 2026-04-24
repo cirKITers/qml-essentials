@@ -1378,7 +1378,7 @@ class TestGateOperations:
 
     @pytest.mark.unittest
     def test_prod_function(self):
-        """Module-level prod function constructs generalized product 
+        """Module-level prod function constructs generalized product
         (tensor or matrix) of multiple operations."""
         x = PauliX(wires=0, record=False)
         y = PauliY(wires=1, record=False)
