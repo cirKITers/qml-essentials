@@ -45,16 +45,16 @@ class TestCoefficients:
         coeffs, freqs = Coefficients.get_spectrum(model)
 
         assert coeffs.shape == model.degree, "Wrong number of coefficients"
-        assert jnp.isclose(
-            jnp.sum(coeffs).imag, 0.0, rtol=1.0e-5
-        ), "Imaginary part is not zero"
+        assert jnp.isclose(jnp.sum(coeffs).imag, 0.0, rtol=1.0e-5), (
+            "Imaginary part is not zero"
+        )
 
         partial_circuit = partial(model, model.params, force_mean=True)
         ref_coeffs = pcoefficients(partial_circuit, 1, model.degree[0] // 2)
 
-        assert jnp.allclose(
-            coeffs, ref_coeffs, rtol=1.0e-5
-        ), "Coefficients don't match the pennylane reference"
+        assert jnp.allclose(coeffs, ref_coeffs, rtol=1.0e-5), (
+            "Coefficients don't match the pennylane reference"
+        )
 
         for ref_input in reference_inputs:
             exp_model = model(params=None, inputs=ref_input, force_mean=True)
@@ -65,9 +65,9 @@ class TestCoefficients:
                 inputs=ref_input,
             )
 
-            assert jnp.isclose(
-                exp_model, exp_fourier, atol=1.0e-5
-            ), "Fourier series does not match model expectation"
+            assert jnp.isclose(exp_model, exp_fourier, atol=1.0e-5), (
+                "Fourier series does not match model expectation"
+            )
 
     @pytest.mark.unittest
     def test_dummy_model(self) -> None:
@@ -110,12 +110,12 @@ class TestCoefficients:
             model_fct, mts=mts, shift=True, trim=True
         )
 
-        assert jnp.allclose(
-            X2_shift, X_shift, atol=1.0e-5
-        ), "Model and dummy coefficients are not equal."
-        assert jnp.allclose(
-            X2_freq_shift, X_freq_shift, atol=1.0e-5
-        ), "Model and dummy frequencies are not equal."
+        assert jnp.allclose(X2_shift, X_shift, atol=1.0e-5), (
+            "Model and dummy coefficients are not equal."
+        )
+        assert jnp.allclose(X2_freq_shift, X_freq_shift, atol=1.0e-5), (
+            "Model and dummy frequencies are not equal."
+        )
 
     @pytest.mark.unittest
     @pytest.mark.parametrize(
@@ -153,9 +153,9 @@ class TestCoefficients:
             inputs=ref_input,
         )
 
-        assert jnp.isclose(
-            exp_model, exp_fourier, atol=1.0e-5
-        ).all(), "Fourier series does not match model expectation"
+        assert jnp.isclose(exp_model, exp_fourier, atol=1.0e-5).all(), (
+            "Fourier series does not match model expectation"
+        )
 
     @pytest.mark.smoketest
     def test_batch(self) -> None:
@@ -181,9 +181,9 @@ class TestCoefficients:
             coeffs_single, _ = Coefficients.get_spectrum(
                 model, params=params[i], shift=True, trim=True
             )
-            assert jnp.allclose(
-                coeffs_parallel[:, i], coeffs_single, rtol=1.0e-5
-            ), "MP and SP coefficients don't match for 1D input"
+            assert jnp.allclose(coeffs_parallel[:, i], coeffs_single, rtol=1.0e-5), (
+                "MP and SP coefficients don't match for 1D input"
+            )
 
         model = Model(
             n_qubits=2,
@@ -201,9 +201,9 @@ class TestCoefficients:
             coeffs_single, _ = Coefficients.get_spectrum(
                 model, params=params[i], shift=True, trim=True
             )
-            assert jnp.allclose(
-                coeffs_parallel[:, :, i], coeffs_single, rtol=1.0e-5
-            ), "MP and SP coefficients don't match for 2D input"
+            assert jnp.allclose(coeffs_parallel[:, :, i], coeffs_single, rtol=1.0e-5), (
+                "MP and SP coefficients don't match for 2D input"
+            )
 
     @pytest.mark.unittest
     def test_oversampling_time(self) -> None:
@@ -213,9 +213,9 @@ class TestCoefficients:
             circuit_type="Circuit_19",
         )
 
-        assert (
-            Coefficients.get_spectrum(model, mts=3)[0].shape[0] == 15
-        ), "Oversampling time failed"
+        assert Coefficients.get_spectrum(model, mts=3)[0].shape[0] == 15, (
+            "Oversampling time failed"
+        )
 
     @pytest.mark.unittest
     def test_oversampling_frequency(self) -> None:
@@ -225,9 +225,9 @@ class TestCoefficients:
             circuit_type="Circuit_19",
         )
 
-        assert (
-            Coefficients.get_spectrum(model, mfs=3)[0].shape[0] == 15
-        ), "Oversampling frequency failed"
+        assert Coefficients.get_spectrum(model, mfs=3)[0].shape[0] == 15, (
+            "Oversampling frequency failed"
+        )
 
     @pytest.mark.unittest
     def test_shift(self) -> None:
@@ -238,9 +238,9 @@ class TestCoefficients:
         )
         coeffs, freqs = Coefficients.get_spectrum(model, shift=True)
 
-        assert (
-            jnp.abs(coeffs) == jnp.abs(coeffs[::-1])
-        ).all(), "Shift failed. Spectrum must be symmetric."
+        assert (jnp.abs(coeffs) == jnp.abs(coeffs[::-1])).all(), (
+            "Shift failed. Spectrum must be symmetric."
+        )
 
     @pytest.mark.unittest
     def test_trim(self) -> None:
@@ -254,10 +254,10 @@ class TestCoefficients:
         coeffs, freqs = Coefficients.get_spectrum(model, mts=2, trim=False)
         coeffs_trimmed, freqs = Coefficients.get_spectrum(model, mts=2, trim=True)
 
-        assert (
-            coeffs.size - 1 == coeffs_trimmed.size
-        ), f"Wrong shape of coefficients: {coeffs_trimmed.size}, \
+        assert coeffs.size - 1 == coeffs_trimmed.size, (
+            f"Wrong shape of coefficients: {coeffs_trimmed.size}, \
             expected {coeffs.size - 1}"
+        )
 
     @pytest.mark.unittest
     def test_frequencies(self) -> None:
@@ -268,10 +268,10 @@ class TestCoefficients:
         )
         coeffs, freqs = Coefficients.get_spectrum(model)
 
-        assert (
-            freqs.shape == coeffs.shape
-        ), f"(1D) Frequencies ({freqs.shape}) and \
+        assert freqs.shape == coeffs.shape, (
+            f"(1D) Frequencies ({freqs.shape}) and \
             coefficients ({coeffs.shape}) must have the same length."
+        )
 
         # 2d
 
@@ -283,10 +283,10 @@ class TestCoefficients:
         )
         coeffs, freqs = Coefficients.get_spectrum(model)
 
-        assert (
-            freqs[0].size * freqs[1].size
-        ) == coeffs.size, f"(2D) Frequencies ({freqs.shape}) and \
+        assert (freqs[0].size * freqs[1].size) == coeffs.size, (
+            f"(2D) Frequencies ({freqs.shape}) and \
             coefficients ({coeffs.shape}) must add up to the same length."
+        )
 
         # uneven 2d
 
@@ -302,10 +302,10 @@ class TestCoefficients:
         )
         coeffs, freqs = Coefficients.get_spectrum(model)
 
-        assert (
-            freqs[0].size * freqs[1].size
-        ) == coeffs.size, f"(2D) Frequencies ({freqs.shape}) and \
+        assert (freqs[0].size * freqs[1].size) == coeffs.size, (
+            f"(2D) Frequencies ({freqs.shape}) and \
             coefficients ({coeffs.shape}) must add up to the same length."
+        )
 
     @pytest.mark.smoketest
     def test_psd(self) -> None:
@@ -351,9 +351,9 @@ class TestFourierTree:
         analytical_coeffs, analytical_freqs = coeff_tree.get_spectrum()
         analytical_coeffs = jnp.stack(analytical_coeffs).T
 
-        assert jnp.isclose(
-            jnp.sum(analytical_coeffs).imag, 0.0, rtol=1.0e-5
-        ), "Imaginary part is not zero"
+        assert jnp.isclose(jnp.sum(analytical_coeffs).imag, 0.0, rtol=1.0e-5), (
+            "Imaginary part is not zero"
+        )
 
         # Filter fft_coeffs for only the frequencies that occur in the spectrum
         greater_zeros = jnp.invert(jnp.isclose(fft_coeffs, 0.0))
@@ -381,13 +381,13 @@ class TestFourierTree:
 
             exp_tree = coeff_tree(inputs=ref_input)
 
-            assert jnp.isclose(
-                exp_fourier_fft, exp_fourier, atol=1.0e-5
-            ).all(), "FFT and analytical Fourier series do not match"
+            assert jnp.isclose(exp_fourier_fft, exp_fourier, atol=1.0e-5).all(), (
+                "FFT and analytical Fourier series do not match"
+            )
 
-            assert jnp.isclose(
-                exp_tree, exp_fourier, atol=1.0e-5
-            ).all(), "Analytic Fourier series evaluation not working"
+            assert jnp.isclose(exp_tree, exp_fourier, atol=1.0e-5).all(), (
+                "Analytic Fourier series evaluation not working"
+            )
 
     @pytest.mark.unittest
     def test_coefficients_tree_mq(self) -> None:
@@ -406,9 +406,9 @@ class TestFourierTree:
         analytical_coeffs, analytical_freqs = coeff_tree.get_spectrum(force_mean=True)
         analytical_coeffs = jnp.stack(analytical_coeffs).T
 
-        assert jnp.isclose(
-            jnp.sum(analytical_coeffs).imag, 0.0, rtol=1.0e-5
-        ), "Imaginary part is not zero"
+        assert jnp.isclose(jnp.sum(analytical_coeffs).imag, 0.0, rtol=1.0e-5), (
+            "Imaginary part is not zero"
+        )
 
         # Filter fft_coeffs for only the frequencies that occur in the spectrum
         greater_zeros = jnp.invert(jnp.isclose(fft_coeffs, 0.0))
@@ -436,13 +436,13 @@ class TestFourierTree:
 
             exp_tree = coeff_tree(inputs=ref_input, force_mean=True)
 
-            assert jnp.isclose(
-                exp_fourier_fft, exp_fourier, atol=1.0e-5
-            ), "FFT and analytical Fourier series do not match"
+            assert jnp.isclose(exp_fourier_fft, exp_fourier, atol=1.0e-5), (
+                "FFT and analytical Fourier series do not match"
+            )
 
-            assert jnp.isclose(
-                exp_tree, exp_fourier, atol=1.0e-5
-            ), "Analytic Fourier series evaluation not working"
+            assert jnp.isclose(exp_tree, exp_fourier, atol=1.0e-5), (
+                "Analytic Fourier series evaluation not working"
+            )
 
 
 class TestFCC:
@@ -578,9 +578,9 @@ class TestFCC:
         )
         fcc = FCC.get_fcc(model=model, n_samples=500, scale=True)
 
-        assert jnp.isclose(
-            fcc, expected_fcc, atol=3.0e-2
-        ), f"Wrong FCC for {circuit_type}. Got {fcc}, expected {expected_fcc}."
+        assert jnp.isclose(fcc, expected_fcc, atol=3.0e-2), (
+            f"Wrong FCC for {circuit_type}. Got {fcc}, expected {expected_fcc}."
+        )
 
     @pytest.mark.unittest
     @pytest.mark.parametrize(
@@ -635,9 +635,9 @@ class TestFCC:
             fcc = FCC.get_fcc(
                 model, n_samples=n_samples, method=method, trim_redundant=True
             )
-            assert (
-                0.0 <= float(fcc) <= 1.0
-            ), f"FCC out of [0, 1] for {encoding_strategy}/{method}: {float(fcc)}"
+            assert 0.0 <= float(fcc) <= 1.0, (
+                f"FCC out of [0, 1] for {encoding_strategy}/{method}: {float(fcc)}"
+            )
 
             # Also test without trimming
             fcc_untrimmed = FCC.get_fcc(
@@ -695,9 +695,9 @@ class TestFCC:
             n_samples=250,
             scale=True,
         )
-        assert jnp.isclose(
-            fcc, 0.016, atol=2.0e-3
-        ), f"Wrong FCC for Circuit_19. Got {fcc}, expected 0.020."
+        assert jnp.isclose(fcc, 0.016, atol=2.0e-3), (
+            f"Wrong FCC for Circuit_19. Got {fcc}, expected 0.020."
+        )
 
     @pytest.mark.unittest
     def test_weighting(self) -> None:
@@ -724,9 +724,9 @@ class TestFCC:
             scale=True,
             weight=True,
         )
-        assert jnp.isclose(
-            fcc, 0.010, atol=5.0e-3
-        ), f"Wrong FCC for Circuit_19. Got {fcc}, expected 0.010."
+        assert jnp.isclose(fcc, 0.010, atol=5.0e-3), (
+            f"Wrong FCC for Circuit_19. Got {fcc}, expected 0.010."
+        )
 
 
 class TestDatasets:
@@ -824,12 +824,12 @@ class TestDatasets:
                     model.n_input_feat,
                 )
             ), f"Wrong shape of domain samples: {domain_samples.shape}"
-            assert jnp.all(
-                fourier_samples.shape == model.degree
-            ), f"Wrong shape of Fourier values: {fourier_samples.shape}"
-            assert jnp.all(
-                coefficients.shape == model.degree
-            ), f"Wrong shape of coefficients: {coefficients.shape}"
+            assert jnp.all(fourier_samples.shape == model.degree), (
+                f"Wrong shape of Fourier values: {fourier_samples.shape}"
+            )
+            assert jnp.all(coefficients.shape == model.degree), (
+                f"Wrong shape of coefficients: {coefficients.shape}"
+            )
 
             all_domain_samples.append(domain_samples)
             all_fourier_samples.append(fourier_samples)
@@ -840,13 +840,13 @@ class TestDatasets:
         all_coefficients = jnp.array(all_coefficients)
 
         if not zero_centered:
-            assert jnp.sqrt(coefficients_min) <= jnp.min(
-                jnp.abs(coefficients)
-            ), "Coefficients are too small"
-            assert jnp.sqrt(coefficients_max) >= jnp.max(
-                jnp.abs(coefficients)
-            ), "Coefficients are too large"
+            assert jnp.sqrt(coefficients_min) <= jnp.min(jnp.abs(coefficients)), (
+                "Coefficients are too small"
+            )
+            assert jnp.sqrt(coefficients_max) >= jnp.max(jnp.abs(coefficients)), (
+                "Coefficients are too large"
+            )
         else:
-            assert jnp.isclose(
-                fourier_samples.mean(), 0.0, atol=1e-1
-            ), "Zero centering failed"
+            assert jnp.isclose(fourier_samples.mean(), 0.0, atol=1e-1), (
+                "Zero centering failed"
+            )
