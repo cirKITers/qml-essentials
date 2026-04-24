@@ -391,6 +391,34 @@ class UnitaryGates:
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
+    def CPhase(
+        w: Union[float, jnp.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+        input_idx: int = -1,
+    ) -> None:
+        """
+        Apply controlled phase shift gate with optional noise.
+
+        This is a generalization of the CZ gate, applying a phase shift of
+        exp(i*w) to the |11⟩ state. When w=π, this reduces to CZ.
+
+        Args:
+            w (Union[float, jnp.ndarray, List[float]]): Phase shift angle.
+            wires (Union[int, List[int]]): Control and target qubit indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
+            input_idx (int): Flag for the tape to track inputs
+
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
+        """
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
+        op.ControlledPhaseShift(w, wires=wires, input_idx=input_idx)
+        UnitaryGates.Noise(wires, noise_params)
+
+    @staticmethod
     def CX(
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
