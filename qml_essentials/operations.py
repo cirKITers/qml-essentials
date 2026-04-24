@@ -294,16 +294,22 @@ class Operation:
 
         return op
 
-    def __mul__(self, factor: float) -> "Operation":
+    def __mul__(self, other: Union[float, "Operation"]) -> "Operation":
         """Return a new operation, the product between U and a scalar (``U*x``)
+        or the composition of two operations.
         Usage inside a circuit function::
 
             PauliX(wires=0) * x
+            PauliX(wires=0) * PauliZ(wires=0)
 
         Returns:
-            A new :class:`Operation` with matrix ``U*x`` acting on the same wires.
+            A new :class:`Operation` with matrix ``U*x`` acting on the same wires,
+            or the composed matrix acting on the appropriate wires.
         """
-        mat = factor * self._matrix
+        if isinstance(other, Operation):
+            return self.__matmul__(other)
+
+        mat = other * self._matrix
         op = Operation(wires=self.wires, matrix=mat, record=False)
 
         self._update_tape_operation(op)
@@ -335,29 +341,60 @@ class Operation:
         )
         return op
 
-    def __matmul__(self, other: "Operation") -> "Operation":
-        """Tensor (Kronecker) product of two operations.
+    def prod(self, *ops: "Operation") -> "Operation":
+        """Construct the generalized product (tensor or matrix) of this operation with others.
 
-        The resulting operation acts on the union of both wire sets and
-        carries the Kronecker product of both matrices.  Wire sets must
-        be disjoint.
+        The resulting operation acts on the union of all wire sets.
+        If the wire sets are disjoint, this is a Kronecker product.
+        If the wire sets overlap, the corresponding matrices are multiplied.
+
+        Usage::
+
+            res = op1.prod(op2, op3)
+            # or
+            res = Operation.prod(op1, op2, op3)
+
+        Args:
+            *ops: Variable number of :class:`Operation` instances.
 
         Returns:
-            A new :class:`Operation` whose matrix is ``self.matrix ⊗ other.matrix``
-            and whose wires are the concatenation of both wire lists.
-
-        Raises:
-            ValueError: If the two operations share any wires.
+            A new :class:`Operation` representing the composed operation.
         """
-        if set(self.wires) & set(other.wires):
-            raise ValueError(
-                f"Cannot take tensor product: overlapping wires "
-                f"{self.wires} and {other.wires}"
-            )
-        new_matrix = jnp.kron(self.matrix, other.matrix)
-        new_wires = self.wires + other.wires
-        op = Operation(wires=new_wires, matrix=new_matrix, record=False)
-        return op
+        if not ops:
+            return self
+
+        all_ops = (self,) + ops
+        all_wires = []
+        for op in all_ops:
+            for w in op.wires:
+                if w not in all_wires:
+                    all_wires.append(w)
+
+        n = len(all_wires)
+
+        mat = _embed_matrix(all_ops[0].matrix, all_ops[0].wires, all_wires, n)
+        for op in all_ops[1:]:
+            mat_other = _embed_matrix(op.matrix, op.wires, all_wires, n)
+            mat = mat @ mat_other
+
+        op_names = "*".join(op.name for op in all_ops)
+        return Operation(wires=all_wires, matrix=mat, name=f"Prod({op_names})", record=False)
+
+    def __matmul__(self, other: "Operation") -> "Operation":
+        """Tensor (Kronecker) product or matrix product of two operations.
+
+        The resulting operation acts on the union of both wire sets.
+        If the wire sets are disjoint, this is a Kronecker product.
+        If the wire sets overlap, the corresponding matrices are multiplied.
+
+        Returns:
+            A new :class:`Operation` whose matrix represents the composed
+            operation on the unified wire set.
+        """
+        if not isinstance(other, Operation):
+            return NotImplemented
+
+        return self.prod(other)
 
     def lifted_matrix(self, n_qubits: int) -> jnp.ndarray:
         """Return the full ``2**n x 2**n`` matrix embedding this gate.
@@ -1703,3 +1740,22 @@ def pauli_string_from_operation(op: Operation) -> str:
     # Fall back: decompose the matrix
     _, pauli_op = pauli_decompose(op.matrix, wire_order=op.wires)
     return pauli_op._pauli_label
+
+
+def prod(*ops: Operation) -> Operation:
+    """Construct the generalized product (tensor or matrix) of multiple operations.
+
+    The resulting operation acts on the union of all wire sets.
+    If the wire sets are disjoint, this is a Kronecker product.
+    If the wire sets overlap, the corresponding matrices are multiplied.
+
+    Args:
+        *ops: Variable number of :class:`Operation` instances.
+
+    Returns:
+        A new :class:`Operation` whose matrix represents the composed
+        operation on the unified wire set.
+    """
+    if not ops:
+        raise ValueError("At least one operation must be provided to prod().")
+    return ops[0].prod(*ops[1:])
