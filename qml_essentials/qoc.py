@@ -64,46 +64,85 @@ class Cost:
 
 def fidelity_cost_fn(
     pulse_params: jnp.ndarray,
-    pulse_script: ys.Script,
-    target_script: ys.Script,
+    pulse_scripts: Union[ys.Script, List[ys.Script]],
+    target_scripts: Union[ys.Script, List[ys.Script]],
     n_samples: int,
 ) -> Tuple[float, float]:
     """
-    Cost function returning (1 - fidelity) and |phase_difference| averaged
-    over n_samples uniformly spaced rotation angles in [0, 2\\pi].
+    Cost function returning ``(1 - fidelity, 1 - cos(phase_difference))``
+    averaged over ``n_samples`` uniformly spaced rotation angles in
+    ``[0, 2π)`` and across one or more (pulse, target) script pairs.
 
-    Uses batched (vmapped) circuit execution: all n_samples rotation
-    angles are evaluated in a single vectorised call per script, replacing
-    ``n_samples`` sequential Python-level circuit executions with one
-    JIT-compiled XLA program each.
+    Multiple script pairs let the optimiser probe sensitivity from
+    multiple initial states (e.g. ``|0⟩`` and ``|+⟩``).  This makes
+    rotation-axis tilt observable to the cost: from ``|0⟩`` alone an
+    RX/RY pulse with a small Z-component is largely degenerate with
+    the correct pulse, but from ``|+⟩`` the same tilt produces a
+    visible state-vector deviation.
+
+    Uses batched (vmapped) circuit execution per script: all
+    ``n_samples`` rotation angles are evaluated in a single vectorised
+    call per script, replacing ``n_samples`` sequential Python-level
+    circuit executions with one JIT-compiled XLA program each.
+
+    The phase term uses ``1 - cos(Δφ)`` rather than ``|Δφ|`` so that
+    it is differentiable everywhere (including at the optimum) and
+    well-behaved at the ``±π`` wrap-around — important because Stage 0
+    now sees the same cost as Stage 1.
 
     Args:
         pulse_params: Pulse parameters for evaluation.
-        pulse_script: Yaqsi script with pulse parameters.
-        target_script: Yaqsi script as target.
+        pulse_scripts: One or a list of yaqsi scripts with pulse
+            parameters.  If a list is supplied, the cost is averaged
+            element-wise with ``target_scripts`` (which must have the
+            same length).
+        target_scripts: One or a list of yaqsi target scripts.
         n_samples: Number of parameter samples.
 
     Returns:
-        Tuple of (abs_diff, phase_diff).
+        Tuple of ``(abs_diff, phase_diff)`` averaged across script pairs.
     """
-    ws = jnp.linspace(0, 2 * jnp.pi, n_samples)
-
-    pulse_states = pulse_script.execute(
-        type="state",
-        args=(ws, pulse_params),
-        in_axes=(0, None),
-    )  # (n_samples, dim)
-
-    target_states = target_script.execute(
-        type="state",
-        args=(ws,),
-        in_axes=(0,),
-    )  # (n_samples, dim)
-
-    abs_diff = jnp.mean(
-        jnp.array(1.0, dtype=jnp.float64) - fidelity(pulse_states, target_states)
+    if not isinstance(pulse_scripts, (list, tuple)):
+        pulse_scripts = [pulse_scripts]
+    if not isinstance(target_scripts, (list, tuple)):
+        target_scripts = [target_scripts]
+    assert len(pulse_scripts) == len(target_scripts), (
+        f"pulse_scripts and target_scripts must have the same length "
+        f"({len(pulse_scripts)} vs {len(target_scripts)})."
     )
-    phase_diff = jnp.mean(jnp.abs(phase_difference(pulse_states, target_states)))
+
+    ws = jnp.linspace(0, 2 * jnp.pi, n_samples, endpoint=False)
+
+    abs_diffs = []
+    phase_diffs = []
+    for p_script, t_script in zip(pulse_scripts, target_scripts):
+        pulse_states = p_script.execute(
+            type="state",
+            args=(ws, pulse_params),
+            in_axes=(0, None),
+        )  # (n_samples, dim)
+
+        target_states = t_script.execute(
+            type="state",
+            args=(ws,),
+            in_axes=(0,),
+        )  # (n_samples, dim)
+
+        abs_diffs.append(
+            jnp.mean(
+                jnp.array(1.0, dtype=jnp.float64)
+                - fidelity(pulse_states, target_states)
+            )
+        )
+        phase_diffs.append(
+            jnp.mean(
+                jnp.array(1.0, dtype=jnp.float64)
+                - jnp.cos(phase_difference(pulse_states, target_states))
+            )
+        )
+
+    abs_diff = jnp.mean(jnp.stack(abs_diffs))
+    phase_diff = jnp.mean(jnp.stack(phase_diffs))
 
     # TODO: in future we could consider some sort of log based loss for the small values
     # or utilize gradient ascent if we run into numerical limitations
@@ -242,7 +281,7 @@ class CostFnRegistry:
         "fidelity": {
             "fn": fidelity_cost_fn,
             "default_weight": (0.5, 0.5),
-            "ckwargs_keys": ["pulse_script", "target_script", "n_samples"],
+            "ckwargs_keys": ["pulse_scripts", "target_scripts", "n_samples"],
         },
         "pulse_width": {
             "fn": pulse_width_cost_fn,
@@ -417,7 +456,13 @@ class QOC:
             restart_noise_scale (float): Standard deviation of the
                 Gaussian noise added to the initial parameters for each
                 restart (relative to the absolute value of each parameter).
-                Defaults to 0.5 (50 % relative perturbation).
+                Defaults to 0.5 (50 % relative perturbation).  Note that
+                the package-level default in ``default_qoc_params`` is a
+                much smaller ``0.01`` because the QOC loss landscape is
+                highly sensitive to initial conditions and large
+                perturbations routinely move restarts into useless
+                basins; tune up only if you have reason to believe the
+                initial point is far from any good basin.
             grad_clip (float): Maximum global gradient norm.  Gradients
                 are clipped to this value before being passed to the
                 optimiser, which stabilises training when the loss
@@ -655,13 +700,21 @@ class QOC:
         return grid, axes
 
     def stage_0_opt(
-        self, init_pulse_params: jnp.ndarray, fidelity_only_cost: Callable
+        self, init_pulse_params: jnp.ndarray, total_cost: Callable
     ) -> Tuple[jnp.ndarray, Optional[Tuple[List[jnp.ndarray], list]]]:
         """Run the coarse grid-scan phase (Stage 0).
 
-        Evaluates a Cartesian grid of parameter candidates using only the
-        fidelity cost (ignoring phase).  Each candidate is refined with a
-        few fast gradient steps.  Returns the best-found parameters.
+        Evaluates a Cartesian grid of parameter candidates using the
+        **full weighted cost** (fidelity + phase, plus any other
+        registered terms) — the same objective as Stage 1.  Each
+        candidate is refined with a few fast gradient steps.  Returns
+        the best-found parameters.
+
+        Sharing the objective with Stage 1 prevents the grid scan from
+        landing in a basin that has high fidelity but a biased phase
+        which Adam then has to migrate out of (the previous
+        fidelity-only scan caused exactly this failure mode for RX/RY,
+        whose phase residuals compounded in the CRX decomposition).
 
         Robustness: candidates that produce a non-finite loss (e.g. when
         the underlying pulse drives the integrator into a NaN — typical
@@ -673,7 +726,7 @@ class QOC:
 
         Args:
             init_pulse_params: Initial pulse parameters to compare against.
-            fidelity_only_cost: Cost callable using fidelity only.
+            total_cost: Combined cost callable (same as Stage 1).
 
         Returns:
             Tuple of:
@@ -684,12 +737,12 @@ class QOC:
               every successful scan candidate.
         """
 
-        def fidelity_only_cost_log(log_params, *args):
-            return fidelity_only_cost(self._from_log_space(log_params), *args)
+        def total_cost_log(log_params, *args):
+            return total_cost(self._from_log_space(log_params), *args)
 
         def _safe_eval(params: jnp.ndarray) -> jnp.ndarray:
-            """Evaluate the fidelity cost; map non-finite results to +inf."""
-            loss = fidelity_only_cost(params)
+            """Evaluate the total cost; map non-finite results to +inf."""
+            loss = total_cost(params)
             return jnp.where(jnp.isfinite(loss), loss, jnp.inf)
 
         best_scan_params = init_pulse_params
@@ -723,7 +776,7 @@ class QOC:
 
             @jax.jit
             def scan_step(opt_state, log_params):
-                loss, grads = jax.value_and_grad(fidelity_only_cost_log)(log_params)
+                loss, grads = jax.value_and_grad(total_cost_log)(log_params)
                 updates, opt_state = scan_optimizer.update(grads, opt_state, log_params)
                 log_params = optax.apply_updates(log_params, updates)
                 return log_params, opt_state, loss
@@ -797,7 +850,7 @@ class QOC:
                 )
 
             log.info(
-                f"Stage 0 complete. Best fidelity-only loss: "
+                f"Stage 0 complete. Best loss: "
                 f"{best_scan_loss.item():.6e}, "
                 f"params: {best_scan_params}"
             )
@@ -1125,8 +1178,34 @@ class QOC:
                 """
                 pulse_circuit, target_circuit = create_circuits()
 
-                pulse_script = ys.Script(pulse_circuit, n_qubits=wires)
-                target_script = ys.Script(target_circuit, n_qubits=wires)
+                # Build a second pair that prepends a Hadamard on every
+                # wire so the cost is also evaluated from the
+                # ``|+⟩^⊗n`` initial state.  Probing two non-collinear
+                # initial states exposes rotation-axis tilt to the
+                # optimiser: an RX/RY pulse with a residual Z component
+                # is partly degenerate from ``|0⟩`` alone but produces
+                # a clearly distinguishable trajectory from ``|+⟩``.
+                # Both circuits get the same preparation so the target
+                # remains exact.
+                def _with_plus_prep(circuit_fn):
+                    def prepared(*args, **kwargs):
+                        for q in range(wires):
+                            op.H(wires=q)
+                        circuit_fn(*args, **kwargs)
+                    prepared.__name__ = f"plus_{circuit_fn.__name__}"
+                    return prepared
+
+                pulse_circuit_plus = _with_plus_prep(pulse_circuit)
+                target_circuit_plus = _with_plus_prep(target_circuit)
+
+                pulse_scripts = [
+                    ys.Script(pulse_circuit, n_qubits=wires),
+                    ys.Script(pulse_circuit_plus, n_qubits=wires),
+                ]
+                target_scripts = [
+                    ys.Script(target_circuit, n_qubits=wires),
+                    ys.Script(target_circuit_plus, n_qubits=wires),
+                ]
 
                 gate_name = create_circuits.__name__.split("_")[1]
 
@@ -1137,8 +1216,8 @@ class QOC:
                 )
 
                 all_ckwargs = {
-                    "pulse_script": pulse_script,
-                    "target_script": target_script,
+                    "pulse_scripts": pulse_scripts,
+                    "target_scripts": target_scripts,
                     "envelope": self.envelope,
                     "n_samples": self.n_samples,
                     "t_target": self.t_target,
@@ -1161,13 +1240,14 @@ class QOC:
                 for name, weight in self.cost_fns:
                     total_costs = _build_cost(name, weight) + total_costs
 
-                fidelity_only_cost = _build_cost(
-                    "fidelity", (1.0, 0.0)  # 100% fidelity, 0% phase
-                )
-
+                # Stage 0 now uses the same weighted objective as Stage 1
+                # so the two phases share a basin (previously Stage 0
+                # used a fidelity-only cost which led the grid scan into
+                # local minima with biased phase residuals — see plan
+                # notes for details).
                 best_scan_params, scan_data = self.stage_0_opt(
                     init_pulse_params,
-                    fidelity_only_cost,
+                    total_costs,
                 )
 
                 global_best_params, global_best_history, global_best_loss = (
@@ -1381,14 +1461,14 @@ class QOC:
 
 
 default_qoc_params = {
-    "envelope": "square",
+    "envelope": "drag",
     "cost_fns": [
         ("fidelity", (0.5, 0.5)),
         # ("pulse_width", 0.000000015),
         # ("evolution_time", 0.000000005),
     ],
     "t_target": 0.5,
-    "n_steps": 1500,
+    "n_steps": 1000,
     "n_samples": 20,
     "learning_rate": 0.0001,
     "warmup_ratio": 0.05,
