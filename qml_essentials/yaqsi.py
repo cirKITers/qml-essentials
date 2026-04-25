@@ -49,12 +49,57 @@ class Yaqsi:
     # and only keep Script here.  It's not clear how to do this though.
 
     # Module-level cache for JIT-compiled ODE solvers.  Keyed on
-    # (coeff_fn_id, dim, atol, rtol) so that all evolve() calls with the
-    # same pulse shape function and matrix size share one compiled XLA
-    # program.  This turns O(n_gates) JIT compilations into
-    # O(n_distinct_pulse_shapes) during pulse-mode circuit building.
+    # (coeff_fn_id, dim, atol, rtol, max_steps, throw) so that all
+    # evolve() calls with the same pulse shape function and matrix size
+    # share one compiled XLA program.  This turns O(n_gates) JIT
+    # compilations into O(n_distinct_pulse_shapes) during pulse-mode
+    # circuit building.
     _evolve_solver_cache: dict = {}
     _evolve_solver_cache_lock = threading.Lock()
+
+    # Default solver knobs for parametrized (time-dependent) evolution.
+    # These can be overridden per-call via the **odeint_kwargs of
+    # ``evolve()`` or globally via :meth:`set_solver_defaults`.
+    #
+    # ``max_steps`` is the hard cap on accepted ODE steps.  Pulse-level
+    # workloads at on-resonance carriers (ω_c ≈ ω_q) require many more
+    # steps than the diffrax default during JIT — 2**14 = 16384 is
+    # large enough for realistic single- and two-qubit pulses while
+    # remaining cheap to compile.
+    #
+    # ``throw`` controls whether diffrax raises on solver failure
+    # (e.g. ``MaxStepsReached``).  When set to ``False`` the gate
+    # factory instead returns a NaN-filled unitary so the calling
+    # optimiser sees a well-defined (but useless) result and can
+    # gracefully reject the candidate.
+    _solver_defaults: dict = {"max_steps": 2**14, "throw": True}
+
+    @classmethod
+    def set_solver_defaults(
+        cls,
+        max_steps: Optional[int] = None,
+        throw: Optional[bool] = None,
+    ) -> dict:
+        """Update class-level solver defaults; return the previous values.
+
+        The returned dictionary is suitable for restoring the previous
+        defaults via ``set_solver_defaults(**prev)``.
+
+        Args:
+            max_steps: New default for ``max_steps`` (ignored if ``None``).
+            throw: New default for ``throw`` (ignored if ``None``).
+
+        Returns:
+            Dictionary with the previous values of the updated keys.
+        """
+        prev: dict = {}
+        if max_steps is not None:
+            prev["max_steps"] = cls._solver_defaults["max_steps"]
+            cls._solver_defaults["max_steps"] = int(max_steps)
+        if throw is not None:
+            prev["throw"] = cls._solver_defaults["throw"]
+            cls._solver_defaults["throw"] = bool(throw)
+        return prev
 
     @staticmethod
     def _partial_trace_single(
@@ -275,7 +320,24 @@ class Yaqsi:
 
         Args:
             ph: A :class:`ParametrizedHamiltonian` (one or more terms).
-            **odeint_kwargs: ``atol`` and ``rtol`` for the step-size controller.
+            **odeint_kwargs: Keyword arguments forwarded to
+                ``diffrax.diffeqsolve``.  Recognised keys:
+
+                - ``atol``, ``rtol`` — absolute/relative tolerances for the
+                  step-size controller (default ``1.4e-8`` in fp32 mode,
+                  ``1.0e-10`` in fp64 mode).
+                - ``max_steps`` — hard cap on accepted ODE steps
+                  (default :attr:`Yaqsi._solver_defaults['max_steps']`,
+                  currently ``2**14``).  Increase this if the integrator
+                  raises ``MaxStepsReached`` for a stiff/oscillatory
+                  pulse Hamiltonian.
+                - ``throw`` — whether to raise on solver failure
+                  (default :attr:`Yaqsi._solver_defaults['throw']`,
+                  currently ``True``).  When ``False``, a failed
+                  integration returns a NaN-filled unitary instead of
+                  raising; this is the recommended setting for inner
+                  loops of an optimiser (e.g. QOC Stage 0) so a single
+                  pathological candidate cannot abort the whole run.
         """
         coeff_fns = ph.coeff_fns                       # tuple of callables
         H_mats = ph.H_mats                             # tuple of (dim, dim)
@@ -302,14 +364,22 @@ class Yaqsi:
         _default_tol = 1.0e-10 if jax.config.x64_enabled else 1.4e-8
         atol = odeint_kwargs.pop("atol", _default_tol)
         rtol = odeint_kwargs.pop("rtol", _default_tol)
+        max_steps = int(
+            odeint_kwargs.pop("max_steps", cls._solver_defaults["max_steps"])
+        )
+        throw = bool(odeint_kwargs.pop("throw", cls._solver_defaults["throw"]))
 
         # Cache key:  identity of every coeff fn's code object (same shape
-        # of pulse fns -> same JIT program) plus dim and tolerances.
+        # of pulse fns -> same JIT program) plus dim, tolerances, and
+        # solver budget / throw flag (different budgets mean different
+        # XLA programs).
         cache_key = (
             tuple(id(fn.__code__) for fn in coeff_fns),
             dim,
             atol,
             rtol,
+            max_steps,
+            throw,
         )
 
         with cls._evolve_solver_cache_lock:
@@ -387,13 +457,27 @@ class Yaqsi:
                     y0=y0,
                     args=params,
                     stepsize_controller=stepsize_controller,
-                    max_steps=2**10,
+                    max_steps=max_steps,
+                    throw=throw,
                 )
 
                 # sol.ys has shape (1, 2, dim, dim) for SaveAt(t1=True)
                 y_final = sol.ys[0]  # (2, dim, dim)
                 # Recombine into complex unitary
-                return y_final[0] + 1j * y_final[1]
+                U = y_final[0] + 1j * y_final[1]
+
+                if not throw:
+                    # On solver failure (e.g. MaxStepsReached) diffrax
+                    # returns the last successful state with throw=False.
+                    # Replace that with a NaN-filled unitary so callers
+                    # can detect failure cleanly via ``jnp.isnan``.
+                    successful = sol.result == diffrax.RESULTS.successful
+                    U = jnp.where(
+                        successful,
+                        U,
+                        jnp.full_like(U, jnp.nan),
+                    )
+                return U
 
             with cls._evolve_solver_cache_lock:
                 # Double-check to avoid overwriting a concurrent build
