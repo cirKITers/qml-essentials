@@ -63,7 +63,7 @@ class Yaqsi:
     #
     # ``max_steps`` is the hard cap on accepted ODE steps.  Pulse-level
     # workloads at on-resonance carriers (ω_c ≈ ω_q) require many more
-    # steps than the diffrax default during JIT — 2**14 = 16384 is
+    # steps than the diffrax default during JIT — 2**12 = 4096 is
     # large enough for realistic single- and two-qubit pulses while
     # remaining cheap to compile.
     #
@@ -72,7 +72,7 @@ class Yaqsi:
     # factory instead returns a NaN-filled unitary so the calling
     # optimiser sees a well-defined (but useless) result and can
     # gracefully reject the candidate.
-    _solver_defaults: dict = {"max_steps": 2**14, "throw": True}
+    _solver_defaults: dict = {"max_steps": 2**12, "throw": True}
 
     @classmethod
     def set_solver_defaults(
@@ -386,7 +386,7 @@ class Yaqsi:
             _solve = cls._evolve_solver_cache.get(cache_key)
 
         if _solve is None:
-            solver = diffrax.Tsit5()
+            solver = diffrax.Dopri8()
             stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
 
             # Capture coeff_fns as a tuple in the closure.  n_terms is
