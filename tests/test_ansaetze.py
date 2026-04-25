@@ -475,11 +475,7 @@ def test_single_qubit_pulse_gate(gate, w):
     ), f"Fidelity too low for w={w}: {fidelity}"
 
     phase_diff = np.angle(np.vdot(state_target, state_pulse))
-    # NOTE: two-qubit gates decompose into several single-qubit drives under
-    # the valid interaction-picture transform; the ~1e-4 rad per-gate phase
-    # residual of the optimized RX/RY pulses accumulates across the
-    # decomposition.  A 3e-2 rad tolerance reflects this physical reality.
-    assert np.isclose(phase_diff, 0.0, atol=3e-2), f"Phase off for w={w}: {phase_diff}"
+    assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
 
 
 two_qubit_pulse_testdata = itertools.product(
@@ -507,7 +503,7 @@ def test_two_qubit_pulse_gate(gate, w):
     ), f"Fidelity too low for w={w}: {fidelity}"
 
     phase_diff = np.angle(np.vdot(state_target, state_pulse))
-    assert np.isclose(phase_diff, 0.0, atol=3e-2), f"Phase off for w={w}: {phase_diff}"
+    assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
 
 
 @pytest.mark.unittest

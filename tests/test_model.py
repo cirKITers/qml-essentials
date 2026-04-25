@@ -551,13 +551,8 @@ def test_pulse_model_inference():
 
     y_hat_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
 
-    # NOTE: tolerance reflects genuine pulse-vs-unitary differences under a
-    # physically valid interaction-picture drive Hamiltonian.  Per-gate
-    # rotation/phase residuals (~1e-4 rad) accumulate across all gates in
-    # the Hardware_Efficient circuit; exact equality with the unitary model
-    # is therefore not expected.
     assert jnp.allclose(
-        y_hat_unitary, y_hat_original, atol=5e-2
+        y_hat_unitary, y_hat_original, atol=1e-3
     ), "Unitary output did not match pulse output"
 
     # perturb pulse_params
@@ -600,7 +595,7 @@ def test_pulse_model_batching():
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
     assert jnp.allclose(
-        res_a, res_b, atol=5e-2
+        res_a, res_b, atol=1e-2
     ), "Inputs batching failed. Results differ."
 
     model.initialize_params(random_key, repeat=2)
@@ -610,12 +605,8 @@ def test_pulse_model_batching():
     res_b = model(inputs=inputs, gate_mode="pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
-    # NOTE: re-initializing model parameters produces random rotation angles
-    # far from the QOC calibration basin, amplifying the pulse-vs-unitary
-    # residuals inherent to the physically valid interaction-picture drive.
-    # Tolerance reflects measured spread (~0.12).
     assert jnp.allclose(
-        res_a, res_b, atol=1.5e-1
+        res_a, res_b, atol=1e-2
     ), "Params batching failed. Results differ."
 
 

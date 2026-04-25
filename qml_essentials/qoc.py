@@ -787,7 +787,7 @@ class QOC:
             # rather than aborting the whole grid loop.
             prev_solver_defaults = ys.Yaqsi.set_solver_defaults(throw=False)
             n_skipped = 0
-            try:
+            try: #TODO: add track progress here
                 for ci, candidate in enumerate(grid):
                     log_candidate = self._to_log_space(candidate)
                     opt_state = scan_optimizer.init(log_candidate)
