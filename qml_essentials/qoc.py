@@ -1754,10 +1754,29 @@ class QOC:
     # Default set of target gates whose unitary cost is summed during
     # joint optimisation.  Composite gates back-propagate into the
     # shared leaves; leaf-gate terms keep the standalone fidelity
-    # acceptable.
+    # acceptable.  CZ is excluded from the default targets because it
+    # is implemented as a static diagonal-Hamiltonian evolution
+    # (``H_CZ = π·|11⟩⟨11|``, t=1) that is structurally exact and
+    # cannot be improved by tuning leaf parameters — including it only
+    # adds ballast to the averaged loss.
     JOINT_TARGETS_DEFAULT: Tuple[str, ...] = (
-        "RX", "RY", "RZ", "CZ", "H", "CX", "CRX", "CRY", "CRZ",
+        "RX", "RY", "RZ", "H", "CX", "CRX", "CRY", "CRZ",
     )
+
+    # Default per-target weights for the joint objective.  Weights are
+    # normalised inside :func:`joint_unitary_cost_fn`.  Composites are
+    # up-weighted because (a) they are what fails the tightened tests
+    # and (b) standalone leaves already start near-perfect, so the
+    # averaged loss would otherwise be dominated by the cheap leaves
+    # and the optimiser would happily refuse to move.  Within
+    # composites, CR_ are weighted higher than H/CX because they are
+    # the longest decompositions (2 CX + ~6 single-qubit gates) so
+    # their leaf-error compounding is worst.
+    JOINT_WEIGHTS_DEFAULT: Dict[str, float] = {
+        "RX": 0.3, "RY": 0.3, "RZ": 0.3,
+        "H": 1.0, "CX": 2.0,
+        "CRX": 3.0, "CRY": 3.0, "CRZ": 3.0,
+    }
 
     def _build_joint_layout(
         self, leaf_names: Tuple[str, ...]
@@ -2013,22 +2032,24 @@ class QOC:
         the concatenated leaf params for ``leaf_names``) against a
         weighted sum of unitary-cost terms over ``target_gates``.
         Composite gates back-propagate into the shared leaves; leaf
-        terms keep the standalone fidelity acceptable; CZ — included
-        by default — is verified to be a static diagonal-Hamiltonian
-        abstraction (``H_CZ = π·|11⟩⟨11|``, evolved t=1) and
-        consequently barely moves.
+        terms keep the standalone fidelity acceptable.  CZ is omitted
+        from the default targets because the ``PulseGates.CZ``
+        implementation is a static diagonal-Hamiltonian evolution
+        (``H_CZ = π·|11⟩⟨11|``, t=1) that is structurally exact and
+        unaffected by any leaf re-tuning.
 
         Args:
             target_gates: Gates whose unitary cost contributes to the
                 joint objective.  Defaults to
-                :pyattr:`JOINT_TARGETS_DEFAULT` (RX, RY, RZ, CZ, H, CX,
+                :pyattr:`JOINT_TARGETS_DEFAULT` (RX, RY, RZ, H, CX,
                 CRX, CRY, CRZ).
             leaf_names: Leaf gates whose parameters are jointly
                 optimised.  Defaults to :pyattr:`JOINT_LEAVES_DEFAULT`
                 (RX, RY, RZ, CZ).
-            weights: Optional mapping ``gate_name → weight``.  Missing
-                gates default to ``1.0``.  All weights are normalised
-                inside the cost.
+            weights: Optional mapping ``gate_name → weight``.  Merged
+                on top of :pyattr:`JOINT_WEIGHTS_DEFAULT` (composites
+                up-weighted; leaves down-weighted).  All weights are
+                normalised inside the cost.
 
         Returns:
             ``(best_theta, leaf_slices, loss_history)``.  Per-leaf
@@ -2037,7 +2058,12 @@ class QOC:
         """
         target_gates = list(target_gates) if target_gates else list(self.JOINT_TARGETS_DEFAULT)
         leaf_names = list(leaf_names) if leaf_names else list(self.JOINT_LEAVES_DEFAULT)
-        weights = weights or {}
+        # Merge user-provided weights on top of class defaults so callers
+        # can override only the gates they care about.
+        merged_weights: Dict[str, float] = dict(self.JOINT_WEIGHTS_DEFAULT)
+        if weights:
+            merged_weights.update({k: float(v) for k, v in weights.items()})
+        weights = merged_weights
 
         log.info(
             f"Joint optimisation: leaves={leaf_names}, targets={target_gates}"
@@ -2409,6 +2435,19 @@ if __name__ == "__main__":
         ),
     )
 
+    parser.add_argument(
+        "--joint_weights",
+        nargs="+",
+        type=str,
+        default=None,
+        help=(
+            "(Used only with --joint.) Override per-target weights as "
+            "'gate:weight' strings (e.g. --joint_weights CRX:5 CX:3). "
+            "Merged on top of QOC.JOINT_WEIGHTS_DEFAULT, so unspecified "
+            "gates keep their default weight."
+        ),
+    )
+
     args = parser.parse_args()
     sel_gates = args.gates  # already a list from nargs="+"
     make_log = args.log
@@ -2452,9 +2491,16 @@ if __name__ == "__main__":
     )
 
     if args.joint:
+        joint_weights = None
+        if args.joint_weights:
+            joint_weights = {}
+            for spec in args.joint_weights:
+                gname, w = spec.split(":")
+                joint_weights[gname.strip()] = float(w)
         qoc.optimize_joint(
             target_gates=args.joint_targets,
             leaf_names=args.joint_leaves,
+            weights=joint_weights,
         )
     else:
         qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)
