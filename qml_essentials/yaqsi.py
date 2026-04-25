@@ -6,6 +6,7 @@ import diffrax
 import jax
 import jax.numpy as jnp
 import jax.scipy.linalg
+import equinox as eqx
 import numpy as np  # needed to prevent jitting some operations
 
 from qml_essentials.operations import (
@@ -294,14 +295,10 @@ class Yaqsi:
         neg_iH_split = jnp.stack(neg_iH_split_per_term, axis=0)
 
         # Real dtype matching the precision mode
+        # consider decreasing if no convergence
         _rdtype = jnp.float64 if jax.config.x64_enabled else jnp.float32
 
-        # Tolerances: by default pick values that leave headroom under the
-        # active precision mode.  Under float32 the Dopri8 error floor is
-        # ~1e-6, so tightening below 1.4e-8 wastes work.  Under x64 we can
-        # safely go to 1e-10 without stalling — and benchmarks confirmed
-        # the evolved unitary is already stable to ~1e-10 at the looser
-        # value, so this is purely headroom for future stiffer drives.
+        # Pick tolerances according to precision + some headroom
         _default_tol = 1.0e-10 if jax.config.x64_enabled else 1.4e-8
         atol = odeint_kwargs.pop("atol", _default_tol)
         rtol = odeint_kwargs.pop("rtol", _default_tol)
@@ -319,7 +316,7 @@ class Yaqsi:
             _solve = cls._evolve_solver_cache.get(cache_key)
 
         if _solve is None:
-            solver = diffrax.Dopri8()
+            solver = diffrax.Tsit5()
             stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
 
             # Capture coeff_fns as a tuple in the closure.  n_terms is
@@ -327,7 +324,7 @@ class Yaqsi:
             # evaluations specializes cleanly under JIT.
             _coeff_fns = coeff_fns
 
-            @jax.jit
+            @eqx.filter_jit
             def _solve(neg_iH_split, params, t0, t1):
                 """Solve dU/dt = sum_i f_i(p_i, t) * (-iH_i) * U from t0 to t1.
 
@@ -390,7 +387,7 @@ class Yaqsi:
                     y0=y0,
                     args=params,
                     stepsize_controller=stepsize_controller,
-                    max_steps=4096,
+                    max_steps=2**10,
                 )
 
                 # sol.ys has shape (1, 2, dim, dim) for SaveAt(t1=True)
@@ -1406,7 +1403,7 @@ class Script:
             if cached_shot is not None:
                 batched_fn = cached_shot[0]
             else:
-                batched_fn = jax.jit(
+                batched_fn = eqx.filter_jit(
                     jax.vmap(_single_execute_shots, in_axes=shot_in_axes)
                 )
                 self._jit_cache[shot_cache_key] = (batched_fn, n_qubits, use_density)
@@ -1423,7 +1420,7 @@ class Script:
                 single_tape, n_qubits, type, obs, use_density
             )
 
-        # Wrapping the vmapped function in jax.jit has two effects:
+        # Wrapping the vmapped function in eqx.filter_jit has two effects:
         # 1. Multi-core utilisation — the JIT-compiled XLA program can
         #    use intra-op parallelism to distribute independent SIMD lanes
         #    across CPU threads, unlike an eager vmap which runs
@@ -1439,7 +1436,7 @@ class Script:
         # cache check at the top of this method.
         # NOTE: when altering properties of the model, this might not get re-compiled
         # TODO: we might want to rework the data_reupload mechanism at some point
-        batched_fn = jax.jit(jax.vmap(_single_execute, in_axes=in_axes))
+        batched_fn = eqx.filter_jit(jax.vmap(_single_execute, in_axes=in_axes))
         # Cache the function together with metadata for fast-path memory
         # checks on subsequent calls.
         self._jit_cache[cache_key] = (batched_fn, n_qubits, use_density)
