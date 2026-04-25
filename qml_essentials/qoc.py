@@ -349,10 +349,10 @@ class QOC:
     GATES_2Q: List[str] = ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"]
 
     DEFAULT_PARAM_RANGES = {
-        1: [(0.05, 2.0)],  # evolution time
-        2: [(0.5, 2.0), (0.05, 2.0)],  # not typically used
-        3: [(0.5, 10.0), (0.05, 2.0), (0.05, 2.0)],  # A, σ, t
-        4: [(0.5, 10.0), (0.05, 2.0), (0.05, 0.5), (0.1, 2.0)],  # DRAG
+        1: [(0.05, 3.0)],  # evolution time
+        2: [(0.05, 3.0), (0.05, 3.0)],  # not typically used
+        3: [(0.05, 3.0), (0.05, 3.0), (0.05, 3.0)],  # [A, sigma, t]
+        4: [(0.05, 3.0), (0.05, 3.0), (0.05, 3.0), (0.05, 3.0)],  # [A, beta, sigma, t]
     }
 
     def __init__(
@@ -1380,11 +1380,11 @@ class QOC:
 
 
 default_qoc_params = {
-    "envelope": "gaussian",
+    "envelope": "drag",
     "cost_fns": [
-        ("fidelity", (0.49999999, 0.49999999)),
-        ("pulse_width", 0.000000015),
-        ("evolution_time", 0.000000005),
+        ("fidelity", (0.5, 0.5)),
+        # ("pulse_width", 0.000000015),
+        # ("evolution_time", 0.000000005),
     ],
     "t_target": 0.5,
     "n_steps": 1500,
@@ -1394,8 +1394,8 @@ default_qoc_params = {
     "end_lr_ratio": 0.01,
     "log_interval": 50,
     "file_dir": None,
-    "n_restarts": 3,
-    "restart_noise_scale": 0.5,
+    "n_restarts": 5,
+    "restart_noise_scale": 0.01,
     "grad_clip": 1.0,
     "random_seed": 1000,
     "scan_steps": 30,
