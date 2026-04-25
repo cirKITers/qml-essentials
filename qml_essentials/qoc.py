@@ -150,6 +150,93 @@ def fidelity_cost_fn(
     return (abs_diff, phase_diff)
 
 
+def unitary_cost_fn(
+    pulse_params: jnp.ndarray,
+    pulse_basis_scripts: List[ys.Script],
+    target_basis_scripts: List[ys.Script],
+    n_samples: int,
+    n_qubits: int,
+) -> Tuple[float, float]:
+    """Unitary-level cost based on the average gate (process) fidelity.
+
+    Builds the full unitary of the pulse and target circuits at every
+    sampled rotation angle by stacking ``2**n_qubits`` basis-state
+    evolutions as columns (``U[:, k] = circuit(|k⟩)``).  Returns
+
+        (1 - |Tr(E)|² / d²,  1 - cos(angle(Tr(E))))
+
+    where ``E = U_target† · U_pulse`` and ``d = 2**n_qubits``.
+
+    The first component is the standard process-infidelity (which is
+    *global-phase invariant*).  The second component captures the
+    residual global phase between pulse and target — without it the
+    optimiser cannot distinguish ``U_pulse`` and ``e^{iα} U_pulse``,
+    which leaves systematic phase errors in composed gates (e.g. the
+    H-CZ-H decomposition of CX).
+
+    Compared to the state-vector ``fidelity_cost_fn``, this cost
+    captures rotation-axis tilt and off-diagonal coherent error in a
+    single number, regardless of which probe state(s) one chooses.
+
+    Args:
+        pulse_params: Pulse parameters under optimisation.
+        pulse_basis_scripts: List of ``d`` scripts; the k-th script
+            prepares ``|k⟩`` (via ``PauliX`` gates) and then applies
+            the pulse-level circuit.
+        target_basis_scripts: Same for the target circuit.
+        n_samples: Number of rotation-angle samples in ``[0, 2π)``.
+        n_qubits: Number of qubits the gate acts on.
+
+    Returns:
+        Tuple ``(process_loss, phase_loss)`` averaged over rotation
+        angles.
+    """
+    d = 2**n_qubits
+    assert len(pulse_basis_scripts) == d, (
+        f"pulse_basis_scripts must have {d} entries (one per basis "
+        f"state); got {len(pulse_basis_scripts)}."
+    )
+    assert len(target_basis_scripts) == d, (
+        f"target_basis_scripts must have {d} entries (one per basis "
+        f"state); got {len(target_basis_scripts)}."
+    )
+
+    ws = jnp.linspace(0, 2 * jnp.pi, n_samples, endpoint=False)
+
+    pulse_cols = []
+    target_cols = []
+    for k in range(d):
+        ps = pulse_basis_scripts[k].execute(
+            type="state",
+            args=(ws, pulse_params),
+            in_axes=(0, None),
+        )  # (n_samples, d)
+        ts = target_basis_scripts[k].execute(
+            type="state",
+            args=(ws,),
+            in_axes=(0,),
+        )  # (n_samples, d)
+        pulse_cols.append(ps)
+        target_cols.append(ts)
+
+    # Stack basis-state outputs as columns of U at every sampled angle.
+    # Resulting shape (n_samples, d, d) with U[s, :, k] = column k.
+    U_pulse = jnp.stack(pulse_cols, axis=-1)
+    U_target = jnp.stack(target_cols, axis=-1)
+
+    # E = U_target^† U_pulse, shape (n_samples, d, d)
+    E = jnp.einsum("sji,sjk->sik", jnp.conj(U_target), U_pulse)
+    trE = jnp.einsum("sii->s", E)
+
+    F_pro = jnp.abs(trE) ** 2 / float(d) ** 2
+    process_loss = jnp.mean(jnp.array(1.0, dtype=jnp.float64) - F_pro)
+    phase_loss = jnp.mean(
+        jnp.array(1.0, dtype=jnp.float64) - jnp.cos(jnp.angle(trE))
+    )
+
+    return (process_loss, phase_loss)
+
+
 def pulse_width_cost_fn(
     pulse_params: jnp.ndarray,
     envelope: str,
@@ -282,6 +369,16 @@ class CostFnRegistry:
             "fn": fidelity_cost_fn,
             "default_weight": (0.5, 0.5),
             "ckwargs_keys": ["pulse_scripts", "target_scripts", "n_samples"],
+        },
+        "unitary": {
+            "fn": unitary_cost_fn,
+            "default_weight": (0.5, 0.5),
+            "ckwargs_keys": [
+                "pulse_basis_scripts",
+                "target_basis_scripts",
+                "n_samples",
+                "n_qubits",
+            ],
         },
         "pulse_width": {
             "fn": pulse_width_cost_fn,
@@ -661,16 +758,36 @@ class QOC:
             params = params.at[i].set(jnp.exp(log_params[i]))
         return params
 
+    # Multiplicative factors used to build a centred grid around the
+    # supplied init parameters when no explicit ``scan_ranges`` are
+    # given.  ``1.0`` is included so the init point itself is always a
+    # candidate (Stage 0 cannot otherwise re-evaluate it as a grid
+    # point — only as the baseline ``best_scan_loss``).
+    SCAN_REL_FACTORS: Tuple[float, ...] = (0.5, 0.75, 1.0, 1.25, 1.5)
+
     def _build_scan_grid(
-        self, n_params: int
+        self,
+        n_params: int,
+        init_pulse_params: Optional[jnp.ndarray] = None,
     ) -> Tuple[jnp.ndarray, List[jnp.ndarray]]:
         """Build a coarse parameter grid for the initial scan phase.
 
-        Uses either user-supplied ``scan_ranges`` or heuristic defaults
-        based on typical Gaussian pulse parameter ranges.
+        If the user supplied ``scan_ranges`` they take precedence and
+        a log-spaced grid is built within those bounds.  Otherwise, when
+        ``init_pulse_params`` is available, a **multiplicative grid
+        centred on the init point** is used (each axis spans
+        ``init * SCAN_REL_FACTORS``) so that already-optimised init
+        params are always re-evaluated and only their immediate
+        neighbourhood is explored.  This avoids the failure mode where
+        the global ``DEFAULT_PARAM_RANGES`` brackets exclude the actual
+        optimum (the previous default range was ``(0.05, 3.0)`` per
+        axis, which clipped DRAG amplitudes around 3.1 and made the
+        scan systematically worse than the init point).
 
         Args:
             n_params: Number of pulse parameters.
+            init_pulse_params: Optional init params used to centre the
+                multiplicative grid when ``scan_ranges`` is ``None``.
 
         Returns:
             Tuple of:
@@ -683,17 +800,46 @@ class QOC:
                 f"scan_ranges has {len(ranges)} entries but gate has "
                 f"{n_params} parameters."
             )
+            # Build log-spaced grids for each parameter
+            axes = []
+            for lo, hi in ranges:
+                axes.append(
+                    jnp.logspace(
+                        jnp.log10(lo), jnp.log10(hi), self.scan_grid_size
+                    )
+                )
+        elif init_pulse_params is not None:
+            # Multiplicative grid centred on init params.  We pick
+            # ``scan_grid_size`` factors symmetric around 1.0.  When
+            # ``scan_grid_size`` matches the static SCAN_REL_FACTORS
+            # length we use those; otherwise build a symmetric linspace.
+            if self.scan_grid_size == len(self.SCAN_REL_FACTORS):
+                factors = jnp.array(self.SCAN_REL_FACTORS, dtype=jnp.float64)
+            else:
+                half = (self.scan_grid_size - 1) / 2.0
+                if half <= 0:
+                    factors = jnp.array([1.0], dtype=jnp.float64)
+                else:
+                    factors = jnp.linspace(
+                        1.0 - 0.5,
+                        1.0 + 0.5,
+                        self.scan_grid_size,
+                        dtype=jnp.float64,
+                    )
+            axes = [factors * float(p) for p in init_pulse_params]
         else:
-            # [amplitude, sigma/width, evolution_time]
+            # Fall back to legacy log-spaced default ranges
             ranges = self.DEFAULT_PARAM_RANGES.get(
                 n_params,
-                [(0.1, 10.0)] * n_params,  # fallback
+                [(0.1, 10.0)] * n_params,
             )
-
-        # Build log-spaced grids for each parameter
-        axes = []
-        for lo, hi in ranges:
-            axes.append(jnp.logspace(jnp.log10(lo), jnp.log10(hi), self.scan_grid_size))
+            axes = []
+            for lo, hi in ranges:
+                axes.append(
+                    jnp.logspace(
+                        jnp.log10(lo), jnp.log10(hi), self.scan_grid_size
+                    )
+                )
 
         # Cartesian product of all axes
         grid = jnp.array(list(itertools.product(*axes)))
@@ -763,15 +909,22 @@ class QOC:
                 f"{self.scan_steps} steps each"
             )
 
-            grid, axes_out = self._build_scan_grid(len(init_pulse_params))
+            grid, axes_out = self._build_scan_grid(
+                len(init_pulse_params),
+                init_pulse_params=init_pulse_params,
+            )
             log.info(f"  Total candidates: {len(grid)}")
 
-            # Use a fast, constant-LR Adam for the scan phase
+            # Use a fast Adam for the scan phase.  The aggressive 5×
+            # multiplier originally used here tended to push refined
+            # candidates *out* of good basins; 2× keeps the refinement
+            # localised.  Always-evaluate-the-raw-candidate below
+            # additionally guards against this.
             scan_optimizer = optax.chain(
                 optax.clip_by_global_norm(
                     self.grad_clip if self.grad_clip > 0 else 1.0
                 ),
-                optax.adam(self.learning_rate * 5),  # aggressive LR
+                optax.adam(self.learning_rate * 2),
             )
 
             @jax.jit
@@ -787,10 +940,16 @@ class QOC:
             # rather than aborting the whole grid loop.
             prev_solver_defaults = ys.Yaqsi.set_solver_defaults(throw=False)
             n_skipped = 0
+            n_raw_better = 0
             try: #TODO: add track progress here
                 for ci, candidate in enumerate(grid):
                     log_candidate = self._to_log_space(candidate)
                     opt_state = scan_optimizer.init(log_candidate)
+
+                    # Evaluate the raw (unrefined) candidate so an
+                    # over-aggressive refinement step cannot discard
+                    # an already-good grid point.
+                    raw_loss = _safe_eval(candidate)
 
                     log_p = log_candidate
                     failed = False
@@ -809,17 +968,25 @@ class QOC:
                             break
 
                     if failed:
-                        n_skipped += 1
-                        continue
+                        # Refinement diverged but the raw candidate may
+                        # still be usable.
+                        physical_p = candidate
+                        loss = raw_loss
+                    else:
+                        physical_p = self._from_log_space(log_p)
+                        if not jnp.all(jnp.isfinite(physical_p)):
+                            physical_p = candidate
+                            loss = raw_loss
+                        else:
+                            loss = _safe_eval(physical_p)
 
-                    # Evaluate final loss in physical space, mapping
-                    # non-finite values to +inf so they are silently
-                    # rejected by the < comparison below.
-                    physical_p = self._from_log_space(log_p)
-                    if not jnp.all(jnp.isfinite(physical_p)):
-                        n_skipped += 1
-                        continue
-                    loss = _safe_eval(physical_p)
+                    # Keep the better of (raw, refined) for this candidate.
+                    if jnp.isfinite(raw_loss) and (
+                        not jnp.isfinite(loss) or raw_loss < loss
+                    ):
+                        physical_p = candidate
+                        loss = raw_loss
+                        n_raw_better += 1
 
                     if not jnp.isfinite(loss):
                         n_skipped += 1
@@ -847,6 +1014,12 @@ class QOC:
                     f"due to solver failure or non-finite loss "
                     f"(typical for very narrow / very large-amplitude "
                     f"DRAG pulses)."
+                )
+            if n_raw_better:
+                log.info(
+                    f"Stage 0: {n_raw_better}/{len(grid)} candidates "
+                    f"were better unrefined than after the {self.scan_steps}-"
+                    f"step refinement; raw values were kept."
                 )
 
             log.info(
@@ -955,6 +1128,15 @@ class QOC:
             loss_history = [loss]
             best_loss = loss
             best_pulse_params = params
+            # Track the params *that produced* the loss returned by
+            # ``opt_step``: ``opt_step`` evaluates the loss at the
+            # current ``log_params`` and *then* applies the update,
+            # so the loss reported on iteration *i* corresponds to the
+            # params *before* the update.  Saving post-update params
+            # together with that loss (the previous behaviour) caused
+            # a one-step mismatch that mattered in flat / sensitive
+            # landscapes near the optimum.
+            prev_log_params = log_params
 
             for step in range(self.n_steps):
                 if step % self.log_interval == 0:
@@ -974,8 +1156,11 @@ class QOC:
                 if loss < best_loss:
                     log.debug(f"Best set of params found at step {step}")
                     best_loss = loss
-                    best_pulse_params = self._from_log_space(log_params)
+                    # Use the params *before* the update so they match
+                    # the reported loss.
+                    best_pulse_params = self._from_log_space(prev_log_params)
 
+                prev_log_params = log_params
                 loss_history.append(loss)
 
             log.info(
@@ -1207,6 +1392,36 @@ class QOC:
                     ys.Script(target_circuit_plus, n_qubits=wires),
                 ]
 
+                # Basis-state-prepended scripts for the unitary cost.
+                # The k-th script prepends a PauliX on every wire whose
+                # bit in ``k`` is set, so executing it from the |0⟩^⊗n
+                # initial state yields the k-th column of the gate's
+                # unitary.  Stacking these columns (done inside
+                # :func:`unitary_cost_fn`) reconstructs U(w) cheaply for
+                # small ``n_qubits``.
+                d_basis = 2**wires
+
+                def _with_basis_prep(circuit_fn, k: int):
+                    bits = [(k >> (wires - 1 - i)) & 1 for i in range(wires)]
+
+                    def prepared(*args, **kwargs):
+                        for i, bit in enumerate(bits):
+                            if bit:
+                                op.PauliX(wires=i)
+                        circuit_fn(*args, **kwargs)
+
+                    prepared.__name__ = f"basis{k}_{circuit_fn.__name__}"
+                    return prepared
+
+                pulse_basis_scripts = [
+                    ys.Script(_with_basis_prep(pulse_circuit, k), n_qubits=wires)
+                    for k in range(d_basis)
+                ]
+                target_basis_scripts = [
+                    ys.Script(_with_basis_prep(target_circuit, k), n_qubits=wires)
+                    for k in range(d_basis)
+                ]
+
                 gate_name = create_circuits.__name__.split("_")[1]
 
                 if init_pulse_params is None:
@@ -1218,8 +1433,11 @@ class QOC:
                 all_ckwargs = {
                     "pulse_scripts": pulse_scripts,
                     "target_scripts": target_scripts,
+                    "pulse_basis_scripts": pulse_basis_scripts,
+                    "target_basis_scripts": target_basis_scripts,
                     "envelope": self.envelope,
                     "n_samples": self.n_samples,
+                    "n_qubits": wires,
                     "t_target": self.t_target,
                 }
 
@@ -1438,6 +1656,14 @@ class QOC:
             make_log: If ``True``, write per-gate loss histories to
                 ``qml_essentials/qoc_logs.csv``.
         """
+        # TODO: explore an ``optimize_joint()`` mode that co-optimises
+        # the leaf-gate parameters (RX/RY/RZ/H) against composite-gate
+        # targets (H, CX, CR_) so the optimiser can trade off
+        # standalone-RY accuracy against the in-CX-RY accuracy.  Each
+        # composite would contribute a unitary-cost term using the
+        # shared leaf parameters.  Skipped for now because per-gate
+        # optimisation with a unitary cost already removes the dominant
+        # axis-tilt error; revisit if tolerances are tightened further.
         log_history: Dict[str, list] = {}
 
         for gate in self.GATES_1Q + self.GATES_2Q:
@@ -1463,7 +1689,12 @@ class QOC:
 default_qoc_params = {
     "envelope": "drag",
     "cost_fns": [
-        ("fidelity", (0.5, 0.5)),
+        # Unitary-level cost (process infidelity + trace-phase term).
+        # Captures rotation-axis tilt and global-phase residual that
+        # the state-fidelity cost is blind to; required to keep two-CX
+        # composites (CRX/CRY/CRZ) within tightened phase tolerances.
+        ("unitary", (0.5, 0.5)),
+        # ("fidelity", (0.5, 0.5)),  # legacy state-vector cost
         # ("pulse_width", 0.000000015),
         # ("evolution_time", 0.000000005),
     ],
