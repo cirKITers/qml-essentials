@@ -237,6 +237,68 @@ def unitary_cost_fn(
     return (process_loss, phase_loss)
 
 
+def joint_unitary_cost_fn(
+    pulse_params: jnp.ndarray,
+    gate_specs: List[dict],
+    n_samples: int,
+) -> Tuple[float, float]:
+    """Joint unitary-level cost summed over multiple target gates.
+
+    Each entry in ``gate_specs`` is a dictionary describing one target
+    gate that shares the joint parameter vector ``pulse_params``::
+
+        {
+            "name":                 str,             # gate name (debug)
+            "n_qubits":             int,
+            "weight":               float,           # per-gate weight
+            "assembler":            Callable,        # theta -> per-gate flat params
+            "pulse_basis_scripts":  List[ys.Script], # 2**n_qubits scripts
+            "target_basis_scripts": List[ys.Script],
+        }
+
+    The total return value is a ``(process_loss, phase_loss)`` tuple
+    where each component is ``Σ_g w_g · loss_g(theta)`` divided by the
+    sum of weights.  Sharing the leaf parameters across all target
+    gates pulls the optimum into a basin that is good for *every*
+    use-site (composite gates as well as standalone leaves) — fixing
+    the failure mode where per-gate optimisation pushes a leaf into a
+    "selfish" basin that is optimal for its standalone use but breaks
+    composites that contain it.
+
+    Args:
+        pulse_params: Joint leaf parameter vector (theta).
+        gate_specs: List of per-gate spec dicts (see above).
+        n_samples: Number of rotation-angle samples per gate.
+
+    Returns:
+        Tuple ``(process_loss, phase_loss)`` averaged over angles and
+        weighted-summed over gates.
+    """
+    total_proc = jnp.array(0.0, dtype=jnp.float64)
+    total_phase = jnp.array(0.0, dtype=jnp.float64)
+    total_w = 0.0
+
+    for spec in gate_specs:
+        per_gate_pp = spec["assembler"](pulse_params)
+        proc_loss, phase_loss = unitary_cost_fn(
+            per_gate_pp,
+            spec["pulse_basis_scripts"],
+            spec["target_basis_scripts"],
+            n_samples,
+            spec["n_qubits"],
+        )
+        w = spec["weight"]
+        total_proc = total_proc + w * proc_loss
+        total_phase = total_phase + w * phase_loss
+        total_w += w
+
+    if total_w > 0:
+        total_proc = total_proc / total_w
+        total_phase = total_phase / total_w
+
+    return (total_proc, total_phase)
+
+
 def pulse_width_cost_fn(
     pulse_params: jnp.ndarray,
     envelope: str,
@@ -1656,14 +1718,8 @@ class QOC:
             make_log: If ``True``, write per-gate loss histories to
                 ``qml_essentials/qoc_logs.csv``.
         """
-        # TODO: explore an ``optimize_joint()`` mode that co-optimises
-        # the leaf-gate parameters (RX/RY/RZ/H) against composite-gate
-        # targets (H, CX, CR_) so the optimiser can trade off
-        # standalone-RY accuracy against the in-CX-RY accuracy.  Each
-        # composite would contribute a unitary-cost term using the
-        # shared leaf parameters.  Skipped for now because per-gate
-        # optimisation with a unitary cost already removes the dominant
-        # axis-tilt error; revisit if tolerances are tightened further.
+        # Joint mode (Round 3) is now implemented in :meth:`optimize_joint`.
+        # The `--joint` CLI flag selects it instead of this per-gate loop.
         log_history: Dict[str, list] = {}
 
         for gate in self.GATES_1Q + self.GATES_2Q:
@@ -1684,6 +1740,427 @@ class QOC:
                 writer = csv.writer(f)
                 writer.writerow(log_history.keys())
                 writer.writerows(zip(*log_history.values()))
+
+    # ------------------------------------------------------------------
+    # Joint composite-aware optimisation (Round 3)
+    # ------------------------------------------------------------------
+
+    # Default leaf set whose parameters are jointly optimised.  Order
+    # matters — it determines the layout of the joint parameter vector
+    # (theta).  Excluding a leaf from this list freezes it at its
+    # current PulseInformation default during joint optimisation.
+    JOINT_LEAVES_DEFAULT: Tuple[str, ...] = ("RX", "RY", "RZ", "CZ")
+
+    # Default set of target gates whose unitary cost is summed during
+    # joint optimisation.  Composite gates back-propagate into the
+    # shared leaves; leaf-gate terms keep the standalone fidelity
+    # acceptable.
+    JOINT_TARGETS_DEFAULT: Tuple[str, ...] = (
+        "RX", "RY", "RZ", "CZ", "H", "CX", "CRX", "CRY", "CRZ",
+    )
+
+    def _build_joint_layout(
+        self, leaf_names: Tuple[str, ...]
+    ) -> Tuple[jnp.ndarray, Dict[str, slice], List[int]]:
+        """Build the joint parameter layout.
+
+        Args:
+            leaf_names: Ordered names of the leaf gates that participate
+                in the joint optimisation.
+
+        Returns:
+            Tuple ``(init_theta, leaf_slices, log_scale_indices)``:
+              * ``init_theta`` — concatenated init parameters from
+                ``PulseInformation.<leaf>.params`` in the given order.
+              * ``leaf_slices`` — mapping leaf-name → ``slice`` into
+                ``init_theta``.
+              * ``log_scale_indices`` — indices into ``init_theta`` that
+                should be optimised in log-space (amplitude + evolution
+                time per envelope leaf, mirroring the per-gate default
+                ``[0, -1]`` rule).
+        """
+        envelope_info = PulseEnvelope.get(self.envelope)
+        n_env = envelope_info["n_envelope_params"]
+
+        leaf_slices: Dict[str, slice] = {}
+        init_chunks = []
+        log_idx: List[int] = []
+        offset = 0
+        for name in leaf_names:
+            pp = PulseInformation.gate_by_name(name)
+            assert pp is not None and pp.is_leaf, (
+                f"_build_joint_layout: {name!r} is not a leaf gate"
+            )
+            chunk = jnp.asarray(pp.params, dtype=jnp.float64)
+            n_p = chunk.shape[0]
+            leaf_slices[name] = slice(offset, offset + n_p)
+            init_chunks.append(chunk)
+            # Log-scale rule per leaf: only leaves that come from the
+            # *envelope* (RX, RY) get log-scaled amplitude+time.  RZ
+            # and CZ use the "general" registry with a single tuning
+            # scalar — leave them in linear space.
+            if name in ("RX", "RY") and n_env >= 2:
+                log_idx.append(offset)            # amplitude
+                log_idx.append(offset + n_p - 1)  # evolution time
+            offset += n_p
+
+        init_theta = jnp.concatenate(init_chunks)
+        return init_theta, leaf_slices, log_idx
+
+    @staticmethod
+    def _assemble_for_gate(
+        theta: jnp.ndarray,
+        pp_obj,
+        leaf_slices: Dict[str, slice],
+    ) -> jnp.ndarray:
+        """Assemble the per-gate flat ``pulse_params`` from ``theta``.
+
+        Walks the gate's decomposition tree (recursing through
+        composites) and concatenates the appropriate slice of ``theta``
+        for each leaf occurrence.  Mirrors :pyattr:`PulseParams.params`
+        getter logic but pulls leaf data from the joint vector
+        ``theta`` rather than the leaves' own ``_params``.
+        """
+        if pp_obj.is_leaf:
+            sl = leaf_slices.get(pp_obj.name)
+            if sl is None:
+                # Leaf is frozen — use its current PulseInformation
+                # value directly.
+                return jnp.asarray(pp_obj.params, dtype=jnp.float64)
+            return theta[sl]
+        return jnp.concatenate(
+            [QOC._assemble_for_gate(theta, child, leaf_slices) for child in pp_obj.childs]
+        )
+
+    def _joint_stage_0_coord_descent(
+        self,
+        init_theta: jnp.ndarray,
+        leaf_slices: Dict[str, slice],
+        total_cost: Callable,
+    ) -> jnp.ndarray:
+        """Coordinate-descent grid scan over leaf-axis blocks.
+
+        For each leaf in ``leaf_slices`` (in order), sweep a centred
+        multiplicative grid over that leaf's params (using the existing
+        :meth:`_build_scan_grid` machinery) while holding the other
+        leaves at the current best.  Greedily accept any improvement.
+
+        This avoids the combinatorial explosion of a Cartesian
+        product over all leaf axes simultaneously: instead of
+        ``Π_i scan_grid_size**k_i`` candidates, only ``Σ_i
+        scan_grid_size**k_i`` are evaluated.
+
+        Args:
+            init_theta: Starting joint parameter vector.
+            leaf_slices: Mapping leaf-name → slice into ``init_theta``.
+            total_cost: Joint cost callable taking ``theta`` and
+                returning a scalar loss.
+
+        Returns:
+            Best joint parameter vector found.
+        """
+        if self.scan_steps <= 0:
+            log.info("Joint Stage 0: scan disabled (scan_steps=0); skipping.")
+            return init_theta
+
+        def _safe_eval(theta):
+            loss = total_cost(theta)
+            return jnp.where(jnp.isfinite(loss), loss, jnp.inf)
+
+        current = init_theta
+        best_loss = _safe_eval(current)
+        log.info(
+            f"Joint Stage 0: coordinate-descent over {len(leaf_slices)} leaves, "
+            f"init_loss={float(best_loss):.6e}"
+        )
+
+        prev_solver_defaults = ys.Yaqsi.set_solver_defaults(throw=False)
+        try:
+            for leaf_name, sl in leaf_slices.items():
+                leaf_init = current[sl]
+                n_p = int(leaf_init.shape[0])
+                if n_p == 0:
+                    continue
+                grid, _ = self._build_scan_grid(n_p, init_pulse_params=leaf_init)
+                n_better = 0
+                for cand in grid:
+                    new_theta = current.at[sl].set(cand)
+                    loss = _safe_eval(new_theta)
+                    if loss < best_loss:
+                        best_loss = loss
+                        current = new_theta
+                        n_better += 1
+                log.info(
+                    f"  Joint scan after leaf {leaf_name} "
+                    f"({len(grid)} candidates, {n_better} improved): "
+                    f"best_loss={float(best_loss):.6e}"
+                )
+        finally:
+            if prev_solver_defaults:
+                ys.Yaqsi.set_solver_defaults(**prev_solver_defaults)
+
+        return current
+
+    def _create_joint_pair_for(self, gate_name: str):
+        """Return ``(pulse_circuit, target_circuit)`` for joint-mode use.
+
+        Unlike the ``create_<gate>`` factories — which prepend a
+        symmetry-breaking ``op.H``/``op.RY`` so that the *state-vector*
+        cost is sensitive to rotation-axis tilt — the joint mode uses
+        the **unitary** cost where such preps actively *hide* errors:
+        e.g. ``create_CX`` prepends ``op.H(wires=1)`` which puts the
+        target qubit into ``|+⟩``, an eigenstate of CX, so the
+        column-stacked unitary becomes insensitive to the pulse-CX
+        error.  Unitary cost already captures axis tilt without any
+        probe-state trickery, so we drop the preps entirely and probe
+        the bare gate.
+
+        For leaf rotation gates (RX/RY/RZ/CX-family), accept ``w`` as
+        a rotation angle.  For fixed gates (H/CX/CZ), accept ``w`` and
+        ignore it (the unitary is constant; ``ws`` is averaged over).
+        """
+        n_wires = 1 if gate_name in self.GATES_1Q else 2
+
+        # Single-qubit rotation leaves
+        if gate_name == "RX":
+            def pulse_circuit(w, pp):
+                Gates.RX(w, wires=0, pulse_params=pp, gate_mode="pulse")
+            def target_circuit(w):
+                op.RX(w, wires=0)
+            return pulse_circuit, target_circuit
+        if gate_name == "RY":
+            def pulse_circuit(w, pp):
+                Gates.RY(w, wires=0, pulse_params=pp, gate_mode="pulse")
+            def target_circuit(w):
+                op.RY(w, wires=0)
+            return pulse_circuit, target_circuit
+        if gate_name == "RZ":
+            def pulse_circuit(w, pp):
+                Gates.RZ(w, wires=0, pulse_params=pp, gate_mode="pulse")
+            def target_circuit(w):
+                op.RZ(w, wires=0)
+            return pulse_circuit, target_circuit
+
+        # Fixed single-qubit
+        if gate_name == "H":
+            def pulse_circuit(w, pp):
+                Gates.H(0, pulse_params=pp, gate_mode="pulse")
+            def target_circuit(w):
+                op.H(wires=0)
+            return pulse_circuit, target_circuit
+
+        # Fixed two-qubit
+        if gate_name == "CZ":
+            def pulse_circuit(w, pp):
+                Gates.CZ(wires=[0, 1], pulse_params=pp, gate_mode="pulse")
+            def target_circuit(w):
+                op.CZ(wires=[0, 1])
+            return pulse_circuit, target_circuit
+        if gate_name == "CX":
+            def pulse_circuit(w, pp):
+                Gates.CX(wires=[0, 1], pulse_params=pp, gate_mode="pulse")
+            def target_circuit(w):
+                op.CX(wires=[0, 1])
+            return pulse_circuit, target_circuit
+
+        # Two-qubit rotations: w is the rotation angle
+        if gate_name == "CRX":
+            def pulse_circuit(w, pp):
+                Gates.CRX(w, wires=[0, 1], pulse_params=pp, gate_mode="pulse")
+            def target_circuit(w):
+                op.CRX(w, wires=[0, 1])
+            return pulse_circuit, target_circuit
+        if gate_name == "CRY":
+            def pulse_circuit(w, pp):
+                Gates.CRY(w, wires=[0, 1], pulse_params=pp, gate_mode="pulse")
+            def target_circuit(w):
+                op.CRY(w, wires=[0, 1])
+            return pulse_circuit, target_circuit
+        if gate_name == "CRZ":
+            def pulse_circuit(w, pp):
+                Gates.CRZ(w, wires=[0, 1], pulse_params=pp, gate_mode="pulse")
+            def target_circuit(w):
+                op.CRZ(w, wires=[0, 1])
+            return pulse_circuit, target_circuit
+
+        # Fallback: use create_* (may carry preps that hide errors)
+        log.warning(
+            f"_create_joint_pair_for: no prep-free factory for {gate_name!r}; "
+            f"falling back to create_{gate_name} (preps may hide errors)."
+        )
+        return self._create_pair_for(gate_name)
+
+    def _create_pair_for(self, gate_name: str):
+        """Return ``(pulse_circuit, target_circuit)`` for a target gate.
+
+        Reuses the ``create_<gate>`` factory methods so the joint mode
+        targets exactly the same circuits as the per-gate mode.
+        """
+        factory = getattr(self, f"create_{gate_name}", None)
+        if factory is None:
+            raise ValueError(f"No create_{gate_name} factory on QOC.")
+        return factory()
+
+    def optimize_joint(
+        self,
+        target_gates: Optional[List[str]] = None,
+        leaf_names: Optional[List[str]] = None,
+        weights: Optional[Dict[str, float]] = None,
+    ) -> Tuple[jnp.ndarray, Dict[str, slice], list]:
+        """Joint composite-aware optimisation of leaf pulse parameters.
+
+        Optimises a single shared parameter vector ``theta`` (containing
+        the concatenated leaf params for ``leaf_names``) against a
+        weighted sum of unitary-cost terms over ``target_gates``.
+        Composite gates back-propagate into the shared leaves; leaf
+        terms keep the standalone fidelity acceptable; CZ — included
+        by default — is verified to be a static diagonal-Hamiltonian
+        abstraction (``H_CZ = π·|11⟩⟨11|``, evolved t=1) and
+        consequently barely moves.
+
+        Args:
+            target_gates: Gates whose unitary cost contributes to the
+                joint objective.  Defaults to
+                :pyattr:`JOINT_TARGETS_DEFAULT` (RX, RY, RZ, CZ, H, CX,
+                CRX, CRY, CRZ).
+            leaf_names: Leaf gates whose parameters are jointly
+                optimised.  Defaults to :pyattr:`JOINT_LEAVES_DEFAULT`
+                (RX, RY, RZ, CZ).
+            weights: Optional mapping ``gate_name → weight``.  Missing
+                gates default to ``1.0``.  All weights are normalised
+                inside the cost.
+
+        Returns:
+            ``(best_theta, leaf_slices, loss_history)``.  Per-leaf
+            results are also written to ``qoc_results_<envelope>.csv``
+            via :meth:`save_results`.
+        """
+        target_gates = list(target_gates) if target_gates else list(self.JOINT_TARGETS_DEFAULT)
+        leaf_names = list(leaf_names) if leaf_names else list(self.JOINT_LEAVES_DEFAULT)
+        weights = weights or {}
+
+        log.info(
+            f"Joint optimisation: leaves={leaf_names}, targets={target_gates}"
+        )
+
+        init_theta, leaf_slices, joint_log_idx = self._build_joint_layout(
+            tuple(leaf_names)
+        )
+        log.info(
+            f"  Joint theta size: {init_theta.shape[0]}; "
+            f"log-scale indices: {joint_log_idx}"
+        )
+
+        # Build per-gate specs (assembler + basis-prep scripts).
+        gate_specs: List[dict] = []
+        for gname in target_gates:
+            pp_obj = PulseInformation.gate_by_name(gname)
+            if pp_obj is None:
+                log.warning(f"  Skipping unknown gate {gname!r}.")
+                continue
+            n_wires = 1 if gname in self.GATES_1Q else 2
+            d_basis = 2 ** n_wires
+            pulse_circuit, target_circuit = self._create_joint_pair_for(gname)
+
+            def _with_basis_prep(circuit_fn, k: int, n_wires=n_wires):
+                bits = [(k >> (n_wires - 1 - i)) & 1 for i in range(n_wires)]
+
+                def prepared(*args, **kwargs):
+                    for i, bit in enumerate(bits):
+                        if bit:
+                            op.PauliX(wires=i)
+                    circuit_fn(*args, **kwargs)
+
+                prepared.__name__ = f"basis{k}_{circuit_fn.__name__}"
+                return prepared
+
+            pulse_basis_scripts = [
+                ys.Script(_with_basis_prep(pulse_circuit, k), n_qubits=n_wires)
+                for k in range(d_basis)
+            ]
+            target_basis_scripts = [
+                ys.Script(_with_basis_prep(target_circuit, k), n_qubits=n_wires)
+                for k in range(d_basis)
+            ]
+
+            # Closure capturing pp_obj + leaf_slices.  Defined here so
+            # each spec carries its own assembler.
+            def _make_assembler(pp_obj=pp_obj):
+                def assemble(theta):
+                    return QOC._assemble_for_gate(theta, pp_obj, leaf_slices)
+                return assemble
+
+            gate_specs.append({
+                "name": gname,
+                "n_qubits": n_wires,
+                "weight": float(weights.get(gname, 1.0)),
+                "assembler": _make_assembler(),
+                "pulse_basis_scripts": pulse_basis_scripts,
+                "target_basis_scripts": target_basis_scripts,
+            })
+            log.info(
+                f"  Built spec for {gname}: n_qubits={n_wires}, "
+                f"weight={gate_specs[-1]['weight']}"
+            )
+
+        # Build the joint cost as a Cost wrapper (so weight-tuple
+        # collapsing into a scalar is shared with the per-gate path).
+        # We use the same (process_loss, phase_loss) two-component
+        # weighting as the standalone unitary cost — keeps the relative
+        # importance of fidelity vs phase consistent.
+        ((_, weight_tuple),) = (
+            (n, w) for n, w in self.cost_fns if n == "unitary"
+        ) if any(n == "unitary" for n, _ in self.cost_fns) else ((None, (0.5, 0.5)),)
+        joint_cost = Cost(
+            cost=joint_unitary_cost_fn,
+            weight=weight_tuple,
+            ckwargs={
+                "gate_specs": gate_specs,
+                "n_samples": self.n_samples,
+            },
+        )
+
+        # Temporarily override log_scale_params to point at joint
+        # vector indices (Stage 0 grid building + Stage 1 log-space
+        # reparam both consult ``self.log_scale_params``).
+        prev_log_scale = self.log_scale_params
+        self.log_scale_params = joint_log_idx
+        try:
+            best_scan_theta = self._joint_stage_0_coord_descent(
+                init_theta, leaf_slices, joint_cost
+            )
+
+            global_best_theta, global_best_history, global_best_loss = (
+                self.stage_1_opt(best_scan_theta, joint_cost)
+            )
+        finally:
+            self.log_scale_params = prev_log_scale
+
+        log.info(
+            f"Joint optimisation done. final loss={float(global_best_loss):.6e}"
+        )
+
+        # Save per-leaf results to the CSV (one row per leaf).  The
+        # fidelity column carries the *joint* fidelity; downstream code
+        # that reads the CSV (or the user copy-pasting into pulses.py)
+        # can use it as a coarse quality signal.
+        joint_fid = float(1.0 - global_best_loss)
+        for leaf_name, sl in leaf_slices.items():
+            leaf_params = global_best_theta[sl]
+            self.save_results(
+                gate=leaf_name,
+                fidelity=joint_fid,
+                pulse_params=leaf_params,
+            )
+
+        # Update PulseInformation in-place so the new defaults are
+        # active in this Python process (handy for diagnostic scripts
+        # that import QOC and then evaluate the new gates).
+        for leaf_name, sl in leaf_slices.items():
+            pp = PulseInformation.gate_by_name(leaf_name)
+            pp.params = global_best_theta[sl]
+
+        return global_best_theta, leaf_slices, global_best_history
 
 
 default_qoc_params = {
@@ -1894,6 +2371,43 @@ if __name__ == "__main__":
             "(Phase 1) as PNG files in --file_dir for each optimised gate."
         ),
     )
+    parser.add_argument(
+        "--joint",
+        action="store_true",
+        default=False,
+        help=(
+            "Use composite-aware joint optimisation: a single shared "
+            "leaf parameter vector is optimised against the unitary "
+            "cost summed over leaf and composite gates "
+            "(default targets: RX, RY, RZ, CZ, H, CX, CRX, CRY, CRZ). "
+            "Pulls leaves into a basin that works well in *every* "
+            "use-site instead of only standalone, fixing the "
+            "selfish-basin failure mode of per-gate optimisation. "
+            "Ignores --gates."
+        ),
+    )
+    parser.add_argument(
+        "--joint_targets",
+        nargs="+",
+        type=str,
+        default=None,
+        help=(
+            "(Used only with --joint.) Override the list of target "
+            "gates whose unitary cost contributes to the joint "
+            "objective."
+        ),
+    )
+    parser.add_argument(
+        "--joint_leaves",
+        nargs="+",
+        type=str,
+        default=None,
+        help=(
+            "(Used only with --joint.) Override the list of leaf "
+            "gates whose parameters are jointly optimised. "
+            "Default: RX RY RZ CZ."
+        ),
+    )
 
     args = parser.parse_args()
     sel_gates = args.gates  # already a list from nargs="+"
@@ -1937,4 +2451,10 @@ if __name__ == "__main__":
         plot=args.plot,
     )
 
-    qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)
+    if args.joint:
+        qoc.optimize_joint(
+            target_gates=args.joint_targets,
+            leaf_names=args.joint_leaves,
+        )
+    else:
+        qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)
