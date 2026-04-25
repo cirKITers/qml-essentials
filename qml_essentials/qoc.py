@@ -540,7 +540,7 @@ class QOC:
         """
         if self.file_dir is not None:
             os.makedirs(self.file_dir, exist_ok=True)
-            filename = os.path.join(self.file_dir, "qoc_results.csv")
+            filename = os.path.join(self.file_dir, f"qoc_results_{self.envelope}.csv")
 
             reader = None
             if os.path.isfile(filename):
@@ -1011,11 +1011,12 @@ class QOC:
         else:  # n_params >= 3: sorted scatter
             order = np.argsort(losses_arr)
             sorted_losses = losses_arr[order]
+            sorted_indices = np.array(indices)[order]  # original trial numbers
             ranks = np.arange(len(sorted_losses))
             sc = ax.scatter(
-                sorted_losses, ranks, c=ranks, cmap="plasma", s=40, zorder=3,
+                sorted_losses, ranks, c=sorted_indices, cmap="plasma", s=40, zorder=3,
             )
-            fig.colorbar(sc, ax=ax, label="Rank (0 = best)")
+            fig.colorbar(sc, ax=ax, label="Trial number")
             ax.scatter(
                 sorted_losses[0], ranks[0],
                 marker="*", s=200, color="red", zorder=4, label="best",
@@ -1380,7 +1381,7 @@ class QOC:
 
 
 default_qoc_params = {
-    "envelope": "drag",
+    "envelope": "square",
     "cost_fns": [
         ("fidelity", (0.5, 0.5)),
         # ("pulse_width", 0.000000015),
@@ -1504,7 +1505,8 @@ if __name__ == "__main__":
         "--file_dir",
         type=str,
         default=default_qoc_params["file_dir"],
-        help="Directory to save qoc_results.csv. Defaults to the package directory.",
+        help="Directory to save qoc_results_[envelope].csv. " \
+        "Defaults to the package directory.",
     )
     parser.add_argument(
         "--n_restarts",
