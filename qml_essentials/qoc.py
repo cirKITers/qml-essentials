@@ -7,6 +7,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import jax
 from jax import numpy as jnp
+import numpy as np
 import optax
 
 from qml_essentials.gates import Gates, PulseInformation, PulseEnvelope
@@ -374,6 +375,7 @@ class QOC:
         scan_grid_size: int = 5,
         scan_ranges: Optional[List[Tuple[float, float]]] = None,
         log_scale_params: Optional[List[int]] = None,
+        plot: bool = False,
     ):
         """
         Initialize Quantum Optimal Control with Pulse-level Gates.
@@ -451,6 +453,10 @@ class QOC:
                 If ``None``, defaults to ``[0, -1]`` (amplitude and
                 evolution time) for envelopes with ≥ 2 envelope params,
                 or ``[]`` otherwise.
+            plot (bool): If ``True``, save a loss-landscape figure after
+                Phase 0 and a loss-curve figure after Phase 1 to
+                ``file_dir``.  Requires ``matplotlib`` to be installed.
+                Defaults to ``False``.
         """
         self.envelope = envelope
         self.n_steps = n_steps
@@ -481,6 +487,8 @@ class QOC:
             self.log_scale_params = [0, -1]
         else:
             self.log_scale_params = []
+
+        self.plot = plot
 
         log.info(
             f"Training parameters: {self.n_steps} steps, "
@@ -608,7 +616,9 @@ class QOC:
             params = params.at[i].set(jnp.exp(log_params[i]))
         return params
 
-    def _build_scan_grid(self, n_params: int) -> jnp.ndarray:
+    def _build_scan_grid(
+        self, n_params: int
+    ) -> Tuple[jnp.ndarray, List[jnp.ndarray]]:
         """Build a coarse parameter grid for the initial scan phase.
 
         Uses either user-supplied ``scan_ranges`` or heuristic defaults
@@ -618,7 +628,9 @@ class QOC:
             n_params: Number of pulse parameters.
 
         Returns:
-            Array of shape ``(n_candidates, n_params)`` with grid points.
+            Tuple of:
+            - Array of shape ``(n_candidates, n_params)`` with grid points.
+            - List of 1-D arrays, one per parameter axis.
         """
         if self.scan_ranges is not None:
             ranges = self.scan_ranges
@@ -640,11 +652,11 @@ class QOC:
 
         # Cartesian product of all axes
         grid = jnp.array(list(itertools.product(*axes)))
-        return grid
+        return grid, axes
 
     def stage_0_opt(
         self, init_pulse_params: jnp.ndarray, fidelity_only_cost: Callable
-    ) -> jnp.ndarray:
+    ) -> Tuple[jnp.ndarray, Optional[Tuple[List[jnp.ndarray], list]]]:
         """Run the coarse grid-scan phase (Stage 0).
 
         Evaluates a Cartesian grid of parameter candidates using only the
@@ -664,7 +676,12 @@ class QOC:
             fidelity_only_cost: Cost callable using fidelity only.
 
         Returns:
-            Best pulse parameters found during the scan.
+            Tuple of:
+            - Best pulse parameters found during the scan.
+            - ``(grid_axes, landscape_data)`` if the grid scan ran, else
+              ``None``.  ``landscape_data`` is a list of
+              ``(candidate_index, original_params, loss)`` tuples for
+              every successful scan candidate.
         """
 
         def fidelity_only_cost_log(log_params, *args):
@@ -683,6 +700,9 @@ class QOC:
                 "loss; falling back to a placeholder loss of +inf."
             )
 
+        landscape_data: list = []
+        axes_out: Optional[List[jnp.ndarray]] = None
+
         if self.scan_steps > 0:
             log.info(
                 f"Stage 0: Grid scan with {self.scan_grid_size}^"
@@ -690,7 +710,7 @@ class QOC:
                 f"{self.scan_steps} steps each"
             )
 
-            grid = self._build_scan_grid(len(init_pulse_params))
+            grid, axes_out = self._build_scan_grid(len(init_pulse_params))
             log.info(f"  Total candidates: {len(grid)}")
 
             # Use a fast, constant-LR Adam for the scan phase
@@ -752,6 +772,8 @@ class QOC:
                         n_skipped += 1
                         continue
 
+                    landscape_data.append((ci, candidate, float(loss)))
+
                     if loss < best_scan_loss:
                         best_scan_loss = loss
                         best_scan_params = physical_p
@@ -780,7 +802,8 @@ class QOC:
                 f"params: {best_scan_params}"
             )
 
-        return best_scan_params
+        scan_data = (axes_out, landscape_data) if self.scan_steps > 0 else None
+        return best_scan_params, scan_data
 
     def stage_1_opt(
         self, best_scan_params: jnp.ndarray, total_costs: Callable
@@ -914,6 +937,143 @@ class QOC:
 
         return global_best_params, global_best_history, global_best_loss
 
+    def plot_loss_landscape(
+        self,
+        gate_name: str,
+        grid_axes: List[jnp.ndarray],
+        landscape_data: list,
+    ) -> None:
+        """Save a loss-landscape figure for the Phase-0 grid scan.
+
+        The visualisation adapts to the number of pulse parameters:
+
+        - **1 parameter**: line/scatter plot (param value vs. loss).
+        - **2 parameters**: 2-D heatmap (param₀ × param₁, colour = loss).
+        - **≥ 3 parameters**: horizontal scatter sorted by ascending loss
+          with the best candidate highlighted.
+
+        The figure is saved to ``{file_dir}/{gate_name}_loss_landscape.png``.
+
+        Args:
+            gate_name: Name of the gate being optimised (e.g. ``"RX"``).
+            grid_axes: Per-parameter 1-D arrays that span the scan grid.
+            landscape_data: List of ``(candidate_index, params, loss)``
+                tuples for every successful scan candidate.
+        """
+        import matplotlib.pyplot as plt  # lazy — matplotlib is dev-only
+
+        if not landscape_data:
+            log.warning("plot_loss_landscape: no landscape data to plot, skipping.")
+            return
+
+        os.makedirs(self.file_dir, exist_ok=True)
+        n_params = len(grid_axes)
+        indices, _params_list, losses = zip(*landscape_data)
+        losses_arr = np.array(losses, dtype=float)
+
+        fig, ax = plt.subplots(figsize=(8, 5))
+
+        if n_params == 1:
+            x = np.array([float(grid_axes[0][i]) for i in indices])
+            sc = ax.scatter(x, losses_arr, c=losses_arr, cmap="viridis_r", s=60, zorder=3)
+            fig.colorbar(sc, ax=ax, label="Loss")
+            best_i = int(np.argmin(losses_arr))
+            ax.scatter(
+                x[best_i], losses_arr[best_i],
+                marker="*", s=200, color="red", zorder=4, label="best",
+            )
+            ax.set_xlabel("Parameter value")
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            ax.legend()
+
+        elif n_params == 2:
+            n = self.scan_grid_size
+            loss_grid = np.full((n, n), np.nan)
+            for ci, _, loss in landscape_data:
+                row = ci // n
+                col = ci % n
+                loss_grid[row, col] = loss
+            masked = np.ma.masked_invalid(loss_grid)
+            cmap = plt.cm.viridis_r.copy()
+            cmap.set_bad(color="lightgrey")
+            im = ax.imshow(
+                masked, origin="lower", cmap=cmap, aspect="auto",
+                extent=[
+                    float(grid_axes[1][0]), float(grid_axes[1][-1]),
+                    float(grid_axes[0][0]), float(grid_axes[0][-1]),
+                ],
+            )
+            fig.colorbar(im, ax=ax, label="Loss")
+            ax.set_xlabel("Parameter 1")
+            ax.set_ylabel("Parameter 0")
+
+        else:  # n_params >= 3: sorted scatter
+            order = np.argsort(losses_arr)
+            sorted_losses = losses_arr[order]
+            ranks = np.arange(len(sorted_losses))
+            sc = ax.scatter(
+                sorted_losses, ranks, c=ranks, cmap="plasma", s=40, zorder=3,
+            )
+            fig.colorbar(sc, ax=ax, label="Rank (0 = best)")
+            ax.scatter(
+                sorted_losses[0], ranks[0],
+                marker="*", s=200, color="red", zorder=4, label="best",
+            )
+            ax.set_xlabel("Loss")
+            ax.set_ylabel("Candidate rank (0 = best)")
+            ax.set_xscale("log")
+            ax.legend()
+
+        ax.set_title(f"Loss Landscape (Phase 0) — {gate_name}")
+        fig.tight_layout()
+        path = os.path.join(self.file_dir, f"{gate_name}_loss_landscape.png")
+        fig.savefig(path, dpi=150)
+        plt.close(fig)
+        log.info(f"Loss landscape saved to {path}")
+
+    def plot_loss_curve(
+        self,
+        gate_name: str,
+        loss_history: list,
+    ) -> None:
+        """Save a training-loss curve figure for the Phase-1 optimisation.
+
+        Shows loss vs. optimisation step on a log y-scale with a dashed
+        horizontal line at the minimum achieved loss.
+
+        The figure is saved to ``{file_dir}/{gate_name}_loss_curve.png``.
+
+        Args:
+            gate_name: Name of the gate being optimised (e.g. ``"RX"``).
+            loss_history: Sequence of loss values, one per step (including
+                the initial loss at index 0).
+        """
+        import matplotlib.pyplot as plt  # lazy — matplotlib is dev-only
+
+        if not loss_history:
+            log.warning("plot_loss_curve: empty loss history, skipping.")
+            return
+
+        os.makedirs(self.file_dir, exist_ok=True)
+        losses = [float(v) for v in loss_history]
+        best = min(losses)
+
+        fig, ax = plt.subplots(figsize=(9, 4))
+        ax.plot(losses, linewidth=1.2, label="Loss")
+        ax.axhline(best, color="red", linestyle="--", linewidth=1.0,
+                   label=f"Best: {best:.3e}")
+        ax.set_xlabel("Step")
+        ax.set_ylabel("Loss")
+        ax.set_yscale("log")
+        ax.set_title(f"Training Loss (Phase 1) — {gate_name}")
+        ax.legend()
+        fig.tight_layout()
+        path = os.path.join(self.file_dir, f"{gate_name}_loss_curve.png")
+        fig.savefig(path, dpi=150)
+        plt.close(fig)
+        log.info(f"Loss curve saved to {path}")
+
     def optimize(self, wires: int) -> Callable:
         """Decorator factory that optimises pulse parameters for a gate.
 
@@ -1004,7 +1164,7 @@ class QOC:
                     "fidelity", (1.0, 0.0)  # 100% fidelity, 0% phase
                 )
 
-                best_scan_params = self.stage_0_opt(
+                best_scan_params, scan_data = self.stage_0_opt(
                     init_pulse_params,
                     fidelity_only_cost,
                 )
@@ -1020,6 +1180,12 @@ class QOC:
                     fidelity=1 - global_best_loss.item(),
                     pulse_params=global_best_params,
                 )
+
+                if self.plot:
+                    if scan_data is not None:
+                        grid_axes, landscape_items = scan_data
+                        self.plot_loss_landscape(gate_name, grid_axes, landscape_items)
+                    self.plot_loss_curve(gate_name, global_best_history)
 
                 return global_best_params, global_best_history
 
@@ -1406,6 +1572,15 @@ if __name__ == "__main__":
             "If omitted, heuristic defaults are used."
         ),
     )
+    parser.add_argument(
+        "--plot",
+        action="store_true",
+        default=False,
+        help=(
+            "Save a loss-landscape plot (Phase 0) and a loss-curve plot "
+            "(Phase 1) as PNG files in --file_dir for each optimised gate."
+        ),
+    )
 
     args = parser.parse_args()
     sel_gates = args.gates  # already a list from nargs="+"
@@ -1446,6 +1621,7 @@ if __name__ == "__main__":
         scan_steps=args.scan_steps,
         scan_grid_size=args.scan_grid_size,
         scan_ranges=scan_ranges,
+        plot=args.plot,
     )
 
     qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)
