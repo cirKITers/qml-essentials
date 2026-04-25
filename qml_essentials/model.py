@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional, Tuple, Callable, Union, List
 from qml_essentials import operations as op
 from qml_essentials import yaqsi as ys
 import warnings
+import jax
 import jax.numpy as jnp
 import numpy as np
 from jax import random
@@ -1154,7 +1155,13 @@ class Model:
             if len(params.shape) == 2:
                 params = np.expand_dims(params, axis=0)
 
-            self.params = params
+            # Avoid stashing JAX tracers on ``self``: under an outer
+            # transform (e.g. ``jacrev``) the tracer becomes invalid once
+            # the transform returns, and a subsequent read of
+            # ``self.params`` would feed a leaked tracer into the next
+            # call (raising ``UnexpectedTracerError``).
+            if not isinstance(params, jax.core.Tracer):
+                self.params = params
         else:
             params = self.params
 
@@ -1182,7 +1189,10 @@ class Model:
             # ensure batch dimension exists (batch-first convention)
             if len(pulse_params.shape) == 2:
                 pulse_params = jnp.expand_dims(pulse_params, axis=0)
-            self.pulse_params = pulse_params
+            # See note in _params_validation: never stash JAX tracers on
+            # ``self``.
+            if not isinstance(pulse_params, jax.core.Tracer):
+                self.pulse_params = pulse_params
 
         return pulse_params
 
@@ -1207,10 +1217,13 @@ class Model:
         if enc_params is None:
             enc_params = self.enc_params
         else:
-            if self.trainable_frequencies:
-                self.enc_params = enc_params
-            else:
-                self.enc_params = jnp.array(enc_params)
+            # See note in _params_validation: never stash JAX tracers on
+            # ``self``.
+            if not isinstance(enc_params, jax.core.Tracer):
+                if self.trainable_frequencies:
+                    self.enc_params = enc_params
+                else:
+                    self.enc_params = jnp.array(enc_params)
 
         if len(enc_params.shape) == 1 and self.n_input_feat == 1:
             enc_params = enc_params.reshape(-1, 1)

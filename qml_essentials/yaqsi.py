@@ -27,6 +27,25 @@ import logging
 log = logging.getLogger(__name__)
 
 
+def _args_contain_tracer(args) -> bool:
+    """Return True if any leaf in *args* is a JAX tracer.
+
+    Used by :meth:`Script._execute_batched` to detect that the call is
+    happening under an outer JAX transformation (``jit``/``vmap``/``grad``/
+    ``jacrev`` etc.).  When that is the case the per-Script
+    ``_jit_cache`` must be bypassed: a previously cached
+    ``jax.jit(jax.vmap(...))`` was built under a different outer trace
+    and re-using it would leak that trace's tracers (raising
+    ``UnexpectedTracerError`` on the second transform).  XLA compilation
+    artefacts are still cached at the JAX level by jaxpr signature, so
+    bypassing only the local Python wrapper has negligible runtime cost.
+    """
+    from jax.core import Tracer
+    for leaf in jax.tree_util.tree_leaves(args):
+        if isinstance(leaf, Tracer):
+            return True
+    return False
+
 def _make_hashable(obj):
     """Recursively convert an object into a hashable form for cache keys.
 
@@ -1406,9 +1425,15 @@ class Script:
             UnitaryGates.batch_gate_error,
         )
 
+        # When called under an outer JAX transform (e.g. ``jacrev``) the
+        # cached ``batched_fn`` from a previous outer trace would leak that
+        # trace's tracers.  Bypass the per-Script wrapper cache in that
+        # case; XLA-level compilation caching is unaffected.
+        in_transform = _args_contain_tracer(args)
+
         # --- Cache-hit fast path (no shots) ---
         cached = self._jit_cache.get(cache_key)
-        if cached is not None and shots is None:
+        if cached is not None and shots is None and not in_transform:
             batched_fn, n_qubits, use_density = cached
             # Check if we already determined the chunk size for this
             # exact batch_size (avoids repeated psutil syscalls).
@@ -1483,14 +1508,15 @@ class Script:
                 arg_shapes,
                 UnitaryGates.batch_gate_error,
             )
-            cached_shot = self._jit_cache.get(shot_cache_key)
+            cached_shot = self._jit_cache.get(shot_cache_key) if not in_transform else None
             if cached_shot is not None:
                 batched_fn = cached_shot[0]
             else:
-                batched_fn = eqx.filter_jit(
+                batched_fn = jax.jit(
                     jax.vmap(_single_execute_shots, in_axes=shot_in_axes)
                 )
-                self._jit_cache[shot_cache_key] = (batched_fn, n_qubits, use_density)
+                if not in_transform:
+                    self._jit_cache[shot_cache_key] = (batched_fn, n_qubits, use_density)
 
             if chunk_size >= batch_size:
                 return batched_fn(*shot_args)
@@ -1504,7 +1530,7 @@ class Script:
                 single_tape, n_qubits, type, obs, use_density
             )
 
-        # Wrapping the vmapped function in eqx.filter_jit has two effects:
+        # Wrapping the vmapped function in jax.jit has two effects:
         # 1. Multi-core utilisation — the JIT-compiled XLA program can
         #    use intra-op parallelism to distribute independent SIMD lanes
         #    across CPU threads, unlike an eager vmap which runs
@@ -1520,10 +1546,15 @@ class Script:
         # cache check at the top of this method.
         # NOTE: when altering properties of the model, this might not get re-compiled
         # TODO: we might want to rework the data_reupload mechanism at some point
-        batched_fn = eqx.filter_jit(jax.vmap(_single_execute, in_axes=in_axes))
+        batched_fn = jax.jit(jax.vmap(_single_execute, in_axes=in_axes))
         # Cache the function together with metadata for fast-path memory
-        # checks on subsequent calls.
-        self._jit_cache[cache_key] = (batched_fn, n_qubits, use_density)
+        # checks on subsequent calls.  Skip caching when the call is under
+        # an outer JAX transform (the closure of ``_single_execute``
+        # captures ``n_qubits``/``obs``/``kwargs`` of this trace; reusing
+        # the wrapper under a different outer trace would leak its
+        # tracers).
+        if not in_transform:
+            self._jit_cache[cache_key] = (batched_fn, n_qubits, use_density)
 
         if chunk_size >= batch_size:
             return batched_fn(*args)
