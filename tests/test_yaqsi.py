@@ -280,6 +280,72 @@ class TestEvolve:
         with pytest.raises(TypeError, match="evolve"):
             evolve("not a hamiltonian")
 
+    @pytest.mark.unittest
+    def test_evolve_max_steps_throws_by_default(self) -> None:
+        """A tight ``max_steps`` budget on a fast-oscillating Hamiltonian
+        triggers a solver error (default ``throw=True``)."""
+        from qml_essentials.yaqsi import Yaqsi
+
+        # Highly oscillatory coefficient — Tsit5 will need many steps
+        def fast_coeff(p, t):
+            return p[0] * jnp.cos(1.0e3 * t)
+
+        Z = PauliZ._matrix
+        ph = fast_coeff * Hermitian(matrix=Z, wires=0, record=False)
+
+        prev = Yaqsi.set_solver_defaults(max_steps=4, throw=True)
+        try:
+            with pytest.raises(Exception):
+                evolve(ph)([jnp.array([1.0])], 1.0)
+        finally:
+            Yaqsi.set_solver_defaults(**prev)
+
+    @pytest.mark.unittest
+    def test_evolve_throw_false_returns_nan_on_failure(self) -> None:
+        """With ``throw=False`` and an unreachable budget, a failed solve
+        returns a NaN-filled unitary instead of raising."""
+        from qml_essentials.yaqsi import Yaqsi
+
+        def fast_coeff(p, t):
+            return p[0] * jnp.cos(1.0e3 * t)
+
+        Z = PauliZ._matrix
+        ph = fast_coeff * Hermitian(matrix=Z, wires=0, record=False)
+
+        prev = Yaqsi.set_solver_defaults(max_steps=4, throw=False)
+        try:
+            op_ = evolve(ph)([jnp.array([1.0])], 1.0)
+            U = op_.matrix
+            assert jnp.all(jnp.isnan(U)), (
+                "Expected NaN-filled unitary on solver failure with "
+                f"throw=False, got\n{U}"
+            )
+        finally:
+            Yaqsi.set_solver_defaults(**prev)
+
+    @pytest.mark.unittest
+    def test_evolve_throw_false_succeeds_on_easy_problem(self) -> None:
+        """``throw=False`` does not affect well-behaved problems: the
+        returned unitary is finite and equals the static-evolve result
+        for a constant coefficient."""
+        from qml_essentials.yaqsi import Yaqsi
+
+        def const_coeff(p, t):
+            return 1.0
+
+        Z = PauliZ._matrix
+        ph = const_coeff * Hermitian(matrix=Z, wires=0, record=False)
+
+        prev = Yaqsi.set_solver_defaults(throw=False)
+        try:
+            U = evolve(ph)([jnp.array([0.0])], 0.5).matrix
+        finally:
+            Yaqsi.set_solver_defaults(**prev)
+
+        U_static = jax.scipy.linalg.expm(-1j * 0.5 * Z)
+        assert jnp.all(jnp.isfinite(U))
+        assert jnp.allclose(U, U_static, atol=1e-6)
+
 
 class TestMeasurement:
     @pytest.mark.unittest
