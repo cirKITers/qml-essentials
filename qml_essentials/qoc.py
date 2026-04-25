@@ -350,8 +350,8 @@ class QOC:
     DEFAULT_PARAM_RANGES = {
         1: [(0.05, 2.0)],  # evolution time
         2: [(0.5, 2.0), (0.05, 2.0)],  # not typically used
-        3: [(0.5, 30.0), (0.05, 2.0), (0.05, 2.0)],  # A, σ, t
-        4: [(0.5, 30.0), (0.05, 2.0), (0.01, 0.5), (0.05, 2.0)],  # DRAG
+        3: [(0.5, 10.0), (0.05, 2.0), (0.05, 2.0)],  # A, σ, t
+        4: [(0.5, 10.0), (0.05, 2.0), (0.05, 0.5), (0.1, 2.0)],  # DRAG
     }
 
     def __init__(
@@ -651,6 +651,14 @@ class QOC:
         fidelity cost (ignoring phase).  Each candidate is refined with a
         few fast gradient steps.  Returns the best-found parameters.
 
+        Robustness: candidates that produce a non-finite loss (e.g. when
+        the underlying pulse drives the integrator into a NaN — typical
+        for very narrow DRAG envelopes) are skipped with a warning.  For
+        the duration of the scan, :class:`qml_essentials.yaqsi.Yaqsi` is
+        switched into ``throw=False`` mode so a single bad candidate
+        cannot abort the loop with ``MaxStepsReached``; the previous
+        defaults are restored on exit.
+
         Args:
             init_pulse_params: Initial pulse parameters to compare against.
             fidelity_only_cost: Cost callable using fidelity only.
@@ -662,8 +670,18 @@ class QOC:
         def fidelity_only_cost_log(log_params, *args):
             return fidelity_only_cost(self._from_log_space(log_params), *args)
 
+        def _safe_eval(params: jnp.ndarray) -> jnp.ndarray:
+            """Evaluate the fidelity cost; map non-finite results to +inf."""
+            loss = fidelity_only_cost(params)
+            return jnp.where(jnp.isfinite(loss), loss, jnp.inf)
+
         best_scan_params = init_pulse_params
-        best_scan_loss = fidelity_only_cost(init_pulse_params)
+        best_scan_loss = _safe_eval(init_pulse_params)
+        if not jnp.isfinite(best_scan_loss):
+            log.warning(
+                "Stage 0: initial pulse parameters produced a non-finite "
+                "loss; falling back to a placeholder loss of +inf."
+            )
 
         if self.scan_steps > 0:
             log.info(
@@ -690,30 +708,75 @@ class QOC:
                 log_params = optax.apply_updates(log_params, updates)
                 return log_params, opt_state, loss
 
-            for ci, candidate in enumerate(grid):
-                log_candidate = self._to_log_space(candidate)
-                opt_state = scan_optimizer.init(log_candidate)
+            # Switch the underlying ODE solver to non-throwing mode for
+            # the duration of the scan so candidates that exceed the step
+            # budget produce NaN unitaries (and therefore +inf losses)
+            # rather than aborting the whole grid loop.
+            prev_solver_defaults = ys.Yaqsi.set_solver_defaults(throw=False)
+            n_skipped = 0
+            try:
+                for ci, candidate in enumerate(grid):
+                    log_candidate = self._to_log_space(candidate)
+                    opt_state = scan_optimizer.init(log_candidate)
 
-                log_p = log_candidate
-                for _ in range(self.scan_steps):
-                    log_p, opt_state, loss = scan_step(opt_state, log_p)
+                    log_p = log_candidate
+                    failed = False
+                    for _ in range(self.scan_steps):
+                        try:
+                            log_p, opt_state, loss = scan_step(opt_state, log_p)
+                        except Exception as exc:  # pragma: no cover - defensive
+                            log.debug(
+                                f"  Candidate {ci + 1}/{len(grid)} "
+                                f"raised during refinement: {exc}; skipping."
+                            )
+                            failed = True
+                            break
+                        if not jnp.all(jnp.isfinite(log_p)):
+                            failed = True
+                            break
 
-                # Evaluate final loss
-                physical_p = self._from_log_space(log_p)
-                loss = fidelity_only_cost(physical_p)
+                    if failed:
+                        n_skipped += 1
+                        continue
 
-                if loss < best_scan_loss:
-                    best_scan_loss = loss
-                    best_scan_params = physical_p
-                    log.info(
-                        f"  Candidate {ci + 1}/{len(grid)}: "
-                        f"loss={loss.item():.3e} improved with "
-                        f"params={physical_p}"
-                    )
+                    # Evaluate final loss in physical space, mapping
+                    # non-finite values to +inf so they are silently
+                    # rejected by the < comparison below.
+                    physical_p = self._from_log_space(log_p)
+                    if not jnp.all(jnp.isfinite(physical_p)):
+                        n_skipped += 1
+                        continue
+                    loss = _safe_eval(physical_p)
+
+                    if not jnp.isfinite(loss):
+                        n_skipped += 1
+                        continue
+
+                    if loss < best_scan_loss:
+                        best_scan_loss = loss
+                        best_scan_params = physical_p
+                        log.info(
+                            f"  Candidate {ci + 1}/{len(grid)}: "
+                            f"loss={loss.item():.6e} improved with "
+                            f"params={physical_p}"
+                        )
+            finally:
+                # Always restore the previous solver defaults so other
+                # callers (including Stage 1) are unaffected.
+                if prev_solver_defaults:
+                    ys.Yaqsi.set_solver_defaults(**prev_solver_defaults)
+
+            if n_skipped:
+                log.warning(
+                    f"Stage 0: skipped {n_skipped}/{len(grid)} candidates "
+                    f"due to solver failure or non-finite loss "
+                    f"(typical for very narrow / very large-amplitude "
+                    f"DRAG pulses)."
+                )
 
             log.info(
                 f"Stage 0 complete. Best fidelity-only loss: "
-                f"{best_scan_loss.item():.3e}, "
+                f"{best_scan_loss.item():.6e}, "
                 f"params: {best_scan_params}"
             )
 
