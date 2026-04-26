@@ -2214,7 +2214,7 @@ default_qoc_params = {
     "grad_clip": 1.0,
     "random_seed": 1000,
     "scan_steps": 20,
-    "scan_grid_size": 3,
+    "scan_grid_size": 4,
     "scan_ranges": None,
     "log_scale_params": None,
 }
@@ -2235,8 +2235,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--log",
         action="store_true",
-        default=True,
-        help="Log results to file (default: True).",
+        default=False,
+        help="Log results to file (default: False).",
     )
     parser.add_argument(
         "--no-log",
