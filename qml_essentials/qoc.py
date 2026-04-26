@@ -797,7 +797,11 @@ class QOC:
             f"Restarts: {self.n_restarts}, noise_scale={self.restart_noise_scale}, "
             f"grad_clip={self.grad_clip}"
         )
-        log.info(f"Using {'no' if not PulseInformation.get_rwa() else ''} RWA and {PulseInformation.get_frame()} frame.")
+        if PulseInformation.get_rwa():
+            log.info(f"Using RWA. Rotating frame is ignored.")
+        else:
+            log.info(f"Using no RWA and {PulseInformation.get_frame()} frame.")
+            
         if self.early_stop_patience > 0:
             log.info(
                 f"Early stopping: patience={self.early_stop_patience}, "
