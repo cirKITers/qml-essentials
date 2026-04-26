@@ -452,9 +452,7 @@ class PulseEnvelope:
         For RX (``φ = 0``) this reduces to ``(Ω/2)·X``; for RY
         (``φ = +π/2``) to ``(Ω/2)·Y``.  This is dramatically cheaper to
         integrate (no fast oscillations → adaptive ODE solver takes
-        large steps) but **deviates from the manuscript's stated
-        numerical setup**.  Use ``rwa=True`` only for development /
-        scaling experiments.
+        large steps).  
 
         Each returned function has a unique ``__code__`` object so the
         yaqsi solver cache assigns separate compiled XLA programs per
@@ -470,11 +468,10 @@ class PulseEnvelope:
             omega_q: Qubit frequency (interaction-picture rotation rate).
             rwa: When ``True``, return the RWA-truncated coefficients
                 (no fast counter-rotating terms). Default ``False``
-                (manuscript-faithful exact interaction picture).
             frame: Algebraic representation of the exact (non-RWA)
                 coefficients.  Mathematically equivalent options:
 
-                * ``"lab"`` (default): the manuscript's literal form
+                * ``"lab"`` (default): the literal form
                   ``Ω(t) cos(ω_c t + φ) cos(ω_q t)`` (and the analogous
                   ``-sin`` term).  Two trig multiplications per call;
                   contains all four product frequencies implicitly.
@@ -621,8 +618,8 @@ class PulseInformation:
     # interaction-picture coefficient functions.  
     # Default ``False`` (exact dynamics, no RWA).  
     # Setting to ``True`` drops the fast counter-rotating terms — 
-    # much faster to integrate, but deviates from the manuscript's 
-    # stated numerical setup.  See :meth:`PulseEnvelope.build_coeff_fns`.
+    # much faster to integrate
+    # See :meth:`PulseEnvelope.build_coeff_fns`.
     _rwa: bool = False
     # Algebraic representation of the (non-RWA) coefficients.  Either
     # ``"lab"`` or ``"drive"`` (product-to-sum decomposition).  
@@ -723,7 +720,7 @@ class PulseInformation:
             rwa: If given, also update the RWA flag.  If ``None`` (the
                 default), the current value of ``cls._rwa`` is kept.
                 See :meth:`PulseEnvelope.build_coeff_fns` for the
-                physical meaning of the flag and the manuscript caveat.
+                physical meaning of the flag.
             frame: If given, also update the coefficient frame
                 (``"lab"`` or ``"drive"``).  ``None`` keeps the current
                 value of ``cls._frame``.  Ignored when ``rwa=True`` or
@@ -775,7 +772,7 @@ class PulseInformation:
 
         Rebuilds the coefficient functions for the currently active
         envelope so the change takes effect immediately.  Default is
-        ``False`` (manuscript-faithful exact interaction picture).
+        ``False`` (exact interaction picture).
         See :meth:`PulseEnvelope.build_coeff_fns` for details
         """
         cls.set_envelope(cls._envelope, rwa=bool(rwa))

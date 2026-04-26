@@ -2523,7 +2523,7 @@ class TestPulse:
 
     @pytest.mark.unittest
     def test_rwa_toggle_default_off(self):
-        """Default RWA flag is False (manuscript-faithful)."""
+        """Default RWA flag is False."""
         assert PulseInformation.get_rwa() is False
         assert PulseGates._active_rwa is False
 
@@ -2654,7 +2654,7 @@ class TestPulse:
 
     @pytest.mark.unittest
     def test_solver_default_dopri8(self):
-        """Default solver is dopri8 (manuscript-faithful adaptive RK)."""
+        """Default solver is dopri8 (adaptive RK)."""
         from qml_essentials.yaqsi import Yaqsi
         assert Yaqsi._solver_defaults["solver"] == "dopri8"
 
@@ -2745,7 +2745,7 @@ class TestPulse:
 
     @pytest.mark.unittest
     def test_drive_frame_default_lab(self):
-        """Default coefficient frame is 'lab' (manuscript form)."""
+        """Default coefficient frame is 'lab'."""
         assert PulseInformation.get_frame() == "lab"
         assert PulseGates._active_frame == "lab"
 

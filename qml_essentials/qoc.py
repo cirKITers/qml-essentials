@@ -797,7 +797,8 @@ class QOC:
             f"Restarts: {self.n_restarts}, noise_scale={self.restart_noise_scale}, "
             f"grad_clip={self.grad_clip}"
         )
-        log.info(f"Using RWA: {PulseInformation.get_rwa()}")
+        log.info(f"Using RWA: {PulseInformation.get_rwa()} and {PulseInformation.get_frame()} frame.")
+        log.info(f"Using {PulseInformation.get_frame()} frame")
         if self.early_stop_patience > 0:
             log.info(
                 f"Early stopping: patience={self.early_stop_patience}, "
@@ -2927,6 +2928,14 @@ if __name__ == "__main__":
             "significant speedup."
         ),
     )
+    parser.add_argument(
+        "--drive",
+        action="store_true",
+        default=False,
+        help=(
+            "Uses drive hamiltonian instead of lab frame."
+        ),
+    )
 
     args = parser.parse_args()
     sel_gates = args.gates  # already a list from nargs="+"
@@ -2941,6 +2950,7 @@ if __name__ == "__main__":
             scan_ranges.append((float(lo), float(hi)))
 
     PulseInformation.set_rwa(args.rwa)
+    PulseInformation.set_frame("drive" if args.drive else "lab")
 
     # Parse cost function specs from CLI
     cost_fns = [CostFnRegistry.parse_cost_arg(spec) for spec in args.costs]

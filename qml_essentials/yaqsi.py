@@ -105,6 +105,7 @@ class Yaqsi:
     #   * ``"dopri8"`` (default) — adaptive Dormand-Prince 8(7) via
     #     diffrax.  Robust but expensive on highly oscillatory drives
     #     because the step controller resolves every fast cycle.
+    #   * ``"dopri5"`` — TODO description
     #   * ``"magnus2"`` — commutator-free Magnus, 2nd order (midpoint
     #     rule) on a fixed ``magnus_steps`` grid via ``jax.lax.scan``.
     #     One ``expm`` per step.  Preserves unitarity to machine
@@ -124,6 +125,7 @@ class Yaqsi:
         "solver": "dopri8",
         "magnus_steps": 256,
     }
+    _valid_solvers = ("dopri8", "dopri5", "magnus2", "magnus4")
 
     @classmethod
     def set_solver_defaults(
@@ -153,10 +155,10 @@ class Yaqsi:
             prev["throw"] = cls._solver_defaults["throw"]
             cls._solver_defaults["throw"] = bool(throw)
         if solver is not None:
-            if solver not in ("dopri8", "magnus2", "magnus4"):
+            if solver not in _valid_solvers:
                 raise ValueError(
                     f"Unknown solver {solver!r}; expected one of "
-                    "'dopri8', 'magnus2', 'magnus4'."
+                    f"{cls._valid_solvers}"
                 )
             prev["solver"] = cls._solver_defaults["solver"]
             cls._solver_defaults["solver"] = solver
@@ -435,10 +437,10 @@ class Yaqsi:
         solver_name = str(
             odeint_kwargs.pop("solver", cls._solver_defaults["solver"])
         )
-        if solver_name not in ("dopri8", "magnus2", "magnus4"):
+        if solver_name not in cls._valid_solvers:
             raise ValueError(
                 f"Unknown solver {solver_name!r}; expected one of "
-                "'dopri8', 'magnus2', 'magnus4'."
+                f"{cls._valid_solvers}"
             )
         magnus_steps = int(
             odeint_kwargs.pop(
@@ -549,8 +551,8 @@ class Yaqsi:
                     else:
                         cls._evolve_solver_cache[cache_key] = _solve
 
-        if _solve is None:
-            solver = diffrax.Dopri8()
+        elif _solve in ["dopri8", "dopri5"]:
+            solver = diffrax.Dopri8() if _solve == "dopri8" else diffrax.Dopri5()
             stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
 
             # Capture coeff_fns as a tuple in the closure.  n_terms is
