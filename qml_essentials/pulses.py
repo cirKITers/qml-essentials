@@ -424,15 +424,13 @@ class PulseEnvelope:
     ) -> Tuple[Callable, Callable, Callable, Callable]:
         """Build the four interaction-picture coefficient functions.
 
-        Implements the manuscript model (``main.tex``, eq:hamiltonian and
-        the surrounding discussion at lines 352–400).  The lab-frame
-        Hamiltonian is
+        The lab-frame Hamiltonian is
 
             H(t,Π) = H_static + Σ_j S_j(t;Π) H_j ,
             S_j(t;Π) = E_j(t;Π) · cos(ω_c·t + φ_c) ,
 
         and the interaction-picture transform with respect to
-        ``H_static = (ω_q/2)·Z`` produces (cf. main.tex L388-396)
+        ``H_static = (ω_q/2)·Z`` produces
 
             H̃_j(t) = exp(+i H_static t) H_j exp(-i H_static t) ,
             H_I(t) = Σ_j S_j(t) H̃_j(t) .
@@ -444,14 +442,10 @@ class PulseEnvelope:
                      [ cos(ω_q·t) · X  −  sin(ω_q·t) · Y ] .
 
         ``rwa=False`` (default) keeps **both** the slow and the fast
-        counter-rotating components — the exact interaction-picture
-        dynamics described in main.tex L397-400 ("we bypass the RWA and
-        directly integrate the exact interaction-picture dynamics
-        containing the rapidly oscillating counter-rotating terms").
+        counter-rotating components.
 
         ``rwa=True`` drops the fast (~2·ω_q on resonance) terms and
-        keeps only the slow envelope, yielding the analytical RWA form
-        from main.tex L426-427
+        keeps only the slow envelope, yielding the analytical RWA
 
             H_I^RWA(t) = (Ω(t)/2) · [ cos(φ) X + sin(φ) Y ] .
 
@@ -460,8 +454,7 @@ class PulseEnvelope:
         integrate (no fast oscillations → adaptive ODE solver takes
         large steps) but **deviates from the manuscript's stated
         numerical setup**.  Use ``rwa=True`` only for development /
-        scaling experiments; published numerics should keep
-        ``rwa=False``.
+        scaling experiments.
 
         Each returned function has a unique ``__code__`` object so the
         yaqsi solver cache assigns separate compiled XLA programs per
@@ -625,17 +618,16 @@ class PulseInformation:
 
     _envelope: str = "drag" #"gaussian"
     # Whether to apply the rotating-wave approximation when building the
-    # interaction-picture coefficient functions.  Default ``False``
-    # matches main.tex L397-400 (exact dynamics, no RWA).  Setting to
-    # ``True`` drops the fast counter-rotating terms — much faster to
-    # integrate, but deviates from the manuscript's stated numerical
-    # setup.  See :meth:`PulseEnvelope.build_coeff_fns`.
+    # interaction-picture coefficient functions.  
+    # Default ``False`` (exact dynamics, no RWA).  
+    # Setting to ``True`` drops the fast counter-rotating terms — 
+    # much faster to integrate, but deviates from the manuscript's 
+    # stated numerical setup.  See :meth:`PulseEnvelope.build_coeff_fns`.
     _rwa: bool = False
     # Algebraic representation of the (non-RWA) coefficients.  Either
-    # ``"lab"`` (manuscript form) or ``"drive"`` (product-to-sum
-    # decomposition).  Mathematically equivalent — see
-    # :meth:`PulseEnvelope.build_coeff_fns` for when ``"drive"`` is
-    # numerically advantageous (mainly with the Magnus solvers).
+    # ``"lab"`` or ``"drive"`` (product-to-sum decomposition).  
+    # Mathematically equivalent — see :meth:`PulseEnvelope.build_coeff_fns`
+    # when ``"drive"`` is numerically advantageous (mainly with the Magnus solvers).
     _frame: str = "lab"
 
     @classmethod
@@ -784,8 +776,7 @@ class PulseInformation:
         Rebuilds the coefficient functions for the currently active
         envelope so the change takes effect immediately.  Default is
         ``False`` (manuscript-faithful exact interaction picture).
-        See :meth:`PulseEnvelope.build_coeff_fns` for details and
-        the manuscript caveat at main.tex L397-400.
+        See :meth:`PulseEnvelope.build_coeff_fns` for details
         """
         cls.set_envelope(cls._envelope, rwa=bool(rwa))
 

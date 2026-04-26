@@ -2521,10 +2521,6 @@ class TestPulse:
         finally:
             PulseInformation.set_envelope(original)
 
-    # ---------------------------------------------------------------------------
-    # RWA-toggle tests (manuscript main.tex L397-400 / L426-427)
-    # ---------------------------------------------------------------------------
-
     @pytest.mark.unittest
     def test_rwa_toggle_default_off(self):
         """Default RWA flag is False (manuscript-faithful)."""
@@ -2554,7 +2550,6 @@ class TestPulse:
         """RWA coeffs are envelope-only (no carrier); exact form has both.
 
         Direct check that ``rwa=True`` removes the fast factors
-        prescribed by main.tex L397-400 / L426-427:
 
         - Exact: ``c_X(t) = env·cos(ω_c t)·cos(ω_q t)·w``
           → vanishes whenever ``cos(ω_c t) = 0``.

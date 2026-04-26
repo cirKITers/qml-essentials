@@ -178,9 +178,8 @@ Two performance levers are exposed:
 
 1. **`PulseInformation.set_rwa(True)`** — opt-in rotating-wave
    approximation.  Drops the fast counter-rotating terms in the
-   interaction-picture Hamiltonian (see `main.tex` L397-400 / L426-427
-   for the manuscript caveat: results in this mode no longer match
-   the published "exact interaction-picture" numerics).  In practice
+   interaction-picture Hamiltonian.
+   While this is numerically not 100% exact, in practice this
    gives a **~30-50× speedup** for `RX` / `RY` gradients because the
    adaptive solver no longer has to resolve `2·ω_q` oscillations.
    Default is `False` (manuscript-faithful exact integration).
