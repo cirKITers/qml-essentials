@@ -797,8 +797,7 @@ class QOC:
             f"Restarts: {self.n_restarts}, noise_scale={self.restart_noise_scale}, "
             f"grad_clip={self.grad_clip}"
         )
-        log.info(f"Using RWA: {PulseInformation.get_rwa()} and {PulseInformation.get_frame()} frame.")
-        log.info(f"Using {PulseInformation.get_frame()} frame")
+        log.info(f"Using {'no' if not PulseInformation.get_rwa() else ''} RWA and {PulseInformation.get_frame()} frame.")
         if self.early_stop_patience > 0:
             log.info(
                 f"Early stopping: patience={self.early_stop_patience}, "

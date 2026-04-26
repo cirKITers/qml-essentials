@@ -465,7 +465,7 @@ class Yaqsi:
 
         with cls._evolve_solver_cache_lock:
             _solve = cls._evolve_solver_cache.get(cache_key)
-
+        # TODO: the following code should be cleaned up a little
         if _solve is None:
             # Capture coeff_fns as a tuple in the closure.  n_terms is
             # static (Python int) so the unrolled stack of coefficient
@@ -551,7 +551,7 @@ class Yaqsi:
                     else:
                         cls._evolve_solver_cache[cache_key] = _solve
 
-        elif _solve in ["dopri8", "dopri5"]:
+        if _solve is None:
             solver = diffrax.Dopri8() if _solve == "dopri8" else diffrax.Dopri5()
             stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
 
