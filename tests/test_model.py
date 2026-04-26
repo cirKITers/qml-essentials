@@ -6,6 +6,7 @@ from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Gates, Encoding
 from qml_essentials.utils import PauliCircuit
 from qml_essentials.yaqsi import Script
+from qml_essentials.pulses import PulseInformation
 import pytest
 import logging
 import pennylane as qml
@@ -1137,6 +1138,8 @@ def test_gate_mode_training() -> None:
 
 @pytest.mark.smoketest
 def test_pulse_mode_training() -> None:
+    PulseInformation.set_rwa(True)
+
     model = Model(
         n_qubits=3,
         n_layers=1,
@@ -1176,4 +1179,4 @@ def test_pulse_mode_training() -> None:
         model.pulse_params = params["pulse"]
     end = time.time()
     print(f"Time taken: {end - start}")
-    assert end-start < 300000000, "Time limit of 300 seconds exceeded"
+    assert end-start < 150000000, "Time limit of 150 seconds exceeded"
