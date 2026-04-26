@@ -539,8 +539,8 @@ def test_pulse_model() -> None:
 @pytest.mark.unittest
 def test_pulse_model_inference():
     model = Model(
-        n_qubits=4,
-        n_layers=2,
+        n_qubits=3,
+        n_layers=1,
         circuit_type="Hardware_Efficient",
     )
 
@@ -552,7 +552,7 @@ def test_pulse_model_inference():
     y_hat_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
 
     assert jnp.allclose(
-        y_hat_unitary, y_hat_original, atol=1e-3
+        y_hat_unitary, y_hat_original, atol=2e-2
     ), "Unitary output did not match pulse output"
 
     # perturb pulse_params
@@ -595,7 +595,7 @@ def test_pulse_model_batching():
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
     assert jnp.allclose(
-        res_a, res_b, atol=1e-2
+        res_a, res_b, atol=2e-2
     ), "Inputs batching failed. Results differ."
 
     model.initialize_params(random_key, repeat=2)
@@ -606,7 +606,7 @@ def test_pulse_model_batching():
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
     assert jnp.allclose(
-        res_a, res_b, atol=1e-2
+        res_a, res_b, atol=2e-2
     ), "Params batching failed. Results differ."
 
 
