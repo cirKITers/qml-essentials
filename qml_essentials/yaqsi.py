@@ -681,10 +681,14 @@ class Yaqsi:
                     f"got {len(params)}."
                 )
 
-            # Build time span — resolve at Python level to avoid traced branching
-            T_arr = jnp.asarray(T, dtype=jnp.float64)
+            # Build time span — resolve at Python level to avoid traced
+            # branching.  ``T`` is either a Python scalar / 0-d array (=> integrate
+            # on [0, T]) or a 2-element sequence/array (=> integrate on [T[0], T[1]]).
+            # Let ``_solve`` cast t0/t1 to its working dtype; we only need the
+            # array form to know the rank.
+            T_arr = jnp.asarray(T, dtype=_rdtype)
             if T_arr.ndim == 0:
-                t0 = jnp.float64(0.0)
+                t0 = _rdtype(0.0)
                 t1 = T_arr
             else:
                 t0 = T_arr[0]

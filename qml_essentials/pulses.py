@@ -1075,7 +1075,11 @@ class PulseGates:
         # Pack: [envelope_params..., w] - evolution time is the last element
         # of pulse_params (pulse_params[-1]).
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        env_params = jnp.array([*pulse_params[:-1], w])
+        # Use jnp.concatenate over Python list-splat to keep the trace graph
+        # compact (no per-element unpacking + restack).
+        env_params = jnp.concatenate(
+            [jnp.ravel(pulse_params[:-1]), jnp.ravel(jnp.asarray(w))]
+        )
         # Both terms share the same parameter array.
         ys.evolve(H_eff, name="RX")([env_params, env_params], t)
         UnitaryGates.Noise(wires, noise_params)
@@ -1115,7 +1119,9 @@ class PulseGates:
         # Pack w into the params so the coefficient function doesn't need
         # a closure - this enables JIT solver cache sharing across all RY calls.
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        env_params = jnp.array([*pulse_params[:-1], w])
+        env_params = jnp.concatenate(
+            [jnp.ravel(pulse_params[:-1]), jnp.ravel(jnp.asarray(w))]
+        )
         ys.evolve(H_eff, name="RY")([env_params, env_params], t)
         UnitaryGates.Noise(wires, noise_params)
 
@@ -1153,11 +1159,14 @@ class PulseGates:
 
         # Pack w into the params so the coefficient function doesn't need
         # a closure - [pulse_param_scalar, w] enables JIT solver cache sharing.
-        # pulse_params may be a 1-element array or scalar; ravel + index to
-        # ensure a scalar for concatenation.
+        # pulse_params may be a 1-element array or scalar; ravel + slice the first
+        # element to preserve the original semantics, then concatenate with w.
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        pp_scalar = jnp.ravel(jnp.asarray(pulse_params))[0]
-        ys.evolve(H_eff, name="RZ")([jnp.array([pp_scalar, w])], 1)
+        pp_flat = jnp.ravel(jnp.asarray(pulse_params))
+        ys.evolve(H_eff, name="RZ")(
+            [jnp.concatenate([pp_flat[:1], jnp.ravel(jnp.asarray(w))])],
+            1,
+        )
 
         UnitaryGates.Noise(wires, noise_params)
 
