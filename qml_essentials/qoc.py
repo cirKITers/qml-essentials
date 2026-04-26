@@ -19,6 +19,36 @@ jax.config.update("jax_enable_x64", True)
 log = logging.getLogger(__name__)
 
 
+def _sample_rotation_angles(n_samples: int) -> jnp.ndarray:
+    """Boundary-biased sample of rotation angles in ``[0, 2π)``.
+
+    The pulse-vs-target residual scales roughly linearly with rotation
+    angle, so a uniform sample over ``[0, 2π)`` underweights the
+    high-residual band that dominates failing tests (typical large-w
+    test points: π/2, π).  We stratify the samples into
+
+      * a uniform component covering the full ``[0, 2π)`` circle, and
+      * a focus component packed in ``[π/2, 3π/2]``
+
+    so the central band is sampled at roughly twice the density of the
+    tails.  Returns at least one angle even for ``n_samples == 1``;
+    when ``n_samples == 1`` the legacy uniform behaviour is preserved
+    (single sample at ``w = 0``) to avoid surprising callers.
+    """
+    if n_samples <= 1:
+        return jnp.linspace(0.0, 2.0 * jnp.pi, max(n_samples, 1), endpoint=False)
+    # ~1/3 of samples in the central [π/2, 3π/2] band on top of a full
+    # uniform sweep.  Sub-sample counts are rounded so both components
+    # are non-empty for any ``n_samples >= 2``.
+    k_focus = max(1, n_samples // 3)
+    k_uniform = n_samples - k_focus
+    ws_uniform = jnp.linspace(0.0, 2.0 * jnp.pi, k_uniform, endpoint=False)
+    ws_focus = jnp.linspace(
+        0.5 * jnp.pi, 1.5 * jnp.pi, k_focus, endpoint=False
+    )
+    return jnp.concatenate([ws_uniform, ws_focus])
+
+
 class Cost:
     """Weighted wrapper around a cost function.
 
@@ -111,7 +141,7 @@ def fidelity_cost_fn(
         f"({len(pulse_scripts)} vs {len(target_scripts)})."
     )
 
-    ws = jnp.linspace(0, 2 * jnp.pi, n_samples, endpoint=False)
+    ws = _sample_rotation_angles(n_samples)
 
     abs_diffs = []
     phase_diffs = []
@@ -201,7 +231,7 @@ def unitary_cost_fn(
         f"state); got {len(target_basis_scripts)}."
     )
 
-    ws = jnp.linspace(0, 2 * jnp.pi, n_samples, endpoint=False)
+    ws = _sample_rotation_angles(n_samples)
 
     pulse_cols = []
     target_cols = []
@@ -1778,26 +1808,70 @@ class QOC:
         "CRX": 3.0, "CRY": 3.0, "CRZ": 3.0,
     }
 
+    # Leaves that are physically identical up to a static carrier-phase
+    # offset (RX uses cos(ω_c t), RY uses cos(ω_c t + π/2)) and therefore
+    # *should* share the same envelope parameters.  Tying them here in
+    # the QOC layout — rather than in :mod:`pulses` — keeps the per-gate
+    # decomposition tree intact while ensuring joint optimisation cannot
+    # drift their envelopes apart.  Empirically RY is the dominant
+    # contributor to H/CX residuals, so leaving it un-tied lets the
+    # joint loss settle into a basin where RX is well-tuned but RY is
+    # ~3× worse; tying them removes that asymmetry.
+    JOINT_TIED_GROUPS_DEFAULT: Tuple[Tuple[str, ...], ...] = (
+        ("RX", "RY"),
+    )
+
     def _build_joint_layout(
-        self, leaf_names: Tuple[str, ...]
+        self, leaf_names: Tuple[str, ...],
+        tied_groups: Optional[Tuple[Tuple[str, ...], ...]] = None,
     ) -> Tuple[jnp.ndarray, Dict[str, slice], List[int]]:
         """Build the joint parameter layout.
 
         Args:
             leaf_names: Ordered names of the leaf gates that participate
                 in the joint optimisation.
+            tied_groups: Optional tuple of leaf-name groups whose
+                parameters are forced to share a single slice in
+                ``theta``.  Defaults to
+                :pyattr:`JOINT_TIED_GROUPS_DEFAULT` (ties RX/RY).  Only
+                leaves that are present in ``leaf_names`` participate —
+                a group becomes a no-op if fewer than two of its
+                members are listed.
 
         Returns:
             Tuple ``(init_theta, leaf_slices, log_scale_indices)``:
               * ``init_theta`` — concatenated init parameters from
                 ``PulseInformation.<leaf>.params`` in the given order.
+                For tied groups, the representative leaf is the *first*
+                member in the group (the group's mean of current params
+                is used as the shared init so neither side dominates).
               * ``leaf_slices`` — mapping leaf-name → ``slice`` into
-                ``init_theta``.
+                ``init_theta``.  Tied leaves map to the *same* slice.
               * ``log_scale_indices`` — indices into ``init_theta`` that
                 should be optimised in log-space (amplitude + evolution
                 time per envelope leaf, mirroring the per-gate default
                 ``[0, -1]`` rule).
         """
+        if tied_groups is None:
+            tied_groups = self.JOINT_TIED_GROUPS_DEFAULT
+
+        # Build leaf_name -> representative_name lookup.  Members of a
+        # tied group are routed to the group's first member that is
+        # actually present in ``leaf_names``.
+        rep_of: Dict[str, str] = {n: n for n in leaf_names}
+        leaf_set = set(leaf_names)
+        for group in tied_groups:
+            present = [n for n in group if n in leaf_set]
+            if len(present) < 2:
+                continue
+            head = present[0]
+            for member in present[1:]:
+                rep_of[member] = head
+                log.info(
+                    f"  Joint layout: tying leaf {member!r} to {head!r} "
+                    f"(shared slice in theta)."
+                )
+
         envelope_info = PulseEnvelope.get(self.envelope)
         n_env = envelope_info["n_envelope_params"]
 
@@ -1806,11 +1880,32 @@ class QOC:
         log_idx: List[int] = []
         offset = 0
         for name in leaf_names:
+            rep = rep_of[name]
+            if rep != name:
+                # Tied member — point at the representative's slice.
+                leaf_slices[name] = leaf_slices[rep]
+                continue
+
             pp = PulseInformation.gate_by_name(name)
             assert pp is not None and pp.is_leaf, (
                 f"_build_joint_layout: {name!r} is not a leaf gate"
             )
-            chunk = jnp.asarray(pp.params, dtype=jnp.float64)
+            # For tied groups the shared init is the elementwise mean
+            # of the current params across all present members; this
+            # avoids biasing toward whichever member happens to be the
+            # group representative.
+            tied_members = [m for m in leaf_names if rep_of[m] == name]
+            if len(tied_members) > 1:
+                stacked = jnp.stack([
+                    jnp.asarray(
+                        PulseInformation.gate_by_name(m).params,
+                        dtype=jnp.float64,
+                    )
+                    for m in tied_members
+                ])
+                chunk = jnp.mean(stacked, axis=0)
+            else:
+                chunk = jnp.asarray(pp.params, dtype=jnp.float64)
             n_p = chunk.shape[0]
             leaf_slices[name] = slice(offset, offset + n_p)
             init_chunks.append(chunk)
@@ -1895,7 +1990,14 @@ class QOC:
 
         prev_solver_defaults = ys.Yaqsi.set_solver_defaults(throw=False)
         try:
+            seen_slices: set = set()
             for leaf_name, sl in leaf_slices.items():
+                # Tied leaves share a slice — only scan the unique
+                # (start, stop) range once to avoid wasted evaluations.
+                key = (sl.start, sl.stop)
+                if key in seen_slices:
+                    continue
+                seen_slices.add(key)
                 leaf_init = current[sl]
                 n_p = int(leaf_init.shape[0])
                 if n_p == 0:
