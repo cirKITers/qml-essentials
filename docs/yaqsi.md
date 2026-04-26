@@ -182,11 +182,11 @@ Two performance levers are exposed:
    While this is numerically not 100% exact, in practice this
    gives a **~30-50× speedup** for `RX` / `RY` gradients because the
    adaptive solver no longer has to resolve `2·ω_q` oscillations.
-   Default is `False` (manuscript-faithful exact integration).
+   Default is `False` (exact integration).
 
 2. **`Yaqsi.set_solver_defaults(solver=...)`** — opt-in commutator-free
-   Magnus integrator on a fixed `lax.scan` grid.  Manuscript-faithful
-   (no RWA, exact `H_I(t)`), but trades the adaptive Dopri8 step
+   Magnus integrator on a fixed `lax.scan` grid.  
+   No RWA, exact `H_I(t)`, but trades the adaptive Dopri8 step
    controller for a fixed grid of `magnus_steps` substeps that fuses
    into a single XLA program — eliminating per-step Python overhead
    and host↔device sync entirely.
@@ -246,6 +246,6 @@ both compilation and steady-state evaluation:
 ```python
 from qml_essentials.qoc import profile_pulse_pipeline
 
-profile_pulse_pipeline("RX", rwa=False)  # exact, manuscript default
+profile_pulse_pipeline("RX", rwa=False)  # exact
 profile_pulse_pipeline("RX", rwa=True)   # RWA, fast benchmark mode
 ```
