@@ -1160,8 +1160,9 @@ class Model:
             # the transform returns, and a subsequent read of
             # ``self.params`` would feed a leaked tracer into the next
             # call (raising ``UnexpectedTracerError``).
-            if not isinstance(params, jax.core.Tracer):
-                self.params = params
+            # if not isinstance(params, jax.core.Tracer):
+            #     self.params = params
+            self.params = params
         else:
             params = self.params
 
@@ -1191,8 +1192,9 @@ class Model:
                 pulse_params = jnp.expand_dims(pulse_params, axis=0)
             # See note in _params_validation: never stash JAX tracers on
             # ``self``.
-            if not isinstance(pulse_params, jax.core.Tracer):
-                self.pulse_params = pulse_params
+            # if not isinstance(pulse_params, jax.core.Tracer):
+            #     self.pulse_params = pulse_params
+            self.pulse_params = pulse_params
 
         return pulse_params
 
@@ -1219,11 +1221,16 @@ class Model:
         else:
             # See note in _params_validation: never stash JAX tracers on
             # ``self``.
-            if not isinstance(enc_params, jax.core.Tracer):
-                if self.trainable_frequencies:
-                    self.enc_params = enc_params
-                else:
-                    self.enc_params = jnp.array(enc_params)
+            # if not isinstance(enc_params, jax.core.Tracer):
+            #     if self.trainable_frequencies:
+            #         self.enc_params = enc_params
+            #     else:
+            #         self.enc_params = jnp.array(enc_params)
+            if self.trainable_frequencies:
+                self.enc_params = enc_params
+            else:
+                self.enc_params = jnp.array(enc_params)
+
 
         if len(enc_params.shape) == 1 and self.n_input_feat == 1:
             enc_params = enc_params.reshape(-1, 1)
