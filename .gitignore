@@ -9,7 +9,7 @@ tests_external/
 tensorboard/
 
 # Test output
-tikz_test.tex
+*.tex
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python

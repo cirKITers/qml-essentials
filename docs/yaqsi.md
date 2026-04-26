@@ -163,3 +163,54 @@ fig, axes = yss.draw(figure="pulse", args=(jnp.pi*0.5,))
 
 ![pulse-schedule](figures/pulse_schedule_light.png#center#only-light)
 ![pulse-schedule](figures/pulse_schedule_dark.png#center#only-dark)
+## Performance: pulse-level gradient throughput
+
+The pulse-level pipeline is compiled with JAX/XLA, but the underlying
+ODE integration is *sequential by construction*: each Adam step
+performs a `diffrax.Dopri8` solve over the gate duration, and the
+adaptive step controller cannot be parallelized across time.  That
+means a single `value_and_grad(loss)(params)` call typically saturates
+**one** CPU core — multi-threading helps only inside per-step matrix
+products (which are tiny: 8×8 for three qubits) and across batched
+restarts (`vmap`).
+
+Two performance levers are exposed:
+
+1. **`PulseInformation.set_rwa(True)`** — opt-in rotating-wave
+   approximation.  Drops the fast counter-rotating terms in the
+   interaction-picture Hamiltonian (see `main.tex` L397-400 / L426-427
+   for the manuscript caveat: results in this mode no longer match
+   the published "exact interaction-picture" numerics).  In practice
+   gives a **~30-50× speedup** for `RX` / `RY` gradients because the
+   adaptive solver no longer has to resolve `2·ω_q` oscillations.
+   Default is `False` (manuscript-faithful exact integration).
+
+2. **XLA / OMP thread settings**.  Even on a single ODE solve, XLA
+   can parallelise some matmul-heavy reductions if you allow it to.
+   For multi-restart Stage 1 optimisation (`n_restarts > 1`), the
+   restart axis is `vmap`-batched and benefits proportionally.
+   Reasonable defaults for a workstation:
+
+   ```bash
+   export XLA_FLAGS="--xla_cpu_multi_thread_eigen=true \
+                     intra_op_parallelism_threads=$(nproc)"
+   export OMP_NUM_THREADS=$(nproc)
+   ```
+
+   For `dim ≤ 16` (≤ 4 qubits) the per-step matmuls are too small to
+   benefit much from threads; the dominant gain comes from `vmap`
+   parallelism.
+
+### Diagnostic helper
+
+`qml_essentials.qoc.profile_pulse_pipeline(gate, rwa=...)` builds a
+minimal pulse `Script` for the requested gate, JIT-compiles a
+forward + `value_and_grad` pass, and prints wall-clock timings for
+both compilation and steady-state evaluation:
+
+```python
+from qml_essentials.qoc import profile_pulse_pipeline
+
+profile_pulse_pipeline("RX", rwa=False)  # exact, manuscript default
+profile_pulse_pipeline("RX", rwa=True)   # RWA, fast benchmark mode
+```

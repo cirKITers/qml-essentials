@@ -416,25 +416,51 @@ class PulseEnvelope:
 
     @staticmethod
     def build_coeff_fns(
-        envelope_fn: Callable, omega_c: float, omega_q: float
+        envelope_fn: Callable,
+        omega_c: float,
+        omega_q: float,
+        rwa: bool = False,
     ) -> Tuple[Callable, Callable, Callable, Callable]:
         """Build the four interaction-picture coefficient functions.
 
-        For an on-resonance lab-frame drive
+        Implements the manuscript model (``main.tex``, eq:hamiltonian and
+        the surrounding discussion at lines 352–400).  The lab-frame
+        Hamiltonian is
 
-            H_lab(τ) = (ω_q/2)·Z + Ω(τ)·cos(ω_c·τ + φ)·X
+            H(t,Π) = H_static + Σ_j S_j(t;Π) H_j ,
+            S_j(t;Π) = E_j(t;Π) · cos(ω_c·t + φ_c) ,
 
-        the proper interaction-picture transform with respect to
-        ``H_0 = (ω_q/2)·Z`` produces a Hamiltonian whose components on
-        X and Y are time-dependent::
+        and the interaction-picture transform with respect to
+        ``H_static = (ω_q/2)·Z`` produces (cf. main.tex L388-396)
 
-            H_I(τ) = Ω(τ)·cos(ω_c·τ + φ) ·
-                     [ cos(ω_q·τ)·X − sin(ω_q·τ)·Y ]
+            H̃_j(t) = exp(+i H_static t) H_j exp(-i H_static t) ,
+            H_I(t) = Σ_j S_j(t) H̃_j(t) .
 
-        For RX (``φ = 0``) the slow (RWA) component drives +X; for RY
-        (``φ = +π/2``) it drives +Y.  The fast counter-rotating
-        component oscillates at ``2·ω_q`` and averages to zero on
-        resonance.
+        For a single qubit driven on X, ``H̃_X(t) = cos(ω_q·t) X
+        − sin(ω_q·t) Y``, so
+
+            H_I(t) = Ω(t) · cos(ω_c·t + φ) ·
+                     [ cos(ω_q·t) · X  −  sin(ω_q·t) · Y ] .
+
+        ``rwa=False`` (default) keeps **both** the slow and the fast
+        counter-rotating components — the exact interaction-picture
+        dynamics described in main.tex L397-400 ("we bypass the RWA and
+        directly integrate the exact interaction-picture dynamics
+        containing the rapidly oscillating counter-rotating terms").
+
+        ``rwa=True`` drops the fast (~2·ω_q on resonance) terms and
+        keeps only the slow envelope, yielding the analytical RWA form
+        from main.tex L426-427
+
+            H_I^RWA(t) = (Ω(t)/2) · [ cos(φ) X + sin(φ) Y ] .
+
+        For RX (``φ = 0``) this reduces to ``(Ω/2)·X``; for RY
+        (``φ = +π/2``) to ``(Ω/2)·Y``.  This is dramatically cheaper to
+        integrate (no fast oscillations → adaptive ODE solver takes
+        large steps) but **deviates from the manuscript's stated
+        numerical setup**.  Use ``rwa=True`` only for development /
+        scaling experiments; published numerics should keep
+        ``rwa=False``.
 
         Each returned function has a unique ``__code__`` object so the
         yaqsi solver cache assigns separate compiled XLA programs per
@@ -448,16 +474,50 @@ class PulseEnvelope:
             envelope_fn: Pure envelope function ``(p, t, t_c) -> scalar``.
             omega_c: Carrier frequency.
             omega_q: Qubit frequency (interaction-picture rotation rate).
+            rwa: When ``True``, return the RWA-truncated coefficients
+                (no fast counter-rotating terms). Default ``False``
+                (manuscript-faithful exact interaction picture).
 
         Returns:
             Tuple ``(coeff_RX_X, coeff_RX_Y, coeff_RY_X, coeff_RY_Y)``
             of coefficient functions for the X- and Y-components of the
             RX and RY interaction-picture Hamiltonians.
         """
+        if rwa:
+            # RWA-truncated coefficients (no carrier, no fast factors).
+            # H_I^RWA = (Ω(t)/2) [cos(φ) X + sin(φ) Y]; we keep the
+            # ``p[-1]`` rotation-angle scaling so the calling
+            # ParametrizedHamiltonian shape is unchanged.
+            half = jnp.asarray(0.5)
+
+            def _coeff_RX_X(p, t):
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                return half * env * p[-1]
+
+            def _coeff_RX_Y(p, t):  # Y component vanishes for RX (φ=0)
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                return jnp.zeros_like(half * env * p[-1])
+
+            def _coeff_RY_X(p, t):  # X component vanishes for RY (φ=π/2)
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                return jnp.zeros_like(half * env * p[-1])
+
+            def _coeff_RY_Y(p, t):
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                return half * env * p[-1]
+
+            return _coeff_RX_X, _coeff_RX_Y, _coeff_RY_X, _coeff_RY_Y
+
+        # Exact interaction-picture coefficients (manuscript default).
         # RX uses carrier phase phi = 0 so that after RWA
         #   cos(ω_q τ)·cos(ω_q τ)  averages to +1/2  → drives +X
         #   -cos(ω_q τ)·sin(ω_q τ) averages to  0    → Y cancels
         # giving H_I^RWA ≈ (Ω/2)·X → U ≈ exp(-iθ/2 X), matching op.RX.
+        # The exact form below KEEPS the fast 2·ω_q components.
         def _coeff_RX_X(p, t):
             t_c = t / 2
             env = envelope_fn(p, t, t_c)
@@ -495,6 +555,13 @@ class PulseInformation:
     """
 
     _envelope: str = "drag" #"gaussian"
+    # Whether to apply the rotating-wave approximation when building the
+    # interaction-picture coefficient functions.  Default ``False``
+    # matches main.tex L397-400 (exact dynamics, no RWA).  Setting to
+    # ``True`` drops the fast counter-rotating terms — much faster to
+    # integrate, but deviates from the manuscript's stated numerical
+    # setup.  See :meth:`PulseEnvelope.build_coeff_fns`.
+    _rwa: bool = False
 
     @classmethod
     def _build_leaf_gates(cls):
@@ -574,16 +641,22 @@ class PulseInformation:
         cls.unique_gate_set = [cls.RX, cls.RY, cls.RZ, cls.CZ]
 
     @classmethod
-    def set_envelope(cls, name: str) -> None:
+    def set_envelope(cls, name: str, rwa: Optional[bool] = None) -> None:
         """Switch pulse envelope and rebuild all PulseParams trees.
 
         Also updates the coefficient functions used by :class:`PulseGates`.
 
         Args:
             name: One of :meth:`PulseEnvelope.available`.
+            rwa: If given, also update the RWA flag.  If ``None`` (the
+                default), the current value of ``cls._rwa`` is kept.
+                See :meth:`PulseEnvelope.build_coeff_fns` for the
+                physical meaning of the flag and the manuscript caveat.
         """
         info = PulseEnvelope.get(name)  # validates name
         cls._envelope = name
+        if rwa is not None:
+            cls._rwa = bool(rwa)
         cls._build_leaf_gates()
         cls._build_composite_gates()
 
@@ -591,7 +664,10 @@ class PulseInformation:
         # Four functions: (RX_X, RX_Y, RY_X, RY_Y) — one per (gate, Pauli)
         # component of the proper interaction-picture drive Hamiltonian.
         rx_x, rx_y, ry_x, ry_y = PulseEnvelope.build_coeff_fns(
-            info["fn"], PulseGates.omega_c, PulseGates.omega_q
+            info["fn"],
+            PulseGates.omega_c,
+            PulseGates.omega_q,
+            rwa=cls._rwa,
         )
         PulseGates._coeff_RX_X = staticmethod(rx_x)
         PulseGates._coeff_RX_Y = staticmethod(rx_y)
@@ -602,13 +678,34 @@ class PulseInformation:
         PulseGates._coeff_Sx = staticmethod(rx_x)
         PulseGates._coeff_Sy = staticmethod(ry_y)
         PulseGates._active_envelope = name
+        PulseGates._active_rwa = cls._rwa
 
-        log.info(f"Pulse envelope set to '{name}'")
+        log.info(
+            f"Pulse envelope set to '{name}' "
+            f"(RWA {'on' if cls._rwa else 'off'})"
+        )
+
+    @classmethod
+    def set_rwa(cls, rwa: bool) -> None:
+        """Toggle the rotating-wave approximation for pulse coefficients.
+
+        Rebuilds the coefficient functions for the currently active
+        envelope so the change takes effect immediately.  Default is
+        ``False`` (manuscript-faithful exact interaction picture).
+        See :meth:`PulseEnvelope.build_coeff_fns` for details and
+        the manuscript caveat at main.tex L397-400.
+        """
+        cls.set_envelope(cls._envelope, rwa=bool(rwa))
 
     @classmethod
     def get_envelope(cls) -> str:
         """Return the name of the active pulse envelope."""
         return cls._envelope
+
+    @classmethod
+    def get_rwa(cls) -> bool:
+        """Return whether the RWA flag is currently active."""
+        return cls._rwa
 
     @staticmethod
     def gate_by_name(gate):
@@ -687,6 +784,11 @@ class PulseGates:
     _H_corr = jnp.pi / 2 * jnp.eye(2, dtype=jnp.complex64)
 
     _active_envelope: str = "gaussian"
+    # Mirrors :attr:`PulseInformation._rwa`; kept here for introspection
+    # of which coefficient regime the active ``_coeff_*`` functions
+    # implement.  Updated by :meth:`PulseInformation.set_envelope` /
+    # :meth:`PulseInformation.set_rwa`.
+    _active_rwa: bool = False
 
     # Default coefficient functions for the gaussian envelope; the active
     # envelope's `set_envelope` will overwrite these.  Each gate uses two

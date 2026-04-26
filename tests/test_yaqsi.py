@@ -2522,8 +2522,142 @@ class TestPulse:
             PulseInformation.set_envelope(original)
 
     # ---------------------------------------------------------------------------
+    # RWA-toggle tests (manuscript main.tex L397-400 / L426-427)
+    # ---------------------------------------------------------------------------
+
+    @pytest.mark.unittest
+    def test_rwa_toggle_default_off(self):
+        """Default RWA flag is False (manuscript-faithful)."""
+        assert PulseInformation.get_rwa() is False
+        assert PulseGates._active_rwa is False
+
+    @pytest.mark.unittest
+    def test_rwa_toggle_roundtrip(self):
+        """set_rwa flips the flag, rebuilds coeffs, and restores cleanly."""
+        original_env = PulseInformation.get_envelope()
+        original_rwa = PulseInformation.get_rwa()
+        try:
+            PulseInformation.set_envelope("gaussian")
+            PulseInformation.set_rwa(True)
+            assert PulseInformation.get_rwa() is True
+            assert PulseGates._active_rwa is True
+
+            PulseInformation.set_rwa(False)
+            assert PulseInformation.get_rwa() is False
+            assert PulseGates._active_rwa is False
+        finally:
+            PulseInformation.set_envelope(original_env)
+            PulseInformation.set_rwa(original_rwa)
+
+    @pytest.mark.unittest
+    def test_rwa_coeffs_drop_fast_oscillations(self):
+        """RWA coeffs are envelope-only (no carrier); exact form has both.
+
+        Direct check that ``rwa=True`` removes the fast factors
+        prescribed by main.tex L397-400 / L426-427:
+
+        - Exact: ``c_X(t) = env·cos(ω_c t)·cos(ω_q t)·w``
+          → vanishes whenever ``cos(ω_c t) = 0``.
+        - RWA:   ``c_X(t) = 0.5·env·w``
+          → never vanishes for non-zero ``env`` and ``w``.
+        """
+        omega_c = PulseGates.omega_c
+        omega_q = PulseGates.omega_q
+
+        rxx_exact, rxy_exact, ryx_exact, ryy_exact = (
+            PulseEnvelope.build_coeff_fns(
+                PulseEnvelope.gaussian, omega_c, omega_q, rwa=False
+            )
+        )
+        rxx_rwa, rxy_rwa, ryx_rwa, ryy_rwa = PulseEnvelope.build_coeff_fns(
+            PulseEnvelope.gaussian, omega_c, omega_q, rwa=True
+        )
+
+        p = jnp.array([1.0, 0.5, 1.0])  # [A, sigma, w]
+        # Time at which the carrier vanishes (cos(omega_c t) = 0).
+        t_zero = jnp.pi / (2 * omega_c)
+        # Reference time at which envelope and carrier are positive.
+        t_ref = 0.0
+
+        # Exact form respects the carrier zero crossing.
+        assert jnp.isclose(rxx_exact(p, t_zero), 0.0, atol=1e-10)
+        assert jnp.isclose(rxy_exact(p, t_zero), 0.0, atol=1e-10)
+        # RWA form does not (envelope is finite at t_zero).
+        assert jnp.abs(rxx_rwa(p, t_zero)) > 1e-3
+        # And RWA equals the closed-form ``0.5 * env(p, t, t/2) * w``.
+        env_val = PulseEnvelope.gaussian(p, t_ref, t_ref / 2)
+        assert jnp.isclose(
+            rxx_rwa(p, t_ref), 0.5 * env_val * p[-1], atol=1e-10
+        )
+        assert jnp.isclose(
+            ryy_rwa(p, t_ref), 0.5 * env_val * p[-1], atol=1e-10
+        )
+        # Off-diagonal RWA components are identically zero.
+        assert jnp.isclose(rxy_rwa(p, 0.123), 0.0, atol=1e-12)
+        assert jnp.isclose(ryx_rwa(p, 0.123), 0.0, atol=1e-12)
+
+    @pytest.mark.unittest
+    def test_rwa_unitary_matches_envelope_area(self):
+        """RWA RX rotation angle equals ``w × ∫env dt`` (closed-form).
+
+        In RWA mode ``H_I(t) = (env(t)/2)·w·X``.  Integrating gives
+        ``U = exp(-i (w·Area/2) X)`` where ``Area = ∫_0^t_g env dt``.
+        The numerical pulse must agree with the analytic ``OpRX`` at
+        the *effective* angle ``theta_eff = w · Area``.  Computed
+        Area via a fine trapezoidal quadrature so the test is
+        independent of any per-envelope calibration.
+        """
+        original_env = PulseInformation.get_envelope()
+        original_rwa = PulseInformation.get_rwa()
+        try:
+            PulseInformation.set_envelope("gaussian")
+            PulseInformation.set_rwa(True)
+
+            A, sigma, t_g = 0.5, 0.4, 1.5
+            w = 1.0
+            pp = jnp.array([A, sigma, t_g])
+
+            # Closed-form area of env(τ) = A·exp(-(τ/2)^2/(2 sigma^2))
+            # over [0, t_g] via dense trapezoid (no JAX needed).
+            ts = jnp.linspace(0.0, t_g, 2048)
+            env_vals = jax.vmap(
+                lambda tau: PulseEnvelope.gaussian(
+                    jnp.array([A, sigma]), tau, tau / 2
+                )
+            )(ts)
+            area = jnp.trapezoid(env_vals, ts)
+            theta_eff = float(w * area)
+
+            def pulse_circuit(w, pp):
+                PulseGates.RX(w, wires=0, pulse_params=pp)
+
+            def target_circuit(theta):
+                from qml_essentials.operations import RX as OpRX
+
+                OpRX(theta, wires=0)
+
+            pulse_script = Script(pulse_circuit, n_qubits=1)
+            target_script = Script(target_circuit, n_qubits=1)
+
+            state_pulse = pulse_script.execute(type="state", args=(w, pp))
+            state_target = target_script.execute(type="state", args=(theta_eff,))
+
+            f = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
+            assert f <= 1.0 + 1e-6
+            # RWA mode is tight: no fast oscillations to integrate.
+            assert np.isclose(
+                f, 1.0, atol=5e-3
+            ), f"RWA RX fidelity (theta_eff={theta_eff:.4f}) too low: {f}"
+        finally:
+            PulseInformation.set_envelope(original_env)
+            PulseInformation.set_rwa(original_rwa)
+
+
+    # ---------------------------------------------------------------------------
     # pulse_recording / Script.pulse_events tests
     # ---------------------------------------------------------------------------
+
+
 
     @pytest.mark.unittest
     def test_pulse_recording_rx(self):

@@ -91,6 +91,14 @@ class Yaqsi:
     # factory instead returns a NaN-filled unitary so the calling
     # optimiser sees a well-defined (but useless) result and can
     # gracefully reject the candidate.
+    # Whether to call ``jax.clear_caches()`` between memory-aware
+    # chunks in :meth:`Script._execute_chunked`.  Default ``False``:
+    # clearing caches between chunks forces XLA to recompile the same
+    # batched program for every chunk, which is a major performance hit
+    # when many chunks are needed.  Set ``True`` only if you observe
+    # OOM growth across chunks.
+    _clear_caches_between_chunks: bool = False
+
     _solver_defaults: dict = {"max_steps": 2**13, "throw": True}
 
     @classmethod
@@ -868,8 +876,13 @@ class Script:
             # Explicitly drop the chunk reference so XLA can free the
             # chunk's device memory before computing the next one.
             del chunk_result, chunk_args
-            # Trigger garbage collection to release device buffers
-            jax.clear_caches()
+            # Optionally trigger a JAX cache clear to release device
+            # buffers — disabled by default because it forces full
+            # recompilation of ``batched_fn`` on every subsequent
+            # chunk.  Set ``Yaqsi._clear_caches_between_chunks = True``
+            # if you actually observe OOM growth across chunks.
+            if Yaqsi._clear_caches_between_chunks:
+                jax.clear_caches()
 
         return output
 

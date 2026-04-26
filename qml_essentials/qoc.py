@@ -1071,11 +1071,38 @@ class QOC:
             )
 
             @jax.jit
-            def scan_step(opt_state, log_params):
-                loss, grads = jax.value_and_grad(total_cost_log)(log_params)
-                updates, opt_state = scan_optimizer.update(grads, opt_state, log_params)
-                log_params = optax.apply_updates(log_params, updates)
-                return log_params, opt_state, loss
+            def refine_candidate(log_candidate):
+                """Run ``self.scan_steps`` Adam steps on a single candidate.
+
+                Fused into a single ``jax.lax.scan`` so the whole
+                refinement is one XLA program — no per-step host
+                syncs, no Python-loop dispatch.  Returns the final
+                log-params and a scalar bool ``failed`` flag (set if
+                any intermediate update produced a non-finite value).
+                """
+
+                opt_state0 = scan_optimizer.init(log_candidate)
+
+                def body(carry, _):
+                    log_p, opt_state, failed = carry
+                    loss, grads = jax.value_and_grad(total_cost_log)(log_p)
+                    updates, opt_state = scan_optimizer.update(
+                        grads, opt_state, log_p
+                    )
+                    new_log_p = optax.apply_updates(log_p, updates)
+                    new_failed = failed | (~jnp.all(jnp.isfinite(new_log_p)))
+                    # Freeze on failure so subsequent steps cannot
+                    # propagate NaNs further.
+                    new_log_p = jnp.where(new_failed, log_p, new_log_p)
+                    return (new_log_p, opt_state, new_failed), loss
+
+                (final_log_p, _, failed), _ = jax.lax.scan(
+                    body,
+                    (log_candidate, opt_state0, jnp.bool_(False)),
+                    None,
+                    length=self.scan_steps,
+                )
+                return final_log_p, failed
 
             # Switch the underlying ODE solver to non-throwing mode for
             # the duration of the scan so candidates that exceed the step
@@ -1087,41 +1114,32 @@ class QOC:
             try:
                 for ci, candidate in enumerate(grid):
                     log_candidate = self._to_log_space(candidate)
-                    opt_state = scan_optimizer.init(log_candidate)
 
                     # Evaluate the raw (unrefined) candidate so an
                     # over-aggressive refinement step cannot discard
                     # an already-good grid point.
                     raw_loss = _safe_eval(total_cost, candidate)
 
-                    log_p = log_candidate
-                    failed = False
-                    for _ in range(self.scan_steps):
-                        try:
-                            log_p, opt_state, loss = scan_step(opt_state, log_p)
-                        except Exception as exc:  # pragma: no cover - defensive
-                            log.debug(
-                                f"  Candidate {ci + 1}/{len(grid)} "
-                                f"raised during refinement: {exc}; skipping."
-                            )
-                            failed = True
-                            break
-                        if not jnp.all(jnp.isfinite(log_p)):
-                            failed = True
-                            break
-
-                    if failed:
-                        # Refinement diverged but the raw candidate may
-                        # still be usable.
+                    try:
+                        log_p, failed_flag = refine_candidate(log_candidate)
+                    except Exception as exc:  # pragma: no cover - defensive
+                        log.debug(
+                            f"  Candidate {ci + 1}/{len(grid)} "
+                            f"raised during refinement: {exc}; skipping."
+                        )
                         physical_p = candidate
                         loss = raw_loss
                     else:
-                        physical_p = self._from_log_space(log_p)
-                        if not jnp.all(jnp.isfinite(physical_p)):
+                        if bool(failed_flag):
                             physical_p = candidate
                             loss = raw_loss
                         else:
-                            loss = _safe_eval(total_cost, physical_p)
+                            physical_p = self._from_log_space(log_p)
+                            if not jnp.all(jnp.isfinite(physical_p)):
+                                physical_p = candidate
+                                loss = raw_loss
+                            else:
+                                loss = _safe_eval(total_cost, physical_p)
 
                     # Keep the better of (raw, refined) for this candidate.
                     if jnp.isfinite(raw_loss) and (
@@ -1142,7 +1160,7 @@ class QOC:
                         best_scan_params = physical_p
                         log.info(
                             f"  Candidate {ci + 1}/{len(grid)}: "
-                            f"loss={loss.item():.6e} improved with "
+                            f"loss={float(loss):.6e} improved with "
                             f"params={physical_p}"
                         )
             finally:
@@ -1167,7 +1185,7 @@ class QOC:
 
             log.info(
                 f"Stage 0 complete. Best loss: "
-                f"{best_scan_loss.item():.6e}, "
+                f"{float(best_scan_loss):.6e}, "
                 f"params: {best_scan_params}"
             )
 
@@ -1270,74 +1288,157 @@ class QOC:
         total_costs_log: Callable,
         optimizer,
     ) -> Tuple[jnp.ndarray, list, jnp.ndarray]:
-        """Sequential single-restart Stage 1 (preserves per-step logging)."""
+        """Single-restart Stage 1, fused into a single ``jax.lax.scan``.
 
-        @jax.jit
-        def opt_step(opt_state, log_params):
-            loss, grads = jax.value_and_grad(total_costs_log)(log_params)
-            updates, opt_state = optimizer.update(grads, opt_state, log_params)
-            log_params = optax.apply_updates(log_params, updates)
-            return log_params, opt_state, loss
+        The whole optimisation loop (n_steps × Adam updates) compiles
+        to one XLA program, eliminating the per-step Python overhead
+        and per-step host/device syncs that the previous Python ``for``
+        loop incurred.  Early stopping is preserved via *masked
+        updates*: once the patience condition trips, subsequent steps
+        leave the parameters and loss unchanged.  Compute is not
+        skipped (lax.scan has fixed length) but the optimiser state
+        and parameter trajectory freeze, matching the previous
+        early-stop semantics modulo wall-clock savings.
+        """
 
         params = start_params
         log_params = self._to_log_space(params)
         opt_state = optimizer.init(log_params)
 
-        loss = total_costs(params)
-        loss_history = [loss]
-        best_loss = loss
-        best_pulse_params = params
-        # Track the params *that produced* the loss returned by
-        # ``opt_step``: ``opt_step`` evaluates the loss at the current
-        # ``log_params`` and *then* applies the update, so the loss
-        # reported on iteration *i* corresponds to the params *before*
-        # the update.  Saving post-update params together with that
-        # loss caused a one-step mismatch that mattered in flat /
-        # sensitive landscapes near the optimum.
-        prev_log_params = log_params
-
-        patience = self.early_stop_patience
+        init_loss = total_costs(params)
         min_delta = self.early_stop_min_delta
-        steps_since_improve = 0
-        stopped_step = self.n_steps
+        patience = self.early_stop_patience
+        # ``patience <= 0`` ⇒ early stopping disabled.  Use a large
+        # constant so the masked-update path is never triggered.
+        eff_patience = patience if patience > 0 else self.n_steps + 1
 
-        for step in range(self.n_steps):
-            if step % self.log_interval == 0:
-                log.info(
-                    f"Step {step}/{self.n_steps}, "
-                    f"Loss: {loss_history[-1].item():.3e}"
-                )
+        def scan_body(carry, _):
+            (
+                log_params,
+                opt_state,
+                best_loss,
+                best_log_params,
+                steps_since_improve,
+                stopped_flag,
+                stopped_step,
+                step_idx,
+            ) = carry
 
-            log_params, opt_state, loss = opt_step(opt_state, log_params)
+            loss, grads = jax.value_and_grad(total_costs_log)(log_params)
+            updates, new_opt_state = optimizer.update(
+                grads, opt_state, log_params
+            )
+            stepped_log_params = optax.apply_updates(log_params, updates)
 
-            if loss < best_loss - min_delta:
-                log.debug(f"Best set of params found at step {step}")
-                best_loss = loss
-                best_pulse_params = self._from_log_space(prev_log_params)
-                steps_since_improve = 0
-            else:
-                steps_since_improve += 1
+            # Improvement test (uses the pre-update loss, matching the
+            # original semantics where the loss recorded on step *i*
+            # corresponds to the params *before* that step's update).
+            improved = loss < best_loss - min_delta
+            best_loss = jnp.where(improved, loss, best_loss)
+            # Save the params that *produced* the improving loss
+            # (i.e. the pre-update ``log_params``).  ``improved`` is a
+            # scalar bool and broadcasts against the 1-D params arrays.
+            best_log_params = jnp.where(
+                improved, log_params, best_log_params
+            )
+            steps_since_improve = jnp.where(
+                improved, jnp.int32(0), steps_since_improve + jnp.int32(1)
+            )
 
-            prev_log_params = log_params
-            loss_history.append(loss)
+            # Latch the early-stop flag once it fires.
+            trigger = steps_since_improve >= jnp.int32(eff_patience)
+            new_stopped_flag = stopped_flag | trigger
+            stopped_step = jnp.where(
+                stopped_flag,
+                stopped_step,
+                jnp.where(trigger, step_idx + jnp.int32(1), stopped_step),
+            )
 
-            if patience > 0 and steps_since_improve >= patience:
-                stopped_step = step + 1
-                log.info(
-                    f"Early stop at step {stopped_step}/{self.n_steps} "
-                    f"(no improvement > {min_delta:g} for "
-                    f"{steps_since_improve} steps)."
-                )
-                break
+            # Mask the update once stopped: freeze params/optimiser.
+            new_log_params = jnp.where(
+                new_stopped_flag, log_params, stepped_log_params
+            )
+            new_opt_state_kept = jax.tree_util.tree_map(
+                lambda new, old: jnp.where(new_stopped_flag, old, new),
+                new_opt_state,
+                opt_state,
+            )
+
+            new_carry = (
+                new_log_params,
+                new_opt_state_kept,
+                best_loss,
+                best_log_params,
+                steps_since_improve,
+                new_stopped_flag,
+                stopped_step,
+                step_idx + jnp.int32(1),
+            )
+            return new_carry, loss
+
+        init_carry = (
+            log_params,                       # log_params
+            opt_state,                        # opt_state
+            init_loss,                        # best_loss
+            log_params,                       # best_log_params
+            jnp.int32(0),                     # steps_since_improve
+            jnp.bool_(False),                 # stopped_flag
+            jnp.int32(self.n_steps),          # stopped_step (default = n_steps)
+            jnp.int32(0),                     # step_idx
+        )
+
+        @jax.jit
+        def run_scan(carry):
+            return jax.lax.scan(scan_body, carry, None, length=self.n_steps)
+
+        final_carry, step_losses = run_scan(init_carry)
+        (
+            _,
+            _,
+            best_loss,
+            best_log_params,
+            _,
+            stopped_flag,
+            stopped_step,
+            _,
+        ) = final_carry
+
+        # One sync: pull just what we need for logging in a single
+        # device->host transfer instead of a per-step ``.item()`` call.
+        host_step_losses, host_best_loss, host_stopped, host_stopped_step = (
+            jax.device_get((step_losses, best_loss, stopped_flag, stopped_step))
+        )
+
+        # Periodic progress log (replaces the per-step inline log;
+        # cheap because step losses already live on the host).
+        for step in range(0, self.n_steps, max(1, self.log_interval)):
+            log.info(
+                f"Step {step}/{self.n_steps}, "
+                f"Loss: {float(host_step_losses[step]):.3e}"
+            )
+        if bool(host_stopped):
+            log.info(
+                f"Early stop at step {int(host_stopped_step)}/{self.n_steps} "
+                f"(no improvement > {min_delta:g} for "
+                f"{self.early_stop_patience} steps)."
+            )
 
         log.info(
-            f"Restart 1/1 finished with best loss: {best_loss.item():.3e}"
+            f"Restart 1/1 finished with best loss: {float(host_best_loss):.3e}"
             + (
-                f" (early stopped at step {stopped_step})"
-                if stopped_step < self.n_steps
+                f" (early stopped at step {int(host_stopped_step)})"
+                if bool(host_stopped)
                 else ""
             )
         )
+
+        # Reconstruct the historical loss list shape: leading entry is
+        # the initial (pre-step-0) loss, followed by one entry per
+        # scan step.  Match the previous return type (``list``) so
+        # downstream plotting code is unchanged.
+        loss_history = [init_loss] + list(step_losses)
+
+        best_pulse_params = self._from_log_space(best_log_params)
         return best_pulse_params, loss_history, best_loss
 
     def _stage_1_parallel(
@@ -1422,19 +1523,23 @@ class QOC:
         _, _, _, best_losses, best_log_params_batch = final_carry
 
         # Periodic batch summary so the operator still sees progress.
+        # Pull the small per-step loss matrix to host once, then format
+        # without further device→host transfers.
+        host_step_losses = jax.device_get(step_losses)
         for step in range(0, self.n_steps, max(1, self.log_interval)):
-            row = step_losses[step]
+            row = host_step_losses[step]
             log.info(
                 f"Step {step}/{self.n_steps}, "
                 f"loss min/mean/max: {float(row.min()):.3e} / "
                 f"{float(row.mean()):.3e} / {float(row.max()):.3e}"
             )
 
-        # Per-restart final summary.
+        # Per-restart final summary (single sync for ``best_losses``).
+        host_best_losses = jax.device_get(best_losses)
         for r in range(self.n_restarts):
             log.info(
                 f"Restart {r + 1}/{self.n_restarts} finished "
-                f"with best loss: {float(best_losses[r]):.3e}"
+                f"with best loss: {float(host_best_losses[r]):.3e}"
             )
 
         winner = int(jnp.argmin(best_losses))
@@ -2440,6 +2545,128 @@ default_qoc_params = {
     "early_stop_patience": 0,
     "early_stop_min_delta": 0.0,
 }
+
+
+def profile_pulse_pipeline(
+    gate: str = "RX",
+    n_samples: int = 3,
+    rwa: Optional[bool] = None,
+    n_qubits: int = 1,
+) -> dict:
+    """Profile a single pulse gate's forward + ``value_and_grad`` pass.
+
+    Diagnostic helper for the JIT pipeline.  Builds a minimal
+    :class:`Script` that applies the requested pulse gate, then
+    times JIT compilation and steady-state evaluation of:
+
+    1. one forward pass (``Script.execute(type="state", ...)``);
+    2. one ``jax.value_and_grad`` of the squared overlap with the
+       analytic ``operations.<gate>`` target.
+
+    Use this to measure the impact of the RWA toggle
+    (``rwa=True``) and of the scan/sync refactors documented in
+    the patch notes:
+
+        from qml_essentials.qoc import profile_pulse_pipeline
+        profile_pulse_pipeline("RX", rwa=False)
+        profile_pulse_pipeline("RX", rwa=True)
+
+    Args:
+        gate: Gate name to profile (default ``"RX"``).  Must be a
+            single-qubit pulse-level gate (``RX`` / ``RY``).
+        n_samples: Number of timed evaluations after warm-up.
+        rwa: If not ``None``, temporarily switch the global RWA flag
+            for the duration of the profile.  ``None`` keeps the
+            current setting.
+        n_qubits: Width of the script (kept at 1 for the single-
+            qubit pulse gates).
+
+    Returns:
+        Dict with keys ``compile_fwd``, ``mean_fwd``, ``compile_grad``,
+        ``mean_grad``, ``rwa``, ``loss``.
+    """
+    import time
+
+    prev_rwa = PulseInformation.get_rwa()
+    if rwa is not None:
+        PulseInformation.set_rwa(bool(rwa))
+    try:
+        from qml_essentials.pulses import PulseGates
+        gate_op = getattr(op, gate)
+        gate_pulse = getattr(PulseGates, gate)
+
+        def pulse_circuit(theta, pp):
+            gate_pulse(theta, wires=0, pulse_params=pp)
+
+        def target_circuit(theta):
+            gate_op(theta, wires=0)
+
+        pulse_script = ys.Script(pulse_circuit, n_qubits=n_qubits)
+        target_script = ys.Script(target_circuit, n_qubits=n_qubits)
+
+        theta = jnp.asarray(jnp.pi / 4)
+        pp = PulseInformation.gate_by_name(gate).params
+        target_state = target_script.execute(type="state", args=(theta,))
+        target_state = jax.lax.stop_gradient(target_state)
+
+        @jax.jit
+        def fwd(theta, pp):
+            return pulse_script.execute(type="state", args=(theta, pp))
+
+        @jax.jit
+        def loss_and_grad(pp):
+            def loss_fn(p):
+                state = pulse_script.execute(type="state", args=(theta, p))
+                return 1.0 - jnp.abs(jnp.vdot(target_state, state)) ** 2
+
+            return jax.value_and_grad(loss_fn)(pp)
+
+        # Warm-up + compile timings.
+        t0 = time.perf_counter()
+        s = fwd(theta, pp)
+        jax.block_until_ready(s)
+        compile_fwd = time.perf_counter() - t0
+
+        t0 = time.perf_counter()
+        loss, grads = loss_and_grad(pp)
+        jax.block_until_ready(loss)
+        jax.block_until_ready(grads)
+        compile_grad = time.perf_counter() - t0
+
+        fwd_t, grad_t = [], []
+        for _ in range(n_samples):
+            t0 = time.perf_counter()
+            s = fwd(theta, pp)
+            jax.block_until_ready(s)
+            fwd_t.append(time.perf_counter() - t0)
+
+            t0 = time.perf_counter()
+            loss, grads = loss_and_grad(pp)
+            jax.block_until_ready(loss)
+            jax.block_until_ready(grads)
+            grad_t.append(time.perf_counter() - t0)
+
+        result = {
+            "gate": gate,
+            "rwa": PulseInformation.get_rwa(),
+            "compile_fwd": compile_fwd,
+            "mean_fwd": float(np.mean(fwd_t)),
+            "compile_grad": compile_grad,
+            "mean_grad": float(np.mean(grad_t)),
+            "loss": float(loss),
+        }
+        log.info(
+            f"[profile] gate={gate} rwa={result['rwa']} "
+            f"compile fwd/grad: {compile_fwd * 1e3:.1f}/"
+            f"{compile_grad * 1e3:.1f} ms, "
+            f"mean fwd/grad: {result['mean_fwd'] * 1e3:.1f}/"
+            f"{result['mean_grad'] * 1e3:.1f} ms, "
+            f"loss={result['loss']:.4e}"
+        )
+        return result
+    finally:
+        PulseInformation.set_rwa(prev_rwa)
+
 
 if __name__ == "__main__":
     # argparse the selected gate
