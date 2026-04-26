@@ -420,6 +420,7 @@ class PulseEnvelope:
         omega_c: float,
         omega_q: float,
         rwa: bool = False,
+        frame: str = "lab",
     ) -> Tuple[Callable, Callable, Callable, Callable]:
         """Build the four interaction-picture coefficient functions.
 
@@ -477,12 +478,38 @@ class PulseEnvelope:
             rwa: When ``True``, return the RWA-truncated coefficients
                 (no fast counter-rotating terms). Default ``False``
                 (manuscript-faithful exact interaction picture).
+            frame: Algebraic representation of the exact (non-RWA)
+                coefficients.  Mathematically equivalent options:
+
+                * ``"lab"`` (default): the manuscript's literal form
+                  ``Ω(t) cos(ω_c t + φ) cos(ω_q t)`` (and the analogous
+                  ``-sin`` term).  Two trig multiplications per call;
+                  contains all four product frequencies implicitly.
+                * ``"drive"``: applies the product-to-sum identity to
+                  expose the slow ``(ω_c-ω_q)`` and fast ``(ω_c+ω_q)``
+                  modes explicitly,
+                  ``cos(ω_c t)cos(ω_q t) =
+                  ½[cos((ω_c-ω_q)t) + cos((ω_c+ω_q)t)]``.  Algebraically
+                  identical to ``"lab"`` (no RWA, no information lost).
+                  Primary use: combined with the ``magnus2``/``magnus4``
+                  yaqsi solvers, the explicit slow/fast decomposition
+                  is sometimes numerically better-conditioned and lets
+                  the user pick a fixed grid based on the slow
+                  frequency alone (``Δ = |ω_c-ω_q|``) when the fast
+                  ``(ω_c+ω_q)`` mode is well-resolved by the chosen
+                  step.
+
+                Ignored when ``rwa=True``.
 
         Returns:
             Tuple ``(coeff_RX_X, coeff_RX_Y, coeff_RY_X, coeff_RY_Y)``
             of coefficient functions for the X- and Y-components of the
             RX and RY interaction-picture Hamiltonians.
         """
+        if frame not in ("lab", "drive"):
+            raise ValueError(
+                f"Unknown frame {frame!r}; expected 'lab' or 'drive'."
+            )
         if rwa:
             # RWA-truncated coefficients (no carrier, no fast factors).
             # H_I^RWA = (Ω(t)/2) [cos(φ) X + sin(φ) Y]; we keep the
@@ -512,7 +539,49 @@ class PulseEnvelope:
 
             return _coeff_RX_X, _coeff_RX_Y, _coeff_RY_X, _coeff_RY_Y
 
-        # Exact interaction-picture coefficients (manuscript default).
+        if frame == "drive":
+            # Drive-frame: same exact dynamics, expressed via the
+            # product-to-sum identities so the slow ``Δ = ω_c - ω_q``
+            # and fast ``Σ = ω_c + ω_q`` modes appear explicitly.
+            # Mathematically identical to the ``lab`` branch below.
+            #
+            # Identities used:
+            #   cos(ω_c t) cos(ω_q t) = ½[cos(Δ t) + cos(Σ t)]
+            #   cos(ω_c t) sin(ω_q t) = ½[sin(Σ t) − sin(Δ t)]
+            #   −sin(ω_c t) cos(ω_q t) = −½[sin(Σ t) + sin(Δ t)]
+            #   −sin(ω_c t) sin(ω_q t) = ½[cos(Σ t) − cos(Δ t)]
+            # (RY uses cos(ω_c t + π/2) = −sin(ω_c t).)
+            omega_d = omega_c - omega_q
+            omega_s = omega_c + omega_q
+            half = jnp.asarray(0.5)
+
+            def _coeff_RX_X(p, t):
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                mod = half * (jnp.cos(omega_d * t) + jnp.cos(omega_s * t))
+                return env * mod * p[-1]
+
+            def _coeff_RX_Y(p, t):
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                mod = -half * (jnp.sin(omega_s * t) - jnp.sin(omega_d * t))
+                return env * mod * p[-1]
+
+            def _coeff_RY_X(p, t):
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                mod = -half * (jnp.sin(omega_s * t) + jnp.sin(omega_d * t))
+                return env * mod * p[-1]
+
+            def _coeff_RY_Y(p, t):
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                mod = -half * (jnp.cos(omega_s * t) - jnp.cos(omega_d * t))
+                return env * mod * p[-1]
+
+            return _coeff_RX_X, _coeff_RX_Y, _coeff_RY_X, _coeff_RY_Y
+
+
         # RX uses carrier phase phi = 0 so that after RWA
         #   cos(ω_q τ)·cos(ω_q τ)  averages to +1/2  → drives +X
         #   -cos(ω_q τ)·sin(ω_q τ) averages to  0    → Y cancels
@@ -562,6 +631,12 @@ class PulseInformation:
     # integrate, but deviates from the manuscript's stated numerical
     # setup.  See :meth:`PulseEnvelope.build_coeff_fns`.
     _rwa: bool = False
+    # Algebraic representation of the (non-RWA) coefficients.  Either
+    # ``"lab"`` (manuscript form) or ``"drive"`` (product-to-sum
+    # decomposition).  Mathematically equivalent — see
+    # :meth:`PulseEnvelope.build_coeff_fns` for when ``"drive"`` is
+    # numerically advantageous (mainly with the Magnus solvers).
+    _frame: str = "lab"
 
     @classmethod
     def _build_leaf_gates(cls):
@@ -641,7 +716,12 @@ class PulseInformation:
         cls.unique_gate_set = [cls.RX, cls.RY, cls.RZ, cls.CZ]
 
     @classmethod
-    def set_envelope(cls, name: str, rwa: Optional[bool] = None) -> None:
+    def set_envelope(
+        cls,
+        name: str,
+        rwa: Optional[bool] = None,
+        frame: Optional[str] = None,
+    ) -> None:
         """Switch pulse envelope and rebuild all PulseParams trees.
 
         Also updates the coefficient functions used by :class:`PulseGates`.
@@ -652,11 +732,21 @@ class PulseInformation:
                 default), the current value of ``cls._rwa`` is kept.
                 See :meth:`PulseEnvelope.build_coeff_fns` for the
                 physical meaning of the flag and the manuscript caveat.
+            frame: If given, also update the coefficient frame
+                (``"lab"`` or ``"drive"``).  ``None`` keeps the current
+                value of ``cls._frame``.  Ignored when ``rwa=True`` or
+                when the existing RWA flag is on.
         """
         info = PulseEnvelope.get(name)  # validates name
         cls._envelope = name
         if rwa is not None:
             cls._rwa = bool(rwa)
+        if frame is not None:
+            if frame not in ("lab", "drive"):
+                raise ValueError(
+                    f"Unknown frame {frame!r}; expected 'lab' or 'drive'."
+                )
+            cls._frame = frame
         cls._build_leaf_gates()
         cls._build_composite_gates()
 
@@ -668,6 +758,7 @@ class PulseInformation:
             PulseGates.omega_c,
             PulseGates.omega_q,
             rwa=cls._rwa,
+            frame=cls._frame,
         )
         PulseGates._coeff_RX_X = staticmethod(rx_x)
         PulseGates._coeff_RX_Y = staticmethod(rx_y)
@@ -679,10 +770,11 @@ class PulseInformation:
         PulseGates._coeff_Sy = staticmethod(ry_y)
         PulseGates._active_envelope = name
         PulseGates._active_rwa = cls._rwa
+        PulseGates._active_frame = cls._frame
 
         log.info(
             f"Pulse envelope set to '{name}' "
-            f"(RWA {'on' if cls._rwa else 'off'})"
+            f"(RWA {'on' if cls._rwa else 'off'}, frame={cls._frame})"
         )
 
     @classmethod
@@ -706,6 +798,23 @@ class PulseInformation:
     def get_rwa(cls) -> bool:
         """Return whether the RWA flag is currently active."""
         return cls._rwa
+
+    @classmethod
+    def set_frame(cls, frame: str) -> None:
+        """Switch the algebraic representation of the (non-RWA) coefficients.
+
+        ``"lab"`` (default) and ``"drive"`` are mathematically
+        identical (no information lost, no RWA applied) — see
+        :meth:`PulseEnvelope.build_coeff_fns` for when ``"drive"`` is
+        useful.  Rebuilds the coefficient functions for the currently
+        active envelope so the change takes effect immediately.
+        """
+        cls.set_envelope(cls._envelope, frame=str(frame))
+
+    @classmethod
+    def get_frame(cls) -> str:
+        """Return the active coefficient frame (``"lab"`` or ``"drive"``)."""
+        return cls._frame
 
     @staticmethod
     def gate_by_name(gate):
@@ -789,6 +898,7 @@ class PulseGates:
     # implement.  Updated by :meth:`PulseInformation.set_envelope` /
     # :meth:`PulseInformation.set_rwa`.
     _active_rwa: bool = False
+    _active_frame: str = "lab"
 
     # Default coefficient functions for the gaussian envelope; the active
     # envelope's `set_envelope` will overwrite these.  Each gate uses two

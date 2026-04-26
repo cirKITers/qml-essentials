@@ -99,13 +99,39 @@ class Yaqsi:
     # OOM growth across chunks.
     _clear_caches_between_chunks: bool = False
 
-    _solver_defaults: dict = {"max_steps": 2**13, "throw": True}
+    # ``solver`` selects the time-integration backend for the
+    # interaction-picture ODE ``dU/dt = -i H_I(t) U``:
+    #
+    #   * ``"dopri8"`` (default) — adaptive Dormand-Prince 8(7) via
+    #     diffrax.  Robust but expensive on highly oscillatory drives
+    #     because the step controller resolves every fast cycle.
+    #   * ``"magnus2"`` — commutator-free Magnus, 2nd order (midpoint
+    #     rule) on a fixed ``magnus_steps`` grid via ``jax.lax.scan``.
+    #     One ``expm`` per step.  Preserves unitarity to machine
+    #     precision and fuses into a single XLA program.
+    #   * ``"magnus4"`` — commutator-free Magnus, 4th order (CFM4:2 of
+    #     Blanes & Moan) on a fixed ``magnus_steps`` grid.  Two ``H``
+    #     evaluations and two ``expm`` per step; typically the best
+    #     accuracy/cost trade-off for smooth oscillatory pulse drives.
+    #
+    # ``magnus_steps`` is the number of fixed substeps for the Magnus
+    # integrators (ignored for ``dopri8``).  Choose it so that ``h =
+    # T/N`` resolves the fastest oscillation in ``H(t)`` (~few steps
+    # per period of the highest frequency).
+    _solver_defaults: dict = {
+        "max_steps": 2**13,
+        "throw": True,
+        "solver": "dopri8",
+        "magnus_steps": 256,
+    }
 
     @classmethod
     def set_solver_defaults(
         cls,
         max_steps: Optional[int] = None,
         throw: Optional[bool] = None,
+        solver: Optional[str] = None,
+        magnus_steps: Optional[int] = None,
     ) -> dict:
         """Update class-level solver defaults; return the previous values.
 
@@ -126,6 +152,17 @@ class Yaqsi:
         if throw is not None:
             prev["throw"] = cls._solver_defaults["throw"]
             cls._solver_defaults["throw"] = bool(throw)
+        if solver is not None:
+            if solver not in ("dopri8", "magnus2", "magnus4"):
+                raise ValueError(
+                    f"Unknown solver {solver!r}; expected one of "
+                    "'dopri8', 'magnus2', 'magnus4'."
+                )
+            prev["solver"] = cls._solver_defaults["solver"]
+            cls._solver_defaults["solver"] = solver
+        if magnus_steps is not None:
+            prev["magnus_steps"] = cls._solver_defaults["magnus_steps"]
+            cls._solver_defaults["magnus_steps"] = int(magnus_steps)
         return prev
 
     @staticmethod
@@ -395,6 +432,19 @@ class Yaqsi:
             odeint_kwargs.pop("max_steps", cls._solver_defaults["max_steps"])
         )
         throw = bool(odeint_kwargs.pop("throw", cls._solver_defaults["throw"]))
+        solver_name = str(
+            odeint_kwargs.pop("solver", cls._solver_defaults["solver"])
+        )
+        if solver_name not in ("dopri8", "magnus2", "magnus4"):
+            raise ValueError(
+                f"Unknown solver {solver_name!r}; expected one of "
+                "'dopri8', 'magnus2', 'magnus4'."
+            )
+        magnus_steps = int(
+            odeint_kwargs.pop(
+                "magnus_steps", cls._solver_defaults["magnus_steps"]
+            )
+        )
 
         # Cache key:  identity of every coeff fn's code object (same shape
         # of pulse fns -> same JIT program) plus dim, tolerances, and
@@ -407,10 +457,97 @@ class Yaqsi:
             rtol,
             max_steps,
             throw,
+            solver_name,
+            magnus_steps,
         )
 
         with cls._evolve_solver_cache_lock:
             _solve = cls._evolve_solver_cache.get(cache_key)
+
+        if _solve is None:
+            # Capture coeff_fns as a tuple in the closure.  n_terms is
+            # static (Python int) so the unrolled stack of coefficient
+            # evaluations specializes cleanly under JIT.
+            _coeff_fns = coeff_fns
+            _cdtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
+
+            if solver_name in ("magnus2", "magnus4"):
+                # Commutator-free Magnus integrators on a fixed
+                # ``magnus_steps`` grid.  The step is
+                #   U_{n+1} = exp(Ω_n) · U_n
+                # for ``magnus2`` (midpoint), and
+                #   U_{n+1} = exp(Ω_n^a) · exp(Ω_n^b) · U_n
+                # for ``magnus4`` (CFM4:2 of Blanes & Moan, 2006).
+                # Both schemes preserve unitarity to the precision of
+                # ``jax.scipy.linalg.expm`` and run as a single
+                # ``jax.lax.scan`` -> one fused XLA program.
+
+                N_steps = magnus_steps
+                _solver_name_local = solver_name
+
+                @eqx.filter_jit
+                def _solve(neg_iH_split, params, t0, t1):
+                    # Reconstruct the per-term complex matrices ``-i H_i``
+                    # from their split (Re, Im) representation so the
+                    # coefficient sum is a single complex tensordot.
+                    A_all = neg_iH_split[:, 0]  # (n_terms, dim, dim)
+                    B_all = neg_iH_split[:, 1]
+                    neg_iH = (A_all + 1j * B_all).astype(_cdtype)
+
+                    h = (t1 - t0) / N_steps
+
+                    def H_at(t):
+                        c = jnp.stack(
+                            [
+                                jnp.asarray(
+                                    _coeff_fns[i](params[i], t)
+                                ).reshape(())
+                                for i in range(n_terms)
+                            ]
+                        ).astype(_cdtype)
+                        # -i H(t) = Σ c_i (-i H_i)
+                        return jnp.tensordot(c, neg_iH, axes=1)
+
+                    if _solver_name_local == "magnus2":
+                        def step(U, n):
+                            tn = t0 + n * h
+                            Omega = h * H_at(tn + 0.5 * h)
+                            return jax.scipy.linalg.expm(Omega) @ U, None
+                    else:  # magnus4 (CFM4:2)
+                        import math
+                        sqrt3 = math.sqrt(3.0)
+                        c1 = 0.5 - sqrt3 / 6.0
+                        c2 = 0.5 + sqrt3 / 6.0
+                        a1 = 0.25 + sqrt3 / 6.0
+                        a2 = 0.25 - sqrt3 / 6.0
+
+                        def step(U, n):
+                            tn = t0 + n * h
+                            H1 = H_at(tn + c1 * h)
+                            H2 = H_at(tn + c2 * h)
+                            Omega_a = h * (a1 * H1 + a2 * H2)
+                            Omega_b = h * (a2 * H1 + a1 * H2)
+                            # CFM4:2 ordering (Blanes & Moan 2006, Table II):
+                            # U_{n+1} = exp(Ω_b) · exp(Ω_a) · U_n.
+                            U_next = (
+                                jax.scipy.linalg.expm(Omega_b)
+                                @ jax.scipy.linalg.expm(Omega_a)
+                                @ U
+                            )
+                            return U_next, None
+
+                    U0 = jnp.eye(dim, dtype=_cdtype)
+                    U_final, _ = jax.lax.scan(
+                        step, U0, jnp.arange(N_steps)
+                    )
+                    return U_final
+
+                with cls._evolve_solver_cache_lock:
+                    existing = cls._evolve_solver_cache.get(cache_key)
+                    if existing is not None:
+                        _solve = existing
+                    else:
+                        cls._evolve_solver_cache[cache_key] = _solve
 
         if _solve is None:
             solver = diffrax.Dopri8()

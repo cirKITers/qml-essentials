@@ -185,7 +185,43 @@ Two performance levers are exposed:
    adaptive solver no longer has to resolve `2·ω_q` oscillations.
    Default is `False` (manuscript-faithful exact integration).
 
-2. **XLA / OMP thread settings**.  Even on a single ODE solve, XLA
+2. **`Yaqsi.set_solver_defaults(solver=...)`** — opt-in commutator-free
+   Magnus integrator on a fixed `lax.scan` grid.  Manuscript-faithful
+   (no RWA, exact `H_I(t)`), but trades the adaptive Dopri8 step
+   controller for a fixed grid of `magnus_steps` substeps that fuses
+   into a single XLA program — eliminating per-step Python overhead
+   and host↔device sync entirely.
+
+   * `solver="dopri8"` (default): adaptive Dormand-Prince 8(7).
+   * `solver="magnus2"`: midpoint Magnus, one `expm` per step.
+     Second-order: error scales as `h²`.
+   * `solver="magnus4"`: Blanes-Moan CFM4:2, two `expm` per step.
+     Fourth-order: error scales as `h⁴` (≈16× drop per N doubling).
+     Typically the best accuracy/cost trade-off for smooth oscillatory
+     pulse drives — `magnus_steps=512` reaches ≲1e-7 error on a
+     standard `RX(π/2)` Drag pulse.
+
+   Both Magnus integrators preserve unitarity to machine precision
+   regardless of step size.  Choose `magnus_steps` so that
+   `h = T/N` resolves the fastest oscillation in `H(t)`
+   (a few steps per period of `ω_c + ω_q`).
+
+   ```python
+   from qml_essentials.yaqsi import Yaqsi
+   Yaqsi.set_solver_defaults(solver="magnus4", magnus_steps=512)
+   ```
+
+3. **`PulseInformation.set_frame("drive")`** — algebraic rewrite of
+   the (non-RWA) coefficients via the product-to-sum identity
+   `cos(ω_c t) cos(ω_q t) = ½[cos(Δ t) + cos(Σ t)]` with
+   `Δ = ω_c - ω_q`, `Σ = ω_c + ω_q`.  Mathematically identical to
+   the default `"lab"` form (no information lost, no RWA applied).
+   Primary use: combined with `magnus2`/`magnus4`, the explicit
+   slow/fast decomposition is sometimes numerically better-conditioned
+   when the drive is detuned (`|Δ| ≪ |Σ|`).  Switching the frame does
+   not change the result of an adaptive solve.
+
+4. **XLA / OMP thread settings**.  Even on a single ODE solve, XLA
    can parallelise some matmul-heavy reductions if you allow it to.
    For multi-restart Stage 1 optimisation (`n_restarts > 1`), the
    restart axis is `vmap`-batched and benefits proportionally.

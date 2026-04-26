@@ -2654,6 +2654,153 @@ class TestPulse:
 
 
     # ---------------------------------------------------------------------------
+    # Solver / frame regression tests (Magnus integrator + drive-frame mode)
+    # ---------------------------------------------------------------------------
+
+    @pytest.mark.unittest
+    def test_solver_default_dopri8(self):
+        """Default solver is dopri8 (manuscript-faithful adaptive RK)."""
+        from qml_essentials.yaqsi import Yaqsi
+        assert Yaqsi._solver_defaults["solver"] == "dopri8"
+
+    @pytest.mark.unittest
+    def test_solver_invalid_name_raises(self):
+        """Unknown solver names raise ValueError."""
+        from qml_essentials.yaqsi import Yaqsi
+        with pytest.raises(ValueError):
+            Yaqsi.set_solver_defaults(solver="foobar")
+
+    @pytest.mark.unittest
+    def test_magnus_matches_dopri8_rx(self):
+        """magnus2 / magnus4 reproduce dopri8 unitaries to high accuracy."""
+        from qml_essentials.yaqsi import Yaqsi
+        import qml_essentials.operations as op_mod
+
+        original_env = PulseInformation.get_envelope()
+        try:
+            PulseInformation.set_envelope("drag")
+            flat = PulseInformation.RX.params
+            H_X = op_mod.Hermitian(PulseGates.X, wires=0, record=False)
+            H_Y = op_mod.Hermitian(PulseGates.Y, wires=0, record=False)
+            H_eff = (
+                PulseGates._coeff_RX_X * H_X
+                + PulseGates._coeff_RX_Y * H_Y
+            )
+
+            w = float(jnp.pi / 2)
+            t_g = float(flat[-1])
+            args = [jnp.array([*flat[:-1], w])] * 2
+
+            U_ref = Yaqsi.evolve(
+                H_eff, name="RX", atol=1e-12, rtol=1e-12
+            )(args, t_g).matrix
+            U_m2 = Yaqsi.evolve(
+                H_eff, name="RX", solver="magnus2", magnus_steps=2048
+            )(args, t_g).matrix
+            U_m4 = Yaqsi.evolve(
+                H_eff, name="RX", solver="magnus4", magnus_steps=512
+            )(args, t_g).matrix
+
+            assert float(jnp.linalg.norm(U_m2 - U_ref)) < 1e-3
+            assert float(jnp.linalg.norm(U_m4 - U_ref)) < 1e-5
+
+            I = jnp.eye(2, dtype=U_m4.dtype)
+            assert float(jnp.linalg.norm(U_m4.conj().T @ U_m4 - I)) < 1e-10
+            assert float(jnp.linalg.norm(U_m2.conj().T @ U_m2 - I)) < 1e-10
+        finally:
+            PulseInformation.set_envelope(original_env)
+
+    @pytest.mark.unittest
+    def test_magnus4_fourth_order_convergence(self):
+        """magnus4 error scales as h^4 (≈16× drop per N doubling)."""
+        from qml_essentials.yaqsi import Yaqsi
+        import qml_essentials.operations as op_mod
+
+        original_env = PulseInformation.get_envelope()
+        try:
+            PulseInformation.set_envelope("drag")
+            flat = PulseInformation.RX.params
+            H_X = op_mod.Hermitian(PulseGates.X, wires=0, record=False)
+            H_Y = op_mod.Hermitian(PulseGates.Y, wires=0, record=False)
+            H_eff = (
+                PulseGates._coeff_RX_X * H_X
+                + PulseGates._coeff_RX_Y * H_Y
+            )
+            w = float(jnp.pi / 2)
+            t_g = float(flat[-1])
+            args = [jnp.array([*flat[:-1], w])] * 2
+            U_ref = Yaqsi.evolve(
+                H_eff, name="RX", atol=1e-12, rtol=1e-12
+            )(args, t_g).matrix
+
+            errs = []
+            for N in (256, 512, 1024):
+                U_m = Yaqsi.evolve(
+                    H_eff, name="RX",
+                    solver="magnus4", magnus_steps=N,
+                )(args, t_g).matrix
+                errs.append(float(jnp.linalg.norm(U_m - U_ref)))
+
+            assert errs[0] / errs[1] > 8.0, (
+                f"magnus4 not 4th-order: {errs[0]:.3e} / {errs[1]:.3e}"
+            )
+            assert errs[1] / errs[2] > 8.0
+        finally:
+            PulseInformation.set_envelope(original_env)
+
+    @pytest.mark.unittest
+    def test_drive_frame_default_lab(self):
+        """Default coefficient frame is 'lab' (manuscript form)."""
+        assert PulseInformation.get_frame() == "lab"
+        assert PulseGates._active_frame == "lab"
+
+    @pytest.mark.unittest
+    def test_drive_frame_invalid_raises(self):
+        """Unknown frame names raise ValueError."""
+        from qml_essentials.pulses import PulseEnvelope
+        with pytest.raises(ValueError):
+            PulseEnvelope.build_coeff_fns(
+                PulseEnvelope.drag, 1.0, 1.0, frame="foobar"
+            )
+        with pytest.raises(ValueError):
+            PulseInformation.set_frame("foobar")
+
+    @pytest.mark.unittest
+    def test_drive_frame_equivalent_to_lab(self):
+        """drive-frame coefficients equal lab-frame to machine precision."""
+        from qml_essentials.pulses import PulseEnvelope
+
+        for omega_c, omega_q in [(1.234, 1.234), (1.5, 1.0), (3.0, 7.0)]:
+            lab = PulseEnvelope.build_coeff_fns(
+                PulseEnvelope.drag, omega_c, omega_q, frame="lab"
+            )
+            drv = PulseEnvelope.build_coeff_fns(
+                PulseEnvelope.drag, omega_c, omega_q, frame="drive"
+            )
+            p = jnp.array([0.5, 0.3, 5.0, jnp.pi / 2])
+            ts = jnp.linspace(0.0, 4.0, 50)
+            for fl, fd in zip(lab, drv):
+                vals_lab = jnp.array([fl(p, float(t)) for t in ts])
+                vals_drv = jnp.array([fd(p, float(t)) for t in ts])
+                assert float(jnp.max(jnp.abs(vals_lab - vals_drv))) < 1e-12
+
+    @pytest.mark.unittest
+    def test_drive_frame_roundtrip(self):
+        """set_frame switches PulseGates._active_frame and restores."""
+        original_env = PulseInformation.get_envelope()
+        original_frame = PulseInformation.get_frame()
+        try:
+            PulseInformation.set_frame("drive")
+            assert PulseInformation.get_frame() == "drive"
+            assert PulseGates._active_frame == "drive"
+            PulseInformation.set_frame("lab")
+            assert PulseInformation.get_frame() == "lab"
+            assert PulseGates._active_frame == "lab"
+        finally:
+            PulseInformation.set_envelope(original_env, frame=original_frame)
+
+
+    # ---------------------------------------------------------------------------
     # pulse_recording / Script.pulse_events tests
     # ---------------------------------------------------------------------------
 
