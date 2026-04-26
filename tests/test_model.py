@@ -1083,3 +1083,97 @@ def test_pauli_circuit_model() -> None:
             f"are {result_pauli_circuit} and {result_circuit} for testcase "
             f"{test_case}, respectively."
         )
+
+
+import pytest 
+import time
+from qml_essentials.model import Model
+from qml_essentials.coefficients import Datasets
+import optax
+from jax import grad, numpy as jnp
+
+
+@pytest.mark.smoketest
+def test_gate_mode_training() -> None:
+    model = Model(
+        n_qubits=3,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+
+    domain_samples, fourier_samples, coefficients = (
+        Datasets.generate_fourier_series(
+            random_key=model.random_key,
+            model=model,
+        )
+    )
+    
+    opt = optax.adam(0.001)
+    params = model.params
+    opt_state = opt.init(params)
+
+    def cost(params, inputs, targets, **kwargs):
+        y_hat = model(params=params, inputs=inputs, **kwargs)
+
+        return jnp.mean((y_hat - targets) ** 2)
+
+    start = time.time()
+    for epoch in range(1, 1000):
+        grads = grad(cost)(
+            params,
+            inputs=domain_samples,
+            targets=fourier_samples,
+            execution_type="expval",
+            force_mean=True,
+        )
+        updates, opt_state = opt.update(grads, opt_state, params)
+        params = optax.apply_updates(params, updates)
+
+        model.params = params
+    end = time.time()
+    print(f"Time taken: {end - start}")
+    assert end-start < 80000000, "Time limit of 80 seconds exceeded"
+
+
+@pytest.mark.smoketest
+def test_pulse_mode_training() -> None:
+    model = Model(
+        n_qubits=3,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+
+    domain_samples, fourier_samples, coefficients = (
+        Datasets.generate_fourier_series(
+            random_key=model.random_key,
+            model=model,
+        )
+    )
+    
+    opt = optax.adam(0.001)
+    params = {"unitary": model.params, "pulse": model.pulse_params}
+    opt_state = opt.init(params)
+
+    def cost(params, inputs, targets, **kwargs):
+        y_hat = model(params=params["unitary"], pulse_params=params["pulse"], inputs=inputs, **kwargs)
+
+        return jnp.mean((y_hat - targets) ** 2)
+
+    start = time.time()
+    for epoch in range(1, 10):
+        grads = grad(cost)(
+            params,
+            inputs=domain_samples,
+            targets=fourier_samples,
+            execution_type="expval",
+            force_mean=True,
+            gate_mode="pulse"
+        )
+        updates, opt_state = opt.update(grads, opt_state, params)
+        params = optax.apply_updates(params, updates)
+
+        model.params = params["unitary"]
+        model.pulse_params = params["pulse"]
+    end = time.time()
+    print(f"Time taken: {end - start}")
+    assert end-start < 300000000, "Time limit of 300 seconds exceeded"
