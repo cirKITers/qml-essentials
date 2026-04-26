@@ -797,6 +797,7 @@ class QOC:
             f"Restarts: {self.n_restarts}, noise_scale={self.restart_noise_scale}, "
             f"grad_clip={self.grad_clip}"
         )
+        log.info(f"Using RWA: {PulseInformation.get_rwa()}")
         if self.early_stop_patience > 0:
             log.info(
                 f"Early stopping: patience={self.early_stop_patience}, "
@@ -2902,7 +2903,6 @@ if __name__ == "__main__":
             "Default: RX RY RZ CZ."
         ),
     )
-
     parser.add_argument(
         "--joint_weights",
         nargs="+",
@@ -2913,6 +2913,18 @@ if __name__ == "__main__":
             "'gate:weight' strings (e.g. --joint_weights CRX:5 CX:3). "
             "Merged on top of QOC.JOINT_WEIGHTS_DEFAULT, so unspecified "
             "gates keep their default weight."
+        ),
+    )
+    parser.add_argument(
+        "--rwa",
+        action="store_true",
+        default=False,
+        help=(
+            "Toggles RWA mode for pulse simulation."
+            "If this is set true, we utilize the rotating wave approximation "
+            "instead of the exact interaction picture."
+            "While this makes the calculations less exact, it provides"
+            "significant speedup."
         ),
     )
 
@@ -2927,6 +2939,8 @@ if __name__ == "__main__":
         for pair in args.scan_ranges:
             lo, hi = pair.split(",")
             scan_ranges.append((float(lo), float(hi)))
+
+    PulseInformation.set_rwa(args.rwa)
 
     # Parse cost function specs from CLI
     cost_fns = [CostFnRegistry.parse_cost_arg(spec) for spec in args.costs]
