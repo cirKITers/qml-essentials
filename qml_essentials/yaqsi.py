@@ -168,6 +168,192 @@ class Yaqsi:
             cls._solver_defaults["magnus_steps"] = int(magnus_steps)
         return prev
 
+    @classmethod
+    def _store_evolve_solver(cls, cache_key: tuple, solve: Callable) -> Callable:
+        """Cache a compiled evolve solver unless another thread won the race."""
+        with cls._evolve_solver_cache_lock:
+            existing = cls._evolve_solver_cache.get(cache_key)
+            if existing is not None:
+                return existing
+            cls._evolve_solver_cache[cache_key] = solve
+        return solve
+
+    @classmethod
+    def _parse_evolve_solver_options(cls, odeint_kwargs: dict) -> tuple:
+        """Pop and validate solver options from ``evolve(..., **odeint_kwargs)``."""
+        default_tol = 1.0e-10 if jax.config.x64_enabled else 1.4e-8
+        atol = odeint_kwargs.pop("atol", default_tol)
+        rtol = odeint_kwargs.pop("rtol", default_tol)
+        max_steps = int(
+            odeint_kwargs.pop("max_steps", cls._solver_defaults["max_steps"])
+        )
+        throw = bool(odeint_kwargs.pop("throw", cls._solver_defaults["throw"]))
+        solver_name = str(odeint_kwargs.pop("solver", cls._solver_defaults["solver"]))
+        if solver_name not in cls._valid_solvers:
+            raise ValueError(
+                f"Unknown solver {solver_name!r}; expected one of "
+                f"{cls._valid_solvers}"
+            )
+        magnus_steps = int(
+            odeint_kwargs.pop("magnus_steps", cls._solver_defaults["magnus_steps"])
+        )
+        return atol, rtol, max_steps, throw, solver_name, magnus_steps
+
+    @classmethod
+    def _build_magnus_evolve_solver(
+        cls,
+        cache_key: tuple,
+        coeff_fns: Tuple[Callable, ...],
+        n_terms: int,
+        dim: int,
+        solver_name: str,
+        magnus_steps: int,
+    ) -> Callable:
+        """Build and cache a fixed-step commutator-free Magnus solver."""
+        _coeff_fns = coeff_fns
+        _cdtype_local = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
+        n_steps = magnus_steps
+        solver_name_local = solver_name
+
+        @eqx.filter_jit
+        def _solve(neg_iH_split, params, t0, t1):
+            # Reconstruct the per-term complex matrices ``-i H_i`` from their
+            # split (Re, Im) representation so the coefficient sum is a single
+            # complex tensordot.
+            A_all = neg_iH_split[:, 0]
+            B_all = neg_iH_split[:, 1]
+            neg_iH = (A_all + 1j * B_all).astype(_cdtype_local)
+
+            h = (t1 - t0) / n_steps
+
+            def H_at(t):
+                c = jnp.stack(
+                    [
+                        jnp.asarray(_coeff_fns[i](params[i], t)).reshape(())
+                        for i in range(n_terms)
+                    ]
+                ).astype(_cdtype_local)
+                return jnp.tensordot(c, neg_iH, axes=1)
+
+            if solver_name_local == "magnus2":
+
+                def step(U, n):
+                    tn = t0 + n * h
+                    Omega = h * H_at(tn + 0.5 * h)
+                    return jax.scipy.linalg.expm(Omega) @ U, None
+
+            else:
+                import math
+
+                sqrt3 = math.sqrt(3.0)
+                c1 = 0.5 - sqrt3 / 6.0
+                c2 = 0.5 + sqrt3 / 6.0
+                a1 = 0.25 + sqrt3 / 6.0
+                a2 = 0.25 - sqrt3 / 6.0
+
+                def step(U, n):
+                    tn = t0 + n * h
+                    H1 = H_at(tn + c1 * h)
+                    H2 = H_at(tn + c2 * h)
+                    Omega_a = h * (a1 * H1 + a2 * H2)
+                    Omega_b = h * (a2 * H1 + a1 * H2)
+                    # CFM4:2 ordering (Blanes & Moan 2006, Table II):
+                    # U_{n+1} = exp(Ω_b) · exp(Ω_a) · U_n.
+                    U_next = (
+                        jax.scipy.linalg.expm(Omega_b)
+                        @ jax.scipy.linalg.expm(Omega_a)
+                        @ U
+                    )
+                    return U_next, None
+
+            U0 = jnp.eye(dim, dtype=_cdtype_local)
+            U_final, _ = jax.lax.scan(step, U0, jnp.arange(n_steps))
+            return U_final
+
+        return cls._store_evolve_solver(cache_key, _solve)
+
+    @classmethod
+    def _build_diffrax_evolve_solver(
+        cls,
+        cache_key: tuple,
+        coeff_fns: Tuple[Callable, ...],
+        n_terms: int,
+        dim: int,
+        atol: float,
+        rtol: float,
+        max_steps: int,
+        throw: bool,
+        solver_name: str,
+        _rdtype,
+    ) -> Callable:
+        """Build and cache an adaptive diffrax-based evolve solver."""
+        solver = diffrax.Dopri8() if solver_name == "dopri8" else diffrax.Dopri5()
+        stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
+        _coeff_fns = coeff_fns
+
+        @eqx.filter_jit
+        def _solve(neg_iH_split, params, t0, t1):
+            """Solve dU/dt = sum_i f_i(p_i, t) * (-iH_i) * U from t0 to t1.
+
+            ``neg_iH_split`` has shape ``(n_terms, 2, dim, dim)`` with
+            ``[:, 0]`` = Re(-iH_i) and ``[:, 1]`` = Im(-iH_i).
+            ``params`` is a list/tuple of length ``n_terms`` carrying
+            each term's coefficient parameters.  The state ``y`` has
+            shape ``(2, dim, dim)`` with ``y[0] = Re(U)`` and
+            ``y[1] = Im(U)``.
+            """
+            A_all = neg_iH_split[:, 0]
+            B_all = neg_iH_split[:, 1]
+
+            def rhs(t, y, args):
+                # Each coefficient function must return a scalar value; some
+                # call sites pass a shape-(1,) param array, so coerce to a
+                # true scalar before stacking.
+                c = jnp.stack(
+                    [
+                        jnp.asarray(_coeff_fns[i](args[i], t)).reshape(())
+                        for i in range(n_terms)
+                    ]
+                )
+                u_re = y[0]
+                u_im = y[1]
+                A_eff = jnp.tensordot(c, A_all, axes=1)
+                B_eff = jnp.tensordot(c, B_all, axes=1)
+                du_re = A_eff @ u_re - B_eff @ u_im
+                du_im = A_eff @ u_im + B_eff @ u_re
+                return jnp.stack([du_re, du_im], axis=0)
+
+            y0 = jnp.stack(
+                [
+                    jnp.eye(dim, dtype=_rdtype),
+                    jnp.zeros((dim, dim), dtype=_rdtype),
+                ],
+                axis=0,
+            )
+
+            sol = diffrax.diffeqsolve(
+                diffrax.ODETerm(rhs),
+                solver,
+                t0=t0,
+                t1=t1,
+                dt0=None,
+                y0=y0,
+                args=params,
+                stepsize_controller=stepsize_controller,
+                max_steps=max_steps,
+                throw=throw,
+            )
+
+            y_final = sol.ys[0]
+            U = y_final[0] + 1j * y_final[1]
+
+            if not throw:
+                successful = sol.result == diffrax.RESULTS.successful
+                U = jnp.where(successful, U, jnp.full_like(U, jnp.nan))
+            return U
+
+        return cls._store_evolve_solver(cache_key, _solve)
+
     @staticmethod
     def _partial_trace_single(
         rho: jnp.ndarray,
@@ -428,21 +614,8 @@ class Yaqsi:
         _rdtype = jnp.float64 if jax.config.x64_enabled else jnp.float32
 
         # Pick tolerances according to precision + some headroom
-        _default_tol = 1.0e-10 if jax.config.x64_enabled else 1.4e-8
-        atol = odeint_kwargs.pop("atol", _default_tol)
-        rtol = odeint_kwargs.pop("rtol", _default_tol)
-        max_steps = int(
-            odeint_kwargs.pop("max_steps", cls._solver_defaults["max_steps"])
-        )
-        throw = bool(odeint_kwargs.pop("throw", cls._solver_defaults["throw"]))
-        solver_name = str(odeint_kwargs.pop("solver", cls._solver_defaults["solver"]))
-        if solver_name not in cls._valid_solvers:
-            raise ValueError(
-                f"Unknown solver {solver_name!r}; expected one of "
-                f"{cls._valid_solvers}"
-            )
-        magnus_steps = int(
-            odeint_kwargs.pop("magnus_steps", cls._solver_defaults["magnus_steps"])
+        atol, rtol, max_steps, throw, solver_name, magnus_steps = (
+            cls._parse_evolve_solver_options(odeint_kwargs)
         )
 
         # Cache key:  identity of every coeff fn's code object (same shape
@@ -462,190 +635,29 @@ class Yaqsi:
 
         with cls._evolve_solver_cache_lock:
             _solve = cls._evolve_solver_cache.get(cache_key)
-        # TODO: the following code should be cleaned up a little
         if _solve is None:
-            # Capture coeff_fns as a tuple in the closure.  n_terms is
-            # static (Python int) so the unrolled stack of coefficient
-            # evaluations specializes cleanly under JIT.
-            _coeff_fns = coeff_fns
-            _cdtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
-
             if solver_name in ("magnus2", "magnus4"):
-                # Commutator-free Magnus integrators on a fixed
-                # ``magnus_steps`` grid.  The step is
-                #   U_{n+1} = exp(Ω_n) · U_n
-                # for ``magnus2`` (midpoint), and
-                #   U_{n+1} = exp(Ω_n^a) · exp(Ω_n^b) · U_n
-                # for ``magnus4`` (CFM4:2 of Blanes & Moan, 2006).
-                # Both schemes preserve unitarity to the precision of
-                # ``jax.scipy.linalg.expm`` and run as a single
-                # ``jax.lax.scan`` -> one fused XLA program.
-
-                N_steps = magnus_steps
-                _solver_name_local = solver_name
-
-                @eqx.filter_jit
-                def _solve(neg_iH_split, params, t0, t1):
-                    # Reconstruct the per-term complex matrices ``-i H_i``
-                    # from their split (Re, Im) representation so the
-                    # coefficient sum is a single complex tensordot.
-                    A_all = neg_iH_split[:, 0]  # (n_terms, dim, dim)
-                    B_all = neg_iH_split[:, 1]
-                    neg_iH = (A_all + 1j * B_all).astype(_cdtype)
-
-                    h = (t1 - t0) / N_steps
-
-                    def H_at(t):
-                        c = jnp.stack(
-                            [
-                                jnp.asarray(_coeff_fns[i](params[i], t)).reshape(())
-                                for i in range(n_terms)
-                            ]
-                        ).astype(_cdtype)
-                        # -i H(t) = Σ c_i (-i H_i)
-                        return jnp.tensordot(c, neg_iH, axes=1)
-
-                    if _solver_name_local == "magnus2":
-
-                        def step(U, n):
-                            tn = t0 + n * h
-                            Omega = h * H_at(tn + 0.5 * h)
-                            return jax.scipy.linalg.expm(Omega) @ U, None
-
-                    else:  # magnus4 (CFM4:2)
-                        import math
-
-                        sqrt3 = math.sqrt(3.0)
-                        c1 = 0.5 - sqrt3 / 6.0
-                        c2 = 0.5 + sqrt3 / 6.0
-                        a1 = 0.25 + sqrt3 / 6.0
-                        a2 = 0.25 - sqrt3 / 6.0
-
-                        def step(U, n):
-                            tn = t0 + n * h
-                            H1 = H_at(tn + c1 * h)
-                            H2 = H_at(tn + c2 * h)
-                            Omega_a = h * (a1 * H1 + a2 * H2)
-                            Omega_b = h * (a2 * H1 + a1 * H2)
-                            # CFM4:2 ordering (Blanes & Moan 2006, Table II):
-                            # U_{n+1} = exp(Ω_b) · exp(Ω_a) · U_n.
-                            U_next = (
-                                jax.scipy.linalg.expm(Omega_b)
-                                @ jax.scipy.linalg.expm(Omega_a)
-                                @ U
-                            )
-                            return U_next, None
-
-                    U0 = jnp.eye(dim, dtype=_cdtype)
-                    U_final, _ = jax.lax.scan(step, U0, jnp.arange(N_steps))
-                    return U_final
-
-                with cls._evolve_solver_cache_lock:
-                    existing = cls._evolve_solver_cache.get(cache_key)
-                    if existing is not None:
-                        _solve = existing
-                    else:
-                        cls._evolve_solver_cache[cache_key] = _solve
-
-        if _solve is None:
-            solver = diffrax.Dopri8() if _solve == "dopri8" else diffrax.Dopri5()
-            stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
-
-            # Capture coeff_fns as a tuple in the closure.  n_terms is
-            # static (Python int) so the unrolled stack of coefficient
-            # evaluations specializes cleanly under JIT.
-            _coeff_fns = coeff_fns
-
-            @eqx.filter_jit
-            def _solve(neg_iH_split, params, t0, t1):
-                """Solve dU/dt = sum_i f_i(p_i, t) * (-iH_i) * U from t0 to t1.
-
-                ``neg_iH_split`` has shape ``(n_terms, 2, dim, dim)`` with
-                ``[:, 0]`` = Re(-iH_i) and ``[:, 1]`` = Im(-iH_i).
-                ``params`` is a list/tuple of length ``n_terms`` carrying
-                each term's coefficient parameters.  The state ``y`` has
-                shape ``(2, dim, dim)`` with ``y[0] = Re(U)`` and
-                ``y[1] = Im(U)``.
-                """
-                A_all = neg_iH_split[:, 0]  # (n_terms, dim, dim)
-                B_all = neg_iH_split[:, 1]  # (n_terms, dim, dim)
-
-                def rhs(t, y, args):
-                    # args: list/tuple of length n_terms, args[i] are the
-                    # parameters for coeff_fns[i].
-                    # Each coefficient function must return a scalar value;
-                    # some call sites pass a shape-(1,) param array which
-                    # makes the result shape (1,) instead of ().  Coerce to
-                    # a true scalar before stacking so ``c`` is 1-D with
-                    # shape ``(n_terms,)``.
-                    c = jnp.stack(
-                        [
-                            jnp.asarray(_coeff_fns[i](args[i], t)).reshape(())
-                            for i in range(n_terms)
-                        ]
-                    )  # (n_terms,)
-                    u_re = y[0]
-                    u_im = y[1]
-                    # Combine per-term coefficients into a single
-                    # effective ``-iH(t) = Σ_i c_i(-iH_i)`` matrix via a
-                    # weighted sum, then apply to the state with a pair
-                    # of real matmuls.  This is equivalent to an
-                    # einsum-based formulation but compiles to a fused
-                    # matmul under JIT, avoiding the per-step overhead
-                    # of ``jnp.einsum``.
-                    A_eff = jnp.tensordot(c, A_all, axes=1)  # (dim, dim)
-                    B_eff = jnp.tensordot(c, B_all, axes=1)  # (dim, dim)
-                    du_re = A_eff @ u_re - B_eff @ u_im
-                    du_im = A_eff @ u_im + B_eff @ u_re
-                    return jnp.stack([du_re, du_im], axis=0)
-
-                # Initial condition: U(0) = I  ->  Re(I) = I, Im(I) = 0
-                y0 = jnp.stack(
-                    [
-                        jnp.eye(dim, dtype=_rdtype),
-                        jnp.zeros((dim, dim), dtype=_rdtype),
-                    ],
-                    axis=0,
-                )  # (2, dim, dim)
-
-                sol = diffrax.diffeqsolve(
-                    diffrax.ODETerm(rhs),
-                    solver,
-                    t0=t0,
-                    t1=t1,
-                    dt0=None,  # let the controller choose the initial step
-                    y0=y0,
-                    args=params,
-                    stepsize_controller=stepsize_controller,
+                _solve = cls._build_magnus_evolve_solver(
+                    cache_key=cache_key,
+                    coeff_fns=coeff_fns,
+                    n_terms=n_terms,
+                    dim=dim,
+                    solver_name=solver_name,
+                    magnus_steps=magnus_steps,
+                )
+            else:
+                _solve = cls._build_diffrax_evolve_solver(
+                    cache_key=cache_key,
+                    coeff_fns=coeff_fns,
+                    n_terms=n_terms,
+                    dim=dim,
+                    atol=atol,
+                    rtol=rtol,
                     max_steps=max_steps,
                     throw=throw,
+                    solver_name=solver_name,
+                    _rdtype=_rdtype,
                 )
-
-                # sol.ys has shape (1, 2, dim, dim) for SaveAt(t1=True)
-                y_final = sol.ys[0]  # (2, dim, dim)
-                # Recombine into complex unitary
-                U = y_final[0] + 1j * y_final[1]
-
-                if not throw:
-                    # On solver failure (e.g. MaxStepsReached) diffrax
-                    # returns the last successful state with throw=False.
-                    # Replace that with a NaN-filled unitary so callers
-                    # can detect failure cleanly via ``jnp.isnan``.
-                    successful = sol.result == diffrax.RESULTS.successful
-                    U = jnp.where(
-                        successful,
-                        U,
-                        jnp.full_like(U, jnp.nan),
-                    )
-                return U
-
-            with cls._evolve_solver_cache_lock:
-                # Double-check to avoid overwriting a concurrent build
-                existing = cls._evolve_solver_cache.get(cache_key)
-                if existing is not None:
-                    _solve = existing
-                else:
-                    cls._evolve_solver_cache[cache_key] = _solve
 
         def _apply(coeff_args, T) -> Operation:
             """Evolve under the (multi-term) time-dependent Hamiltonian.
