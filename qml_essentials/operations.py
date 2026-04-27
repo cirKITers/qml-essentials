@@ -628,8 +628,7 @@ class ParametrizedHamiltonian:
     def __neg__(self) -> "ParametrizedHamiltonian":
         """Negate every coefficient: ``-H`` = sum of ``(-f_i) * H_i``."""
         new_terms = [
-            ((lambda f: (lambda p, t: -f(p, t)))(fn), H, w)
-            for fn, H, w in self._terms
+            ((lambda f: (lambda p, t: -f(p, t)))(fn), H, w) for fn, H, w in self._terms
         ]
         return ParametrizedHamiltonian(terms=new_terms)
 

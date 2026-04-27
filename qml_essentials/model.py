@@ -3,7 +3,6 @@ from typing import Any, Dict, Optional, Tuple, Callable, Union, List
 from qml_essentials import operations as op
 from qml_essentials import yaqsi as ys
 import warnings
-import jax
 import jax.numpy as jnp
 import numpy as np
 from jax import random
@@ -647,10 +646,8 @@ class Model:
         else:
             raise Exception("Invalid initialization method")
 
-        log.info(
-            f"Initialized parameters with shape {self.params.shape}\
-            using strategy {initialization}."
-        )
+        log.info(f"Initialized parameters with shape {self.params.shape}\
+            using strategy {initialization}.")
 
         return random_key
 
@@ -1231,14 +1228,11 @@ class Model:
             else:
                 self.enc_params = jnp.array(enc_params)
 
-
         if len(enc_params.shape) == 1 and self.n_input_feat == 1:
             enc_params = enc_params.reshape(-1, 1)
         elif len(enc_params.shape) == 1 and self.n_input_feat > 1:
-            raise ValueError(
-                f"Input dimension {self.n_input_feat} >1 but \
-                `enc_params` has shape {enc_params.shape}"
-            )
+            raise ValueError(f"Input dimension {self.n_input_feat} >1 but \
+                `enc_params` has shape {enc_params.shape}")
 
         return enc_params
 

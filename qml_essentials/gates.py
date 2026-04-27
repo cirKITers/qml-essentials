@@ -192,10 +192,8 @@ class Gates(metaclass=GatesMeta):
                 elif callable(enc):
                     parsed_gates.append(enc)
                 else:
-                    raise ValueError(
-                        f"Operation {enc} is not a valid gate or callable.\
-                        Got {type(enc)}"
-                    )
+                    raise ValueError(f"Operation {enc} is not a valid gate or callable.\
+                        Got {type(enc)}")
         elif callable(gates):
             # default to callable
             parsed_gates = [gates]

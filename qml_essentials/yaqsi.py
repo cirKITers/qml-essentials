@@ -46,6 +46,7 @@ log = logging.getLogger(__name__)
 #             return True
 #     return False
 
+
 def _make_hashable(obj):
     """Recursively convert an object into a hashable form for cache keys.
 
@@ -155,7 +156,7 @@ class Yaqsi:
             prev["throw"] = cls._solver_defaults["throw"]
             cls._solver_defaults["throw"] = bool(throw)
         if solver is not None:
-            if solver not in _valid_solvers:
+            if solver not in cls._valid_solvers:
                 raise ValueError(
                     f"Unknown solver {solver!r}; expected one of "
                     f"{cls._valid_solvers}"
@@ -405,8 +406,8 @@ class Yaqsi:
                   loops of an optimiser (e.g. QOC Stage 0) so a single
                   pathological candidate cannot abort the whole run.
         """
-        coeff_fns = ph.coeff_fns                       # tuple of callables
-        H_mats = ph.H_mats                             # tuple of (dim, dim)
+        coeff_fns = ph.coeff_fns  # tuple of callables
+        H_mats = ph.H_mats  # tuple of (dim, dim)
         wires = ph.wires
         n_terms = ph.n_terms
         dim = H_mats[0].shape[0]
@@ -434,18 +435,14 @@ class Yaqsi:
             odeint_kwargs.pop("max_steps", cls._solver_defaults["max_steps"])
         )
         throw = bool(odeint_kwargs.pop("throw", cls._solver_defaults["throw"]))
-        solver_name = str(
-            odeint_kwargs.pop("solver", cls._solver_defaults["solver"])
-        )
+        solver_name = str(odeint_kwargs.pop("solver", cls._solver_defaults["solver"]))
         if solver_name not in cls._valid_solvers:
             raise ValueError(
                 f"Unknown solver {solver_name!r}; expected one of "
                 f"{cls._valid_solvers}"
             )
         magnus_steps = int(
-            odeint_kwargs.pop(
-                "magnus_steps", cls._solver_defaults["magnus_steps"]
-            )
+            odeint_kwargs.pop("magnus_steps", cls._solver_defaults["magnus_steps"])
         )
 
         # Cache key:  identity of every coeff fn's code object (same shape
@@ -501,9 +498,7 @@ class Yaqsi:
                     def H_at(t):
                         c = jnp.stack(
                             [
-                                jnp.asarray(
-                                    _coeff_fns[i](params[i], t)
-                                ).reshape(())
+                                jnp.asarray(_coeff_fns[i](params[i], t)).reshape(())
                                 for i in range(n_terms)
                             ]
                         ).astype(_cdtype)
@@ -511,12 +506,15 @@ class Yaqsi:
                         return jnp.tensordot(c, neg_iH, axes=1)
 
                     if _solver_name_local == "magnus2":
+
                         def step(U, n):
                             tn = t0 + n * h
                             Omega = h * H_at(tn + 0.5 * h)
                             return jax.scipy.linalg.expm(Omega) @ U, None
+
                     else:  # magnus4 (CFM4:2)
                         import math
+
                         sqrt3 = math.sqrt(3.0)
                         c1 = 0.5 - sqrt3 / 6.0
                         c2 = 0.5 + sqrt3 / 6.0
@@ -539,9 +537,7 @@ class Yaqsi:
                             return U_next, None
 
                     U0 = jnp.eye(dim, dtype=_cdtype)
-                    U_final, _ = jax.lax.scan(
-                        step, U0, jnp.arange(N_steps)
-                    )
+                    U_final, _ = jax.lax.scan(step, U0, jnp.arange(N_steps))
                     return U_final
 
                 with cls._evolve_solver_cache_lock:
@@ -584,9 +580,7 @@ class Yaqsi:
                     # shape ``(n_terms,)``.
                     c = jnp.stack(
                         [
-                            jnp.asarray(
-                                _coeff_fns[i](args[i], t)
-                            ).reshape(())
+                            jnp.asarray(_coeff_fns[i](args[i], t)).reshape(())
                             for i in range(n_terms)
                         ]
                     )  # (n_terms,)
@@ -1665,7 +1659,6 @@ class Script:
                 arg_shapes,
                 UnitaryGates.batch_gate_error,
             )
-            # cached_shot = self._jit_cache.get(shot_cache_key) if not in_transform else None
             cached_shot = self._jit_cache.get(shot_cache_key)
             if cached_shot is not None:
                 batched_fn = cached_shot[0]
@@ -1673,8 +1666,6 @@ class Script:
                 batched_fn = eqx.filter_jit(
                     jax.vmap(_single_execute_shots, in_axes=shot_in_axes)
                 )
-                # if not in_transform:
-                #     self._jit_cache[shot_cache_key] = (batched_fn, n_qubits, use_density)
                 self._jit_cache[shot_cache_key] = (batched_fn, n_qubits, use_density)
 
             if chunk_size >= batch_size:

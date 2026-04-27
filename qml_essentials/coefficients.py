@@ -66,10 +66,8 @@ class Coefficients:
         coeffs, freqs = cls._fourier_transform(model, mfs=mfs, mts=mts, **kwargs)
 
         if not jnp.isclose(jnp.sum(coeffs).imag, 0.0, rtol=1.0e-5):
-            raise ValueError(
-                f"Spectrum is not real. Imaginary part of coefficients is:\
-                {jnp.sum(coeffs).imag}"
-            )
+            raise ValueError(f"Spectrum is not real. Imaginary part of coefficients is:\
+                {jnp.sum(coeffs).imag}")
 
         if trim:
             for ax in range(model.n_input_feat):
@@ -1262,10 +1260,8 @@ class FCC:
             result = cls._spearman(mat.reshape(mat.shape[0], -1))
             # result = cls._spearman(mat.reshape(mat.shape[-1], -1, order="F"))
         else:
-            raise ValueError(
-                f"Unknown correlation method: {method}. \
-                             Must be 'pearson' or 'spearman'."
-            )
+            raise ValueError(f"Unknown correlation method: {method}. \
+                             Must be 'pearson' or 'spearman'.")
 
         return result
 

@@ -346,10 +346,10 @@ class PulseEnvelope:
             "n_envelope_params": 2,
             "defaults": {
                 "RX": jnp.array(
-                    [0.38009941846766804,1.631698142660167,3.007403822238108]
+                    [0.38009941846766804, 1.631698142660167, 3.007403822238108]
                 ),
                 "RY": jnp.array(
-                    [0.3836652338514791,1.616595983505249,2.9794135093698966]
+                    [0.3836652338514791, 1.616595983505249, 2.9794135093698966]
                 ),
             },
         },
@@ -357,8 +357,12 @@ class PulseEnvelope:
             "fn": square.__func__,
             "n_envelope_params": 2,
             "defaults": {
-                "RX": jnp.array([1.209655637514602,0.8266815576721239,1.1483122857413859]),
-                "RY": jnp.array([1.0287942142779052,0.9860505130182093,0.9720116870310977]),
+                "RX": jnp.array(
+                    [1.209655637514602, 0.8266815576721239, 1.1483122857413859]
+                ),
+                "RY": jnp.array(
+                    [1.0287942142779052, 0.9860505130182093, 0.9720116870310977]
+                ),
             },
         },
         "cosine": {
@@ -373,8 +377,22 @@ class PulseEnvelope:
             "fn": drag.__func__,
             "n_envelope_params": 3,
             "defaults": {
-                "RX": jnp.array([0.326562746114197,0.4002767596709071,5.3228107728890315,3.141300761986467]),
-                "RY": jnp.array([0.323287924190616,0.4065017233024265,7.00299644871222,3.139481229843545]),
+                "RX": jnp.array(
+                    [
+                        0.326562746114197,
+                        0.4002767596709071,
+                        5.3228107728890315,
+                        3.141300761986467,
+                    ]
+                ),
+                "RY": jnp.array(
+                    [
+                        0.323287924190616,
+                        0.4065017233024265,
+                        7.00299644871222,
+                        3.139481229843545,
+                    ]
+                ),
             },
         },
         "sech": {
@@ -452,7 +470,7 @@ class PulseEnvelope:
         For RX (``φ = 0``) this reduces to ``(Ω/2)·X``; for RY
         (``φ = +π/2``) to ``(Ω/2)·Y``.  This is dramatically cheaper to
         integrate (no fast oscillations → adaptive ODE solver takes
-        large steps).  
+        large steps).
 
         Each returned function has a unique ``__code__`` object so the
         yaqsi solver cache assigns separate compiled XLA programs per
@@ -497,9 +515,7 @@ class PulseEnvelope:
             RX and RY interaction-picture Hamiltonians.
         """
         if frame not in ("lab", "drive"):
-            raise ValueError(
-                f"Unknown frame {frame!r}; expected 'lab' or 'drive'."
-            )
+            raise ValueError(f"Unknown frame {frame!r}; expected 'lab' or 'drive'.")
         if rwa:
             # RWA-truncated coefficients (no carrier, no fast factors).
             # H_I^RWA = (Ω(t)/2) [cos(φ) X + sin(φ) Y]; we keep the
@@ -571,7 +587,6 @@ class PulseEnvelope:
 
             return _coeff_RX_X, _coeff_RX_Y, _coeff_RY_X, _coeff_RY_Y
 
-
         # RX uses carrier phase phi = 0 so that after RWA
         #   cos(ω_q τ)·cos(ω_q τ)  averages to +1/2  → drives +X
         #   -cos(ω_q τ)·sin(ω_q τ) averages to  0    → Y cancels
@@ -613,16 +628,16 @@ class PulseInformation:
     and defaults match the selected envelope.
     """
 
-    _envelope: str = "drag" #"gaussian"
+    _envelope: str = "drag"  # "gaussian"
     # Whether to apply the rotating-wave approximation when building the
-    # interaction-picture coefficient functions.  
-    # Default ``False`` (exact dynamics, no RWA).  
-    # Setting to ``True`` drops the fast counter-rotating terms — 
+    # interaction-picture coefficient functions.
+    # Default ``False`` (exact dynamics, no RWA).
+    # Setting to ``True`` drops the fast counter-rotating terms —
     # much faster to integrate
     # See :meth:`PulseEnvelope.build_coeff_fns`.
     _rwa: bool = False
     # Algebraic representation of the (non-RWA) coefficients.  Either
-    # ``"lab"`` or ``"drive"`` (product-to-sum decomposition).  
+    # ``"lab"`` or ``"drive"`` (product-to-sum decomposition).
     # Mathematically equivalent — see :meth:`PulseEnvelope.build_coeff_fns`
     # when ``"drive"`` is numerically advantageous (mainly with the Magnus solvers).
     _frame: str = "lab"
@@ -732,9 +747,7 @@ class PulseInformation:
             cls._rwa = bool(rwa)
         if frame is not None:
             if frame not in ("lab", "drive"):
-                raise ValueError(
-                    f"Unknown frame {frame!r}; expected 'lab' or 'drive'."
-                )
+                raise ValueError(f"Unknown frame {frame!r}; expected 'lab' or 'drive'.")
             cls._frame = frame
         cls._build_leaf_gates()
         cls._build_composite_gates()
@@ -823,10 +836,8 @@ class PulseInformation:
                 reader = csv.reader(f)
 
                 for row in reader:
-                    log.debug(
-                        f"Loading optimized pulses for {row[0]}\
-                            (Fidelity: {float(row[1]):.5f}): {row[2:]}"
-                    )
+                    log.debug(f"Loading optimized pulses for {row[0]}\
+                            (Fidelity: {float(row[1]):.5f}): {row[2:]}")
                     PulseInformation.OPTIMIZED_PULSES[row[0]] = jnp.array(
                         [float(x) for x in row[2:]]
                     )
@@ -835,10 +846,8 @@ class PulseInformation:
 
     @staticmethod
     def shuffle_params(random_key):
-        log.info(
-            f"Shuffling optimized pulses with random key {random_key}\
-              of gates {PulseInformation.unique_gate_set}"
-        )
+        log.info(f"Shuffling optimized pulses with random key {random_key}\
+              of gates {PulseInformation.unique_gate_set}")
         for gate in PulseInformation.unique_gate_set:
             random_key, sub_key = safe_random_split(random_key)
             gate.params = jax.random.uniform(sub_key, (len(gate),))
@@ -1067,10 +1076,7 @@ class PulseGates:
         # 2·ω_q counter-rotating part oscillates and cancels.
         H_X = op.Hermitian(PulseGates.X, wires=wires, record=False)
         H_Y = op.Hermitian(PulseGates.Y, wires=wires, record=False)
-        H_eff = (
-            PulseGates._coeff_RX_X * H_X
-            + PulseGates._coeff_RX_Y * H_Y
-        )
+        H_eff = PulseGates._coeff_RX_X * H_X + PulseGates._coeff_RX_Y * H_Y
 
         # Pack: [envelope_params..., w] - evolution time is the last element
         # of pulse_params (pulse_params[-1]).
@@ -1111,10 +1117,7 @@ class PulseGates:
         # carrier phase ϕ = +π/2 so the slow RWA component drives +Y.
         H_X = op.Hermitian(PulseGates.X, wires=wires, record=False)
         H_Y = op.Hermitian(PulseGates.Y, wires=wires, record=False)
-        H_eff = (
-            PulseGates._coeff_RY_X * H_X
-            + PulseGates._coeff_RY_Y * H_Y
-        )
+        H_eff = PulseGates._coeff_RY_X * H_X + PulseGates._coeff_RY_Y * H_Y
 
         # Pack w into the params so the coefficient function doesn't need
         # a closure - this enables JIT solver cache sharing across all RY calls.

@@ -84,9 +84,7 @@ def _sample_rotation_angles(n_samples: int) -> jnp.ndarray:
     k_focus = max(1, n_samples // 3)
     k_uniform = n_samples - k_focus
     ws_uniform = jnp.linspace(0.0, 2.0 * jnp.pi, k_uniform, endpoint=False)
-    ws_focus = jnp.linspace(
-        0.5 * jnp.pi, 1.5 * jnp.pi, k_focus, endpoint=False
-    )
+    ws_focus = jnp.linspace(0.5 * jnp.pi, 1.5 * jnp.pi, k_focus, endpoint=False)
     return jnp.concatenate([ws_uniform, ws_focus])
 
 
@@ -301,9 +299,7 @@ def unitary_cost_fn(
 
     F_pro = jnp.abs(trE) ** 2 / float(d) ** 2
     process_loss = jnp.mean(jnp.array(1.0, dtype=jnp.float64) - F_pro)
-    phase_loss = jnp.mean(
-        jnp.array(1.0, dtype=jnp.float64) - jnp.cos(jnp.angle(trE))
-    )
+    phase_loss = jnp.mean(jnp.array(1.0, dtype=jnp.float64) - jnp.cos(jnp.angle(trE)))
 
     return (process_loss, phase_loss)
 
@@ -798,10 +794,10 @@ class QOC:
             f"grad_clip={self.grad_clip}"
         )
         if PulseInformation.get_rwa():
-            log.info(f"Using RWA. Rotating frame is ignored.")
+            log.info("Using RWA. Rotating frame is ignored.")
         else:
             log.info(f"Using no RWA and {PulseInformation.get_frame()} frame.")
-            
+
         if self.early_stop_patience > 0:
             log.info(
                 f"Early stopping: patience={self.early_stop_patience}, "
@@ -957,9 +953,7 @@ class QOC:
             axes = []
             for lo, hi in ranges:
                 axes.append(
-                    jnp.logspace(
-                        jnp.log10(lo), jnp.log10(hi), self.scan_grid_size
-                    )
+                    jnp.logspace(jnp.log10(lo), jnp.log10(hi), self.scan_grid_size)
                 )
         elif init_pulse_params is not None:
             # Multiplicative grid centred on init params.  We pick
@@ -989,9 +983,7 @@ class QOC:
             axes = []
             for lo, hi in ranges:
                 axes.append(
-                    jnp.logspace(
-                        jnp.log10(lo), jnp.log10(hi), self.scan_grid_size
-                    )
+                    jnp.logspace(jnp.log10(lo), jnp.log10(hi), self.scan_grid_size)
                 )
 
         # Cartesian product of all axes
@@ -1091,9 +1083,7 @@ class QOC:
                 def body(carry, _):
                     log_p, opt_state, failed = carry
                     loss, grads = jax.value_and_grad(total_cost_log)(log_p)
-                    updates, opt_state = scan_optimizer.update(
-                        grads, opt_state, log_p
-                    )
+                    updates, opt_state = scan_optimizer.update(grads, opt_state, log_p)
                     new_log_p = optax.apply_updates(log_p, updates)
                     new_failed = failed | (~jnp.all(jnp.isfinite(new_log_p)))
                     # Freeze on failure so subsequent steps cannot
@@ -1253,9 +1243,7 @@ class QOC:
             best_scan_params, total_costs, total_costs_log, optimizer
         )
 
-    def _perturb_starts(
-        self, start_params: jnp.ndarray
-    ) -> jnp.ndarray:
+    def _perturb_starts(self, start_params: jnp.ndarray) -> jnp.ndarray:
         """Pre-build the ``(n_restarts, n_params)`` matrix of restart starts.
 
         Restart 0 is the unperturbed start; subsequent restarts add
@@ -1268,9 +1256,7 @@ class QOC:
         keys = jax.random.split(self.random_key, self.n_restarts)
         # Shape (n_restarts, n_params); restart 0 is intentionally zero
         # noise so the unperturbed start is preserved.
-        noise = jax.vmap(
-            lambda k: jax.random.normal(k, shape=(n_params,))
-        )(keys)
+        noise = jax.vmap(lambda k: jax.random.normal(k, shape=(n_params,)))(keys)
         noise = noise.at[0].set(0.0)
         scale = jnp.maximum(jnp.abs(start_params), 0.1) * self.restart_noise_scale
         starts = start_params[None, :] + noise * scale[None, :]
@@ -1330,9 +1316,7 @@ class QOC:
             ) = carry
 
             loss, grads = jax.value_and_grad(total_costs_log)(log_params)
-            updates, new_opt_state = optimizer.update(
-                grads, opt_state, log_params
-            )
+            updates, new_opt_state = optimizer.update(grads, opt_state, log_params)
             stepped_log_params = optax.apply_updates(log_params, updates)
 
             # Improvement test (uses the pre-update loss, matching the
@@ -1343,9 +1327,7 @@ class QOC:
             # Save the params that *produced* the improving loss
             # (i.e. the pre-update ``log_params``).  ``improved`` is a
             # scalar bool and broadcasts against the 1-D params arrays.
-            best_log_params = jnp.where(
-                improved, log_params, best_log_params
-            )
+            best_log_params = jnp.where(improved, log_params, best_log_params)
             steps_since_improve = jnp.where(
                 improved, jnp.int32(0), steps_since_improve + jnp.int32(1)
             )
@@ -1360,9 +1342,7 @@ class QOC:
             )
 
             # Mask the update once stopped: freeze params/optimiser.
-            new_log_params = jnp.where(
-                new_stopped_flag, log_params, stepped_log_params
-            )
+            new_log_params = jnp.where(new_stopped_flag, log_params, stepped_log_params)
             new_opt_state_kept = jax.tree_util.tree_map(
                 lambda new, old: jnp.where(new_stopped_flag, old, new),
                 new_opt_state,
@@ -1382,14 +1362,14 @@ class QOC:
             return new_carry, loss
 
         init_carry = (
-            log_params,                       # log_params
-            opt_state,                        # opt_state
-            init_loss,                        # best_loss
-            log_params,                       # best_log_params
-            jnp.int32(0),                     # steps_since_improve
-            jnp.bool_(False),                 # stopped_flag
-            jnp.int32(self.n_steps),          # stopped_step (default = n_steps)
-            jnp.int32(0),                     # step_idx
+            log_params,  # log_params
+            opt_state,  # opt_state
+            init_loss,  # best_loss
+            log_params,  # best_log_params
+            jnp.int32(0),  # steps_since_improve
+            jnp.bool_(False),  # stopped_flag
+            jnp.int32(self.n_steps),  # stopped_step (default = n_steps)
+            jnp.int32(0),  # step_idx
         )
 
         @jax.jit
@@ -1596,12 +1576,19 @@ class QOC:
 
         if n_params == 1:
             x = np.array([float(grid_axes[0][i]) for i in indices])
-            sc = ax.scatter(x, losses_arr, c=losses_arr, cmap="viridis_r", s=60, zorder=3)
+            sc = ax.scatter(
+                x, losses_arr, c=losses_arr, cmap="viridis_r", s=60, zorder=3
+            )
             fig.colorbar(sc, ax=ax, label="Loss")
             best_i = int(np.argmin(losses_arr))
             ax.scatter(
-                x[best_i], losses_arr[best_i],
-                marker="*", s=200, color="red", zorder=4, label="best",
+                x[best_i],
+                losses_arr[best_i],
+                marker="*",
+                s=200,
+                color="red",
+                zorder=4,
+                label="best",
             )
             ax.set_xlabel("Parameter value")
             ax.set_xscale("log")
@@ -1619,10 +1606,15 @@ class QOC:
             cmap = plt.cm.viridis_r.copy()
             cmap.set_bad(color="lightgrey")
             im = ax.imshow(
-                masked, origin="lower", cmap=cmap, aspect="auto",
+                masked,
+                origin="lower",
+                cmap=cmap,
+                aspect="auto",
                 extent=[
-                    float(grid_axes[1][0]), float(grid_axes[1][-1]),
-                    float(grid_axes[0][0]), float(grid_axes[0][-1]),
+                    float(grid_axes[1][0]),
+                    float(grid_axes[1][-1]),
+                    float(grid_axes[0][0]),
+                    float(grid_axes[0][-1]),
                 ],
             )
             fig.colorbar(im, ax=ax, label="Loss")
@@ -1635,12 +1627,22 @@ class QOC:
             sorted_indices = np.array(indices)[order]  # original trial numbers
             ranks = np.arange(len(sorted_losses))
             sc = ax.scatter(
-                sorted_losses, ranks, c=sorted_indices, cmap="plasma", s=40, zorder=3,
+                sorted_losses,
+                ranks,
+                c=sorted_indices,
+                cmap="plasma",
+                s=40,
+                zorder=3,
             )
             fig.colorbar(sc, ax=ax, label="Trial number")
             ax.scatter(
-                sorted_losses[0], ranks[0],
-                marker="*", s=200, color="red", zorder=4, label="best",
+                sorted_losses[0],
+                ranks[0],
+                marker="*",
+                s=200,
+                color="red",
+                zorder=4,
+                label="best",
             )
             ax.set_xlabel("Loss")
             ax.set_ylabel("Candidate rank (0 = best)")
@@ -1683,8 +1685,9 @@ class QOC:
 
         fig, ax = plt.subplots(figsize=(9, 4))
         ax.plot(losses, linewidth=1.2, label="Loss")
-        ax.axhline(best, color="red", linestyle="--", linewidth=1.0,
-                   label=f"Best: {best:.3e}")
+        ax.axhline(
+            best, color="red", linestyle="--", linewidth=1.0, label=f"Best: {best:.3e}"
+        )
         ax.set_xlabel("Step")
         ax.set_ylabel("Loss")
         ax.set_yscale("log")
@@ -1760,6 +1763,7 @@ class QOC:
                         for q in range(wires):
                             op.H(wires=q)
                         circuit_fn(*args, **kwargs)
+
                     prepared.__name__ = f"plus_{circuit_fn.__name__}"
                     return prepared
 
@@ -1781,7 +1785,9 @@ class QOC:
                     for k in range(d_basis)
                 ]
                 target_basis_scripts = [
-                    ys.Script(_with_basis_prep(target_circuit, k, wires), n_qubits=wires)
+                    ys.Script(
+                        _with_basis_prep(target_circuit, k, wires), n_qubits=wires
+                    )
                     for k in range(d_basis)
                 ]
 
@@ -1873,14 +1879,17 @@ class QOC:
         Constructed lazily inside a staticmethod so the closures
         capture the imported gate symbols at call time.
         """
+
         # Single-qubit rotations
         def rx_p(w, pp):
             Gates.RX(w, 0, pulse_params=pp, gate_mode="pulse")
+
         def rx_t(w):
             op.RX(w, wires=0)
 
         def ry_p(w, pp):
             Gates.RY(w, 0, pulse_params=pp, gate_mode="pulse")
+
         def ry_t(w):
             op.RY(w, wires=0)
 
@@ -1888,6 +1897,7 @@ class QOC:
             op.H(wires=0)
             Gates.RZ(w, 0, pulse_params=pp, gate_mode="pulse")
             op.H(wires=0)
+
         def rz_t(w):
             op.H(wires=0)
             op.RZ(w, wires=0)
@@ -1896,6 +1906,7 @@ class QOC:
         def h_p(w, pp):
             op.RY(w, wires=0)
             Gates.H(0, pulse_params=pp, gate_mode="pulse")
+
         def h_t(w):
             op.RY(w, wires=0)
             op.H(wires=0)
@@ -1903,6 +1914,7 @@ class QOC:
         def rot_p(w, pp):
             op.H(wires=0)
             Gates.Rot(w, w * 2, w * 3, 0, pulse_params=pp, gate_mode="pulse")
+
         def rot_t(w):
             op.H(wires=0)
             op.Rot(w, w * 2, w * 3, wires=0)
@@ -1912,22 +1924,28 @@ class QOC:
             def pulse_circuit(w, pp):
                 prep(w)
                 pulse_gate(w, pp)
+
             def target_circuit(w):
                 prep(w)
                 target_gate(w)
+
             return pulse_circuit, target_circuit
 
         def cx_prep(w):
             op.RY(w, wires=0)
             op.H(wires=1)
+
         def cy_prep(w):
             op.RX(w, wires=0)
             op.H(wires=1)
+
         def cz_prep(w):
             op.RY(w, wires=0)
             op.H(wires=1)
+
         def cr_single_prep(w):
             op.H(wires=0)
+
         def crz_prep(w):
             op.H(wires=0)
             op.H(wires=1)
@@ -1949,17 +1967,23 @@ class QOC:
         )
         crx = _two_q(
             cr_single_prep,
-            lambda w, pp: Gates.CRX(w, wires=[0, 1], pulse_params=pp, gate_mode="pulse"),
+            lambda w, pp: Gates.CRX(
+                w, wires=[0, 1], pulse_params=pp, gate_mode="pulse"
+            ),
             lambda w: op.CRX(w, wires=[0, 1]),
         )
         cry = _two_q(
             cr_single_prep,
-            lambda w, pp: Gates.CRY(w, wires=[0, 1], pulse_params=pp, gate_mode="pulse"),
+            lambda w, pp: Gates.CRY(
+                w, wires=[0, 1], pulse_params=pp, gate_mode="pulse"
+            ),
             lambda w: op.CRY(w, wires=[0, 1]),
         )
         crz = _two_q(
             crz_prep,
-            lambda w, pp: Gates.CRZ(w, wires=[0, 1], pulse_params=pp, gate_mode="pulse"),
+            lambda w, pp: Gates.CRZ(
+                w, wires=[0, 1], pulse_params=pp, gate_mode="pulse"
+            ),
             lambda w: op.CRZ(w, wires=[0, 1]),
         )
 
@@ -1967,7 +1991,7 @@ class QOC:
             "RX": (rx_p, rx_t),
             "RY": (ry_p, ry_t),
             "RZ": (rz_p, rz_t),
-            "H":  (h_p,  h_t),
+            "H": (h_p, h_t),
             "Rot": (rot_p, rot_t),
             "CX": cx,
             "CY": cy,
@@ -1989,48 +2013,71 @@ class QOC:
         to the pulse error).  ``Rot`` and ``CY`` are intentionally
         absent because the joint optimiser does not target them.
         """
+
         def rx_p(w, pp):
             Gates.RX(w, wires=0, pulse_params=pp, gate_mode="pulse")
+
         def rx_t(w):
             op.RX(w, wires=0)
+
         def ry_p(w, pp):
             Gates.RY(w, wires=0, pulse_params=pp, gate_mode="pulse")
+
         def ry_t(w):
             op.RY(w, wires=0)
+
         def rz_p(w, pp):
             Gates.RZ(w, wires=0, pulse_params=pp, gate_mode="pulse")
+
         def rz_t(w):
             op.RZ(w, wires=0)
+
         def h_p(w, pp):
             Gates.H(0, pulse_params=pp, gate_mode="pulse")
+
         def h_t(w):
             op.H(wires=0)
+
         def cz_p(w, pp):
             Gates.CZ(wires=[0, 1], pulse_params=pp, gate_mode="pulse")
+
         def cz_t(w):
             op.CZ(wires=[0, 1])
+
         def cx_p(w, pp):
             Gates.CX(wires=[0, 1], pulse_params=pp, gate_mode="pulse")
+
         def cx_t(w):
             op.CX(wires=[0, 1])
+
         def crx_p(w, pp):
             Gates.CRX(w, wires=[0, 1], pulse_params=pp, gate_mode="pulse")
+
         def crx_t(w):
             op.CRX(w, wires=[0, 1])
+
         def cry_p(w, pp):
             Gates.CRY(w, wires=[0, 1], pulse_params=pp, gate_mode="pulse")
+
         def cry_t(w):
             op.CRY(w, wires=[0, 1])
+
         def crz_p(w, pp):
             Gates.CRZ(w, wires=[0, 1], pulse_params=pp, gate_mode="pulse")
+
         def crz_t(w):
             op.CRZ(w, wires=[0, 1])
 
         return {
-            "RX": (rx_p, rx_t), "RY": (ry_p, ry_t), "RZ": (rz_p, rz_t),
-            "H":  (h_p,  h_t),
-            "CZ": (cz_p, cz_t), "CX": (cx_p, cx_t),
-            "CRX": (crx_p, crx_t), "CRY": (cry_p, cry_t), "CRZ": (crz_p, crz_t),
+            "RX": (rx_p, rx_t),
+            "RY": (ry_p, ry_t),
+            "RZ": (rz_p, rz_t),
+            "H": (h_p, h_t),
+            "CZ": (cz_p, cz_t),
+            "CX": (cx_p, cx_t),
+            "CRX": (crx_p, crx_t),
+            "CRY": (cry_p, cry_t),
+            "CRZ": (crz_p, crz_t),
         }
 
     def _create_pair(self, gate_name: str) -> Tuple[Callable, Callable]:
@@ -2042,17 +2089,38 @@ class QOC:
 
     # Thin compatibility wrappers around :meth:`_create_pair` so existing
     # code (and tests) that call ``qoc.create_<gate>`` keep working.
-    def create_RX(self):  return self._create_pair("RX")
-    def create_RY(self):  return self._create_pair("RY")
-    def create_RZ(self):  return self._create_pair("RZ")
-    def create_H(self):   return self._create_pair("H")
-    def create_Rot(self): return self._create_pair("Rot")
-    def create_CX(self):  return self._create_pair("CX")
-    def create_CY(self):  return self._create_pair("CY")
-    def create_CZ(self):  return self._create_pair("CZ")
-    def create_CRX(self): return self._create_pair("CRX")
-    def create_CRY(self): return self._create_pair("CRY")
-    def create_CRZ(self): return self._create_pair("CRZ")
+    def create_RX(self):
+        return self._create_pair("RX")
+
+    def create_RY(self):
+        return self._create_pair("RY")
+
+    def create_RZ(self):
+        return self._create_pair("RZ")
+
+    def create_H(self):
+        return self._create_pair("H")
+
+    def create_Rot(self):
+        return self._create_pair("Rot")
+
+    def create_CX(self):
+        return self._create_pair("CX")
+
+    def create_CY(self):
+        return self._create_pair("CY")
+
+    def create_CZ(self):
+        return self._create_pair("CZ")
+
+    def create_CRX(self):
+        return self._create_pair("CRX")
+
+    def create_CRY(self):
+        return self._create_pair("CRY")
+
+    def create_CRZ(self):
+        return self._create_pair("CRZ")
 
     def optimize_all(self, sel_gates: str, make_log: bool) -> None:
         """Optimise all selected gates and optionally write a log CSV.
@@ -2104,7 +2172,14 @@ class QOC:
     # cannot be improved by tuning leaf parameters — including it only
     # adds ballast to the averaged loss.
     JOINT_TARGETS_DEFAULT: Tuple[str, ...] = (
-        "RX", "RY", "RZ", "H", "CX", "CRX", "CRY", "CRZ",
+        "RX",
+        "RY",
+        "RZ",
+        "H",
+        "CX",
+        "CRX",
+        "CRY",
+        "CRZ",
     )
 
     # Default per-target weights for the joint objective.  Weights are
@@ -2117,9 +2192,14 @@ class QOC:
     # the longest decompositions (2 CX + ~6 single-qubit gates) so
     # their leaf-error compounding is worst.
     JOINT_WEIGHTS_DEFAULT: Dict[str, float] = {
-        "RX": 0.3, "RY": 0.3, "RZ": 0.3,
-        "H": 1.0, "CX": 2.0,
-        "CRX": 3.0, "CRY": 3.0, "CRZ": 3.0,
+        "RX": 0.3,
+        "RY": 0.3,
+        "RZ": 0.3,
+        "H": 1.0,
+        "CX": 2.0,
+        "CRX": 3.0,
+        "CRY": 3.0,
+        "CRZ": 3.0,
     }
 
     # Leaves that are physically identical up to a static carrier-phase
@@ -2131,12 +2211,11 @@ class QOC:
     # contributor to H/CX residuals, so leaving it un-tied lets the
     # joint loss settle into a basin where RX is well-tuned but RY is
     # ~3× worse; tying them removes that asymmetry.
-    JOINT_TIED_GROUPS_DEFAULT: Tuple[Tuple[str, ...], ...] = (
-        ("RX", "RY"),
-    )
+    JOINT_TIED_GROUPS_DEFAULT: Tuple[Tuple[str, ...], ...] = (("RX", "RY"),)
 
     def _build_joint_layout(
-        self, leaf_names: Tuple[str, ...],
+        self,
+        leaf_names: Tuple[str, ...],
         tied_groups: Optional[Tuple[Tuple[str, ...], ...]] = None,
     ) -> Tuple[jnp.ndarray, Dict[str, slice], List[int]]:
         """Build the joint parameter layout.
@@ -2201,22 +2280,24 @@ class QOC:
                 continue
 
             pp = PulseInformation.gate_by_name(name)
-            assert pp is not None and pp.is_leaf, (
-                f"_build_joint_layout: {name!r} is not a leaf gate"
-            )
+            assert (
+                pp is not None and pp.is_leaf
+            ), f"_build_joint_layout: {name!r} is not a leaf gate"
             # For tied groups the shared init is the elementwise mean
             # of the current params across all present members; this
             # avoids biasing toward whichever member happens to be the
             # group representative.
             tied_members = [m for m in leaf_names if rep_of[m] == name]
             if len(tied_members) > 1:
-                stacked = jnp.stack([
-                    jnp.asarray(
-                        PulseInformation.gate_by_name(m).params,
-                        dtype=jnp.float64,
-                    )
-                    for m in tied_members
-                ])
+                stacked = jnp.stack(
+                    [
+                        jnp.asarray(
+                            PulseInformation.gate_by_name(m).params,
+                            dtype=jnp.float64,
+                        )
+                        for m in tied_members
+                    ]
+                )
                 chunk = jnp.mean(stacked, axis=0)
             else:
                 chunk = jnp.asarray(pp.params, dtype=jnp.float64)
@@ -2228,7 +2309,7 @@ class QOC:
             # and CZ use the "general" registry with a single tuning
             # scalar — leave them in linear space.
             if name in ("RX", "RY") and n_env >= 2:
-                log_idx.append(offset)            # amplitude
+                log_idx.append(offset)  # amplitude
                 log_idx.append(offset + n_p - 1)  # evolution time
             offset += n_p
 
@@ -2257,7 +2338,10 @@ class QOC:
                 return jnp.asarray(pp_obj.params, dtype=jnp.float64)
             return theta[sl]
         return jnp.concatenate(
-            [QOC._assemble_for_gate(theta, child, leaf_slices) for child in pp_obj.childs]
+            [
+                QOC._assemble_for_gate(theta, child, leaf_slices)
+                for child in pp_obj.childs
+            ]
         )
 
     def _joint_stage_0_coord_descent(
@@ -2393,8 +2477,16 @@ class QOC:
             results are also written to ``qoc_results_<envelope>.csv``
             via :meth:`save_results`.
         """
-        target_gates = list(target_gates) if target_gates else list(self.JOINT_TARGETS_DEFAULT)
-        leaf_names = list(leaf_names) if leaf_names else list(self.JOINT_LEAVES_DEFAULT)
+        if target_gates:
+            target_gates = list(target_gates)
+        else:
+            target_gates = list(self.JOINT_TARGETS_DEFAULT)
+
+        if leaf_names:
+            leaf_names = list(leaf_names)
+        else:
+            leaf_names = list(self.JOINT_LEAVES_DEFAULT)
+
         # Merge user-provided weights on top of class defaults so callers
         # can override only the gates they care about.
         merged_weights: Dict[str, float] = dict(self.JOINT_WEIGHTS_DEFAULT)
@@ -2402,9 +2494,7 @@ class QOC:
             merged_weights.update({k: float(v) for k, v in weights.items()})
         weights = merged_weights
 
-        log.info(
-            f"Joint optimisation: leaves={leaf_names}, targets={target_gates}"
-        )
+        log.info(f"Joint optimisation: leaves={leaf_names}, targets={target_gates}")
 
         init_theta, leaf_slices, joint_log_idx = self._build_joint_layout(
             tuple(leaf_names)
@@ -2422,7 +2512,7 @@ class QOC:
                 log.warning(f"  Skipping unknown gate {gname!r}.")
                 continue
             n_wires = 1 if gname in self.GATES_1Q else 2
-            d_basis = 2 ** n_wires
+            d_basis = 2**n_wires
             pulse_circuit, target_circuit = self._create_joint_pair_for(gname)
 
             pulse_basis_scripts = [
@@ -2430,7 +2520,9 @@ class QOC:
                 for k in range(d_basis)
             ]
             target_basis_scripts = [
-                ys.Script(_with_basis_prep(target_circuit, k, n_wires), n_qubits=n_wires)
+                ys.Script(
+                    _with_basis_prep(target_circuit, k, n_wires), n_qubits=n_wires
+                )
                 for k in range(d_basis)
             ]
 
@@ -2439,16 +2531,19 @@ class QOC:
             def _make_assembler(pp_obj=pp_obj):
                 def assemble(theta):
                     return QOC._assemble_for_gate(theta, pp_obj, leaf_slices)
+
                 return assemble
 
-            gate_specs.append({
-                "name": gname,
-                "n_qubits": n_wires,
-                "weight": float(weights.get(gname, 1.0)),
-                "assembler": _make_assembler(),
-                "pulse_basis_scripts": pulse_basis_scripts,
-                "target_basis_scripts": target_basis_scripts,
-            })
+            gate_specs.append(
+                {
+                    "name": gname,
+                    "n_qubits": n_wires,
+                    "weight": float(weights.get(gname, 1.0)),
+                    "assembler": _make_assembler(),
+                    "pulse_basis_scripts": pulse_basis_scripts,
+                    "target_basis_scripts": target_basis_scripts,
+                }
+            )
             log.info(
                 f"  Built spec for {gname}: n_qubits={n_wires}, "
                 f"weight={gate_specs[-1]['weight']}"
@@ -2460,8 +2555,10 @@ class QOC:
         # weighting as the standalone unitary cost — keeps the relative
         # importance of fidelity vs phase consistent.
         ((_, weight_tuple),) = (
-            (n, w) for n, w in self.cost_fns if n == "unitary"
-        ) if any(n == "unitary" for n, _ in self.cost_fns) else ((None, (0.5, 0.5)),)
+            ((n, w) for n, w in self.cost_fns if n == "unitary")
+            if any(n == "unitary" for n, _ in self.cost_fns)
+            else ((None, (0.5, 0.5)),)
+        )
         joint_cost = Cost(
             cost=joint_unitary_cost_fn,
             weight=weight_tuple,
@@ -2485,16 +2582,14 @@ class QOC:
                 init_theta, leaf_slices, joint_cost
             )
 
-            global_best_theta, global_best_history, global_best_loss = (
-                self.stage_1_opt(best_scan_theta, joint_cost)
+            global_best_theta, global_best_history, global_best_loss = self.stage_1_opt(
+                best_scan_theta, joint_cost
             )
         finally:
             self.log_scale_params = prev_log_scale
             self._log_mask_cache.clear()
 
-        log.info(
-            f"Joint optimisation done. final loss={float(global_best_loss):.6e}"
-        )
+        log.info(f"Joint optimisation done. final loss={float(global_best_loss):.6e}")
 
         # Save per-leaf results to the CSV (one row per leaf).  The
         # fidelity column carries the *joint* fidelity; downstream code
@@ -2597,6 +2692,7 @@ def profile_pulse_pipeline(
         PulseInformation.set_rwa(bool(rwa))
     try:
         from qml_essentials.pulses import PulseGates
+
         gate_op = getattr(op, gate)
         gate_pulse = getattr(PulseGates, gate)
 
@@ -2773,7 +2869,7 @@ if __name__ == "__main__":
         "--file_dir",
         type=str,
         default=default_qoc_params["file_dir"],
-        help="Directory to save qoc_results_[envelope].csv. " \
+        help="Directory to save qoc_results_[envelope].csv. "
         "Defaults to the package directory.",
     )
     parser.add_argument(
@@ -2935,9 +3031,7 @@ if __name__ == "__main__":
         "--drive",
         action="store_true",
         default=False,
-        help=(
-            "Uses drive hamiltonian instead of lab frame."
-        ),
+        help=("Uses drive hamiltonian instead of lab frame."),
     )
 
     args = parser.parse_args()
