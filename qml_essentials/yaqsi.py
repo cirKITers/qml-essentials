@@ -6,6 +6,7 @@ import diffrax
 import jax
 import jax.numpy as jnp
 import jax.scipy.linalg
+import equinox as eqx
 import numpy as np  # needed to prevent jitting some operations
 
 from qml_essentials.operations import (
@@ -24,6 +25,26 @@ from qml_essentials.drawing import draw_text, draw_mpl, draw_tikz
 import logging
 
 log = logging.getLogger(__name__)
+
+
+# def _args_contain_tracer(args) -> bool:
+#     """Return True if any leaf in *args* is a JAX tracer.
+
+#     Used by :meth:`Script._execute_batched` to detect that the call is
+#     happening under an outer JAX transformation (``jit``/``vmap``/``grad``/
+#     ``jacrev`` etc.).  When that is the case the per-Script
+#     ``_jit_cache`` must be bypassed: a previously cached
+#     ``jax.jit(jax.vmap(...))`` was built under a different outer trace
+#     and re-using it would leak that trace's tracers (raising
+#     ``UnexpectedTracerError`` on the second transform).  XLA compilation
+#     artefacts are still cached at the JAX level by jaxpr signature, so
+#     bypassing only the local Python wrapper has negligible runtime cost.
+#     """
+#     from jax.core import Tracer
+#     for leaf in jax.tree_util.tree_leaves(args):
+#         if isinstance(leaf, Tracer):
+#             return True
+#     return False
 
 
 def _make_hashable(obj):
@@ -48,12 +69,288 @@ class Yaqsi:
     # and only keep Script here.  It's not clear how to do this though.
 
     # Module-level cache for JIT-compiled ODE solvers.  Keyed on
-    # (coeff_fn_id, dim, atol, rtol) so that all evolve() calls with the
-    # same pulse shape function and matrix size share one compiled XLA
-    # program.  This turns O(n_gates) JIT compilations into
-    # O(n_distinct_pulse_shapes) during pulse-mode circuit building.
+    # (coeff_fn_id, dim, atol, rtol, max_steps, throw) so that all
+    # evolve() calls with the same pulse shape function and matrix size
+    # share one compiled XLA program.  This turns O(n_gates) JIT
+    # compilations into O(n_distinct_pulse_shapes) during pulse-mode
+    # circuit building.
     _evolve_solver_cache: dict = {}
     _evolve_solver_cache_lock = threading.Lock()
+
+    # Default solver knobs for parametrized (time-dependent) evolution.
+    # These can be overridden per-call via the **odeint_kwargs of
+    # ``evolve()`` or globally via :meth:`set_solver_defaults`.
+    #
+    # ``max_steps`` is the hard cap on accepted ODE steps.  Pulse-level
+    # workloads at on-resonance carriers (ω_c ≈ ω_q) require many more
+    # steps than the diffrax default during JIT — 2**13 = 8192 is
+    # large enough for realistic single- and two-qubit pulses while
+    # remaining cheap to compile.
+    #
+    # ``throw`` controls whether diffrax raises on solver failure
+    # (e.g. ``MaxStepsReached``).  When set to ``False`` the gate
+    # factory instead returns a NaN-filled unitary so the calling
+    # optimiser sees a well-defined (but useless) result and can
+    # gracefully reject the candidate.
+    # Whether to call ``jax.clear_caches()`` between memory-aware
+    # chunks in :meth:`Script._execute_chunked`.  Default ``False``:
+    # clearing caches between chunks forces XLA to recompile the same
+    # batched program for every chunk, which is a major performance hit
+    # when many chunks are needed.  Set ``True`` only if you observe
+    # OOM growth across chunks.
+    _clear_caches_between_chunks: bool = False
+
+    # ``solver`` selects the time-integration backend for the
+    # interaction-picture ODE ``dU/dt = -i H_I(t) U``:
+    #
+    #   * ``"dopri8"`` (default) — adaptive Dormand-Prince 8(7) via
+    #     diffrax.  Robust but expensive on highly oscillatory drives
+    #     because the step controller resolves every fast cycle.
+    #   * ``"dopri5"`` — TODO description
+    #   * ``"magnus2"`` — commutator-free Magnus, 2nd order (midpoint
+    #     rule) on a fixed ``magnus_steps`` grid via ``jax.lax.scan``.
+    #     One ``expm`` per step.  Preserves unitarity to machine
+    #     precision and fuses into a single XLA program.
+    #   * ``"magnus4"`` — commutator-free Magnus, 4th order (CFM4:2 of
+    #     Blanes & Moan) on a fixed ``magnus_steps`` grid.  Two ``H``
+    #     evaluations and two ``expm`` per step; typically the best
+    #     accuracy/cost trade-off for smooth oscillatory pulse drives.
+    #
+    # ``magnus_steps`` is the number of fixed substeps for the Magnus
+    # integrators (ignored for ``dopri8``).  Choose it so that ``h =
+    # T/N`` resolves the fastest oscillation in ``H(t)`` (~few steps
+    # per period of the highest frequency).
+    _solver_defaults: dict = {
+        "max_steps": 2**13,
+        "throw": True,
+        "solver": "dopri8",
+        "magnus_steps": 256,
+    }
+    _valid_solvers = ("dopri8", "dopri5", "magnus2", "magnus4")
+
+    @classmethod
+    def set_solver_defaults(
+        cls,
+        max_steps: Optional[int] = None,
+        throw: Optional[bool] = None,
+        solver: Optional[str] = None,
+        magnus_steps: Optional[int] = None,
+    ) -> dict:
+        """Update class-level solver defaults; return the previous values.
+
+        The returned dictionary is suitable for restoring the previous
+        defaults via ``set_solver_defaults(**prev)``.
+
+        Args:
+            max_steps: New default for ``max_steps`` (ignored if ``None``).
+            throw: New default for ``throw`` (ignored if ``None``).
+
+        Returns:
+            Dictionary with the previous values of the updated keys.
+        """
+        prev: dict = {}
+        if max_steps is not None:
+            prev["max_steps"] = cls._solver_defaults["max_steps"]
+            cls._solver_defaults["max_steps"] = int(max_steps)
+        if throw is not None:
+            prev["throw"] = cls._solver_defaults["throw"]
+            cls._solver_defaults["throw"] = bool(throw)
+        if solver is not None:
+            if solver not in cls._valid_solvers:
+                raise ValueError(
+                    f"Unknown solver {solver!r}; expected one of {cls._valid_solvers}"
+                )
+            prev["solver"] = cls._solver_defaults["solver"]
+            cls._solver_defaults["solver"] = solver
+        if magnus_steps is not None:
+            prev["magnus_steps"] = cls._solver_defaults["magnus_steps"]
+            cls._solver_defaults["magnus_steps"] = int(magnus_steps)
+        return prev
+
+    @classmethod
+    def _store_evolve_solver(cls, cache_key: tuple, solve: Callable) -> Callable:
+        """Cache a compiled evolve solver unless another thread won the race."""
+        with cls._evolve_solver_cache_lock:
+            existing = cls._evolve_solver_cache.get(cache_key)
+            if existing is not None:
+                return existing
+            cls._evolve_solver_cache[cache_key] = solve
+        return solve
+
+    @classmethod
+    def _parse_evolve_solver_options(cls, odeint_kwargs: dict) -> tuple:
+        """Pop and validate solver options from ``evolve(..., **odeint_kwargs)``."""
+        default_tol = 1.0e-10 if jax.config.x64_enabled else 1.4e-8
+        atol = odeint_kwargs.pop("atol", default_tol)
+        rtol = odeint_kwargs.pop("rtol", default_tol)
+        max_steps = int(
+            odeint_kwargs.pop("max_steps", cls._solver_defaults["max_steps"])
+        )
+        throw = bool(odeint_kwargs.pop("throw", cls._solver_defaults["throw"]))
+        solver_name = str(odeint_kwargs.pop("solver", cls._solver_defaults["solver"]))
+        if solver_name not in cls._valid_solvers:
+            raise ValueError(
+                f"Unknown solver {solver_name!r}; expected one of {cls._valid_solvers}"
+            )
+        magnus_steps = int(
+            odeint_kwargs.pop("magnus_steps", cls._solver_defaults["magnus_steps"])
+        )
+        return atol, rtol, max_steps, throw, solver_name, magnus_steps
+
+    @classmethod
+    def _build_magnus_evolve_solver(
+        cls,
+        cache_key: tuple,
+        coeff_fns: Tuple[Callable, ...],
+        n_terms: int,
+        dim: int,
+        solver_name: str,
+        magnus_steps: int,
+    ) -> Callable:
+        """Build and cache a fixed-step commutator-free Magnus solver."""
+        _coeff_fns = coeff_fns
+        _cdtype_local = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
+        n_steps = magnus_steps
+        solver_name_local = solver_name
+
+        @eqx.filter_jit
+        def _solve(neg_iH_split, params, t0, t1):
+            # Reconstruct the per-term complex matrices ``-i H_i`` from their
+            # split (Re, Im) representation so the coefficient sum is a single
+            # complex tensordot.
+            A_all = neg_iH_split[:, 0]
+            B_all = neg_iH_split[:, 1]
+            neg_iH = (A_all + 1j * B_all).astype(_cdtype_local)
+
+            h = (t1 - t0) / n_steps
+
+            def H_at(t):
+                c = jnp.stack(
+                    [
+                        jnp.asarray(_coeff_fns[i](params[i], t)).reshape(())
+                        for i in range(n_terms)
+                    ]
+                ).astype(_cdtype_local)
+                return jnp.tensordot(c, neg_iH, axes=1)
+
+            if solver_name_local == "magnus2":
+
+                def step(U, n):
+                    tn = t0 + n * h
+                    Omega = h * H_at(tn + 0.5 * h)
+                    return jax.scipy.linalg.expm(Omega) @ U, None
+
+            else:
+                import math
+
+                sqrt3 = math.sqrt(3.0)
+                c1 = 0.5 - sqrt3 / 6.0
+                c2 = 0.5 + sqrt3 / 6.0
+                a1 = 0.25 + sqrt3 / 6.0
+                a2 = 0.25 - sqrt3 / 6.0
+
+                def step(U, n):
+                    tn = t0 + n * h
+                    H1 = H_at(tn + c1 * h)
+                    H2 = H_at(tn + c2 * h)
+                    Omega_a = h * (a1 * H1 + a2 * H2)
+                    Omega_b = h * (a2 * H1 + a1 * H2)
+                    # CFM4:2 ordering (Blanes & Moan 2006, Table II):
+                    # U_{n+1} = exp(Ω_b) · exp(Ω_a) · U_n.
+                    U_next = (
+                        jax.scipy.linalg.expm(Omega_b)
+                        @ jax.scipy.linalg.expm(Omega_a)
+                        @ U
+                    )
+                    return U_next, None
+
+            U0 = jnp.eye(dim, dtype=_cdtype_local)
+            U_final, _ = jax.lax.scan(step, U0, jnp.arange(n_steps))
+            return U_final
+
+        return cls._store_evolve_solver(cache_key, _solve)
+
+    @classmethod
+    def _build_diffrax_evolve_solver(
+        cls,
+        cache_key: tuple,
+        coeff_fns: Tuple[Callable, ...],
+        n_terms: int,
+        dim: int,
+        atol: float,
+        rtol: float,
+        max_steps: int,
+        throw: bool,
+        solver_name: str,
+        _rdtype,
+    ) -> Callable:
+        """Build and cache an adaptive diffrax-based evolve solver."""
+        solver = diffrax.Dopri8() if solver_name == "dopri8" else diffrax.Dopri5()
+        stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
+        _coeff_fns = coeff_fns
+
+        @eqx.filter_jit
+        def _solve(neg_iH_split, params, t0, t1):
+            """Solve dU/dt = sum_i f_i(p_i, t) * (-iH_i) * U from t0 to t1.
+
+            ``neg_iH_split`` has shape ``(n_terms, 2, dim, dim)`` with
+            ``[:, 0]`` = Re(-iH_i) and ``[:, 1]`` = Im(-iH_i).
+            ``params`` is a list/tuple of length ``n_terms`` carrying
+            each term's coefficient parameters.  The state ``y`` has
+            shape ``(2, dim, dim)`` with ``y[0] = Re(U)`` and
+            ``y[1] = Im(U)``.
+            """
+            A_all = neg_iH_split[:, 0]
+            B_all = neg_iH_split[:, 1]
+
+            def rhs(t, y, args):
+                # Each coefficient function must return a scalar value; some
+                # call sites pass a shape-(1,) param array, so coerce to a
+                # true scalar before stacking.
+                c = jnp.stack(
+                    [
+                        jnp.asarray(_coeff_fns[i](args[i], t)).reshape(())
+                        for i in range(n_terms)
+                    ]
+                )
+                u_re = y[0]
+                u_im = y[1]
+                A_eff = jnp.tensordot(c, A_all, axes=1)
+                B_eff = jnp.tensordot(c, B_all, axes=1)
+                du_re = A_eff @ u_re - B_eff @ u_im
+                du_im = A_eff @ u_im + B_eff @ u_re
+                return jnp.stack([du_re, du_im], axis=0)
+
+            y0 = jnp.stack(
+                [
+                    jnp.eye(dim, dtype=_rdtype),
+                    jnp.zeros((dim, dim), dtype=_rdtype),
+                ],
+                axis=0,
+            )
+
+            sol = diffrax.diffeqsolve(
+                diffrax.ODETerm(rhs),
+                solver,
+                t0=t0,
+                t1=t1,
+                dt0=None,
+                y0=y0,
+                args=params,
+                stepsize_controller=stepsize_controller,
+                max_steps=max_steps,
+                throw=throw,
+            )
+
+            y_final = sol.ys[0]
+            U = y_final[0] + 1j * y_final[1]
+
+            if not throw:
+                successful = sol.result == diffrax.RESULTS.successful
+                U = jnp.where(successful, U, jnp.full_like(U, jnp.nan))
+            return U
+
+        return cls._store_evolve_solver(cache_key, _solve)
 
     @staticmethod
     def _partial_trace_single(
@@ -240,163 +537,162 @@ class Yaqsi:
         name: Optional[str] = None,
         **odeint_kwargs: Any,
     ) -> Callable:
-        """Gate factory for time-dependent Hamiltonian evolution.
+        """Gate factory for time-dependent (multi-term) Hamiltonian evolution.
 
-        Solves the matrix ODE ``dU/dt = -i f(params, t) H * U`` with
-        ``U(0) = I`` using ``diffrax.diffeqsolve`` (Dopri8 adaptive RK).
+        Solves the matrix ODE
 
-        To avoid diffrax's experimental (and potentially incorrect) complex
-        dtype path, the ODE is reformulated in real arithmetic.  Writing
-        ``-iH = A + iB`` (real and imaginary parts) and ``U = U_re + i U_im``,
-        the system becomes::
+            dU/dt = -i [\\sum_i f_i(params_i, t) * H_i] * U,    U(0) = I
 
-            d(U_re)/dt = f(p,t) * (A @ U_re - B @ U_im)
-            d(U_im)/dt = f(p,t) * (A @ U_im + B @ U_re)
+        with ``diffrax.diffeqsolve`` (Dopri8 adaptive RK).  The Hamiltonian
+        may contain one or more ``coeff_fn * Hermitian`` terms (see
+        :class:`ParametrizedHamiltonian`); the single-term case is the
+        usual ``coeff_fn * Hermitian`` and is fully backward compatible.
 
-        The state is stacked as a ``(2, dim, dim)`` real array, integrated
-        with diffrax in pure ``float64`` (or ``float32`` when x64 is
-        disabled), and recombined into a complex unitary at the end.
+        Implementation notes:
 
-        Performance improvements over the previous ``jax.experimental.ode``
-        implementation:
+        - To avoid diffrax's experimental complex dtype path, the ODE is
+          reformulated in real arithmetic.  Writing ``-iH_i = A_i + i B_i``
+          and ``U = U_re + i U_im``, each term contributes::
 
-        Uses diffrax — a modern, well-maintained JAX ODE library with
-        better XLA compilation, adjoint methods, and step-size control.
-        The JIT-compiled solver is cached per coefficient function so
-        that multiple ``evolve()`` calls with the same pulse shape (but
-        different Hamiltonian matrices or parameters) reuse the same
-        compiled XLA program.  This avoids O(n_gates) JIT compilations
-        during pulse-mode tape recording.
-        Pre-computes ``-i*H`` once and splits into real/imaginary parts
-        to avoid complex arithmetic inside the ODE RHS.
-        Avoids dynamic ``jnp.where`` branching for the time span.
+              d(U_re)/dt += f_i(p_i,t) * (A_i @ U_re - B_i @ U_im)
+              d(U_im)/dt += f_i(p_i,t) * (A_i @ U_im + B_i @ U_re)
 
-        TODO: switch backonce diffrax is stable with complex arithmetic
+        - ``-iH_i`` is precomputed once per term and stacked into a
+          ``(n_terms, 2, dim, dim)`` real array, contracted via
+          ``einsum`` against the per-step coefficient vector
+          ``c = [f_0(p_0,t), ..., f_{n-1}(p_{n-1},t)]``.
+
+        - The JIT-compiled solver is cached per coefficient-function code
+          tuple (and ``dim``, tolerances) so multiple ``evolve()`` calls
+          with the same pulse shape — but different Hamiltonian matrices
+          or parameters — reuse the same compiled XLA program.
+
+        TODO: switch back once diffrax is stable with complex arithmetic.
 
         Args:
-            ph: A :class:`ParametrizedHamiltonian` holding the coefficient
-                function, the Hamiltonian matrix, and wire indices.
-            **odeint_kwargs: ``atol`` and ``rtol`` for the step-size controller.
-        """
-        H_mat = ph.H_mat
-        coeff_fn = ph.coeff_fn
-        wires = ph.wires
-        dim = H_mat.shape[0]
+            ph: A :class:`ParametrizedHamiltonian` (one or more terms).
+            **odeint_kwargs: Keyword arguments forwarded to
+                ``diffrax.diffeqsolve``.  Recognised keys:
 
-        # Pre-compute -i*H and split into real / imaginary parts so the
-        # ODE RHS uses only real arithmetic (avoids diffrax complex warning).
-        neg_iH = -1j * H_mat
-        neg_iH_re = jnp.real(neg_iH)  # A = Re(-iH)
-        neg_iH_im = jnp.imag(neg_iH)  # B = Im(-iH)
-        # Stack as (2, dim, dim): [A, B]
-        neg_iH_split = jnp.stack([neg_iH_re, neg_iH_im], axis=0)
+                - ``atol``, ``rtol`` — absolute/relative tolerances for the
+                  step-size controller (default ``1.4e-8`` in fp32 mode,
+                  ``1.0e-10`` in fp64 mode).
+                - ``max_steps`` — hard cap on accepted ODE steps
+                  (default :attr:`Yaqsi._solver_defaults['max_steps']`,
+                  currently ``2**14``).  Increase this if the integrator
+                  raises ``MaxStepsReached`` for a stiff/oscillatory
+                  pulse Hamiltonian.
+                - ``throw`` — whether to raise on solver failure
+                  (default :attr:`Yaqsi._solver_defaults['throw']`,
+                  currently ``True``).  When ``False``, a failed
+                  integration returns a NaN-filled unitary instead of
+                  raising; this is the recommended setting for inner
+                  loops of an optimiser (e.g. QOC Stage 0) so a single
+                  pathological candidate cannot abort the whole run.
+        """
+        coeff_fns = ph.coeff_fns  # tuple of callables
+        H_mats = ph.H_mats  # tuple of (dim, dim)
+        wires = ph.wires
+        n_terms = ph.n_terms
+        dim = H_mats[0].shape[0]
+
+        # Pre-compute -i*H_i for each term and split into real / imaginary
+        # parts so the ODE RHS uses only real arithmetic.  Final shape:
+        # (n_terms, 2, dim, dim).
+        neg_iH_split_per_term = []
+        for H_mat in H_mats:
+            neg_iH = -1j * H_mat
+            neg_iH_split_per_term.append(
+                jnp.stack([jnp.real(neg_iH), jnp.imag(neg_iH)], axis=0)
+            )
+        neg_iH_split = jnp.stack(neg_iH_split_per_term, axis=0)
 
         # Real dtype matching the precision mode
+        # consider decreasing if no convergence
         _rdtype = jnp.float64 if jax.config.x64_enabled else jnp.float32
 
-        atol = odeint_kwargs.pop("atol", 1.4e-8)
-        rtol = odeint_kwargs.pop("rtol", 1.4e-8)
+        # Pick tolerances according to precision + some headroom
+        atol, rtol, max_steps, throw, solver_name, magnus_steps = (
+            cls._parse_evolve_solver_options(odeint_kwargs)
+        )
 
-        # Look up or build the JIT-compiled solver for this (coeff_fn, dim)
-        # combination.  All pulse gates with the same pulse shape function
-        # (e.g. all RX gates share Sx, all RY share Sy) reuse a single
-        # compiled XLA program, with neg_iH_split passed as a regular
-        # argument rather than captured in the closure.  This turns
-        # O(n_gates) JIT compilations into O(n_distinct_pulse_shapes)
-        # compilations.
-        #
-        # We key on the function's __code__ object rather than id(coeff_fn)
-        # because each pulse gate call creates a new closure (capturing the
-        # rotation angle `w`), but the underlying code is identical.  Under
-        # JIT, the captured `w` is a tracer anyway, so the compiled program
-        # is generic over `w`.
-        cache_key = (id(coeff_fn.__code__), dim, atol, rtol)
+        # Cache key:  identity of every coeff fn's code object (same shape
+        # of pulse fns -> same JIT program) plus dim, tolerances, and
+        # solver budget / throw flag (different budgets mean different
+        # XLA programs).
+        cache_key = (
+            tuple(id(fn.__code__) for fn in coeff_fns),
+            dim,
+            atol,
+            rtol,
+            max_steps,
+            throw,
+            solver_name,
+            magnus_steps,
+        )
 
         with cls._evolve_solver_cache_lock:
             _solve = cls._evolve_solver_cache.get(cache_key)
-
         if _solve is None:
-            solver = diffrax.Dopri8()
-            stepsize_controller = diffrax.PIDController(atol=atol, rtol=rtol)
-
-            @jax.jit
-            def _solve(neg_iH_split, params, t0, t1):
-                """Solve dU/dt = f(params,t) * (-iH) * U from t0 to t1.
-
-                The state y has shape (2, dim, dim) where y[0] = Re(U)
-                and y[1] = Im(U).  The Hamiltonian data neg_iH_split
-                has the same layout: [Re(-iH), Im(-iH)].
-                """
-                A = neg_iH_split[0]  # Re(-iH)
-                B = neg_iH_split[1]  # Im(-iH)
-
-                def rhs(t, y, args):
-                    c = coeff_fn(args, t)
-                    u_re = y[0]
-                    u_im = y[1]
-                    # d(U_re)/dt = c * (A @ U_re - B @ U_im)
-                    du_re = c * (A @ u_re - B @ u_im)
-                    # d(U_im)/dt = c * (A @ U_im + B @ U_re)
-                    du_im = c * (A @ u_im + B @ u_re)
-                    return jnp.stack([du_re, du_im], axis=0)
-
-                # Initial condition: U(0) = I  ->  Re(I) = I, Im(I) = 0
-                y0 = jnp.stack(
-                    [
-                        jnp.eye(dim, dtype=_rdtype),
-                        jnp.zeros((dim, dim), dtype=_rdtype),
-                    ],
-                    axis=0,
-                )  # (2, dim, dim)
-
-                sol = diffrax.diffeqsolve(
-                    diffrax.ODETerm(rhs),
-                    solver,
-                    t0=t0,
-                    t1=t1,
-                    dt0=None,  # let the controller choose the initial step
-                    y0=y0,
-                    args=params,
-                    stepsize_controller=stepsize_controller,
-                    max_steps=4096,
+            if solver_name in ("magnus2", "magnus4"):
+                _solve = cls._build_magnus_evolve_solver(
+                    cache_key=cache_key,
+                    coeff_fns=coeff_fns,
+                    n_terms=n_terms,
+                    dim=dim,
+                    solver_name=solver_name,
+                    magnus_steps=magnus_steps,
+                )
+            else:
+                _solve = cls._build_diffrax_evolve_solver(
+                    cache_key=cache_key,
+                    coeff_fns=coeff_fns,
+                    n_terms=n_terms,
+                    dim=dim,
+                    atol=atol,
+                    rtol=rtol,
+                    max_steps=max_steps,
+                    throw=throw,
+                    solver_name=solver_name,
+                    _rdtype=_rdtype,
                 )
 
-                # sol.ys has shape (1, 2, dim, dim) for SaveAt(t1=True)
-                y_final = sol.ys[0]  # (2, dim, dim)
-                # Recombine into complex unitary
-                return y_final[0] + 1j * y_final[1]
-
-            with cls._evolve_solver_cache_lock:
-                # Double-check to avoid overwriting a concurrent build
-                existing = cls._evolve_solver_cache.get(cache_key)
-                if existing is not None:
-                    _solve = existing
-                else:
-                    cls._evolve_solver_cache[cache_key] = _solve
-
         def _apply(coeff_args, T) -> Operation:
-            """Evolve under the time-dependent Hamiltonian.
+            """Evolve under the (multi-term) time-dependent Hamiltonian.
 
             Args:
-                coeff_args: List of parameter sets, one per Hamiltonian term.
-                    For static Hamiltonians, ``coeff_args[0]`` is
-                    forwarded to ``coeff_fn(params, t)`` as the first argument.
-                T: Total evolution time.  If scalar, the ODE is solved on
-                    ``[0, T]``.  If a 2-element array, on ``[T[0], T[1]]``.
+                coeff_args: List/tuple of parameter sets, one per term.
+                    For single-term Hamiltonians the legacy form
+                    ``[params]`` works unchanged; ``params`` is forwarded
+                    to the sole coefficient function.
+                T: Total evolution time.  Scalar -> integrate on
+                    ``[0, T]``; 2-element -> integrate on ``[T[0], T[1]]``.
 
             Returns:
                 An :class:`Operation` wrapping the computed unitary.
             """
-            # PennyLane convention: coeff_args is a list of param-sets,
-            # one per term.  Single term -> unpack the first.
-            params = (
-                coeff_args[0] if isinstance(coeff_args, (list, tuple)) else coeff_args
-            )
+            # Normalise to a tuple of length n_terms.  Accept a bare
+            # single-term arg for backward compat.
+            if isinstance(coeff_args, (list, tuple)):
+                params = tuple(coeff_args)
+            else:
+                params = (coeff_args,)
 
-            # Build time span — resolve at Python level to avoid traced branching
-            T_arr = jnp.asarray(T, dtype=jnp.float64)
+            if len(params) != n_terms:
+                raise ValueError(
+                    f"Expected {n_terms} parameter set(s) for a "
+                    f"{n_terms}-term ParametrizedHamiltonian, "
+                    f"got {len(params)}."
+                )
+
+            # Build time span — resolve at Python level to avoid traced
+            # branching.  ``T`` is either a Python scalar / 0-d array (=> integrate
+            # on [0, T]) or a 2-element sequence/array (=> integrate on [T[0], T[1]]).
+            # Let ``_solve`` cast t0/t1 to its working dtype; we only need the
+            # array form to know the rank.
+            T_arr = jnp.asarray(T, dtype=_rdtype)
             if T_arr.ndim == 0:
-                t0 = jnp.float64(0.0)
+                t0 = _rdtype(0.0)
                 t1 = T_arr
             else:
                 t0 = T_arr[0]
@@ -571,7 +867,7 @@ class Script:
         except Exception:
             log.debug("Failed to read /proc/meminfo. Falling back to 4 GiB")
 
-        log.debug(f"Available memory: {mem/1024**3:.1f} GB")
+        log.debug(f"Available memory: {mem / 1024**3:.1f} GB")
         return mem
 
     @staticmethod
@@ -727,8 +1023,13 @@ class Script:
             # Explicitly drop the chunk reference so XLA can free the
             # chunk's device memory before computing the next one.
             del chunk_result, chunk_args
-            # Trigger garbage collection to release device buffers
-            jax.clear_caches()
+            # Optionally trigger a JAX cache clear to release device
+            # buffers — disabled by default because it forces full
+            # recompilation of ``batched_fn`` on every subsequent
+            # chunk.  Set ``Yaqsi._clear_caches_between_chunks = True``
+            # if you actually observe OOM growth across chunks.
+            if Yaqsi._clear_caches_between_chunks:
+                jax.clear_caches()
 
         return output
 
@@ -1109,8 +1410,7 @@ class Script:
             return jnp.array(results)
 
         raise ValueError(
-            f"Shot simulation is only supported for 'probs' and 'expval', "
-            f"got {type!r}."
+            f"Shot simulation is only supported for 'probs' and 'expval', got {type!r}."
         )
 
     def execute(
@@ -1284,8 +1584,15 @@ class Script:
             UnitaryGates.batch_gate_error,
         )
 
+        # When called under an outer JAX transform (e.g. ``jacrev``) the
+        # cached ``batched_fn`` from a previous outer trace would leak that
+        # trace's tracers.  Bypass the per-Script wrapper cache in that
+        # case; XLA-level compilation caching is unaffected.
+        # in_transform = _args_contain_tracer(args)
+
         # --- Cache-hit fast path (no shots) ---
         cached = self._jit_cache.get(cache_key)
+        # if cached is not None and shots is None and not in_transform:
         if cached is not None and shots is None:
             batched_fn, n_qubits, use_density = cached
             # Check if we already determined the chunk size for this
@@ -1365,7 +1672,7 @@ class Script:
             if cached_shot is not None:
                 batched_fn = cached_shot[0]
             else:
-                batched_fn = jax.jit(
+                batched_fn = eqx.filter_jit(
                     jax.vmap(_single_execute_shots, in_axes=shot_in_axes)
                 )
                 self._jit_cache[shot_cache_key] = (batched_fn, n_qubits, use_density)
@@ -1382,7 +1689,7 @@ class Script:
                 single_tape, n_qubits, type, obs, use_density
             )
 
-        # Wrapping the vmapped function in jax.jit has two effects:
+        # Wrapping the vmapped function in eqx.filter_jit has two effects:
         # 1. Multi-core utilisation — the JIT-compiled XLA program can
         #    use intra-op parallelism to distribute independent SIMD lanes
         #    across CPU threads, unlike an eager vmap which runs
@@ -1398,9 +1705,15 @@ class Script:
         # cache check at the top of this method.
         # NOTE: when altering properties of the model, this might not get re-compiled
         # TODO: we might want to rework the data_reupload mechanism at some point
-        batched_fn = jax.jit(jax.vmap(_single_execute, in_axes=in_axes))
+        batched_fn = eqx.filter_jit(jax.vmap(_single_execute, in_axes=in_axes))
         # Cache the function together with metadata for fast-path memory
-        # checks on subsequent calls.
+        # checks on subsequent calls.  Skip caching when the call is under
+        # an outer JAX transform (the closure of ``_single_execute``
+        # captures ``n_qubits``/``obs``/``kwargs`` of this trace; reusing
+        # the wrapper under a different outer trace would leak its
+        # tracers).
+        # if not in_transform:
+        #     self._jit_cache[cache_key] = (batched_fn, n_qubits, use_density)
         self._jit_cache[cache_key] = (batched_fn, n_qubits, use_density)
 
         if chunk_size >= batch_size:

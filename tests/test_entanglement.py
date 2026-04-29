@@ -156,11 +156,11 @@ def test_mw_measure() -> None:
             + f"Expected Result: {test_case['result']},\t"
             + f"Error: {error}"
         )
-        assert (
-            error < tolerance
-        ), f"Entangling-capability of circuit {test_case['circuit_type']} is not\
+        assert error < tolerance, (
+            f"Entangling-capability of circuit {test_case['circuit_type']} is not\
             {test_case['result']} but {ent_cap} instead.\
             Deviation {(error * 100):.1f}%>{tolerance * 100}%"
+        )
 
     references = sorted(
         [
@@ -259,11 +259,11 @@ def test_bell_measure() -> None:
             + f"Expected Result: {test_case['result']},\t"
             + f"Error: {error}"
         )
-        assert (
-            error < tolerance
-        ), f"Entangling-capability of circuit {test_case['circuit_type']} is not\
+        assert error < tolerance, (
+            f"Entangling-capability of circuit {test_case['circuit_type']} is not\
             {test_case['result']} but {ent_cap} instead.\
             Deviation {(error * 100):.1f}%>{tolerance * 100}%"
+        )
 
     references = sorted(
         [
@@ -371,8 +371,10 @@ def test_relative_entropy_order() -> None:
 
     assert all(
         entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
-    ), f"Order of entanglement should be\
+    ), (
+        f"Order of entanglement should be\
         {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."
+    )
 
 
 @pytest.mark.smoketest
@@ -399,8 +401,10 @@ def test_entanglement_of_formation_order() -> None:
 
     assert all(
         entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
-    ), f"Order of entanglement should be\
+    ), (
+        f"Order of entanglement should be\
         {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."
+    )
 
 
 @pytest.mark.smoketest
@@ -427,8 +431,10 @@ def test_concentratable_entanglement_order() -> None:
 
     assert all(
         entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
-    ), f"Order of entanglement should be\
+    ), (
+        f"Order of entanglement should be\
         {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."
+    )
 
 
 @pytest.mark.smoketest
@@ -455,5 +461,7 @@ def test_concentratable_entanglement_estimation_order() -> None:
 
     assert all(
         entanglement[i] <= entanglement[i + 1] for i in range(len(entanglement) - 1)
-    ), f"Order of entanglement should be\
+    ), (
+        f"Order of entanglement should be\
         {[(c, ent) for c, ent in zip(circuits, entanglement, strict=True)]}."
+    )

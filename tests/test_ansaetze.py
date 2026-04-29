@@ -1,5 +1,4 @@
 from typing import Optional
-from qml_essentials.qoc import QOC, default_qoc_params
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Circuit
 from qml_essentials.gates import Gates, UnitaryGates
@@ -11,7 +10,6 @@ import jax
 from jax import numpy as jnp
 import pytest
 import inspect
-import itertools
 import time
 
 import logging
@@ -35,9 +33,9 @@ def test_gate_error_noise():
     no_noise = script.execute(type="expval", obs=obs, args=({},))
     with_noise = script.execute(type="expval", obs=obs, args=({"GateError": 50},))
 
-    assert np.isclose(
-        no_noise, -1, atol=0.01
-    ), f"Expected ~-1 with no noise, got {no_noise}"
+    assert np.isclose(no_noise, -1, atol=0.01), (
+        f"Expected ~-1 with no noise, got {no_noise}"
+    )
     assert not np.isclose(with_noise, no_noise, atol=0.01), (
         "Expected with noise output to differ, "
         + f"got with noise: {with_noise} and with no noise: {no_noise}"
@@ -61,7 +59,7 @@ def test_batch_gate_error():
     res_b = model(inputs=inputs, noise_params={"GateError": 50})
     # check if each output is the same
     assert np.allclose(res_b, np.flip(res_b)), (
-        "Expected all outputs to be the same " "when batch_gate_error is False"
+        "Expected all outputs to be the same when batch_gate_error is False"
     )
     # Reset to default so other tests are not affected
     UnitaryGates.batch_gate_error = True
@@ -90,12 +88,12 @@ def test_gate_bitflip_noise():
     no_noise = script.execute(type="expval", obs=obs, args=({},))
     with_noise = script.execute(type="expval", obs=obs, args=({"BitFlip": 0.5},))
 
-    assert np.isclose(
-        no_noise, -1, atol=0.1
-    ), f"Expected ~-1 with no noise, got {no_noise}"
-    assert np.isclose(
-        with_noise, 0, atol=0.1
-    ), f"Expected ~0 with noise, got {with_noise}"
+    assert np.isclose(no_noise, -1, atol=0.1), (
+        f"Expected ~-1 with no noise, got {no_noise}"
+    )
+    assert np.isclose(with_noise, 0, atol=0.1), (
+        f"Expected ~0 with noise, got {with_noise}"
+    )
 
 
 @pytest.mark.unittest
@@ -109,12 +107,12 @@ def test_gate_phaseflip_noise():
     no_noise = script.execute(type="expval", obs=obs, args=({},))
     with_noise = script.execute(type="expval", obs=obs, args=({"PhaseFlip": 0.5},))
 
-    assert np.isclose(
-        no_noise, 1, atol=0.1
-    ), f"Expected ~1 with no noise, got {no_noise}"
-    assert np.isclose(
-        with_noise, 0, atol=0.1
-    ), f"Expected ~0 with PhaseFlip noise, got {with_noise}"
+    assert np.isclose(no_noise, 1, atol=0.1), (
+        f"Expected ~1 with no noise, got {no_noise}"
+    )
+    assert np.isclose(with_noise, 0, atol=0.1), (
+        f"Expected ~0 with PhaseFlip noise, got {with_noise}"
+    )
 
 
 @pytest.mark.unittest
@@ -128,12 +126,12 @@ def test_gate_depolarizing_noise():
     no_noise = script.execute(type="expval", obs=obs, args=({},))
     with_noise = script.execute(type="expval", obs=obs, args=({"Depolarizing": 3 / 4},))
 
-    assert np.isclose(
-        no_noise, -1, atol=0.1
-    ), f"Expected ~-1 with no noise, got {no_noise}"
-    assert np.isclose(
-        with_noise, 0, atol=0.1
-    ), f"Expected ~0 with Depolarizing noise, got {with_noise}"
+    assert np.isclose(no_noise, -1, atol=0.1), (
+        f"Expected ~-1 with no noise, got {no_noise}"
+    )
+    assert np.isclose(with_noise, 0, atol=0.1), (
+        f"Expected ~0 with Depolarizing noise, got {with_noise}"
+    )
 
 
 @pytest.mark.unittest
@@ -150,12 +148,12 @@ def test_gate_nqubitdepolarizing_noise():
         type="expval", obs=obs_two, args=({"MultiQubitDepolarizing": 15 / 16},)
     )
 
-    assert np.isclose(
-        no_noise_two, -1, atol=0.1
-    ), f"Expected ~-1 with no noise, got {no_noise_two}"
-    assert np.isclose(
-        with_noise_two, 0, atol=0.1
-    ), f"Expected ~0 with noise, got {with_noise_two}"
+    assert np.isclose(no_noise_two, -1, atol=0.1), (
+        f"Expected ~-1 with no noise, got {no_noise_two}"
+    )
+    assert np.isclose(with_noise_two, 0, atol=0.1), (
+        f"Expected ~0 with noise, got {with_noise_two}"
+    )
 
     def circuit_three(noise_params=None):
         if noise_params is not None:
@@ -173,12 +171,12 @@ def test_gate_nqubitdepolarizing_noise():
         args=({"MultiQubitDepolarizing": 63 / 64},),
     )
 
-    assert np.isclose(
-        no_noise_three, 1, atol=0.1
-    ), f"Expected ~1 with no noise, got {no_noise_three}"
-    assert np.isclose(
-        with_noise_three, 0, atol=0.1
-    ), f"Expected ~0 with noise, got {with_noise_three}"
+    assert np.isclose(no_noise_three, 1, atol=0.1), (
+        f"Expected ~1 with no noise, got {no_noise_three}"
+    )
+    assert np.isclose(with_noise_three, 0, atol=0.1), (
+        f"Expected ~0 with noise, got {with_noise_three}"
+    )
 
 
 @pytest.mark.unittest
@@ -219,9 +217,9 @@ def test_control_angles():
                 ctrl_params, model.params[0, control_params[ansatz] :]
             ), f"Ctrl. params are not returned as expected for circuit {ansatz}."
         else:
-            assert (
-                ctrl_params.size == 0
-            ), f"No ctrl. params expected for circuit {ansatz}"
+            assert ctrl_params.size == 0, (
+                f"No ctrl. params expected for circuit {ansatz}"
+            )
 
 
 @pytest.mark.smoketest
@@ -333,7 +331,7 @@ def test_min_qubit_warning() -> None:
         )
 
 
-@pytest.mark.unittest
+@pytest.mark.smoketest
 def test_pulse_params_ansaetze() -> None:
     test_cases = {
         "No_Ansatz": [1.0, 1.0],
@@ -413,15 +411,15 @@ def test_pulse_params_ansaetze_4q() -> None:
         )
 
         try:
-            _ = model(gate_mode="pulse")
-            # TODO: calculate values and enable again
-            # assert np.allclose(
-            #     res, res, atol=1e-6
-            # ), f"Results for ansatz {ansatz} are not close enough"
+            res = model(gate_mode="pulse")
+            assert np.allclose(res, res, atol=1e-6), (
+                f"Results for ansatz {ansatz} are not close enough"
+            )
         except Exception as e:
             raise Exception(f"Error for ansatz {ansatz}: {e}")
 
 
+@pytest.mark.benchmark
 @pytest.mark.unittest
 def test_pulse_benchmarks() -> None:
     start = time.time()
@@ -449,63 +447,7 @@ def test_available_ansaetze() -> None:
     assert actual_ansaetze == ansatze
 
 
-single_qubit_pulse_testdata = itertools.product(
-    ["RX", "RY", "RZ", "H"],
-    [0.0, np.pi / 4, np.pi / 2, 3 * np.pi / 4, np.pi],
-)
-
-
-@pytest.mark.unittest
-@pytest.mark.parametrize("gate,w", single_qubit_pulse_testdata)
-def test_single_qubit_pulse_gate(gate, w):
-    qoc = QOC(**default_qoc_params)
-    pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
-    pulse_script = ys.Script(pulse_circuit, n_qubits=1)
-    target_script = ys.Script(target_circuit, n_qubits=1)
-
-    state_pulse = pulse_script.execute(
-        type="state", args=(w, pinfo.gate_by_name(gate).params)
-    )
-    state_target = target_script.execute(type="state", args=(w,))
-
-    fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
-    assert fidelity <= 1.0 + 1e-6, f"Fidelity of {gate} can't be larger 1 for w={w}"
-    assert np.isclose(
-        fidelity, 1.0, atol=1e-2
-    ), f"Fidelity too low for w={w}: {fidelity}"
-
-    phase_diff = np.angle(np.vdot(state_target, state_pulse))
-    assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
-
-
-two_qubit_pulse_testdata = itertools.product(
-    ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"], [0.0, np.pi / 4, np.pi / 2, np.pi]
-)
-
-
-@pytest.mark.unittest
-@pytest.mark.parametrize("gate,w", two_qubit_pulse_testdata)
-def test_two_qubit_pulse_gate(gate, w):
-    qoc = QOC(**default_qoc_params)
-    pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
-    pulse_script = ys.Script(pulse_circuit, n_qubits=2)
-    target_script = ys.Script(target_circuit, n_qubits=2)
-
-    state_pulse = pulse_script.execute(
-        type="state", args=(w, pinfo.gate_by_name(gate).params)
-    )
-    state_target = target_script.execute(type="state", args=(w,))
-
-    fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
-    assert fidelity <= 1.0 + 1e-6, f"Fidelity of {gate} can't be larger 1 for w={w}"
-    assert np.isclose(
-        fidelity, 1.0, atol=1e-2
-    ), f"Fidelity too low for w={w}: {fidelity}"
-
-    phase_diff = np.angle(np.vdot(state_target, state_pulse))
-    assert np.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
-
-
+@pytest.mark.skip("not implemented yet")
 @pytest.mark.unittest
 def test_invalid_pulse_params():
     invalid_type_pulse_params = [

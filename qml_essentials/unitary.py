@@ -151,9 +151,9 @@ class UnitaryGates:
             AssertionError: If noise_params contains "GateError" but random_key is None.
         """
         if noise_params is not None and noise_params.get("GateError", None) is not None:
-            assert (
-                random_key is not None
-            ), "A random_key must be provided when using GateError"
+            assert random_key is not None, (
+                "A random_key must be provided when using GateError"
+            )
 
             if UnitaryGates.batch_gate_error:
                 random_key, sub_key = safe_random_split(random_key)

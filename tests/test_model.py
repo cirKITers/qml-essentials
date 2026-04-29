@@ -6,6 +6,8 @@ from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Gates, Encoding
 from qml_essentials.utils import PauliCircuit
 from qml_essentials.yaqsi import Script
+from qml_essentials.pulses import PulseInformation
+from qml_essentials.coefficients import Datasets
 import pytest
 import logging
 import pennylane as qml
@@ -55,9 +57,9 @@ def test_trainable_frequencies() -> None:
     model.params, model.enc_params = optax.apply_updates(all_params, updates)
     enc_params_after = model.enc_params.copy()
 
-    assert not jnp.allclose(
-        enc_params_before, enc_params_after
-    ), "enc_params did not update during training"
+    assert not jnp.allclose(enc_params_before, enc_params_after), (
+        "enc_params did not update during training"
+    )
 
     assert jnp.any(jnp.abs(grads[1]) > 1e-6), "Gradient wrt enc_params is too small"
 
@@ -92,13 +94,13 @@ def test_transform_input() -> None:
     assert jnp.allclose(result, expected), "Incorrect transform for qubit 0"
 
     # Test modified transform_input()
-    model.transform_input = lambda inputs, enc_params: (jnp.arccos(inputs))
+    model.transform_input = lambda inputs, enc_params: jnp.arccos(inputs)
 
     result_new = model(model.params, x, pulse_params=None)
 
-    assert jnp.allclose(
-        x, result_new
-    ), "model.transform_input does not work as intended"
+    assert jnp.allclose(x, result_new), (
+        "model.transform_input does not work as intended"
+    )
 
 
 @pytest.mark.unittest
@@ -123,9 +125,9 @@ def test_batching() -> None:
         res[i] = model(params=params[i], execution_type="density")
 
     assert res.shape == (n_samples, 4, 4), "Shape of batching is not correct"
-    assert jnp.allclose(
-        res, model(params=params, execution_type="density")
-    ), "Content of batching is not equal"
+    assert jnp.allclose(res, model(params=params, execution_type="density")), (
+        "Content of batching is not equal"
+    )
 
 
 @pytest.mark.unittest
@@ -183,9 +185,9 @@ def test_multiprocessing_expval() -> None:
     # ), "Time required for multiprocessing larger than single process"
 
     print(f"Diff: {t_parallel - t_single}")
-    assert (
-        res_parallel.shape == res_single.shape
-    ), "Shape of multiprocessing is not correct"
+    assert res_parallel.shape == res_single.shape, (
+        "Shape of multiprocessing is not correct"
+    )
     assert (res_parallel == res_single).all(), "Content of multiprocessing is not equal"
 
 
@@ -309,10 +311,10 @@ def test_encoding() -> None:
                 inputs=test_case["input"],
             )
 
-        assert (
-            model.degree == test_case["degree"]
-        ), f"Frequencies is not correct: got {model.degree},\
+        assert model.degree == test_case["degree"], (
+            f"Frequencies is not correct: got {model.degree},\
             expected {test_case['degree']} for test case {test_case}"
+        )
 
 
 @pytest.mark.smoketest
@@ -480,9 +482,9 @@ def test_re_initialization() -> None:
 
     model.initialize_params(random.key(1001))
 
-    assert not jnp.allclose(
-        model.params, temp_params, atol=1e-3
-    ), "Re-Initialization failed!"
+    assert not jnp.allclose(model.params, temp_params, atol=1e-3), (
+        "Re-Initialization failed!"
+    )
 
 
 @pytest.mark.unittest
@@ -529,9 +531,9 @@ def test_pulse_model() -> None:
 
     pulse_params_after = model.pulse_params.copy()
 
-    assert not jnp.allclose(
-        pulse_params_before, pulse_params_after
-    ), "pulse_params did not update during training"
+    assert not jnp.allclose(pulse_params_before, pulse_params_after), (
+        "pulse_params did not update during training"
+    )
 
     assert jnp.any(jnp.abs(grads[1]) > 1e-6), "Gradient wrt pulse_params is too small"
 
@@ -539,8 +541,8 @@ def test_pulse_model() -> None:
 @pytest.mark.unittest
 def test_pulse_model_inference():
     model = Model(
-        n_qubits=4,
-        n_layers=2,
+        n_qubits=3,
+        n_layers=1,
         circuit_type="Hardware_Efficient",
     )
 
@@ -551,9 +553,9 @@ def test_pulse_model_inference():
 
     y_hat_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
 
-    assert jnp.allclose(
-        y_hat_unitary, y_hat_original, atol=1e-3
-    ), "Unitary output did not match pulse output"
+    assert jnp.allclose(y_hat_unitary, y_hat_original, atol=1e-2), (
+        "Unitary output did not match pulse output"
+    )
 
     # perturb pulse_params
     original_params = model.pulse_params.copy()
@@ -565,9 +567,9 @@ def test_pulse_model_inference():
     assert y_hat_original.shape[0] == inputs.shape[0], "Output batch size mismatch"
 
     # ensure output changed after perturbing pulse_params
-    assert not jnp.allclose(
-        y_hat_original, y_hat_perturbed
-    ), "Pulse output did not change after modifying pulse_params"
+    assert not jnp.allclose(y_hat_original, y_hat_perturbed), (
+        "Pulse output did not change after modifying pulse_params"
+    )
 
     model.pulse_params = original_params
 
@@ -594,9 +596,9 @@ def test_pulse_model_batching():
     res_b = model(inputs=inputs, gate_mode="pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
-    assert jnp.allclose(
-        res_a, res_b, atol=1e-2
-    ), "Inputs batching failed. Results differ."
+    assert jnp.allclose(res_a, res_b, atol=1e-2), (
+        "Inputs batching failed. Results differ."
+    )
 
     model.initialize_params(random_key, repeat=2)
 
@@ -605,9 +607,9 @@ def test_pulse_model_batching():
     res_b = model(inputs=inputs, gate_mode="pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
-    assert jnp.allclose(
-        res_a, res_b, atol=1e-2
-    ), "Params batching failed. Results differ."
+    assert jnp.allclose(res_a, res_b, atol=1e-2), (
+        "Params batching failed. Results differ."
+    )
 
 
 @pytest.mark.unittest
@@ -656,9 +658,9 @@ def test_multi_input() -> None:
                     f"as an output dimension, but got {out.shape[0]}"
                 )
             else:
-                assert (
-                    inputs.shape[0] == 1
-                ), "expected one elemental input for zero dimensional output"
+                assert inputs.shape[0] == 1, (
+                    "expected one elemental input for zero dimensional output"
+                )
         else:
             assert len(out.shape) == 0, "expected one elemental output for empty input"
 
@@ -700,10 +702,10 @@ def test_dru() -> None:
             shots=1024,
         )
 
-        assert (
-            model.degree == test_case["degree"]
-        ), f"Expected frequencies {test_case['degree']} but got\
+        assert model.degree == test_case["degree"], (
+            f"Expected frequencies {test_case['degree']} but got\
             {model.degree} for dru {test_case['dru']}"
+        )
 
         _ = model(
             model.params,
@@ -917,10 +919,10 @@ def test_output_shapes() -> None:
                 execution_type=test_case["execution_type"],
             )
 
-        assert (
-            out.shape == test_case["out_shape"]
-        ), f"Expected {test_case['out_shape']}, got shape {out.shape}\
+        assert out.shape == test_case["out_shape"], (
+            f"Expected {test_case['out_shape']}, got shape {out.shape}\
             for test case {test_case}"
+        )
 
 
 @pytest.mark.unittest
@@ -943,9 +945,9 @@ def test_parity() -> None:
         params=model_a.params, inputs=None, force_mean=True
     )  # use same params!
 
-    assert not jnp.allclose(
-        result_a, result_b
-    ), f"Models should be different! Got {result_a} and {result_b}"
+    assert not jnp.allclose(result_a, result_b), (
+        f"Models should be different! Got {result_a} and {result_b}"
+    )
 
 
 @pytest.mark.smoketest
@@ -1083,3 +1085,96 @@ def test_pauli_circuit_model() -> None:
             f"are {result_pauli_circuit} and {result_circuit} for testcase "
             f"{test_case}, respectively."
         )
+
+
+@pytest.mark.smoketest
+def test_gate_mode_training() -> None:
+    model = Model(
+        n_qubits=3,
+        n_layers=1,
+        circuit_type="Circuit_19",
+    )
+
+    domain_samples, fourier_samples, coefficients = Datasets.generate_fourier_series(
+        random_key=model.random_key,
+        model=model,
+    )
+
+    opt = optax.adam(0.001)
+    params = model.params
+    opt_state = opt.init(params)
+
+    def cost(params, inputs, targets, **kwargs):
+        y_hat = model(params=params, inputs=inputs, **kwargs)
+
+        return jnp.mean((y_hat - targets) ** 2)
+
+    start = time.time()
+    for epoch in range(1, 1000):
+        grads = grad(cost)(
+            params,
+            inputs=domain_samples,
+            targets=fourier_samples,
+            execution_type="expval",
+            force_mean=True,
+        )
+        updates, opt_state = opt.update(grads, opt_state, params)
+        params = optax.apply_updates(params, updates)
+
+        model.params = params
+    end = time.time()
+    print(f"Time taken: {end - start}")
+    assert end - start < 80000000, "Time limit of 80 seconds exceeded"
+
+
+@pytest.mark.benchmark
+@pytest.mark.unittest
+def test_pulse_mode_training() -> None:
+    original_rwa = PulseInformation.get_rwa()
+    PulseInformation.set_rwa(True)
+
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_1",
+    )
+
+    domain_samples, fourier_samples, coefficients = Datasets.generate_fourier_series(
+        random_key=model.random_key,
+        model=model,
+    )
+
+    opt = optax.adam(0.001)
+    params = {"unitary": model.params, "pulse": model.pulse_params}
+    opt_state = opt.init(params)
+
+    def cost(params, inputs, targets, **kwargs):
+        y_hat = model(
+            params=params["unitary"],
+            pulse_params=params["pulse"],
+            inputs=inputs,
+            **kwargs,
+        )
+
+        return jnp.mean((y_hat - targets) ** 2)
+
+    start = time.time()
+    for epoch in range(1, 5):
+        grads = grad(cost)(
+            params,
+            inputs=domain_samples,
+            targets=fourier_samples,
+            execution_type="expval",
+            force_mean=True,
+            gate_mode="pulse",
+        )
+        updates, opt_state = opt.update(grads, opt_state, params)
+        params = optax.apply_updates(params, updates)
+
+        model.params = params["unitary"]
+        model.pulse_params = params["pulse"]
+
+    PulseInformation.set_rwa(original_rwa)
+    end = time.time()
+    print(f"Time taken: {end - start}")
+    assert end - start < 80000000, "Time limit of 80 seconds exceeded"

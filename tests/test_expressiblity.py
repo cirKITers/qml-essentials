@@ -106,9 +106,9 @@ def test_divergence() -> None:
         # Calculate the mean (over all inputs, if required)
         kl_dist = Expressibility.kullback_leibler_divergence(y_haar_a, y_haar_b).mean()
 
-        assert math.isclose(
-            kl_dist.mean(), test_case["result"], abs_tol=1e-3
-        ), "Distance between two identical haar measures not equal."
+        assert math.isclose(kl_dist.mean(), test_case["result"], abs_tol=1e-3), (
+            "Distance between two identical haar measures not equal."
+        )
 
 
 @pytest.mark.unittest
@@ -163,11 +163,11 @@ def test_expressibility(layers) -> None:
             + f"Expected Result: {test_case['result']},\t"
             + f"Error: {(error * 100):.1f}%"
         )
-        assert (
-            error < tolerance
-        ), f"Expressibility of circuit {test_case['circuit_type']} is not\
+        assert error < tolerance, (
+            f"Expressibility of circuit {test_case['circuit_type']} is not\
             {test_case['result']} but {kl_dist} instead.\
             Deviation {(error * 100):.1f}% > {tolerance * 100}%"
+        )
 
     references = sorted(
         [
