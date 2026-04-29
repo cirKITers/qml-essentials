@@ -184,9 +184,9 @@ class TestEvolve:
         script_p = Script(f=param_circuit)
         state_param = script_p.execute(type="state", args=(T_val,))
 
-        assert jnp.allclose(
-            state_static, state_param, atol=1e-6
-        ), f"Static: {state_static}, Param: {state_param}"
+        assert jnp.allclose(state_static, state_param, atol=1e-6), (
+            f"Static: {state_static}, Param: {state_param}"
+        )
 
     @pytest.mark.unittest
     def test_evolve_parametrized_unitarity(self) -> None:
@@ -231,9 +231,9 @@ class TestEvolve:
         # ⟨X⟩ = cos(2p) for H exp(-ipZ)|0⟩, so d⟨X⟩/dp = -2 sin(2p)
         grad = jax.grad(cost)(p_val)
         expected_grad = -2.0 * jnp.sin(2.0 * p_val)
-        assert jnp.allclose(
-            grad, expected_grad, atol=1e-4
-        ), f"Grad: {grad}, expected: {expected_grad}"
+        assert jnp.allclose(grad, expected_grad, atol=1e-4), (
+            f"Grad: {grad}, expected: {expected_grad}"
+        )
 
     @pytest.mark.unittest
     def test_evolve_parametrized_on_tape(self) -> None:
@@ -491,7 +491,6 @@ class TestMeasurement:
 
 
 class TestPennylane:
-
     @pytest.mark.unittest
     @pytest.mark.parametrize(
         "gate_name,yaqsi_gate,pl_gate,theta,prep_both",
@@ -531,9 +530,9 @@ class TestPennylane:
         probs_ours = np.array(script.execute(type="probs"))
         probs_pl = _pennylane_probs(pl_circuit)
 
-        assert np.allclose(
-            probs_ours, probs_pl, atol=1e-10
-        ), f"{gate_name} mismatch:\nours = {probs_ours}\nPL   = {probs_pl}"
+        assert np.allclose(probs_ours, probs_pl, atol=1e-10), (
+            f"{gate_name} mismatch:\nours = {probs_ours}\nPL   = {probs_pl}"
+        )
 
     @pytest.mark.unittest
     def test_rot_matches_pennylane(self) -> None:
@@ -550,9 +549,9 @@ class TestPennylane:
         probs_ours = np.array(script.execute(type="probs"))
         probs_pl = _pennylane_probs(pl_circuit, n_qubits=1)
 
-        assert np.allclose(
-            probs_ours, probs_pl, atol=1e-10
-        ), f"Rot mismatch:\nours = {probs_ours}\nPL   = {probs_pl}"
+        assert np.allclose(probs_ours, probs_pl, atol=1e-10), (
+            f"Rot mismatch:\nours = {probs_ours}\nPL   = {probs_pl}"
+        )
 
     @pytest.mark.unittest
     def test_rot_decomposition_matches_individual_gates(self) -> None:
@@ -579,9 +578,9 @@ class TestPennylane:
             if abs(state_dec[0]) > 1e-10
             else state_rot[1] / state_dec[1]
         )
-        assert np.allclose(
-            state_rot, phase * state_dec, atol=1e-10
-        ), f"Rot decomposition mismatch:\nrot = {state_rot}\ndec = {state_dec}"
+        assert np.allclose(state_rot, phase * state_dec, atol=1e-10), (
+            f"Rot decomposition mismatch:\nrot = {state_rot}\ndec = {state_dec}"
+        )
 
 
 class TestNoise:
@@ -634,9 +633,9 @@ class TestNoise:
         rho_ours = np.array(script.execute(type="density", args=(jnp.array(theta),)))
         rho_pl = _pennylane_density(pl_circuit)
 
-        assert np.allclose(
-            rho_ours, rho_pl, atol=atol
-        ), f"{channel_name} mismatch:\nours =\n{rho_ours}\nPL =\n{rho_pl}"
+        assert np.allclose(rho_ours, rho_pl, atol=atol), (
+            f"{channel_name} mismatch:\nours =\n{rho_ours}\nPL =\n{rho_pl}"
+        )
 
     @pytest.mark.unittest
     def test_thermal_relaxation_t2_le_t1_matches_pennylane(self) -> None:
@@ -656,9 +655,9 @@ class TestNoise:
         rho_ours = np.array(script.execute(type="density", args=(jnp.array(theta),)))
         rho_pl = _pennylane_density(pl_circuit)
 
-        assert np.allclose(
-            rho_ours, rho_pl, atol=1e-7
-        ), f"ThermalRelaxation (T2≤T1) mismatch:\nours =\n{rho_ours}\nPL =\n{rho_pl}"
+        assert np.allclose(rho_ours, rho_pl, atol=1e-7), (
+            f"ThermalRelaxation (T2≤T1) mismatch:\nours =\n{rho_ours}\nPL =\n{rho_pl}"
+        )
 
     @pytest.mark.unittest
     def test_noise_auto_routes_to_density(self) -> None:
@@ -719,9 +718,9 @@ class TestBatch:
             in_axes=(0,),
         )
 
-        assert (
-            batched.shape == sequential.shape
-        ), f"Shape mismatch: batched {batched.shape} vs sequential {sequential.shape}"
+        assert batched.shape == sequential.shape, (
+            f"Shape mismatch: batched {batched.shape} vs sequential {sequential.shape}"
+        )
         assert jnp.allclose(batched, sequential, atol=1e-6)
 
     @pytest.mark.unittest
@@ -1174,7 +1173,7 @@ def test_mode_performances(benchmark, mode, speedup) -> None:
 
     logger.info(
         f"Yaqsi {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
-        f"{t_ys*1000:.2f} ± {std_ys*1000:.2f} ms"
+        f"{t_ys * 1000:.2f} ± {std_ys * 1000:.2f} ms"
     )
 
     # --- PennyLane ---
@@ -1211,13 +1210,13 @@ def test_mode_performances(benchmark, mode, speedup) -> None:
 
     logger.info(
         f"PennyLane {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
-        f"{t_pl*1000:.2f} ± {std_pl*1000:.2f} ms"
+        f"{t_pl * 1000:.2f} ± {std_pl * 1000:.2f} ms"
     )
     ratio = t_pl / t_ys
     logger.info(f"Ratio pl/yaqsi: {ratio:.2f}x")
-    assert (
-        ratio >= speedup
-    ), f"Yaqsi not significantly faster than PennyLane. {ratio:2f}x"
+    assert ratio >= speedup, (
+        f"Yaqsi not significantly faster than PennyLane. {ratio:2f}x"
+    )
 
     res_pl_arr = jnp.array(res_pl)
     if res_pl_arr.shape != res_ys.shape:
@@ -1267,9 +1266,9 @@ class TestShots:
         sampled = script.execute(
             type="expval", obs=obs, args=(0.5,), shots=100000, key=key
         )
-        assert (
-            sampled.shape == exact.shape
-        ), f"Shape mismatch: {sampled.shape} vs {exact.shape}"
+        assert sampled.shape == exact.shape, (
+            f"Shape mismatch: {sampled.shape} vs {exact.shape}"
+        )
         assert jnp.allclose(exact, sampled, atol=0.02), (
             f"Shot expval doesn't converge to exact.\n"
             f"  exact:   {exact}\n"
@@ -1324,9 +1323,9 @@ class TestShots:
         assert result.shape == (4, 4), f"Expected shape (4, 4), got {result.shape}"
         # Each row should sum to 1
         row_sums = result.sum(axis=1)
-        assert jnp.allclose(
-            row_sums, 1.0, atol=1e-10
-        ), f"Batched probs don't sum to 1: {row_sums}"
+        assert jnp.allclose(row_sums, 1.0, atol=1e-10), (
+            f"Batched probs don't sum to 1: {row_sums}"
+        )
 
     @pytest.mark.unittest
     def test_shots_expval_batched(self):
@@ -1376,9 +1375,9 @@ class TestShots:
             shots=100,
             key=jax.random.PRNGKey(0),
         )
-        assert jnp.allclose(
-            exact, with_shots
-        ), "shots should be ignored for 'state' type"
+        assert jnp.allclose(exact, with_shots), (
+            "shots should be ignored for 'state' type"
+        )
 
 
 class TestGateOperations:
@@ -1465,9 +1464,9 @@ class TestGateOperations:
         x = PauliX(wires=0, record=False)
         z = PauliZ(wires=0, record=False)
         result = x + z
-        assert jnp.allclose(
-            result.matrix, jnp.conj(result.matrix).T, atol=1e-10
-        ), "Sum of Hermitian operators should be Hermitian"
+        assert jnp.allclose(result.matrix, jnp.conj(result.matrix).T, atol=1e-10), (
+            "Sum of Hermitian operators should be Hermitian"
+        )
 
     @pytest.mark.unittest
     def test_add_different_wires_raises(self):
@@ -1658,7 +1657,6 @@ class TestMemory:
 
 
 class TestChunk:
-
     @pytest.mark.unittest
     @pytest.mark.limit_memory("1 GB")
     def test_memory_chunked_stays_bounded(self) -> None:
@@ -1857,7 +1855,6 @@ class TestChunk:
 
 
 class TestFidelity:
-
     @pytest.mark.unittest
     @pytest.mark.parametrize(
         "sv0,sv1,expected_val",
@@ -2263,9 +2260,9 @@ class TestPulse:
         """All expected envelope names are registered."""
         names = PulseEnvelope.available()
         for expected in ["gaussian", "square", "cosine", "drag", "sech"]:
-            assert (
-                expected in names
-            ), f"'{expected}' missing from PulseEnvelope.available()"
+            assert expected in names, (
+                f"'{expected}' missing from PulseEnvelope.available()"
+            )
 
     @pytest.mark.unittest
     def test_pulse_envelope_get_valid(self):
@@ -2278,15 +2275,15 @@ class TestPulse:
             if name != "general":
                 assert callable(info["fn"])
                 for gate in ["RX", "RY"]:
-                    assert (
-                        gate in info["defaults"]
-                    ), f"Missing default for gate '{gate}' in envelope '{name}'"
+                    assert gate in info["defaults"], (
+                        f"Missing default for gate '{gate}' in envelope '{name}'"
+                    )
             else:
                 assert info["fn"] is None
                 for gate in ["RZ", "CZ"]:
-                    assert (
-                        gate in info["defaults"]
-                    ), f"Missing default for gate '{gate}' in envelope '{name}'"
+                    assert gate in info["defaults"], (
+                        f"Missing default for gate '{gate}' in envelope '{name}'"
+                    )
 
     @pytest.mark.unittest
     def test_pulse_envelope_get_invalid(self):
@@ -2407,9 +2404,9 @@ class TestPulse:
                 expected_h = len(PulseInformation.RZ.params) + len(
                     PulseInformation.RY.params
                 )
-                assert (
-                    PulseInformation.H.size == expected_h
-                ), f"H param count wrong for envelope '{name}'"
+                assert PulseInformation.H.size == expected_h, (
+                    f"H param count wrong for envelope '{name}'"
+                )
         finally:
             PulseInformation.set_envelope(original)
 
@@ -2477,9 +2474,9 @@ class TestPulse:
             state_target = target_script.execute(type="state", args=(w,))
 
             f = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
-            assert np.isclose(
-                f, 1.0, atol=1e-2
-            ), f"RZ fidelity too low for envelope '{envelope}': {f}"
+            assert np.isclose(f, 1.0, atol=1e-2), (
+                f"RZ fidelity too low for envelope '{envelope}': {f}"
+            )
         finally:
             PulseInformation.set_envelope(original)
 
@@ -2632,9 +2629,9 @@ class TestPulse:
             f = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
             assert f <= 1.0 + 1e-6
             # RWA mode is tight: no fast oscillations to integrate.
-            assert np.isclose(
-                f, 1.0, atol=5e-3
-            ), f"RWA RX fidelity (theta_eff={theta_eff:.4f}) too low: {f}"
+            assert np.isclose(f, 1.0, atol=5e-3), (
+                f"RWA RX fidelity (theta_eff={theta_eff:.4f}) too low: {f}"
+            )
         finally:
             PulseInformation.set_envelope(original_env)
             PulseInformation.set_rwa(original_rwa)
@@ -2725,9 +2722,9 @@ class TestPulse:
                 )(args, t_g).matrix
                 errs.append(float(jnp.linalg.norm(U_m - U_ref)))
 
-            assert (
-                errs[0] / errs[1] > 8.0
-            ), f"magnus4 not 4th-order: {errs[0]:.3e} / {errs[1]:.3e}"
+            assert errs[0] / errs[1] > 8.0, (
+                f"magnus4 not 4th-order: {errs[0]:.3e} / {errs[1]:.3e}"
+            )
             assert errs[1] / errs[2] > 8.0
         finally:
             PulseInformation.set_envelope(original_env)

@@ -243,9 +243,9 @@ class Block:
             self.gate = gate
 
         if self.is_entangling:
-            assert (
-                topology is not None
-            ), "Topology must be specified for entangling gates"
+            assert topology is not None, (
+                "Topology must be specified for entangling gates"
+            )
 
         self.topology = topology
         self.kwargs = kwargs
@@ -408,13 +408,11 @@ class Ansaetze:
         return ansaetze
 
     class No_Ansatz(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return ()
 
     class GHZ(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -435,7 +433,6 @@ class Ansaetze:
             return n_params
 
     class Circuit_1(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -444,7 +441,6 @@ class Ansaetze:
             )
 
     class Circuit_2(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -457,7 +453,6 @@ class Ansaetze:
             )
 
     class Circuit_3(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -467,7 +462,6 @@ class Ansaetze:
             )
 
     class Circuit_4(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -477,7 +471,6 @@ class Ansaetze:
             )
 
     class Circuit_5(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -489,7 +482,6 @@ class Ansaetze:
             )
 
     class Circuit_6(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -501,7 +493,6 @@ class Ansaetze:
             )
 
     class Circuit_7(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -521,7 +512,6 @@ class Ansaetze:
             )
 
     class Circuit_8(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -541,7 +531,6 @@ class Ansaetze:
             )
 
     class Circuit_9(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -551,7 +540,6 @@ class Ansaetze:
             )
 
     class Circuit_10(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -561,7 +549,6 @@ class Ansaetze:
             )
 
     class Circuit_13(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -586,7 +573,6 @@ class Ansaetze:
             )
 
     class Circuit_14(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -611,7 +597,6 @@ class Ansaetze:
             )
 
     class Circuit_15(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -636,7 +621,6 @@ class Ansaetze:
             )
 
     class Circuit_16(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -654,7 +638,6 @@ class Ansaetze:
             )
 
     class Circuit_17(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -672,7 +655,6 @@ class Ansaetze:
             )
 
     class Circuit_18(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -687,7 +669,6 @@ class Ansaetze:
             )
 
     class Circuit_19(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -702,7 +683,6 @@ class Ansaetze:
             )
 
     class Circuit_20(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -726,13 +706,11 @@ class Ansaetze:
             )
 
     class No_Entangling(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (Block(gate=Gates.Rot),)
 
     class Hardware_Efficient(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (
@@ -755,7 +733,6 @@ class Ansaetze:
             )
 
     class Strongly_Entangling(DeclarativeCircuit):
-
         @classmethod
         def structure(cls):
             return (

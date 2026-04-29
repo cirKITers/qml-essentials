@@ -57,9 +57,9 @@ def test_trainable_frequencies() -> None:
     model.params, model.enc_params = optax.apply_updates(all_params, updates)
     enc_params_after = model.enc_params.copy()
 
-    assert not jnp.allclose(
-        enc_params_before, enc_params_after
-    ), "enc_params did not update during training"
+    assert not jnp.allclose(enc_params_before, enc_params_after), (
+        "enc_params did not update during training"
+    )
 
     assert jnp.any(jnp.abs(grads[1]) > 1e-6), "Gradient wrt enc_params is too small"
 
@@ -94,13 +94,13 @@ def test_transform_input() -> None:
     assert jnp.allclose(result, expected), "Incorrect transform for qubit 0"
 
     # Test modified transform_input()
-    model.transform_input = lambda inputs, enc_params: (jnp.arccos(inputs))
+    model.transform_input = lambda inputs, enc_params: jnp.arccos(inputs)
 
     result_new = model(model.params, x, pulse_params=None)
 
-    assert jnp.allclose(
-        x, result_new
-    ), "model.transform_input does not work as intended"
+    assert jnp.allclose(x, result_new), (
+        "model.transform_input does not work as intended"
+    )
 
 
 @pytest.mark.unittest
@@ -125,9 +125,9 @@ def test_batching() -> None:
         res[i] = model(params=params[i], execution_type="density")
 
     assert res.shape == (n_samples, 4, 4), "Shape of batching is not correct"
-    assert jnp.allclose(
-        res, model(params=params, execution_type="density")
-    ), "Content of batching is not equal"
+    assert jnp.allclose(res, model(params=params, execution_type="density")), (
+        "Content of batching is not equal"
+    )
 
 
 @pytest.mark.unittest
@@ -185,9 +185,9 @@ def test_multiprocessing_expval() -> None:
     # ), "Time required for multiprocessing larger than single process"
 
     print(f"Diff: {t_parallel - t_single}")
-    assert (
-        res_parallel.shape == res_single.shape
-    ), "Shape of multiprocessing is not correct"
+    assert res_parallel.shape == res_single.shape, (
+        "Shape of multiprocessing is not correct"
+    )
     assert (res_parallel == res_single).all(), "Content of multiprocessing is not equal"
 
 
@@ -311,10 +311,10 @@ def test_encoding() -> None:
                 inputs=test_case["input"],
             )
 
-        assert (
-            model.degree == test_case["degree"]
-        ), f"Frequencies is not correct: got {model.degree},\
+        assert model.degree == test_case["degree"], (
+            f"Frequencies is not correct: got {model.degree},\
             expected {test_case['degree']} for test case {test_case}"
+        )
 
 
 @pytest.mark.smoketest
@@ -482,9 +482,9 @@ def test_re_initialization() -> None:
 
     model.initialize_params(random.key(1001))
 
-    assert not jnp.allclose(
-        model.params, temp_params, atol=1e-3
-    ), "Re-Initialization failed!"
+    assert not jnp.allclose(model.params, temp_params, atol=1e-3), (
+        "Re-Initialization failed!"
+    )
 
 
 @pytest.mark.unittest
@@ -531,9 +531,9 @@ def test_pulse_model() -> None:
 
     pulse_params_after = model.pulse_params.copy()
 
-    assert not jnp.allclose(
-        pulse_params_before, pulse_params_after
-    ), "pulse_params did not update during training"
+    assert not jnp.allclose(pulse_params_before, pulse_params_after), (
+        "pulse_params did not update during training"
+    )
 
     assert jnp.any(jnp.abs(grads[1]) > 1e-6), "Gradient wrt pulse_params is too small"
 
@@ -553,9 +553,9 @@ def test_pulse_model_inference():
 
     y_hat_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
 
-    assert jnp.allclose(
-        y_hat_unitary, y_hat_original, atol=1e-2
-    ), "Unitary output did not match pulse output"
+    assert jnp.allclose(y_hat_unitary, y_hat_original, atol=1e-2), (
+        "Unitary output did not match pulse output"
+    )
 
     # perturb pulse_params
     original_params = model.pulse_params.copy()
@@ -567,9 +567,9 @@ def test_pulse_model_inference():
     assert y_hat_original.shape[0] == inputs.shape[0], "Output batch size mismatch"
 
     # ensure output changed after perturbing pulse_params
-    assert not jnp.allclose(
-        y_hat_original, y_hat_perturbed
-    ), "Pulse output did not change after modifying pulse_params"
+    assert not jnp.allclose(y_hat_original, y_hat_perturbed), (
+        "Pulse output did not change after modifying pulse_params"
+    )
 
     model.pulse_params = original_params
 
@@ -596,9 +596,9 @@ def test_pulse_model_batching():
     res_b = model(inputs=inputs, gate_mode="pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
-    assert jnp.allclose(
-        res_a, res_b, atol=1e-2
-    ), "Inputs batching failed. Results differ."
+    assert jnp.allclose(res_a, res_b, atol=1e-2), (
+        "Inputs batching failed. Results differ."
+    )
 
     model.initialize_params(random_key, repeat=2)
 
@@ -607,9 +607,9 @@ def test_pulse_model_batching():
     res_b = model(inputs=inputs, gate_mode="pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
-    assert jnp.allclose(
-        res_a, res_b, atol=1e-2
-    ), "Params batching failed. Results differ."
+    assert jnp.allclose(res_a, res_b, atol=1e-2), (
+        "Params batching failed. Results differ."
+    )
 
 
 @pytest.mark.unittest
@@ -658,9 +658,9 @@ def test_multi_input() -> None:
                     f"as an output dimension, but got {out.shape[0]}"
                 )
             else:
-                assert (
-                    inputs.shape[0] == 1
-                ), "expected one elemental input for zero dimensional output"
+                assert inputs.shape[0] == 1, (
+                    "expected one elemental input for zero dimensional output"
+                )
         else:
             assert len(out.shape) == 0, "expected one elemental output for empty input"
 
@@ -702,10 +702,10 @@ def test_dru() -> None:
             shots=1024,
         )
 
-        assert (
-            model.degree == test_case["degree"]
-        ), f"Expected frequencies {test_case['degree']} but got\
+        assert model.degree == test_case["degree"], (
+            f"Expected frequencies {test_case['degree']} but got\
             {model.degree} for dru {test_case['dru']}"
+        )
 
         _ = model(
             model.params,
@@ -919,10 +919,10 @@ def test_output_shapes() -> None:
                 execution_type=test_case["execution_type"],
             )
 
-        assert (
-            out.shape == test_case["out_shape"]
-        ), f"Expected {test_case['out_shape']}, got shape {out.shape}\
+        assert out.shape == test_case["out_shape"], (
+            f"Expected {test_case['out_shape']}, got shape {out.shape}\
             for test case {test_case}"
+        )
 
 
 @pytest.mark.unittest
@@ -945,9 +945,9 @@ def test_parity() -> None:
         params=model_a.params, inputs=None, force_mean=True
     )  # use same params!
 
-    assert not jnp.allclose(
-        result_a, result_b
-    ), f"Models should be different! Got {result_a} and {result_b}"
+    assert not jnp.allclose(result_a, result_b), (
+        f"Models should be different! Got {result_a} and {result_b}"
+    )
 
 
 @pytest.mark.smoketest

@@ -57,9 +57,9 @@ class PulseParams:
             decomposition: List of :class:`DecompositionStep` (composite gates).
                 Mutually exclusive with *params*.
         """
-        assert (params is None) != (
-            decomposition is None
-        ), "Exactly one of `params` or `decomposition` must be provided."
+        assert (params is None) != (decomposition is None), (
+            "Exactly one of `params` or `decomposition` must be provided."
+        )
 
         self.decomposition = decomposition
         # Derive _pulse_obj for backward compat with childs/leafs/split_params
@@ -836,8 +836,10 @@ class PulseInformation:
                 reader = csv.reader(f)
 
                 for row in reader:
-                    log.debug(f"Loading optimized pulses for {row[0]}\
-                            (Fidelity: {float(row[1]):.5f}): {row[2:]}")
+                    log.debug(
+                        f"Loading optimized pulses for {row[0]}\
+                            (Fidelity: {float(row[1]):.5f}): {row[2:]}"
+                    )
                     PulseInformation.OPTIMIZED_PULSES[row[0]] = jnp.array(
                         [float(x) for x in row[2:]]
                     )
@@ -846,8 +848,10 @@ class PulseInformation:
 
     @staticmethod
     def shuffle_params(random_key):
-        log.info(f"Shuffling optimized pulses with random key {random_key}\
-              of gates {PulseInformation.unique_gate_set}")
+        log.info(
+            f"Shuffling optimized pulses with random key {random_key}\
+              of gates {PulseInformation.unique_gate_set}"
+        )
         for gate in PulseInformation.unique_gate_set:
             random_key, sub_key = safe_random_split(random_key)
             gate.params = jax.random.uniform(sub_key, (len(gate),))

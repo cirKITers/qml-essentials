@@ -158,8 +158,7 @@ class Yaqsi:
         if solver is not None:
             if solver not in cls._valid_solvers:
                 raise ValueError(
-                    f"Unknown solver {solver!r}; expected one of "
-                    f"{cls._valid_solvers}"
+                    f"Unknown solver {solver!r}; expected one of {cls._valid_solvers}"
                 )
             prev["solver"] = cls._solver_defaults["solver"]
             cls._solver_defaults["solver"] = solver
@@ -191,8 +190,7 @@ class Yaqsi:
         solver_name = str(odeint_kwargs.pop("solver", cls._solver_defaults["solver"]))
         if solver_name not in cls._valid_solvers:
             raise ValueError(
-                f"Unknown solver {solver_name!r}; expected one of "
-                f"{cls._valid_solvers}"
+                f"Unknown solver {solver_name!r}; expected one of {cls._valid_solvers}"
             )
         magnus_steps = int(
             odeint_kwargs.pop("magnus_steps", cls._solver_defaults["magnus_steps"])
@@ -869,7 +867,7 @@ class Script:
         except Exception:
             log.debug("Failed to read /proc/meminfo. Falling back to 4 GiB")
 
-        log.debug(f"Available memory: {mem/1024**3:.1f} GB")
+        log.debug(f"Available memory: {mem / 1024**3:.1f} GB")
         return mem
 
     @staticmethod
@@ -1412,8 +1410,7 @@ class Script:
             return jnp.array(results)
 
         raise ValueError(
-            f"Shot simulation is only supported for 'probs' and 'expval', "
-            f"got {type!r}."
+            f"Shot simulation is only supported for 'probs' and 'expval', got {type!r}."
         )
 
     def execute(
