@@ -163,6 +163,7 @@ fig, axes = yss.draw(figure="pulse", args=(jnp.pi*0.5,))
 
 ![pulse-schedule](figures/pulse_schedule_light.png#center#only-light)
 ![pulse-schedule](figures/pulse_schedule_dark.png#center#only-dark)
+
 ## Performance: pulse-level gradient throughput
 
 The pulse-level pipeline is compiled with JAX/XLA, but the underlying
@@ -179,9 +180,6 @@ Two performance levers are exposed:
 1. **`PulseInformation.set_rwa(True)`** — opt-in rotating-wave
    approximation.  Drops the fast counter-rotating terms in the
    interaction-picture Hamiltonian.
-   While this is numerically not 100% exact, in practice this
-   gives a **~30-50× speedup** for `RX` / `RY` gradients because the
-   adaptive solver no longer has to resolve `2·ω_q` oscillations.
    Default is `False` (exact integration).
 
 2. **`Yaqsi.set_solver_defaults(solver=...)`** — opt-in commutator-free
@@ -222,8 +220,6 @@ Two performance levers are exposed:
 
 4. **XLA / OMP thread settings**.  Even on a single ODE solve, XLA
    can parallelise some matmul-heavy reductions if you allow it to.
-   For multi-restart Stage 1 optimisation (`n_restarts > 1`), the
-   restart axis is `vmap`-batched and benefits proportionally.
    Reasonable defaults for a workstation:
 
    ```bash
