@@ -147,9 +147,7 @@ class Expressibility:
         for idx in range(n_bins):
             v = idx / n_bins
             u = (idx + 1) / n_bins
-            dist[idx], _ = integrate.quad(
-                cls._haar_probability, v, u, args=(n_qubits,)
-            )
+            dist[idx], _ = integrate.quad(cls._haar_probability, v, u, args=(n_qubits,))
 
         return dist
 

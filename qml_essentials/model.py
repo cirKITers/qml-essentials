@@ -309,17 +309,17 @@ class Model:
             value: Qubit index or list of indices. Use -1 for all qubits.
         """
         if isinstance(value, list):
-            assert (
-                len(value) <= self.n_qubits
-            ), f"Size of output_qubit {len(value)} cannot be\
+            assert len(value) <= self.n_qubits, (
+                f"Size of output_qubit {len(value)} cannot be\
             larger than number of qubits {self.n_qubits}."
+            )
         elif isinstance(value, int):
             if value == -1:
                 value = list(range(self.n_qubits))
             else:
-                assert (
-                    value < self.n_qubits
-                ), f"Output qubit {value} cannot be larger than {self.n_qubits}."
+                assert value < self.n_qubits, (
+                    f"Output qubit {value} cannot be larger than {self.n_qubits}."
+                )
                 value = [value]
 
         self._output_qubit = value
@@ -462,10 +462,12 @@ class Model:
                 assert value.shape == (
                     self.n_layers,
                     self.n_qubits,
-                ), f"Data reuploading array has wrong shape. \
+                ), (
+                    f"Data reuploading array has wrong shape. \
                     Expected {(self.n_layers, self.n_qubits)} or\
                     {(self.n_layers, self.n_qubits, self.n_input_feat)},\
                     got {value.shape}."
+                )
                 value = value.reshape(*value.shape, 1)
                 value = np.repeat(value, self.n_input_feat, axis=2)
 
@@ -473,9 +475,11 @@ class Model:
                 self.n_layers,
                 self.n_qubits,
                 self.n_input_feat,
-            ), f"Data reuploading array has wrong shape. \
+            ), (
+                f"Data reuploading array has wrong shape. \
                 Expected {(self.n_layers, self.n_qubits, self.n_input_feat)},\
                 got {value.shape}."
+            )
 
             log.debug(f"Data reuploading array:\n{value}")
         else:
