@@ -2120,6 +2120,7 @@ class TestFidelity:
 
 
 class TestPulse:
+       
     @pytest.mark.unittest
     def test_collect_pulse_events_rx(self):
         """collect_pulse_events for RX returns a single physical pulse event."""
@@ -2698,6 +2699,8 @@ class TestPulse:
         from qml_essentials.yaqsi import Yaqsi
         import qml_essentials.operations as op_mod
 
+        original_rwa = PulseInformation.get_rwa()
+        original_frame = PulseInformation.get_frame()
         PulseInformation.set_rwa(False)
         PulseInformation.set_frame("lab")
         original_env = PulseInformation.get_envelope()
@@ -2730,9 +2733,10 @@ class TestPulse:
             assert errs[1] / errs[2] > 8.0
         finally:
             PulseInformation.set_envelope(original_env)
-
+            PulseInformation.set_rwa(original_rwa)
+            PulseInformation.set_frame(original_frame)
     @pytest.mark.unittest
-    def test_drive_frame_default_lab(self):
+    def test_drive_frame_default_drive(self):
         """Default coefficient frame is 'drive'."""
         assert PulseInformation.get_frame() == "drive"
         assert PulseGates._active_frame == "drive"

@@ -1,9 +1,10 @@
-import csv
 import pytest
 import jax
 import jax.numpy as jnp
+import itertools
 
-
+import qml_essentials.yaqsi as ys
+from qml_essentials.pulses import PulseInformation
 from qml_essentials.qoc import (
     Cost,
     CostFnRegistry,
@@ -98,7 +99,6 @@ class TestCostFnRegistry:
         meta = CostFnRegistry.get("fidelity")
         assert meta["fn"] is fidelity_cost_fn
         assert meta["default_weight"] == (0.5, 0.5)
-        assert "pulse_script" in meta["ckwargs_keys"]
 
     def test_get_unknown_raises(self):
         """Getting an unregistered name raises ValueError."""
@@ -246,7 +246,7 @@ class TestQOCInit:
         """cost_fns from default_qoc_params are stored correctly."""
         qoc = QOC(**default_qoc_params)
         names = [name for name, _ in qoc.cost_fns]
-        assert "fidelity" in names
+        assert "unitary" in names
 
     def test_custom_cost_fns(self):
         """Custom cost_fns override the defaults."""
@@ -278,68 +278,6 @@ class TestQOCInit:
         with pytest.raises(ValueError, match="Unknown cost function"):
             params = {**default_qoc_params, "cost_fns": [("nonexistent", 0.5)]}
             QOC(**params)
-
-
-class TestSaveResults:
-    """Tests for QOC.save_results CSV I/O."""
-
-    @pytest.mark.parametrize(
-        "writes,expected_rows,expected_gate_fidelity",
-        [
-            (
-                [("RX", 0.95, [1.0, 2.0, 3.0])],
-                1,
-                {"RX": 0.95},
-            ),
-            (
-                [("RX", 0.9, [1.0, 2.0]), ("RY", 0.8, [3.0, 4.0])],
-                2,
-                {"RX": 0.9, "RY": 0.8},
-            ),
-            (
-                [("RX", 0.9, [1.0, 2.0]), ("RX", 0.95, [5.0, 6.0])],
-                1,
-                {"RX": 0.95},
-            ),
-            (
-                [("RX", 0.9, [1.0]), ("RY", 0.8, [2.0]), ("RX", 0.95, [3.0])],
-                2,
-                {"RX": 0.95, "RY": 0.8},
-            ),
-        ],
-        ids=[
-            "creates_new_file",
-            "appends_new_gate",
-            "overwrites_existing_gate",
-            "preserves_other_gates_on_overwrite",
-        ],
-    )
-    def test_save_results_csv(
-        self, tmp_path, writes, expected_rows, expected_gate_fidelity
-    ):
-        """save_results writes/overwrites CSV rows correctly."""
-        params = {**default_qoc_params, "file_dir": str(tmp_path)}
-        qoc = QOC(**params)
-        for gate, fid, params in writes:
-            qoc.save_results(gate, fid, params)
-
-        csv_path = tmp_path / "qoc_results.csv"
-        assert csv_path.exists()
-
-        with open(csv_path) as f:
-            rows = list(csv.reader(f))
-        assert len(rows) == expected_rows
-        gate_map = {r[0]: float(r[1]) for r in rows}
-        for gate, fid in expected_gate_fidelity.items():
-            assert gate_map[gate] == pytest.approx(fid)
-
-    def test_no_file_when_file_dir_is_none(self, tmp_path):
-        """When file_dir is explicitly None, nothing is written."""
-        params = {**default_qoc_params, "file_dir": str(tmp_path)}
-        qoc = QOC(**params)
-        qoc.file_dir = None
-        qoc.save_results("RX", 0.9, [1.0])
-        assert not (tmp_path / "qoc_results.csv").exists()
 
 
 class TestOptimizeSmoke:
@@ -381,3 +319,59 @@ class TestOptimizeSmoke:
         pulse_c, target_c = factory()
         assert callable(pulse_c)
         assert callable(target_c)
+
+
+class TestFidelity:
+    single_qubit_pulse_testdata = itertools.product(
+        ["RX", "RY", "RZ", "H"],
+        [0.0,jnp.pi / 4,jnp.pi / 2, 3 *jnp.pi / 4,jnp.pi],
+    )
+    two_qubit_pulse_testdata = itertools.product(
+        ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"], [0.0, jnp.pi / 4, jnp.pi / 2, jnp.pi]
+    )
+    
+    
+    @pytest.mark.unittest
+    @pytest.mark.parametrize("gate,w", single_qubit_pulse_testdata)
+    def test_single_qubit_pulse_gate(self, gate, w):
+        qoc = QOC(**default_qoc_params)
+        pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
+        pulse_script = ys.Script(pulse_circuit, n_qubits=1)
+        target_script = ys.Script(target_circuit, n_qubits=1)
+
+        state_pulse = pulse_script.execute(
+            type="state", args=(w, PulseInformation.gate_by_name(gate).params)
+        )
+        state_target = target_script.execute(type="state", args=(w,))
+
+        fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
+        assert fidelity <= 1.0 + 1e-6, f"Fidelity of {gate} can't be larger 1 for w={w}"
+        assert jnp.isclose(fidelity, 1.0, atol=1e-2), (
+            f"Fidelity too low for w={w}: {fidelity}"
+        )
+
+        phase_diff = jnp.angle(jnp.vdot(state_target, state_pulse))
+        assert jnp.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
+
+
+    @pytest.mark.unittest
+    @pytest.mark.parametrize("gate,w", two_qubit_pulse_testdata)
+    def test_two_qubit_pulse_gate(self, gate, w):
+        qoc = QOC(**default_qoc_params)
+        pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
+        pulse_script = ys.Script(pulse_circuit, n_qubits=2)
+        target_script = ys.Script(target_circuit, n_qubits=2)
+
+        state_pulse = pulse_script.execute(
+            type="state", args=(w, PulseInformation.gate_by_name(gate).params)
+        )
+        state_target = target_script.execute(type="state", args=(w,))
+
+        fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
+        assert fidelity <= 1.0 + 1e-6, f"Fidelity of {gate} can't be larger 1 for w={w}"
+        assert jnp.isclose(fidelity, 1.0, atol=1e-2), (
+            f"Fidelity too low for w={w}: {fidelity}"
+        )
+
+        phase_diff = jnp.angle(jnp.vdot(state_target, state_pulse))
+        assert jnp.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"

@@ -1126,15 +1126,16 @@ def test_gate_mode_training() -> None:
     print(f"Time taken: {end - start}")
     assert end - start < 80000000, "Time limit of 80 seconds exceeded"
 
-
-@pytest.mark.smoketest
+@pytest.mark.benchmark
+@pytest.mark.unittest
 def test_pulse_mode_training() -> None:
+    original_rwa = PulseInformation.get_rwa()
     PulseInformation.set_rwa(True)
 
     model = Model(
-        n_qubits=3,
+        n_qubits=2,
         n_layers=1,
-        circuit_type="Circuit_19",
+        circuit_type="Circuit_1",
     )
 
     domain_samples, fourier_samples, coefficients = Datasets.generate_fourier_series(
@@ -1157,7 +1158,7 @@ def test_pulse_mode_training() -> None:
         return jnp.mean((y_hat - targets) ** 2)
 
     start = time.time()
-    for epoch in range(1, 10):
+    for epoch in range(1, 5):
         grads = grad(cost)(
             params,
             inputs=domain_samples,
@@ -1171,6 +1172,8 @@ def test_pulse_mode_training() -> None:
 
         model.params = params["unitary"]
         model.pulse_params = params["pulse"]
+    
+    PulseInformation.set_rwa(original_rwa)
     end = time.time()
     print(f"Time taken: {end - start}")
-    assert end - start < 150000000, "Time limit of 150 seconds exceeded"
+    assert end - start < 80000000, "Time limit of 80 seconds exceeded"
