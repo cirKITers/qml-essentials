@@ -324,12 +324,11 @@ class TestOptimizeSmoke:
 class TestFidelity:
     single_qubit_pulse_testdata = itertools.product(
         ["RX", "RY", "RZ", "H"],
-        [0.0,jnp.pi / 4,jnp.pi / 2, 3 *jnp.pi / 4,jnp.pi],
+        [0.0, jnp.pi / 4, jnp.pi / 2, 3 * jnp.pi / 4, jnp.pi],
     )
     two_qubit_pulse_testdata = itertools.product(
         ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"], [0.0, jnp.pi / 4, jnp.pi / 2, jnp.pi]
     )
-
 
     @pytest.mark.unittest
     @pytest.mark.parametrize("gate,w", single_qubit_pulse_testdata)
@@ -351,8 +350,9 @@ class TestFidelity:
         )
 
         phase_diff = jnp.angle(jnp.vdot(state_target, state_pulse))
-        assert jnp.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
-
+        assert jnp.isclose(phase_diff, 0.0, atol=1e-2), (
+            f"Phase off for w={w}: {phase_diff}"
+        )
 
     @pytest.mark.unittest
     @pytest.mark.parametrize("gate,w", two_qubit_pulse_testdata)
@@ -374,4 +374,6 @@ class TestFidelity:
         )
 
         phase_diff = jnp.angle(jnp.vdot(state_target, state_pulse))
-        assert jnp.isclose(phase_diff, 0.0, atol=1e-2), f"Phase off for w={w}: {phase_diff}"
+        assert jnp.isclose(phase_diff, 0.0, atol=1e-2), (
+            f"Phase off for w={w}: {phase_diff}"
+        )

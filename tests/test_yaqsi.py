@@ -2120,7 +2120,6 @@ class TestFidelity:
 
 
 class TestPulse:
-
     @pytest.mark.unittest
     def test_collect_pulse_events_rx(self):
         """collect_pulse_events for RX returns a single physical pulse event."""
@@ -2735,6 +2734,7 @@ class TestPulse:
             PulseInformation.set_envelope(original_env)
             PulseInformation.set_rwa(original_rwa)
             PulseInformation.set_frame(original_frame)
+
     @pytest.mark.unittest
     def test_drive_frame_default_drive(self):
         """Default coefficient frame is 'drive'."""

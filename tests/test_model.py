@@ -1126,6 +1126,7 @@ def test_gate_mode_training() -> None:
     print(f"Time taken: {end - start}")
     assert end - start < 80000000, "Time limit of 80 seconds exceeded"
 
+
 @pytest.mark.benchmark
 @pytest.mark.unittest
 def test_pulse_mode_training() -> None:

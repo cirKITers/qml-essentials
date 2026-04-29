@@ -412,9 +412,9 @@ def test_pulse_params_ansaetze_4q() -> None:
 
         try:
             res = model(gate_mode="pulse")
-            assert np.allclose(
-                res, res, atol=1e-6
-            ), f"Results for ansatz {ansatz} are not close enough"
+            assert np.allclose(res, res, atol=1e-6), (
+                f"Results for ansatz {ansatz} are not close enough"
+            )
         except Exception as e:
             raise Exception(f"Error for ansatz {ansatz}: {e}")
 
