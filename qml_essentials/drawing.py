@@ -44,7 +44,7 @@ class TikzFigure:
 \\end{{figure}}"""
 
     def export(
-            self, destination: str, full_document: bool = False, mode: str = "w"
+        self, destination: str, full_document: bool = False, mode: str = "w"
     ) -> None:
         """
         Export a LaTeX document with a quantum circuit in stick notation.
@@ -108,11 +108,17 @@ def _format_param(val: float) -> str:
     return f"{float(val):.2f}"
 
 
-def _gate_label(op: Operation) -> str:
-    """Build a short label like ``RX(π/2)`` or ``H`` for a gate."""
+def _gate_label(op: Operation, gate_values: bool = True) -> str:
+    """Build a short label like ``RX(π/2)`` or ``H`` for a gate.
+
+    Args:
+        op: The gate operation.
+        gate_values: If ``True``, include numeric parameter values in the
+            label.  If ``False``, show the gate name only.
+    """
     name = op.name
     params = op.parameters
-    if params:
+    if params and gate_values:
         param_str = ", ".join(_format_param(p) for p in params)
         return f"{name}({param_str})"
     return name
@@ -292,12 +298,14 @@ def draw_tikz(
     return TikzFigure(_tikz_build_string(circuit_tikz, n_qubits))
 
 
-def draw_text(ops: List[Operation], n_qubits: int) -> str:
+def draw_text(ops: List[Operation], n_qubits: int, gate_values: bool = True) -> str:
     """Render a circuit tape as an ASCII-art string.
 
     Args:
         ops: Ordered list of gate operations (noise channels excluded).
         n_qubits: Total number of qubits.
+        gate_values: If ``True``, show numeric angles; otherwise show gate
+            names only.
 
     Returns:
         Multi-line string with one row per qubit.
@@ -323,8 +331,10 @@ def draw_text(ops: List[Operation], n_qubits: int) -> str:
             target_wire = op.wires[-1]
             target_name = _ctrl_target_name(op.name)
 
-            # Build target label with parameters
-            if op.parameters:
+            # Reuse a temporary Operation-like object is awkward, so build
+            # a label for the target directly via _gate_label on a stub, but
+            # it's simpler to build it inline here using _format_param.
+            if op.parameters and gate_values:
                 param_str = ", ".join(_format_param(p) for p in op.parameters)
                 target_label = f"{target_name}({param_str})"
             else:
@@ -339,7 +349,7 @@ def draw_text(ops: List[Operation], n_qubits: int) -> str:
             for w in all_spanned:
                 wire_busy[w] = start + 1
         else:
-            label = _gate_label(op)
+            label = _gate_label(op, gate_values)
             for w in op.wires:
                 columns[start][w] = label
             for w in op.wires:
@@ -374,6 +384,7 @@ def draw_text(ops: List[Operation], n_qubits: int) -> str:
 def draw_mpl(
     ops: List[Operation],
     n_qubits: int,
+    gate_values: bool = False,
     **kwargs: Any,
 ) -> Tuple:
     """Render a circuit tape as a Matplotlib figure.
@@ -402,7 +413,7 @@ def draw_mpl(
             ctrl_wires = op.wires[:-1]
             target_wire = op.wires[-1]
             target_name = _ctrl_target_name(op.name)
-            if op.parameters:
+            if op.parameters and gate_values:
                 param_str = ", ".join(_format_param(p) for p in op.parameters)
                 target_label = f"{target_name}({param_str})"
             else:
@@ -421,7 +432,7 @@ def draw_mpl(
             for w in all_spanned:
                 wire_busy[w] = start + 1
         else:
-            label = _gate_label(op)
+            label = _gate_label(op, gate_values)
             for w in op.wires:
                 columns[start][w] = label
                 wire_busy[w] = start + 1
