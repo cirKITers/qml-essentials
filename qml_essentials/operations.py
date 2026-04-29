@@ -981,6 +981,39 @@ CRY = _make_controlled_rotation_gate(PauliY, "CRY")
 CRZ = _make_controlled_rotation_gate(PauliZ, "CRZ")
 
 
+class ControlledPhaseShift(Operation):
+    r"""Controlled phase shift gate (CPhase).
+
+    Applies a phase shift of ``exp(i * phi)`` to the |11⟩ component of the
+    two-qubit state, leaving all other computational basis states unchanged.
+    This is a generalization of the CZ gate: when ``phi = \\pi`` the gate
+    reduces to CZ.
+
+    .. math::
+        \text{CPhase}(\phi) = \text{diag}(1, 1, 1, e^{i\phi})
+
+    which is equivalent to
+    ``|0⟩⟨0| \\otimes I + |1⟩⟨1| \\otimes P(phi)`` where
+    ``P(phi) = diag(1, exp(i*phi))``.
+    """
+
+    _num_wires = 2
+    _param_names = ("phi",)
+    is_controlled = True
+
+    def __init__(self, phi: float, wires: List[int] = [0, 1], **kwargs) -> None:
+        """Initialise a controlled phase shift gate.
+
+        Args:
+            phi: Phase shift angle in radians.
+            wires: Two-element list ``[control, target]``.
+        """
+        self.phi = phi
+        phase_gate = jnp.array([[1, 0], [0, jnp.exp(1j * phi)]], dtype=_cdtype())
+        mat = jnp.kron(_P0, Id._matrix) + jnp.kron(_P1, phase_gate)
+        super().__init__(wires=wires, matrix=mat, **kwargs)
+
+
 class Rot(Operation):
     """General single-qubit rotation:
     Rot(\\phi, \\theta, \\omega) = RZ(\\omega) RY(\\theta) RZ(\\phi).
