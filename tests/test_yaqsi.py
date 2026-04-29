@@ -2344,10 +2344,10 @@ class TestPulse:
         omega_c = PulseGates.omega_c
         omega_q = PulseGates.omega_q
         rxx_g, rxy_g, ryx_g, ryy_g = PulseEnvelope.build_coeff_fns(
-            PulseEnvelope.gaussian, omega_c, omega_q
+            PulseEnvelope.gaussian, omega_c, omega_q, rwa=False, frame="lab"
         )
         rxx_d, rxy_d, ryx_d, ryy_d = PulseEnvelope.build_coeff_fns(
-            PulseEnvelope.drag, omega_c, omega_q
+            PulseEnvelope.drag, omega_c, omega_q, rwa=False, frame="lab"
         )
         p_gauss = jnp.array([1.0, 1.0, 1.0])  # [A, sigma, w]
         p_drag = jnp.array([1.0, 0.5, 1.0, 1.0])  # [A, beta, sigma, w]
@@ -2520,9 +2520,9 @@ class TestPulse:
 
     @pytest.mark.unittest
     def test_rwa_toggle_default_off(self):
-        """Default RWA flag is False."""
-        assert PulseInformation.get_rwa() is False
-        assert PulseGates._active_rwa is False
+        """Default RWA flag is True."""
+        assert PulseInformation.get_rwa() is True
+        assert PulseGates._active_rwa is True
 
     @pytest.mark.unittest
     def test_rwa_toggle_roundtrip(self):
@@ -2698,6 +2698,8 @@ class TestPulse:
         from qml_essentials.yaqsi import Yaqsi
         import qml_essentials.operations as op_mod
 
+        PulseInformation.set_rwa(False)
+        PulseInformation.set_frame("lab")
         original_env = PulseInformation.get_envelope()
         try:
             PulseInformation.set_envelope("drag")
@@ -2731,9 +2733,9 @@ class TestPulse:
 
     @pytest.mark.unittest
     def test_drive_frame_default_lab(self):
-        """Default coefficient frame is 'lab'."""
-        assert PulseInformation.get_frame() == "lab"
-        assert PulseGates._active_frame == "lab"
+        """Default coefficient frame is 'drive'."""
+        assert PulseInformation.get_frame() == "drive"
+        assert PulseGates._active_frame == "drive"
 
     @pytest.mark.unittest
     def test_drive_frame_invalid_raises(self):
