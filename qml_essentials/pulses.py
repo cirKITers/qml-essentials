@@ -437,8 +437,8 @@ class PulseEnvelope:
         envelope_fn: Callable,
         omega_c: float,
         omega_q: float,
-        rwa: bool = False,
-        frame: str = "lab",
+        rwa: bool = True,
+        frame: str = "drive",
     ) -> Tuple[Callable, Callable, Callable, Callable]:
         """Build the four interaction-picture coefficient functions.
 
@@ -459,10 +459,7 @@ class PulseEnvelope:
             H_I(t) = Ω(t) · cos(ω_c·t + φ) ·
                      [ cos(ω_q·t) · X  −  sin(ω_q·t) · Y ] .
 
-        ``rwa=False`` (default) keeps **both** the slow and the fast
-        counter-rotating components.
-
-        ``rwa=True`` drops the fast (~2·ω_q on resonance) terms and
+        ``rwa=True`` (default) drops the fast (~2·ω_q on resonance) terms and
         keeps only the slow envelope, yielding the analytical RWA
 
             H_I^RWA(t) = (Ω(t)/2) · [ cos(φ) X + sin(φ) Y ] .
@@ -471,6 +468,9 @@ class PulseEnvelope:
         (``φ = +π/2``) to ``(Ω/2)·Y``.  This is dramatically cheaper to
         integrate (no fast oscillations → adaptive ODE solver takes
         large steps).
+
+        ``rwa=False``  keeps **both** the slow and the fast
+        counter-rotating components.
 
         Each returned function has a unique ``__code__`` object so the
         yaqsi solver cache assigns separate compiled XLA programs per
@@ -485,15 +485,11 @@ class PulseEnvelope:
             omega_c: Carrier frequency.
             omega_q: Qubit frequency (interaction-picture rotation rate).
             rwa: When ``True``, return the RWA-truncated coefficients
-                (no fast counter-rotating terms). Default ``False``
+                (no fast counter-rotating terms). Default ``True``
             frame: Algebraic representation of the exact (non-RWA)
                 coefficients.  Mathematically equivalent options:
 
-                * ``"lab"`` (default): the literal form
-                  ``Ω(t) cos(ω_c t + φ) cos(ω_q t)`` (and the analogous
-                  ``-sin`` term).  Two trig multiplications per call;
-                  contains all four product frequencies implicitly.
-                * ``"drive"``: applies the product-to-sum identity to
+                * ``"drive"`` (default): applies the product-to-sum identity to
                   expose the slow ``(ω_c-ω_q)`` and fast ``(ω_c+ω_q)``
                   modes explicitly,
                   ``cos(ω_c t)cos(ω_q t) =
@@ -506,6 +502,10 @@ class PulseEnvelope:
                   frequency alone (``Δ = |ω_c-ω_q|``) when the fast
                   ``(ω_c+ω_q)`` mode is well-resolved by the chosen
                   step.
+                * ``"drive"``: the literal form
+                  ``Ω(t) cos(ω_c t + φ) cos(ω_q t)`` (and the analogous
+                  ``-sin`` term).  Two trig multiplications per call;
+                  contains all four product frequencies implicitly.
 
                 Ignored when ``rwa=True``.
 
@@ -631,16 +631,16 @@ class PulseInformation:
     _envelope: str = "drag"  # "gaussian"
     # Whether to apply the rotating-wave approximation when building the
     # interaction-picture coefficient functions.
-    # Default ``False`` (exact dynamics, no RWA).
+    # Default ``True`` (exact dynamics, no RWA).
     # Setting to ``True`` drops the fast counter-rotating terms —
     # much faster to integrate
     # See :meth:`PulseEnvelope.build_coeff_fns`.
-    _rwa: bool = False
+    _rwa: bool = True
     # Algebraic representation of the (non-RWA) coefficients.  Either
     # ``"lab"`` or ``"drive"`` (product-to-sum decomposition).
     # Mathematically equivalent — see :meth:`PulseEnvelope.build_coeff_fns`
     # when ``"drive"`` is numerically advantageous (mainly with the Magnus solvers).
-    _frame: str = "lab"
+    _frame: str = "drive"
 
     @classmethod
     def _build_leaf_gates(cls):
@@ -894,8 +894,8 @@ class PulseGates:
     # of which coefficient regime the active ``_coeff_*`` functions
     # implement.  Updated by :meth:`PulseInformation.set_envelope` /
     # :meth:`PulseInformation.set_rwa`.
-    _active_rwa: bool = False
-    _active_frame: str = "lab"
+    _active_rwa: bool = True
+    _active_frame: str = "drive"
 
     # Default coefficient functions for the gaussian envelope; the active
     # envelope's `set_envelope` will overwrite these.  Each gate uses two
