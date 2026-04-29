@@ -1172,7 +1172,7 @@ def test_pulse_mode_training() -> None:
 
         model.params = params["unitary"]
         model.pulse_params = params["pulse"]
-    
+
     PulseInformation.set_rwa(original_rwa)
     end = time.time()
     print(f"Time taken: {end - start}")

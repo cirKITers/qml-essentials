@@ -1,5 +1,4 @@
 from typing import Optional
-from qml_essentials.qoc import QOC, default_qoc_params
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Circuit
 from qml_essentials.gates import Gates, UnitaryGates
@@ -11,7 +10,6 @@ import jax
 from jax import numpy as jnp
 import pytest
 import inspect
-import itertools
 import time
 
 import logging

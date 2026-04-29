@@ -2120,7 +2120,7 @@ class TestFidelity:
 
 
 class TestPulse:
-       
+
     @pytest.mark.unittest
     def test_collect_pulse_events_rx(self):
         """collect_pulse_events for RX returns a single physical pulse event."""

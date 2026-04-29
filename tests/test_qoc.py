@@ -329,8 +329,8 @@ class TestFidelity:
     two_qubit_pulse_testdata = itertools.product(
         ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"], [0.0, jnp.pi / 4, jnp.pi / 2, jnp.pi]
     )
-    
-    
+
+
     @pytest.mark.unittest
     @pytest.mark.parametrize("gate,w", single_qubit_pulse_testdata)
     def test_single_qubit_pulse_gate(self, gate, w):
