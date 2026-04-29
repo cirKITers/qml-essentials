@@ -7,6 +7,7 @@ from qml_essentials.ansaetze import Ansaetze, Gates, Encoding
 from qml_essentials.utils import PauliCircuit
 from qml_essentials.yaqsi import Script
 from qml_essentials.pulses import PulseInformation
+from qml_essentials.coefficients import Datasets
 import pytest
 import logging
 import pennylane as qml
@@ -1086,14 +1087,6 @@ def test_pauli_circuit_model() -> None:
         )
 
 
-import pytest 
-import time
-from qml_essentials.model import Model
-from qml_essentials.coefficients import Datasets
-import optax
-from jax import grad, numpy as jnp
-
-
 @pytest.mark.smoketest
 def test_gate_mode_training() -> None:
     model = Model(
@@ -1102,13 +1095,11 @@ def test_gate_mode_training() -> None:
         circuit_type="Circuit_19",
     )
 
-    domain_samples, fourier_samples, coefficients = (
-        Datasets.generate_fourier_series(
-            random_key=model.random_key,
-            model=model,
-        )
+    domain_samples, fourier_samples, coefficients = Datasets.generate_fourier_series(
+        random_key=model.random_key,
+        model=model,
     )
-    
+
     opt = optax.adam(0.001)
     params = model.params
     opt_state = opt.init(params)
@@ -1133,7 +1124,7 @@ def test_gate_mode_training() -> None:
         model.params = params
     end = time.time()
     print(f"Time taken: {end - start}")
-    assert end-start < 80000000, "Time limit of 80 seconds exceeded"
+    assert end - start < 80000000, "Time limit of 80 seconds exceeded"
 
 
 @pytest.mark.smoketest
@@ -1146,19 +1137,22 @@ def test_pulse_mode_training() -> None:
         circuit_type="Circuit_19",
     )
 
-    domain_samples, fourier_samples, coefficients = (
-        Datasets.generate_fourier_series(
-            random_key=model.random_key,
-            model=model,
-        )
+    domain_samples, fourier_samples, coefficients = Datasets.generate_fourier_series(
+        random_key=model.random_key,
+        model=model,
     )
-    
+
     opt = optax.adam(0.001)
     params = {"unitary": model.params, "pulse": model.pulse_params}
     opt_state = opt.init(params)
 
     def cost(params, inputs, targets, **kwargs):
-        y_hat = model(params=params["unitary"], pulse_params=params["pulse"], inputs=inputs, **kwargs)
+        y_hat = model(
+            params=params["unitary"],
+            pulse_params=params["pulse"],
+            inputs=inputs,
+            **kwargs,
+        )
 
         return jnp.mean((y_hat - targets) ** 2)
 
@@ -1170,7 +1164,7 @@ def test_pulse_mode_training() -> None:
             targets=fourier_samples,
             execution_type="expval",
             force_mean=True,
-            gate_mode="pulse"
+            gate_mode="pulse",
         )
         updates, opt_state = opt.update(grads, opt_state, params)
         params = optax.apply_updates(params, updates)
@@ -1179,4 +1173,4 @@ def test_pulse_mode_training() -> None:
         model.pulse_params = params["pulse"]
     end = time.time()
     print(f"Time taken: {end - start}")
-    assert end-start < 150000000, "Time limit of 150 seconds exceeded"
+    assert end - start < 150000000, "Time limit of 150 seconds exceeded"

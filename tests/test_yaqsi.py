@@ -2559,10 +2559,8 @@ class TestPulse:
         omega_c = PulseGates.omega_c
         omega_q = PulseGates.omega_q
 
-        rxx_exact, rxy_exact, ryx_exact, ryy_exact = (
-            PulseEnvelope.build_coeff_fns(
-                PulseEnvelope.gaussian, omega_c, omega_q, rwa=False
-            )
+        rxx_exact, rxy_exact, ryx_exact, ryy_exact = PulseEnvelope.build_coeff_fns(
+            PulseEnvelope.gaussian, omega_c, omega_q, rwa=False
         )
         rxx_rwa, rxy_rwa, ryx_rwa, ryy_rwa = PulseEnvelope.build_coeff_fns(
             PulseEnvelope.gaussian, omega_c, omega_q, rwa=True
@@ -2581,12 +2579,8 @@ class TestPulse:
         assert jnp.abs(rxx_rwa(p, t_zero)) > 1e-3
         # And RWA equals the closed-form ``0.5 * env(p, t, t/2) * w``.
         env_val = PulseEnvelope.gaussian(p, t_ref, t_ref / 2)
-        assert jnp.isclose(
-            rxx_rwa(p, t_ref), 0.5 * env_val * p[-1], atol=1e-10
-        )
-        assert jnp.isclose(
-            ryy_rwa(p, t_ref), 0.5 * env_val * p[-1], atol=1e-10
-        )
+        assert jnp.isclose(rxx_rwa(p, t_ref), 0.5 * env_val * p[-1], atol=1e-10)
+        assert jnp.isclose(ryy_rwa(p, t_ref), 0.5 * env_val * p[-1], atol=1e-10)
         # Off-diagonal RWA components are identically zero.
         assert jnp.isclose(rxy_rwa(p, 0.123), 0.0, atol=1e-12)
         assert jnp.isclose(ryx_rwa(p, 0.123), 0.0, atol=1e-12)
@@ -2616,9 +2610,7 @@ class TestPulse:
             # over [0, t_g] via dense trapezoid (no JAX needed).
             ts = jnp.linspace(0.0, t_g, 2048)
             env_vals = jax.vmap(
-                lambda tau: PulseEnvelope.gaussian(
-                    jnp.array([A, sigma]), tau, tau / 2
-                )
+                lambda tau: PulseEnvelope.gaussian(jnp.array([A, sigma]), tau, tau / 2)
             )(ts)
             area = jnp.trapezoid(env_vals, ts)
             theta_eff = float(w * area)
@@ -2647,7 +2639,6 @@ class TestPulse:
             PulseInformation.set_envelope(original_env)
             PulseInformation.set_rwa(original_rwa)
 
-
     # ---------------------------------------------------------------------------
     # Solver / frame regression tests (Magnus integrator + drive-frame mode)
     # ---------------------------------------------------------------------------
@@ -2656,12 +2647,14 @@ class TestPulse:
     def test_solver_default_dopri8(self):
         """Default solver is dopri8 (adaptive RK)."""
         from qml_essentials.yaqsi import Yaqsi
+
         assert Yaqsi._solver_defaults["solver"] == "dopri8"
 
     @pytest.mark.unittest
     def test_solver_invalid_name_raises(self):
         """Unknown solver names raise ValueError."""
         from qml_essentials.yaqsi import Yaqsi
+
         with pytest.raises(ValueError):
             Yaqsi.set_solver_defaults(solver="foobar")
 
@@ -2677,31 +2670,28 @@ class TestPulse:
             flat = PulseInformation.RX.params
             H_X = op_mod.Hermitian(PulseGates.X, wires=0, record=False)
             H_Y = op_mod.Hermitian(PulseGates.Y, wires=0, record=False)
-            H_eff = (
-                PulseGates._coeff_RX_X * H_X
-                + PulseGates._coeff_RX_Y * H_Y
-            )
+            H_eff = PulseGates._coeff_RX_X * H_X + PulseGates._coeff_RX_Y * H_Y
 
             w = float(jnp.pi / 2)
             t_g = float(flat[-1])
             args = [jnp.array([*flat[:-1], w])] * 2
 
-            U_ref = Yaqsi.evolve(
-                H_eff, name="RX", atol=1e-12, rtol=1e-12
-            )(args, t_g).matrix
-            U_m2 = Yaqsi.evolve(
-                H_eff, name="RX", solver="magnus2", magnus_steps=2048
-            )(args, t_g).matrix
-            U_m4 = Yaqsi.evolve(
-                H_eff, name="RX", solver="magnus4", magnus_steps=512
-            )(args, t_g).matrix
+            U_ref = Yaqsi.evolve(H_eff, name="RX", atol=1e-12, rtol=1e-12)(
+                args, t_g
+            ).matrix
+            U_m2 = Yaqsi.evolve(H_eff, name="RX", solver="magnus2", magnus_steps=2048)(
+                args, t_g
+            ).matrix
+            U_m4 = Yaqsi.evolve(H_eff, name="RX", solver="magnus4", magnus_steps=512)(
+                args, t_g
+            ).matrix
 
             assert float(jnp.linalg.norm(U_m2 - U_ref)) < 1e-3
             assert float(jnp.linalg.norm(U_m4 - U_ref)) < 1e-5
 
-            I = jnp.eye(2, dtype=U_m4.dtype)
-            assert float(jnp.linalg.norm(U_m4.conj().T @ U_m4 - I)) < 1e-10
-            assert float(jnp.linalg.norm(U_m2.conj().T @ U_m2 - I)) < 1e-10
+            Id = jnp.eye(2, dtype=U_m4.dtype)
+            assert float(jnp.linalg.norm(U_m4.conj().T @ U_m4 - Id)) < 1e-10
+            assert float(jnp.linalg.norm(U_m2.conj().T @ U_m2 - Id)) < 1e-10
         finally:
             PulseInformation.set_envelope(original_env)
 
@@ -2717,28 +2707,27 @@ class TestPulse:
             flat = PulseInformation.RX.params
             H_X = op_mod.Hermitian(PulseGates.X, wires=0, record=False)
             H_Y = op_mod.Hermitian(PulseGates.Y, wires=0, record=False)
-            H_eff = (
-                PulseGates._coeff_RX_X * H_X
-                + PulseGates._coeff_RX_Y * H_Y
-            )
+            H_eff = PulseGates._coeff_RX_X * H_X + PulseGates._coeff_RX_Y * H_Y
             w = float(jnp.pi / 2)
             t_g = float(flat[-1])
             args = [jnp.array([*flat[:-1], w])] * 2
-            U_ref = Yaqsi.evolve(
-                H_eff, name="RX", atol=1e-12, rtol=1e-12
-            )(args, t_g).matrix
+            U_ref = Yaqsi.evolve(H_eff, name="RX", atol=1e-12, rtol=1e-12)(
+                args, t_g
+            ).matrix
 
             errs = []
             for N in (256, 512, 1024):
                 U_m = Yaqsi.evolve(
-                    H_eff, name="RX",
-                    solver="magnus4", magnus_steps=N,
+                    H_eff,
+                    name="RX",
+                    solver="magnus4",
+                    magnus_steps=N,
                 )(args, t_g).matrix
                 errs.append(float(jnp.linalg.norm(U_m - U_ref)))
 
-            assert errs[0] / errs[1] > 8.0, (
-                f"magnus4 not 4th-order: {errs[0]:.3e} / {errs[1]:.3e}"
-            )
+            assert (
+                errs[0] / errs[1] > 8.0
+            ), f"magnus4 not 4th-order: {errs[0]:.3e} / {errs[1]:.3e}"
             assert errs[1] / errs[2] > 8.0
         finally:
             PulseInformation.set_envelope(original_env)
@@ -2753,10 +2742,9 @@ class TestPulse:
     def test_drive_frame_invalid_raises(self):
         """Unknown frame names raise ValueError."""
         from qml_essentials.pulses import PulseEnvelope
+
         with pytest.raises(ValueError):
-            PulseEnvelope.build_coeff_fns(
-                PulseEnvelope.drag, 1.0, 1.0, frame="foobar"
-            )
+            PulseEnvelope.build_coeff_fns(PulseEnvelope.drag, 1.0, 1.0, frame="foobar")
         with pytest.raises(ValueError):
             PulseInformation.set_frame("foobar")
 
@@ -2794,12 +2782,9 @@ class TestPulse:
         finally:
             PulseInformation.set_envelope(original_env, frame=original_frame)
 
-
     # ---------------------------------------------------------------------------
     # pulse_recording / Script.pulse_events tests
     # ---------------------------------------------------------------------------
-
-
 
     @pytest.mark.unittest
     def test_pulse_recording_rx(self):
