@@ -55,8 +55,8 @@ class Cost:
         if other is None:
             return lambda *args, **kwargs: self(*args, **kwargs)
         if callable(other):
-            return lambda *args, **kwargs: self(*args, **kwargs) + other(
-                *args, **kwargs
+            return lambda *args, **kwargs: (
+                self(*args, **kwargs) + other(*args, **kwargs)
             )
         raise TypeError(f"Cannot add Cost and {type(other)}")
 
@@ -281,7 +281,7 @@ class CostFnRegistry:
         """
         if name not in cls._REGISTRY:
             raise ValueError(
-                f"Unknown cost function '{name}'. " f"Available: {cls.available()}"
+                f"Unknown cost function '{name}'. Available: {cls.available()}"
             )
         return cls._REGISTRY[name]
 
@@ -326,7 +326,7 @@ class CostFnRegistry:
 
         if got != expected:
             raise ValueError(
-                f"Cost function '{name}' expects {expected} weight(s), " f"got {got}."
+                f"Cost function '{name}' expects {expected} weight(s), got {got}."
             )
 
         return name, weight
@@ -509,9 +509,9 @@ class QOC:
         for name, _weight in cost_fns:
             CostFnRegistry.get(name)  # raises ValueError if unknown
             summed_weights += sum(_weight) if isinstance(_weight, tuple) else _weight
-        assert jnp.isclose(
-            summed_weights, 1.0, rtol=1e-8
-        ), f"Cost function weights must sum to 1. Got {summed_weights}"
+        assert jnp.isclose(summed_weights, 1.0, rtol=1e-8), (
+            f"Cost function weights must sum to 1. Got {summed_weights}"
+        )
 
         self.cost_fns = cost_fns
 
@@ -938,7 +938,8 @@ class QOC:
                     total_costs = _build_cost(name, weight) + total_costs
 
                 fidelity_only_cost = _build_cost(
-                    "fidelity", (1.0, 0.0)  # 100% fidelity, 0% phase
+                    "fidelity",
+                    (1.0, 0.0),  # 100% fidelity, 0% phase
                 )
 
                 best_scan_params = self.stage_0_opt(

@@ -571,7 +571,7 @@ class Script:
         except Exception:
             log.debug("Failed to read /proc/meminfo. Falling back to 4 GiB")
 
-        log.debug(f"Available memory: {mem/1024**3:.1f} GB")
+        log.debug(f"Available memory: {mem / 1024**3:.1f} GB")
         return mem
 
     @staticmethod
@@ -1109,8 +1109,7 @@ class Script:
             return jnp.array(results)
 
         raise ValueError(
-            f"Shot simulation is only supported for 'probs' and 'expval', "
-            f"got {type!r}."
+            f"Shot simulation is only supported for 'probs' and 'expval', got {type!r}."
         )
 
     def execute(
