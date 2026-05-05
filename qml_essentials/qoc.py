@@ -2668,10 +2668,9 @@ def profile_pulse_pipeline(
     """
     import time
 
-    prev_rwa = PulseInformation.get_rwa()
-    if rwa is not None:
-        PulseInformation.set_rwa(bool(rwa))
-    try:
+    with PulseInformation.preserve_state():
+        if rwa is not None:
+            PulseInformation.set_rwa(bool(rwa))
         from qml_essentials.pulses import PulseGates
 
         gate_op = getattr(op, gate)
@@ -2746,8 +2745,6 @@ def profile_pulse_pipeline(
             f"loss={result['loss']:.4e}"
         )
         return result
-    finally:
-        PulseInformation.set_rwa(prev_rwa)
 
 
 if __name__ == "__main__":
