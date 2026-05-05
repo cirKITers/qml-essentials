@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Optional, List, Union, Dict, Callable, Tuple
 import csv
@@ -29,6 +30,16 @@ class DecompositionStep:
     gate: "PulseParams"
     wire_fn: str = "all"
     angle_fn: Optional[Callable] = None
+
+
+@dataclass(frozen=True)
+class PulseStateSnapshot:
+    """Snapshot of the mutable global pulse configuration."""
+
+    envelope: str
+    rwa: bool
+    frame: str
+    leaf_params: Dict[str, jnp.ndarray]
 
 
 class PulseParams:
@@ -628,19 +639,24 @@ class PulseInformation:
     and defaults match the selected envelope.
     """
 
-    _envelope: str = "drag"  # "gaussian"
+    DEFAULT_ENVELOPE: str = "drag"
+    DEFAULT_RWA: bool = True
+    DEFAULT_FRAME: str = "drive"
+    LEAF_GATE_NAMES: Tuple[str, ...] = ("RX", "RY", "RZ", "CZ")
+
+    _envelope: str = DEFAULT_ENVELOPE
     # Whether to apply the rotating-wave approximation when building the
     # interaction-picture coefficient functions.
     # Default ``True`` (exact dynamics, no RWA).
     # Setting to ``True`` drops the fast counter-rotating terms —
     # much faster to integrate
     # See :meth:`PulseEnvelope.build_coeff_fns`.
-    _rwa: bool = True
+    _rwa: bool = DEFAULT_RWA
     # Algebraic representation of the (non-RWA) coefficients.  Either
     # ``"lab"`` or ``"drive"`` (product-to-sum decomposition).
     # Mathematically equivalent — see :meth:`PulseEnvelope.build_coeff_fns`
     # when ``"drive"`` is numerically advantageous (mainly with the Magnus solvers).
-    _frame: str = "drive"
+    _frame: str = DEFAULT_FRAME
 
     @classmethod
     def _build_leaf_gates(cls):
@@ -774,6 +790,15 @@ class PulseInformation:
         PulseGates._active_rwa = cls._rwa
         PulseGates._active_frame = cls._frame
 
+        # The compiled-solver cache in ``Yaqsi`` is keyed on the code
+        # objects of the coefficient functions.  Rebuilding the coeff
+        # fns above produced fresh code objects, so any cached solver
+        # is now unreachable from the live coefficient functions and
+        # must be evicted to avoid both (a) holding compiled programs
+        # for a previous configuration alive forever and (b) returning
+        # a stale program if ``id`` collisions ever leaked through.
+        ys.clear_evolve_solver_cache()
+
         log.info(
             f"Pulse envelope set to '{name}' "
             f"(RWA {'on' if cls._rwa else 'off'}, frame={cls._frame})"
@@ -817,6 +842,62 @@ class PulseInformation:
         """Return the active coefficient frame (``"lab"`` or ``"drive"``)."""
         return cls._frame
 
+    @classmethod
+    def snapshot_state(cls) -> PulseStateSnapshot:
+        """Return an immutable snapshot of the active pulse configuration."""
+        leaf_params = {}
+        for name in cls.LEAF_GATE_NAMES:
+            gate = getattr(cls, name, None)
+            if gate is not None:
+                leaf_params[name] = jnp.array(gate.params)
+
+        return PulseStateSnapshot(
+            envelope=cls._envelope,
+            rwa=cls._rwa,
+            frame=cls._frame,
+            leaf_params=leaf_params,
+        )
+
+    @classmethod
+    def restore_state(cls, snapshot: PulseStateSnapshot) -> None:
+        """Restore a snapshot produced by :meth:`snapshot_state`."""
+        cls.set_envelope(snapshot.envelope, rwa=snapshot.rwa, frame=snapshot.frame)
+
+        for name, params in snapshot.leaf_params.items():
+            gate = cls.gate_by_name(name)
+            if gate is None or not gate.is_leaf:
+                raise ValueError(f"Cannot restore unknown leaf pulse gate {name!r}.")
+            if gate.params.shape != params.shape:
+                raise ValueError(
+                    f"Snapshot for {name!r} has shape {params.shape}, "
+                    f"but active gate expects {gate.params.shape}."
+                )
+            gate.params = params
+
+    @classmethod
+    @contextmanager
+    def preserve_state(cls):
+        """Temporarily preserve global pulse state across scoped mutations."""
+        snapshot = cls.snapshot_state()
+        try:
+            yield snapshot
+        finally:
+            cls.restore_state(snapshot)
+
+    @classmethod
+    def reset_defaults(
+        cls,
+        envelope: Optional[str] = None,
+        rwa: Optional[bool] = None,
+        frame: Optional[str] = None,
+    ) -> None:
+        """Reset pulse globals to canonical defaults or explicit values."""
+        cls.set_envelope(
+            cls.DEFAULT_ENVELOPE if envelope is None else envelope,
+            rwa=cls.DEFAULT_RWA if rwa is None else rwa,
+            frame=cls.DEFAULT_FRAME if frame is None else frame,
+        )
+
     @staticmethod
     def gate_by_name(gate):
         if isinstance(gate, str):
@@ -855,11 +936,6 @@ class PulseInformation:
         for gate in PulseInformation.unique_gate_set:
             random_key, sub_key = safe_random_split(random_key)
             gate.params = jax.random.uniform(sub_key, (len(gate),))
-
-
-# Initialise PulseInformation with default (gaussian) envelope
-PulseInformation._build_leaf_gates()
-PulseInformation._build_composite_gates()
 
 
 class PulseGates:
@@ -1416,3 +1492,8 @@ class PulseParamManager:
         params = self.pulse_params[self.idx : self.idx + n].squeeze()
         self.idx += n
         return params
+
+
+# Initialise PulseInformation after PulseGates exists so leaf defaults,
+# composite trees, mirrored PulseGates flags, and coefficient functions agree.
+PulseInformation.reset_defaults()
