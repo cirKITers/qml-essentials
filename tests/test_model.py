@@ -383,9 +383,10 @@ def test_golomb_encoding() -> None:
     # --- Batched execution ---
     batch_inputs = jnp.array([0.1, 0.5, 1.0, 2.0])
     result_batch = model(inputs=batch_inputs)
-    assert result_batch.shape == (4, 2), (
-        f"Expected batch shape (4, 2), got {result_batch.shape}"
-    )
+    assert result_batch.shape == (
+        4,
+        2,
+    ), f"Expected batch shape (4, 2), got {result_batch.shape}"
 
     # --- Degree / frequencies are consistent ---
     d = 2**model.n_qubits

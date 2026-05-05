@@ -808,7 +808,10 @@ class PulseInformation:
         # must be evicted to avoid both (a) holding compiled programs
         # for a previous configuration alive forever and (b) returning
         # a stale program if ``id`` collisions ever leaked through.
-        ys.clear_evolve_solver_cache()
+        # Lazy import to prevent circular imports.
+        from qml_essentials.yaqsi import Yaqsi
+
+        Yaqsi.clear_evolve_solver_cache()
 
         log.info(
             f"Pulse envelope set to '{name}' "
