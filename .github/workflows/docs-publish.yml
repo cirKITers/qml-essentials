@@ -36,6 +36,7 @@ jobs:
     runs-on: self-hosted
     if: ${{ github.ref == 'refs/heads/main' }}
     steps:
+      - uses: actions/configure-pages@v5
       - uses: actions/checkout@v6
       - name: Configure Git Credentials
         run: |
@@ -63,6 +64,9 @@ jobs:
           run-id: ${{ inputs.test-run-id }}
           path: docs/coverage/
       - name: Build Docs
-        run: pipx run uv run zensical build --strict
-      - name: Deploy
-        run: pipx run uv run zensical gh-deploy --force
+        run: pipx run uv run zensical build --strict --clean
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - uses: actions/deploy-pages@v4
+        id: deployment

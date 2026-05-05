@@ -288,6 +288,12 @@ def test_encoding() -> None:
             "input": [[0, 0]],
             "warning": False,
         },
+        {
+            "encoding": Encoding("golomb", None),
+            "degree": None,  # checked separately below
+            "input": [0.5],
+            "warning": False,
+        },
     ]
 
     for test_case in test_cases:
@@ -311,10 +317,131 @@ def test_encoding() -> None:
                 inputs=test_case["input"],
             )
 
-        assert model.degree == test_case["degree"], (
-            f"Frequencies is not correct: got {model.degree},\
-            expected {test_case['degree']} for test case {test_case}"
+        if test_case["degree"] is not None:
+            assert model.degree == test_case["degree"], (
+                f"Frequencies is not correct: got {model.degree},\
+                expected {test_case['degree']} for test case {test_case}"
+            )
+
+
+@pytest.mark.unittest
+def test_golomb_encoding() -> None:
+    """Test the Golomb encoding strategy end-to-end.
+
+    Verifies that:
+    - The model instantiates correctly with Golomb encoding.
+    - The Golomb ruler has the correct properties (all pairwise diffs distinct).
+    - The diagonal unitary is applied as a multi-qubit gate.
+    - The output changes with different inputs (encoding is effective).
+    - Batched execution works.
+    - The model produces correct degree/frequencies for the encoding.
+    - Circuit drawing works with Golomb encoding.
+    - Density matrix execution works (tests apply_to_density path).
+
+    Reference: Peters et al., arXiv:2209.05523, Sec. 3.1 and Appendix C.4.
+    """
+    from qml_essentials.unitary import golomb_ruler
+
+    # --- Golomb ruler validity ---
+    for n_qubits in [1, 2, 3, 4]:
+        d = 2**n_qubits
+        marks = golomb_ruler(d)
+        assert len(marks) == d, f"Expected {d} marks, got {len(marks)}"
+        # All pairwise differences must be distinct
+        diffs = []
+        for i in range(len(marks)):
+            for j in range(i + 1, len(marks)):
+                diffs.append(marks[j] - marks[i])
+        assert len(set(diffs)) == len(diffs), (
+            f"Golomb ruler for d={d} has duplicate pairwise differences: marks={marks}"
         )
+
+    # --- Model with Golomb encoding ---
+    enc = Encoding("golomb", None)
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_1",
+        encoding=enc,
+        remove_zero_encoding=False,
+    )
+
+    assert model.n_input_feat == 1, "Golomb encoding should have 1 input feature"
+    assert enc.is_golomb, "Encoding should be identified as Golomb"
+
+    # --- Forward pass produces valid output ---
+    result_a = model(inputs=0.5)
+    assert result_a.shape == (2,), f"Expected shape (2,), got {result_a.shape}"
+    assert jnp.all(jnp.isfinite(result_a)), "Output contains non-finite values"
+
+    # --- Different inputs produce different outputs ---
+    result_b = model(inputs=1.5)
+    assert not jnp.allclose(result_a, result_b), (
+        "Different inputs should produce different outputs with Golomb encoding"
+    )
+
+    # --- Batched execution ---
+    batch_inputs = jnp.array([0.1, 0.5, 1.0, 2.0])
+    result_batch = model(inputs=batch_inputs)
+    assert result_batch.shape == (4, 2), (
+        f"Expected batch shape (4, 2), got {result_batch.shape}"
+    )
+
+    # --- Degree / frequencies are consistent ---
+    d = 2**model.n_qubits
+    marks = golomb_ruler(d)
+    max_mark = max(marks)
+    # With DRU on all qubits for 1 layer, n_encoding_gates = n_qubits
+    n_enc = int(np.count_nonzero(model.data_reupload[..., 0]))
+    expected_n_freqs = 2 * n_enc * max_mark + 1
+    assert model.degree[0] == expected_n_freqs, (
+        f"Expected degree {expected_n_freqs}, got {model.degree[0]}"
+    )
+
+    # --- Circuit drawing works ---
+    text_repr = model.draw(inputs=0.5, figure="text")
+    assert "DiagU" in text_repr, (
+        "Circuit drawing should show DiagU gate for Golomb encoding"
+    )
+
+    # --- Density matrix execution ---
+    rho = model(inputs=0.5, execution_type="density")
+    assert rho.shape == (4, 4), f"Expected density shape (4, 4), got {rho.shape}"
+    # Density matrix should be valid (trace ~1, Hermitian)
+    assert jnp.isclose(jnp.trace(rho), 1.0, atol=1e-6), "Trace of rho should be 1"
+    assert jnp.allclose(rho, rho.conj().T, atol=1e-6), "rho should be Hermitian"
+
+    # --- Multiple layers with data reuploading ---
+    model_dru = Model(
+        n_qubits=2,
+        n_layers=2,
+        circuit_type="Circuit_1",
+        encoding=enc,
+        data_reupload=True,
+        remove_zero_encoding=False,
+    )
+    result_dru = model_dru(inputs=0.5)
+    assert jnp.all(jnp.isfinite(result_dru)), (
+        "Multi-layer Golomb model output contains non-finite values"
+    )
+
+    # --- No data reuploading ---
+    model_no_dru = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_1",
+        encoding=Encoding("golomb", None),
+        data_reupload=False,
+        remove_zero_encoding=False,
+    )
+    result_no_dru = model_no_dru(inputs=0.5)
+    assert jnp.all(jnp.isfinite(result_no_dru)), (
+        "No-DRU Golomb model output contains non-finite values"
+    )
+
+    # --- Invalid strategy raises error ---
+    with pytest.raises(ValueError):
+        Encoding("invalid_strategy", None)
 
 
 @pytest.mark.smoketest

@@ -4,6 +4,7 @@ from qml_essentials.ansaetze import Ansaetze, Circuit
 from qml_essentials.gates import Gates, UnitaryGates
 from qml_essentials.gates import PulseInformation as pinfo
 from qml_essentials import yaqsi as ys
+from qml_essentials.qoc import QOC, default_qoc_params
 from qml_essentials import operations as op
 import numpy as np
 import jax
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.unittest
-def test_gate_gateerror_noise():
+def test_gate_error_noise():
     random_key = jax.random.key(1000)
 
     def circuit(noise_params=None):
@@ -465,3 +466,138 @@ def test_invalid_pulse_params():
     for pp in invalid_len_pulse_params:
         with pytest.raises(ValueError):
             Gates.RX(np.pi, 0, pulse_params=pp, gate_mode="pulse")
+
+
+@pytest.mark.unittest
+def test_cphase_gate():
+    """Validate the CPhase (ControlledPhaseShift) unitary gate."""
+
+    # 1) CPhase(pi) must equal CZ up to numerical precision
+    cphase_pi = op.ControlledPhaseShift(np.pi, wires=[0, 1], record=False)
+    cz = op.CZ(wires=[0, 1], record=False)
+    assert np.allclose(cphase_pi.matrix, cz.matrix, atol=1e-7), (
+        "CPhase(pi) should equal CZ"
+    )
+
+    # 2) CPhase(0) must equal the 4x4 identity
+    cphase_zero = op.ControlledPhaseShift(0.0, wires=[0, 1], record=False)
+    assert np.allclose(cphase_zero.matrix, jnp.eye(4), atol=1e-7), (
+        "CPhase(0) should equal the identity"
+    )
+
+    # 3) CPhase has the expected diagonal structure diag(1, 1, 1, e^{i*phi})
+    phi = 1.23
+    cphase = op.ControlledPhaseShift(phi, wires=[0, 1], record=False)
+    expected = jnp.diag(jnp.array([1, 1, 1, jnp.exp(1j * phi)]))
+    assert np.allclose(cphase.matrix, expected, atol=1e-7), (
+        f"CPhase({phi}) should be diag(1, 1, 1, exp(i*{phi}))"
+    )
+
+    # 4) Gate metadata is correct
+    assert cphase._num_wires == 2
+    assert cphase._param_names == ("phi",)
+    assert cphase.is_controlled is True
+
+    # 5) CPhase produces correct circuit results via Gates interface
+    #    Apply CPhase(pi) after putting both qubits in |1> with PauliX.
+    #    CPhase(pi)|11> = -|11>, so <Z_0> should remain -1 (global phase)
+    #    but <Z_1> should also remain -1.
+    def circuit_cphase(w):
+        Gates.RX(np.pi, wires=0)  # |0> -> |1>
+        Gates.RX(np.pi, wires=1)  # |0> -> |1>
+        Gates.CPhase(w, wires=[0, 1])  # apply controlled phase
+
+    obs = [op.PauliZ(wires=0), op.PauliZ(wires=1)]
+    script = ys.Script(circuit_cphase, n_qubits=2)
+
+    # CPhase(0) should not change anything: both qubits still |1>
+    res_zero = script.execute(type="expval", obs=obs, args=(0.0,))
+    assert np.allclose(res_zero, [-1.0, -1.0], atol=1e-6), (
+        f"CPhase(0) should not affect |11>, got {res_zero}"
+    )
+
+    # CPhase(pi) also should not change Z expectations (phase is global to |11>)
+    res_pi = script.execute(type="expval", obs=obs, args=(np.pi,))
+    assert np.allclose(res_pi, [-1.0, -1.0], atol=1e-6), (
+        f"CPhase(pi) should not change <Z> for |11>, got {res_pi}"
+    )
+
+    # 6) CPhase in superposition: H|0>|1> then CPhase(pi) should produce
+    #    a measurable phase kickback on qubit 0
+    def circuit_kickback(w):
+        Gates.H(wires=0)  # |0> -> |+>
+        Gates.RX(np.pi, wires=1)  # |0> -> |1>
+        Gates.CPhase(w, wires=[0, 1])
+        Gates.H(wires=0)  # convert phase to amplitude
+
+    obs_q0 = [op.PauliZ(wires=0)]
+    script_kb = ys.Script(circuit_kickback, n_qubits=2)
+
+    # CPhase(0): no phase -> H undoes H -> |0>, so <Z_0> = 1
+    res_kb_zero = script_kb.execute(type="expval", obs=obs_q0, args=(0.0,))
+    assert np.isclose(res_kb_zero, 1.0, atol=1e-6), (
+        f"Expected <Z_0>=1 with CPhase(0), got {res_kb_zero}"
+    )
+
+    # CPhase(pi): phase flip on |1>|1> component -> kickback -> <Z_0> = -1
+    res_kb_pi = script_kb.execute(type="expval", obs=obs_q0, args=(np.pi,))
+    assert np.isclose(res_kb_pi, -1.0, atol=1e-6), (
+        f"Expected <Z_0>=-1 with CPhase(pi), got {res_kb_pi}"
+    )
+
+    # CPhase(pi/2): intermediate phase -> <Z_0> = 0
+    res_kb_half = script_kb.execute(type="expval", obs=obs_q0, args=(np.pi / 2,))
+    assert np.isclose(res_kb_half, 0.0, atol=1e-6), (
+        f"Expected <Z_0>=0 with CPhase(pi/2), got {res_kb_half}"
+    )
+
+    # 7) CPhase works with noise (density matrix path)
+    def circuit_noisy(noise_params=None):
+        Gates.RX(np.pi, wires=0)
+        Gates.CPhase(np.pi / 4, wires=[0, 1], noise_params=noise_params)
+
+    obs_noisy = [op.PauliZ(wires=1)]
+    script_noisy = ys.Script(circuit_noisy, n_qubits=2)
+
+    res_clean = script_noisy.execute(type="expval", obs=obs_noisy, args=({},))
+    res_noisy = script_noisy.execute(
+        type="expval", obs=obs_noisy, args=({"BitFlip": 0.5},)
+    )
+    # Noise should change the result
+    assert not np.isclose(res_clean, res_noisy, atol=0.05), (
+        f"Expected noise to change result, got clean={res_clean}, noisy={res_noisy}"
+    )
+
+    # 8) Gates.is_entangling and is_rotational recognize CPhase
+    assert Gates.is_entangling(Gates.CPhase), "CPhase should be entangling"
+    assert Gates.is_rotational(Gates.CPhase), "CPhase should be rotational"
+
+
+cphase_pulse_testdata = [0.0, np.pi / 4, np.pi / 2, np.pi]
+
+
+@pytest.mark.unittest
+@pytest.mark.parametrize("w", cphase_pulse_testdata)
+def test_cphase_pulse_gate(w):
+    """Validate CPhase pulse decomposition against the unitary gate.
+
+    Note: The pulse decomposition of CPhase introduces a global phase
+    of exp(i*w/4) relative to the exact diagonal unitary. Since global
+    phase is physically unobservable, we only check fidelity here.
+    """
+    gate = "CPhase"
+    qoc = QOC(**default_qoc_params)
+    pulse_circuit, target_circuit = qoc.create_CPhase()
+    pulse_script = ys.Script(pulse_circuit, n_qubits=2)
+    target_script = ys.Script(target_circuit, n_qubits=2)
+
+    state_pulse = pulse_script.execute(
+        type="state", args=(w, pinfo.gate_by_name(gate).params)
+    )
+    state_target = target_script.execute(type="state", args=(w,))
+
+    fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
+    assert fidelity <= 1.0 + 1e-6, f"Fidelity of {gate} can't be larger 1 for w={w}"
+    assert np.isclose(fidelity, 1.0, atol=1e-2), (
+        f"Fidelity too low for w={w}: {fidelity}"
+    )

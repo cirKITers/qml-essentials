@@ -11,6 +11,79 @@ from qml_essentials.utils import safe_random_split
 log = logging.getLogger(__name__)
 
 
+# Cache for computed rulers
+_GOLOMB_RULER_CACHE: Dict[int, Tuple[int, ...]] = {}
+
+
+def _greedy_golomb(d: int) -> Tuple[int, ...]:
+    """Construct a valid Golomb ruler of order *d* using a greedy algorithm.
+
+    Starting from mark 0, each subsequent mark is the smallest integer
+    whose pairwise differences with all existing marks are distinct.
+    This always succeeds and produces a valid ruler, though it may not
+    be optimal (i.e. the max mark may not be minimal).
+
+    Args:
+        d: Order of the ruler (number of marks).
+
+    Returns:
+        Tuple of *d* non-negative integers forming a valid Golomb ruler.
+    """
+    if d <= 0:
+        return ()
+    marks = [0]
+    diffs: set = set()
+    candidate = 1
+    while len(marks) < d:
+        new_diffs: set = set()
+        valid = True
+        for existing in marks:
+            diff = candidate - existing
+            if diff in diffs or diff in new_diffs:
+                valid = False
+                break
+            new_diffs.add(diff)
+        if valid:
+            marks.append(candidate)
+            diffs |= new_diffs
+        candidate += 1
+    return tuple(marks)
+
+
+def golomb_ruler(d: int) -> Tuple[int, ...]:
+    """Return a valid Golomb ruler of order *d*.
+
+    A Golomb ruler is a set of *d* non-negative integers such that all
+    pairwise differences are distinct.  When used as the diagonal of a
+    data-encoding Hamiltonian ``H = diag(marks)``, the resulting Fourier
+    spectrum ``\\Omega`` has ``|\\Omega| = d(d-1) + 1`` distinct frequencies
+    with ``|R(k)| = 1`` for all ``k ≠ 0`` — the minimal possible degeneracy
+    for any *d*-dimensional Hamiltonian.
+
+    Uses a greedy construction that always produces a valid ruler.
+    Results are cached for efficiency.
+
+    Args:
+        d: Order of the ruler (number of marks, equal to the Hilbert
+            space dimension ``2^n_qubits``).
+
+    Returns:
+        Tuple of *d* non-negative integers forming a Golomb ruler.
+
+    Raises:
+        ValueError: If ``d <= 0``.
+
+    References:
+        Peters et al., "Generalization despite overfitting in quantum
+        machine learning models", arXiv:2209.05523, Appendix C.4.
+    """
+    if d <= 0:
+        raise ValueError(f"Golomb ruler order must be positive, got {d}")
+    if d not in _GOLOMB_RULER_CACHE:
+        _GOLOMB_RULER_CACHE[d] = _greedy_golomb(d)
+    return _GOLOMB_RULER_CACHE[d]
+
+
 class UnitaryGates:
     """Collection of unitary quantum gates with optional noise simulation."""
 
@@ -391,6 +464,34 @@ class UnitaryGates:
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
+    def CPhase(
+        w: Union[float, jnp.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+        input_idx: int = -1,
+    ) -> None:
+        """
+        Apply controlled phase shift gate with optional noise.
+
+        This is a generalization of the CZ gate, applying a phase shift of
+        exp(i*w) to the |11⟩ state. When w=π, this reduces to CZ.
+
+        Args:
+            w (Union[float, jnp.ndarray, List[float]]): Phase shift angle.
+            wires (Union[int, List[int]]): Control and target qubit indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
+            input_idx (int): Flag for the tape to track inputs
+
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
+        """
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
+        op.ControlledPhaseShift(w, wires=wires, input_idx=input_idx)
+        UnitaryGates.Noise(wires, noise_params)
+
+    @staticmethod
     def CX(
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
@@ -473,3 +574,47 @@ class UnitaryGates:
         """
         op.H(wires=wires)
         UnitaryGates.Noise(wires, noise_params)
+
+    @staticmethod
+    def GolombEncoding(
+        w: Union[float, jnp.ndarray],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+        input_idx: int = -1,
+    ) -> None:
+        """Apply Golomb encoding as a diagonal unitary on all given wires.
+
+        Implements ``S(x) = exp(-i H x)`` where
+        ``H = diag(g_0, g_1, ..., g_{d-1})`` and the ``g_j`` are the marks
+        of a Golomb ruler of order ``d = 2^len(wires)``.  This produces a
+        maximally non-degenerate Fourier spectrum with
+        ``|\\Omega| = d(d-1) + 1`` distinct frequencies, each with degeneracy
+        ``|R(k)| = 1``.
+
+        See Peters et al., arXiv:2209.05523, Sec. 3.1 and Appendix C.4.
+
+        Args:
+            w: Scalar input value (the data point *x* to encode).
+            wires: Qubit indices this encoding acts on.  All qubits are
+                acted upon simultaneously via a single multi-qubit diagonal
+                gate.
+            noise_params: Optional noise parameters dictionary.
+            random_key: JAX random key for stochastic noise.
+            input_idx: Flag for the tape to track inputs.
+
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
+        """
+        wires_list = list(wires) if isinstance(wires, (list, tuple)) else [wires]
+        d = 2 ** len(wires_list)
+        marks = jnp.array(golomb_ruler(d), dtype=float)
+
+        # Apply gate error to the input angle
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
+
+        # Build diagonal: exp(-i * mark_j * x)
+        diag = jnp.exp(-1j * marks * w)
+
+        op.DiagonalQubitUnitary(diag, wires=wires_list, input_idx=input_idx)
+        UnitaryGates.Noise(wires_list, noise_params)

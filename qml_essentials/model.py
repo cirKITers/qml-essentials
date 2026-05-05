@@ -139,6 +139,9 @@ class Model:
             # use hammming encoding by default
             self._enc = Encoding("hamming", encoding)
 
+        if self._enc.is_golomb:
+            self._enc._n_qubits = n_qubits
+
         # Number of possible inputs
         self.n_input_feat = len(self._enc)
         log.debug(f"Number of input features: {self.n_input_feat}")
@@ -695,6 +698,9 @@ class Model:
         gates (e.g., RX, RY, RZ). Supports data re-uploading at specified
         positions in the circuit.
 
+        For Golomb encoding, a single multi-qubit diagonal unitary is applied
+        to all qubits simultaneously instead of per-qubit rotation gates.
+
         Args:
             inputs (jnp.ndarray): Input data of shape (n_input_feat,) or
                 (batch_size, n_input_feat).
@@ -715,6 +721,26 @@ class Model:
         if self.remove_zero_encoding and self._zero_inputs and self.batch_shape[0] == 1:
             return
 
+        # --- Golomb encoding: single multi-qubit gate on all qubits --------
+        if enc.is_golomb:
+            idx = 0  # Golomb encoding supports a single input feature
+            # Check if any qubit has re-uploading enabled for this layer
+            if data_reupload[:, idx].any():
+                random_key, sub_key = safe_random_split(random_key)
+                # Use the mean of enc_params across qubits as scalar scaling
+                # (Golomb acts on all qubits jointly)
+                mean_enc_param = jnp.mean(enc_params[:, idx])
+                all_wires = list(range(self.n_qubits))
+                enc[idx](
+                    self.transform_input(inputs[..., idx], mean_enc_param),
+                    wires=all_wires,
+                    noise_params=noise_params,
+                    random_key=sub_key,
+                    input_idx=idx,
+                )
+            return
+
+        # --- Standard per-qubit encoding -----------------------------------
         for q in range(self.n_qubits):
             # use the last dimension of the inputs (feature dimension)
             for idx in range(inputs.shape[-1]):

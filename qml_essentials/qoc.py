@@ -1863,11 +1863,6 @@ class QOC:
                 for name, weight in self.cost_fns:
                     total_costs = _build_cost(name, weight) + total_costs
 
-                # Stage 0 now uses the same weighted objective as Stage 1
-                # so the two phases share a basin (previously Stage 0
-                # used a fidelity-only cost which led the grid scan into
-                # local minima with biased phase residuals — see plan
-                # notes for details).
                 best_scan_params, scan_data = self.stage_0_opt(
                     init_pulse_params,
                     total_costs,
@@ -2102,6 +2097,21 @@ class QOC:
 
     def create_CRZ(self):
         return self._create_pair("CRZ")
+
+    def create_CPhase(self):
+        """Create pulse and target circuits for the CPhase gate."""
+
+        def pulse_circuit(w, pulse_params):
+            op.H(wires=0)
+            op.H(wires=1)
+            Gates.CPhase(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
+
+        def target_circuit(w):
+            op.H(wires=0)
+            op.H(wires=1)
+            op.ControlledPhaseShift(w, wires=[0, 1])
+
+        return pulse_circuit, target_circuit
 
     def optimize_all(self, sel_gates: str, make_log: bool) -> None:
         """Optimise all selected gates and optionally write a log CSV.

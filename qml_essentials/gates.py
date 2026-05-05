@@ -217,8 +217,10 @@ class Gates(metaclass=GatesMeta):
             "CRX",
             "CRY",
             "CRZ",
+            "GolombEncoding",
+            "CPhase",
         ]
 
     @classmethod
     def is_entangling(cls, gate):
-        return gate.__name__ in ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"]
+        return gate.__name__ in ["CX", "CY", "CZ", "CRX", "CRY", "CRZ", "CPhase"]

@@ -725,6 +725,17 @@ class PulseInformation:
                 DecompositionStep(cls.CX, "all", lambda w: 0.0),
             ],
         )
+        # TODO: check if we could just make this a basis gate instead
+        cls.CPhase = PulseParams(
+            name="CPhase",
+            decomposition=[
+                DecompositionStep(cls.RZ, "control", lambda w: w / 2),
+                DecompositionStep(cls.RZ, "target", lambda w: w / 2),
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+                DecompositionStep(cls.RZ, "target", lambda w: -w / 2),
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+            ],
+        )
         cls.Rot = PulseParams(
             name="Rot",
             decomposition=[
@@ -1309,6 +1320,7 @@ class PulseGates:
                 "CRX",
                 "CRY",
                 "CRZ",
+                "CPhase",
             ):
                 child_gate(child_w, wires=child_wires, pulse_params=child_params)
             # Other composite gates (H, CX, CY, ...)
@@ -1476,6 +1488,31 @@ class PulseGates:
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         PulseGates._execute_composite("CRZ", w, wires, pulse_params)
+        UnitaryGates.Noise(wires, noise_params)
+
+    @staticmethod
+    def CPhase(
+        w: float,
+        wires: List[int],
+        pulse_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
+        """Apply controlled phase shift via decomposition.
+
+        Decomposes CPhase(φ) into RZ and CX gates:
+        RZ(φ/2) on control, RZ(φ/2) on target, CX, RZ(-φ/2) on target, CX.
+
+        Args:
+            w (float): Phase shift angle in radians.
+            wires (List[int]): Control and target qubit indices [control, target].
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for compatibility
+        """
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
+        PulseGates._execute_composite("CPhase", w, wires, pulse_params)
         UnitaryGates.Noise(wires, noise_params)
 
 

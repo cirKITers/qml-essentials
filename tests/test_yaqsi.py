@@ -34,6 +34,7 @@ from qml_essentials.operations import (
     Id,
     Hermitian,
     ParametrizedHamiltonian,
+    prod,
     # noise channels
     BitFlip,
     PhaseFlip,
@@ -1502,12 +1503,88 @@ class TestGateOperations:
         assert result.wires == [0, 1]
 
     @pytest.mark.unittest
-    def test_matmul_overlapping_wires_raises(self):
-        """Tensor product with overlapping wires must raise ValueError."""
+    def test_matmul_overlapping_wires(self):
+        """Tensor product with overlapping wires produces matrix multiplication."""
         x = PauliX(wires=0, record=False)
         z = PauliZ(wires=0, record=False)
-        with pytest.raises(ValueError, match="overlapping wires"):
-            _ = x @ z
+        result = x @ z
+        expected = PauliX._matrix @ PauliZ._matrix
+        assert jnp.allclose(result.matrix, expected, atol=1e-10)
+        assert result.wires == [0]
+
+    @pytest.mark.unittest
+    def test_matmul_partial_overlap(self):
+        """Tensor product with partially overlapping wires
+        produces embedded matrix multiplication."""
+        cx1 = CX(wires=[0, 1], record=False)
+        cx2 = CX(wires=[1, 2], record=False)
+        result = cx1 @ cx2
+
+        # CX1 embedded in [0, 1, 2] is CX ⊗ I
+        expected_cx1 = jnp.kron(CX._matrix, Id._matrix)
+        # CX2 embedded in [0, 1, 2] is I ⊗ CX
+        expected_cx2 = jnp.kron(Id._matrix, CX._matrix)
+
+        expected = expected_cx1 @ expected_cx2
+        assert jnp.allclose(result.matrix, expected, atol=1e-10)
+        assert result.wires == [0, 1, 2]
+
+    @pytest.mark.unittest
+    def test_mul_operation_composition(self):
+        """Multiplication (*) of two operations acts as composition."""
+        x = PauliX(wires=0, record=False)
+        z = PauliZ(wires=0, record=False)
+        result = x * z
+        expected = PauliX._matrix @ PauliZ._matrix
+        assert jnp.allclose(result.matrix, expected, atol=1e-10)
+        assert result.wires == [0]
+
+    @pytest.mark.unittest
+    def test_prod_function(self):
+        """Module-level prod function constructs generalized product
+        (tensor or matrix) of multiple operations."""
+        x = PauliX(wires=0, record=False)
+        y = PauliY(wires=1, record=False)
+        z = PauliZ(wires=0, record=False)
+
+        result = prod(x, y, z)
+        # X(0)*Z(0) \otimes Y(1)
+        expected_xz = PauliX._matrix @ PauliZ._matrix
+        expected = jnp.kron(expected_xz, PauliY._matrix)
+
+        assert jnp.allclose(result.matrix, expected, atol=1e-10)
+        assert result.wires == [0, 1]
+        assert result.name == "Prod(PauliX*PauliY*PauliZ)"
+
+    @pytest.mark.unittest
+    def test_operation_prod_method(self):
+        """Operation.prod method constructs generalized product of operations."""
+        x = PauliX(wires=0, record=False)
+        y = PauliY(wires=1, record=False)
+        z = PauliZ(wires=0, record=False)
+
+        result = x.prod(y, z)
+        expected_xz = PauliX._matrix @ PauliZ._matrix
+        expected = jnp.kron(expected_xz, PauliY._matrix)
+
+        assert jnp.allclose(result.matrix, expected, atol=1e-10)
+        assert result.wires == [0, 1]
+        assert result.name == "Prod(PauliX*PauliY*PauliZ)"
+
+    @pytest.mark.unittest
+    def test_prod_observable_execution(self):
+        """prod operation can be used as an observable in Yaqsi."""
+
+        def circuit():
+            H(wires=0)
+            H(wires=1)
+
+        script = Script(circuit, n_qubits=2)
+        # <X0 X1> = 1.0 since state is |+>|+>
+        obs_op = prod(PauliX(wires=0, record=False), PauliX(wires=1, record=False))
+        res = script.execute(type="expval", obs=[obs_op])
+
+        assert jnp.allclose(res, jnp.array([1.0]), atol=1e-10)
 
     @pytest.mark.unittest
     def test_matmul_identity(self):
