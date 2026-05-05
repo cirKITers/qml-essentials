@@ -18,9 +18,16 @@ from qml_essentials.qoc import (
 
 jax.config.update("jax_enable_x64", True)
 
-# overwrite to make tests a bit easier
-default_qoc_params["n_steps"] = 50
-default_qoc_params["scan_steps"] = 0
+
+def qoc_test_params(**overrides):
+    """Return fast QOC defaults without mutating package-level defaults."""
+    params = {
+        **default_qoc_params,
+        "n_steps": 50,
+        "scan_steps": 0,
+    }
+    params.update(overrides)
+    return params
 
 
 class TestCost:
@@ -244,14 +251,14 @@ class TestQOCInit:
 
     def test_default_cost_fns(self):
         """cost_fns from default_qoc_params are stored correctly."""
-        qoc = QOC(**default_qoc_params)
+        qoc = QOC(**qoc_test_params())
         names = [name for name, _ in qoc.cost_fns]
         assert "unitary" in names
 
     def test_custom_cost_fns(self):
         """Custom cost_fns override the defaults."""
         custom = [("fidelity", (0.5, 0.5))]
-        params = {**default_qoc_params, "cost_fns": custom}
+        params = qoc_test_params(cost_fns=custom)
         qoc = QOC(**params)
         assert qoc.cost_fns == custom
 
@@ -276,7 +283,7 @@ class TestQOCInit:
     def test_unknown_cost_fn_raises(self):
         """Using an unregistered cost function name raises ValueError."""
         with pytest.raises(ValueError, match="Unknown cost function"):
-            params = {**default_qoc_params, "cost_fns": [("nonexistent", 0.5)]}
+            params = qoc_test_params(cost_fns=[("nonexistent", 0.5)])
             QOC(**params)
 
 
@@ -285,7 +292,7 @@ class TestOptimizeSmoke:
 
     def test_optimize_returns_params_and_history(self, tmp_path):
         """optimize() returns (params, loss_history) and loss decreases."""
-        params = {**default_qoc_params, "file_dir": str(tmp_path)}
+        params = qoc_test_params(file_dir=str(tmp_path))
         qoc = QOC(
             **params,
         )
@@ -293,9 +300,7 @@ class TestOptimizeSmoke:
         best_params, loss_history = opt_1q(qoc.create_RX)()
 
         assert best_params is not None
-        assert (
-            len(loss_history) == default_qoc_params["n_steps"] + 1
-        )  # initial + n_steps
+        assert len(loss_history) == params["n_steps"] + 1  # initial + n_steps
 
     @pytest.mark.parametrize(
         "factory_name",
@@ -314,7 +319,7 @@ class TestOptimizeSmoke:
         ],
     )
     def test_create_circuits_return_callables(self, factory_name):
-        qoc = QOC(**default_qoc_params)
+        qoc = QOC(**qoc_test_params())
         factory = getattr(qoc, factory_name)
         pulse_c, target_c = factory()
         assert callable(pulse_c)
@@ -333,7 +338,7 @@ class TestFidelity:
     @pytest.mark.unittest
     @pytest.mark.parametrize("gate,w", single_qubit_pulse_testdata)
     def test_single_qubit_pulse_gate(self, gate, w):
-        qoc = QOC(**default_qoc_params)
+        qoc = QOC(**qoc_test_params())
         pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
         pulse_script = ys.Script(pulse_circuit, n_qubits=1)
         target_script = ys.Script(target_circuit, n_qubits=1)
@@ -357,7 +362,7 @@ class TestFidelity:
     @pytest.mark.unittest
     @pytest.mark.parametrize("gate,w", two_qubit_pulse_testdata)
     def test_two_qubit_pulse_gate(self, gate, w):
-        qoc = QOC(**default_qoc_params)
+        qoc = QOC(**qoc_test_params())
         pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
         pulse_script = ys.Script(pulse_circuit, n_qubits=2)
         target_script = ys.Script(target_circuit, n_qubits=2)
