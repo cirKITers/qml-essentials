@@ -178,6 +178,20 @@ class Yaqsi:
         return solve
 
     @classmethod
+    def clear_evolve_solver_cache(cls) -> None:
+        """Drop every cached compiled evolve solver.
+
+        Call this whenever the coefficient functions referenced by the
+        cache keys are rebuilt (e.g. when :class:`PulseGates` swaps in
+        a new pulse envelope, RWA flag or frame).  Without an explicit
+        eviction the cache keeps the old code objects alive and would
+        also retain XLA programs that no longer match any active
+        coefficient function.
+        """
+        with cls._evolve_solver_cache_lock:
+            cls._evolve_solver_cache.clear()
+
+    @classmethod
     def _parse_evolve_solver_options(cls, odeint_kwargs: dict) -> tuple:
         """Pop and validate solver options from ``evolve(..., **odeint_kwargs)``."""
         default_tol = 1.0e-10 if jax.config.x64_enabled else 1.4e-8
@@ -616,12 +630,17 @@ class Yaqsi:
             cls._parse_evolve_solver_options(odeint_kwargs)
         )
 
-        # Cache key:  identity of every coeff fn's code object (same shape
-        # of pulse fns -> same JIT program) plus dim, tolerances, and
-        # solver budget / throw flag (different budgets mean different
-        # XLA programs).
+        # Cache key:  every coeff fn's code object (same shape of pulse
+        # fns -> same JIT program) plus dim, tolerances, and solver
+        # budget / throw flag (different budgets mean different XLA
+        # programs).  We use the code object itself (hashable, identity-
+        # equal) rather than ``id(fn.__code__)``: ids can be reused for
+        # later code objects after the original is garbage-collected,
+        # which would silently return a stale compiled solver for a
+        # different pulse shape.  Holding the code object in the cache
+        # keeps it alive for as long as the cached program is valid.
         cache_key = (
-            tuple(id(fn.__code__) for fn in coeff_fns),
+            tuple(fn.__code__ for fn in coeff_fns),
             dim,
             atol,
             rtol,
