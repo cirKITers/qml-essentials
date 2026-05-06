@@ -22,6 +22,8 @@ As a single source of truth for both, there is the `PulseInformation` class, pro
 ![overview](figures/yaqsi_pulse_dark.png#center#only-dark)
 
 
+## Quickstart
+
 The API of our simulator is very similar to what one might be used to know from pennylane.
 For a basic circuit execution, we have to do two imports:
 
@@ -163,3 +165,122 @@ fig, axes = yss.draw(figure="pulse", args=(jnp.pi*0.5,))
 
 ![pulse-schedule](figures/pulse_schedule_light.png#center#only-light)
 ![pulse-schedule](figures/pulse_schedule_dark.png#center#only-dark)
+
+## Technical Details
+
+YAQSI is built with just a few dependencies:
+- jax & jaxlib: used for general numerical operations
+- optax: mainly used for quantum optimal control purposes internally, but of generally the starting point for doing any kind of training
+- diffrax: source for the ODE solvers we use in the pulse simulation
+
+For developers, the most important internal split is between operation definitions,
+thread-local recording, and execution orchestration:
+
+```mermaid
+%%{init: {"flowchart": {"htmlLabels": true, "nodeSpacing": 28, "rankSpacing": 90, "curve": "basis"}, "themeVariables": {"fontSize": "24px"}} }%%
+flowchart TD
+    subgraph script_layer["yaqsi.py - Script lifecycle"]
+        direction TB
+        script("Script<br/>public circuit container")
+        execute("execute()<br/>single or batched entry point")
+        record("Script._record()<br/>runs the user circuit")
+        infer("Script._infer_n_qubits()<br/>derive simulation size")
+    end
+
+    subgraph tape_py["tape.py - thread-local recording"]
+        direction TB
+        rec("recording() / active_tape()<br/>operation tape stack")
+        replay("copy_to_tape() / shift_and_append()<br/>wire-shifted replay")
+        prec("pulse_recording() / active_pulse_tape()<br/>pulse-event tape stack")
+    end
+
+    subgraph operations_py["operations.py - operation model"]
+        direction TB
+        op_base("Operation<br/>base class + auto-registration")
+        unitary_ops("Unitary operations<br/>fixed, rotation, controlled, custom")
+        obs("Hermitian<br/>observables")
+        hamiltonian("ParametrizedHamiltonian<br/>time-dependent pulse Hamiltonians")
+        kraus("KrausChannel family<br/>noisy density-matrix channels")
+        op_helpers("Helpers<br/>pauli_decompose, prod,<br/>einsum/embed/Clifford utilities")
+    end
+
+    subgraph simulation_layer["yaqsi.py - simulation kernels and helpers"]
+        direction TB
+        dispatch("Script._simulate_and_measure()<br/>select pure or mixed simulation path")
+        batched("_execute_batched()<br/>jax.vmap execution")
+        memory("chunk helpers<br/>estimate peak bytes + memory limits")
+        pure("_simulate_pure()<br/>statevector kernel")
+        meas_state("_measure_state()<br/>state/probs/expval")
+        mixed("_simulate_mixed()<br/>density-matrix kernel")
+        meas_density("_measure_density()<br/>density/probs/expval")
+        shots("_sample_shots()<br/>optional stochastic sampling")
+        yaqsi_helpers("Yaqsi helpers<br/>partial_trace, marginalize_probs,<br/>parity observable")
+        evolve("Yaqsi.evolve()<br/>static / parametrized Hamiltonian evolution")
+        ode_cache("diffrax ODE solver<br/>JIT cache")
+    end
+
+    script --> execute
+    execute --> record
+    record --> rec
+    rec --> op_base
+
+    op_base --> unitary_ops
+    unitary_ops --> obs
+    obs --> hamiltonian
+    hamiltonian --> kraus
+    kraus --> op_helpers
+    op_base --> infer
+
+    infer --> dispatch
+    dispatch --> pure
+    pure --> meas_state
+    dispatch --> mixed
+    mixed --> meas_density
+    meas_state --> shots
+    meas_density --> shots
+
+    execute --> batched
+    batched --> memory
+    batched --> dispatch
+
+    hamiltonian --> evolve
+    obs --> evolve
+    evolve --> ode_cache
+    evolve --> unitary_ops
+
+    op_helpers --> pure
+    op_helpers --> mixed
+    yaqsi_helpers --> meas_density
+    yaqsi_helpers --> meas_state
+
+    replay --> rec
+
+    classDef l1 fill:#1f8f5a,stroke:#1f8f5a,color:#d4f7e8,font-size:24px
+    classDef l2 fill:#2fb170,stroke:#2fb170,color:#d4f7e8,font-size:24px
+    classDef l3 fill:#58e3a6,stroke:#58e3a6,color:#272a35,font-size:24px
+    classDef l4 fill:#a8f0d1,stroke:#a8f0d1,color:#272a35,font-size:24px
+
+    linkStyle default stroke-width:2px
+
+    class script,execute,op_base,rec l1
+    class dispatch,unitary_ops,kraus,prec l2
+    class pure,mixed,meas_state,meas_density,batched,evolve,obs,hamiltonian,replay l3
+    class record,infer,shots,memory,yaqsi_helpers,op_helpers,ode_cache l4
+```
+
+- `Operation` is the extension point for new gates or observables. Instances created
+  inside a `Script` context append themselves to the active tape.
+- `KrausChannel` switches execution to the density-matrix path, which is required for
+  noisy simulation and for returning full density matrices.
+- `Script.execute` records the circuit, infers the qubit count when necessary, then
+  dispatches to the pure or mixed simulation kernel before measuring the requested
+  result type.
+- Batched execution wraps the same simulation path with `jax.vmap`; chunking estimates
+  memory usage and splits large batches before execution.
+- `Yaqsi.evolve` turns static or parametrized Hamiltonians into operations via the
+  diffrax-backed pulse-evolution path, with cached JIT-compiled solvers.
+- `tape.py` keeps recording thread-local, so nested recordings and pulse-event
+  recordings do not leak across threads or circuit builds.
+
+Note that we're using cache keys to detect already compiled JIT functions.
+This may produce unexpected results when introducing new functionality which does either not hit the cache at all or hit the cache unexpectedly. 
