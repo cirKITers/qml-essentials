@@ -4,6 +4,8 @@ on:
     branches: ["main"]
 permissions:
   contents: write
+  pages: write
+  id-token: write
 jobs:
   test-publish:
     name: Trigger Expensive Tests
@@ -52,7 +54,7 @@ jobs:
           git commit -am "Update Citation"
           git push
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
       - name: Create Release & Tag
         if: env.DORELEASE == 'true'
         run: |
