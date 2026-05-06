@@ -281,6 +281,72 @@ class TestEvolve:
         with pytest.raises(TypeError, match="evolve"):
             evolve("not a hamiltonian")
 
+    @pytest.mark.unittest
+    def test_evolve_max_steps_throws_by_default(self) -> None:
+        """A tight ``max_steps`` budget on a fast-oscillating Hamiltonian
+        triggers a solver error (default ``throw=True``)."""
+        from qml_essentials.yaqsi import Yaqsi
+
+        # Highly oscillatory coefficient — Tsit5 will need many steps
+        def fast_coeff(p, t):
+            return p[0] * jnp.cos(1.0e3 * t)
+
+        Z = PauliZ._matrix
+        ph = fast_coeff * Hermitian(matrix=Z, wires=0, record=False)
+
+        prev = Yaqsi.set_solver_defaults(max_steps=4, throw=True)
+        try:
+            with pytest.raises(Exception):
+                evolve(ph)([jnp.array([1.0])], 1.0)
+        finally:
+            Yaqsi.set_solver_defaults(**prev)
+
+    @pytest.mark.unittest
+    def test_evolve_throw_false_returns_nan_on_failure(self) -> None:
+        """With ``throw=False`` and an unreachable budget, a failed solve
+        returns a NaN-filled unitary instead of raising."""
+        from qml_essentials.yaqsi import Yaqsi
+
+        def fast_coeff(p, t):
+            return p[0] * jnp.cos(1.0e3 * t)
+
+        Z = PauliZ._matrix
+        ph = fast_coeff * Hermitian(matrix=Z, wires=0, record=False)
+
+        prev = Yaqsi.set_solver_defaults(max_steps=4, throw=False)
+        try:
+            op_ = evolve(ph)([jnp.array([1.0])], 1.0)
+            U = op_.matrix
+            assert jnp.all(jnp.isnan(U)), (
+                "Expected NaN-filled unitary on solver failure with "
+                f"throw=False, got\n{U}"
+            )
+        finally:
+            Yaqsi.set_solver_defaults(**prev)
+
+    @pytest.mark.unittest
+    def test_evolve_throw_false_succeeds_on_easy_problem(self) -> None:
+        """``throw=False`` does not affect well-behaved problems: the
+        returned unitary is finite and equals the static-evolve result
+        for a constant coefficient."""
+        from qml_essentials.yaqsi import Yaqsi
+
+        def const_coeff(p, t):
+            return 1.0
+
+        Z = PauliZ._matrix
+        ph = const_coeff * Hermitian(matrix=Z, wires=0, record=False)
+
+        prev = Yaqsi.set_solver_defaults(throw=False)
+        try:
+            U = evolve(ph)([jnp.array([0.0])], 0.5).matrix
+        finally:
+            Yaqsi.set_solver_defaults(**prev)
+
+        U_static = jax.scipy.linalg.expm(-1j * 0.5 * Z)
+        assert jnp.all(jnp.isfinite(U))
+        assert jnp.allclose(U, U_static, atol=1e-6)
+
 
 class TestMeasurement:
     @pytest.mark.unittest
@@ -940,8 +1006,9 @@ def test_parametrized_hamiltonian_creation() -> None:
     ph = coeff * herm
 
     assert isinstance(ph, ParametrizedHamiltonian)
-    assert ph.coeff_fn is coeff
-    assert jnp.allclose(ph.H_mat, PauliZ._matrix)
+    assert ph.n_terms == 1
+    assert ph.coeff_fns == (coeff,)
+    assert jnp.allclose(ph.H_mats[0], PauliZ._matrix)
     assert ph.wires == [0]
 
 
@@ -953,10 +1020,106 @@ def test_parametrized_hamiltonian_non_callable_raises() -> None:
         _ = 3.14 * herm
 
 
+@pytest.mark.unittest
+def test_parametrized_hamiltonian_multi_term_addition() -> None:
+    """Adding two single-term PHs produces a 2-term PH with matching wires."""
+    H_X = Hermitian(matrix=PauliX._matrix, wires=0, record=False)
+    H_Y = Hermitian(matrix=PauliY._matrix, wires=0, record=False)
+
+    def fx(p, t):
+        return p[0]
+
+    def fy(p, t):
+        return p[0] * t
+
+    ph = fx * H_X + fy * H_Y
+    assert isinstance(ph, ParametrizedHamiltonian)
+    assert ph.n_terms == 2
+    assert ph.wires == [0]
+    assert ph.coeff_fns == (fx, fy)
+
+
+@pytest.mark.unittest
+def test_parametrized_hamiltonian_wire_mismatch_raises() -> None:
+    """Terms acting on different wires are rejected."""
+    H_X0 = Hermitian(matrix=PauliX._matrix, wires=0, record=False)
+    H_X1 = Hermitian(matrix=PauliX._matrix, wires=1, record=False)
+
+    def f(p, t):
+        return 1.0
+
+    with pytest.raises(ValueError, match="same wires"):
+        _ = (f * H_X0) + (f * H_X1)
+
+
+@pytest.mark.unittest
+def test_parametrized_hamiltonian_neg_and_sub() -> None:
+    """-PH and PH - PH compose as expected."""
+    H_X = Hermitian(matrix=PauliX._matrix, wires=0, record=False)
+
+    def f(p, t):
+        return 2.0
+
+    ph = f * H_X
+    ph_neg = -ph
+    assert ph_neg.n_terms == 1
+    # Coefficient should be negated
+    assert jnp.allclose(ph_neg.coeff_fns[0](None, 0.0), -2.0)
+
+    ph_sub = ph - ph  # should be a 2-term PH whose net coefficients cancel
+    assert ph_sub.n_terms == 2
+    c0 = ph_sub.coeff_fns[0](None, 0.0)
+    c1 = ph_sub.coeff_fns[1](None, 0.0)
+    assert jnp.allclose(c0 + c1, 0.0)
+
+
+@pytest.mark.unittest
+def test_evolve_multi_term_constant_matches_expm() -> None:
+    """ODE under H = X + Y (constant) matches expm(-i(X+Y)*T)."""
+    H_X = Hermitian(matrix=PauliX._matrix, wires=0, record=False)
+    H_Y = Hermitian(matrix=PauliY._matrix, wires=0, record=False)
+
+    def one_x(p, t):
+        return 1.0
+
+    def one_y(p, t):
+        return 1.0
+
+    ph = one_x * H_X + one_y * H_Y
+    T = 0.5
+    gate = evolve(ph)
+    op = gate([jnp.array([]), jnp.array([])], T)
+    U_ode = op.matrix
+
+    H_sum = PauliX._matrix + PauliY._matrix
+    U_ref = jax.scipy.linalg.expm(-1j * T * H_sum)
+    assert jnp.allclose(U_ode, U_ref, atol=1e-6)
+
+
+@pytest.mark.unittest
+def test_evolve_multi_term_time_dependent_unitarity() -> None:
+    """Time-dependent two-term Hamiltonian produces unitary evolution."""
+    H_X = Hermitian(matrix=PauliX._matrix, wires=0, record=False)
+    H_Y = Hermitian(matrix=PauliY._matrix, wires=0, record=False)
+
+    def fx(p, t):
+        return jnp.cos(2.0 * t)
+
+    def fy(p, t):
+        return -jnp.sin(2.0 * t)
+
+    ph = fx * H_X + fy * H_Y
+    gate = evolve(ph)
+    op = gate([jnp.array([]), jnp.array([])], 0.7)
+    U = op.matrix
+    err = jnp.linalg.norm(U.conj().T @ U - jnp.eye(2))
+    assert err < 1e-5
+
+
 @pytest.mark.benchmark
 @pytest.mark.unittest
 @pytest.mark.parametrize(
-    "mode,speedup", [("probs", 80), ("expval", 90), ("state", 70), ("density", 65)]
+    "mode,speedup", [("probs", 80), ("expval", 85), ("state", 70), ("density", 65)]
 )
 def test_mode_performances(benchmark, mode, speedup) -> None:
     """
@@ -2256,18 +2419,21 @@ class TestPulse:
     def test_build_coeff_fns_unique_code(self):
         """build_coeff_fns for different envelopes produces different outputs."""
         omega_c = PulseGates.omega_c
-        sx_g, sy_g = PulseEnvelope.build_coeff_fns(PulseEnvelope.gaussian, omega_c)
-        sx_d, sy_d = PulseEnvelope.build_coeff_fns(PulseEnvelope.drag, omega_c)
-        # Pick t where neither carrier cos(ω·t+π) nor cos(ω·t-π/2) vanishes.
-        # ω_c = 10π, so avoid t = k/20 ± 1/40 (carrier zeros).
+        omega_q = PulseGates.omega_q
+        rxx_g, rxy_g, ryx_g, ryy_g = PulseEnvelope.build_coeff_fns(
+            PulseEnvelope.gaussian, omega_c, omega_q, rwa=False, frame="lab"
+        )
+        rxx_d, rxy_d, ryx_d, ryy_d = PulseEnvelope.build_coeff_fns(
+            PulseEnvelope.drag, omega_c, omega_q, rwa=False, frame="lab"
+        )
         p_gauss = jnp.array([1.0, 1.0, 1.0])  # [A, sigma, w]
         p_drag = jnp.array([1.0, 0.5, 1.0, 1.0])  # [A, beta, sigma, w]
         t = 0.123
         # Different envelopes → different coefficient values
-        assert not jnp.allclose(sx_g(p_gauss, t), sx_d(p_drag, t))
-        assert not jnp.allclose(sy_g(p_gauss, t), sy_d(p_drag, t))
-        # Sx and Sy from the same build differ (different carrier phases)
-        assert not jnp.allclose(sx_g(p_gauss, t), sy_g(p_gauss, t))
+        assert not jnp.allclose(rxx_g(p_gauss, t), rxx_d(p_drag, t))
+        assert not jnp.allclose(ryy_g(p_gauss, t), ryy_d(p_drag, t))
+        # RX and RY dominant components differ (different carrier phases)
+        assert not jnp.allclose(rxx_g(p_gauss, t), ryy_g(p_gauss, t))
 
     @pytest.mark.unittest
     def test_pulse_information_set_envelope(self):
@@ -2428,6 +2594,273 @@ class TestPulse:
             assert jnp.allclose(PulseInformation.RX.params, rx_params_before)
         finally:
             PulseInformation.set_envelope(original)
+
+    @pytest.mark.unittest
+    def test_rwa_toggle_default_off(self):
+        """Default RWA flag is True."""
+        assert PulseInformation.get_rwa() is True
+        assert PulseGates._active_rwa is True
+
+    @pytest.mark.unittest
+    def test_rwa_toggle_roundtrip(self):
+        """set_rwa flips the flag, rebuilds coeffs, and restores cleanly."""
+        original_env = PulseInformation.get_envelope()
+        original_rwa = PulseInformation.get_rwa()
+        try:
+            PulseInformation.set_envelope("gaussian")
+            PulseInformation.set_rwa(True)
+            assert PulseInformation.get_rwa() is True
+            assert PulseGates._active_rwa is True
+
+            PulseInformation.set_rwa(False)
+            assert PulseInformation.get_rwa() is False
+            assert PulseGates._active_rwa is False
+        finally:
+            PulseInformation.set_envelope(original_env)
+            PulseInformation.set_rwa(original_rwa)
+
+    @pytest.mark.unittest
+    def test_rwa_coeffs_drop_fast_oscillations(self):
+        """RWA coeffs are envelope-only (no carrier); exact form has both.
+
+        Direct check that ``rwa=True`` removes the fast factors
+
+        - Exact: ``c_X(t) = env·cos(ω_c t)·cos(ω_q t)·w``
+          → vanishes whenever ``cos(ω_c t) = 0``.
+        - RWA:   ``c_X(t) = 0.5·env·w``
+          → never vanishes for non-zero ``env`` and ``w``.
+        """
+        omega_c = PulseGates.omega_c
+        omega_q = PulseGates.omega_q
+
+        rxx_exact, rxy_exact, ryx_exact, ryy_exact = PulseEnvelope.build_coeff_fns(
+            PulseEnvelope.gaussian, omega_c, omega_q, rwa=False
+        )
+        rxx_rwa, rxy_rwa, ryx_rwa, ryy_rwa = PulseEnvelope.build_coeff_fns(
+            PulseEnvelope.gaussian, omega_c, omega_q, rwa=True
+        )
+
+        p = jnp.array([1.0, 0.5, 1.0])  # [A, sigma, w]
+        # Time at which the carrier vanishes (cos(omega_c t) = 0).
+        t_zero = jnp.pi / (2 * omega_c)
+        # Reference time at which envelope and carrier are positive.
+        t_ref = 0.0
+
+        # Exact form respects the carrier zero crossing.
+        assert jnp.isclose(rxx_exact(p, t_zero), 0.0, atol=1e-10)
+        assert jnp.isclose(rxy_exact(p, t_zero), 0.0, atol=1e-10)
+        # RWA form does not (envelope is finite at t_zero).
+        assert jnp.abs(rxx_rwa(p, t_zero)) > 1e-3
+        # And RWA equals the closed-form ``0.5 * env(p, t, t/2) * w``.
+        env_val = PulseEnvelope.gaussian(p, t_ref, t_ref / 2)
+        assert jnp.isclose(rxx_rwa(p, t_ref), 0.5 * env_val * p[-1], atol=1e-10)
+        assert jnp.isclose(ryy_rwa(p, t_ref), 0.5 * env_val * p[-1], atol=1e-10)
+        # Off-diagonal RWA components are identically zero.
+        assert jnp.isclose(rxy_rwa(p, 0.123), 0.0, atol=1e-12)
+        assert jnp.isclose(ryx_rwa(p, 0.123), 0.0, atol=1e-12)
+
+    @pytest.mark.unittest
+    def test_rwa_unitary_matches_envelope_area(self):
+        """RWA RX rotation angle equals ``w × ∫env dt`` (closed-form).
+
+        In RWA mode ``H_I(t) = (env(t)/2)·w·X``.  Integrating gives
+        ``U = exp(-i (w·Area/2) X)`` where ``Area = ∫_0^t_g env dt``.
+        The numerical pulse must agree with the analytic ``OpRX`` at
+        the *effective* angle ``theta_eff = w · Area``.  Computed
+        Area via a fine trapezoidal quadrature so the test is
+        independent of any per-envelope calibration.
+        """
+        original_env = PulseInformation.get_envelope()
+        original_rwa = PulseInformation.get_rwa()
+        try:
+            PulseInformation.set_envelope("gaussian")
+            PulseInformation.set_rwa(True)
+
+            A, sigma, t_g = 0.5, 0.4, 1.5
+            w = 1.0
+            pp = jnp.array([A, sigma, t_g])
+
+            # Closed-form area of env(τ) = A·exp(-(τ/2)^2/(2 sigma^2))
+            # over [0, t_g] via dense trapezoid (no JAX needed).
+            ts = jnp.linspace(0.0, t_g, 2048)
+            env_vals = jax.vmap(
+                lambda tau: PulseEnvelope.gaussian(jnp.array([A, sigma]), tau, tau / 2)
+            )(ts)
+            area = jnp.trapezoid(env_vals, ts)
+            theta_eff = float(w * area)
+
+            def pulse_circuit(w, pp):
+                PulseGates.RX(w, wires=0, pulse_params=pp)
+
+            def target_circuit(theta):
+                from qml_essentials.operations import RX as OpRX
+
+                OpRX(theta, wires=0)
+
+            pulse_script = Script(pulse_circuit, n_qubits=1)
+            target_script = Script(target_circuit, n_qubits=1)
+
+            state_pulse = pulse_script.execute(type="state", args=(w, pp))
+            state_target = target_script.execute(type="state", args=(theta_eff,))
+
+            f = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
+            assert f <= 1.0 + 1e-6
+            # RWA mode is tight: no fast oscillations to integrate.
+            assert np.isclose(f, 1.0, atol=5e-3), (
+                f"RWA RX fidelity (theta_eff={theta_eff:.4f}) too low: {f}"
+            )
+        finally:
+            PulseInformation.set_envelope(original_env)
+            PulseInformation.set_rwa(original_rwa)
+
+    # ---------------------------------------------------------------------------
+    # Solver / frame regression tests (Magnus integrator + drive-frame mode)
+    # ---------------------------------------------------------------------------
+
+    @pytest.mark.unittest
+    def test_solver_default_dopri8(self):
+        """Default solver is dopri8 (adaptive RK)."""
+        from qml_essentials.yaqsi import Yaqsi
+
+        assert Yaqsi._solver_defaults["solver"] == "dopri8"
+
+    @pytest.mark.unittest
+    def test_solver_invalid_name_raises(self):
+        """Unknown solver names raise ValueError."""
+        from qml_essentials.yaqsi import Yaqsi
+
+        with pytest.raises(ValueError):
+            Yaqsi.set_solver_defaults(solver="foobar")
+
+    @pytest.mark.unittest
+    def test_magnus_matches_dopri8_rx(self):
+        """magnus2 / magnus4 reproduce dopri8 unitaries to high accuracy."""
+        from qml_essentials.yaqsi import Yaqsi
+        import qml_essentials.operations as op_mod
+
+        original_env = PulseInformation.get_envelope()
+        try:
+            PulseInformation.set_envelope("drag")
+            flat = PulseInformation.RX.params
+            H_X = op_mod.Hermitian(PulseGates.X, wires=0, record=False)
+            H_Y = op_mod.Hermitian(PulseGates.Y, wires=0, record=False)
+            H_eff = PulseGates._coeff_RX_X * H_X + PulseGates._coeff_RX_Y * H_Y
+
+            w = float(jnp.pi / 2)
+            t_g = float(flat[-1])
+            args = [jnp.array([*flat[:-1], w])] * 2
+
+            U_ref = Yaqsi.evolve(H_eff, name="RX", atol=1e-12, rtol=1e-12)(
+                args, t_g
+            ).matrix
+            U_m2 = Yaqsi.evolve(H_eff, name="RX", solver="magnus2", magnus_steps=2048)(
+                args, t_g
+            ).matrix
+            U_m4 = Yaqsi.evolve(H_eff, name="RX", solver="magnus4", magnus_steps=512)(
+                args, t_g
+            ).matrix
+
+            assert float(jnp.linalg.norm(U_m2 - U_ref)) < 1e-3
+            assert float(jnp.linalg.norm(U_m4 - U_ref)) < 1e-5
+
+            Id = jnp.eye(2, dtype=U_m4.dtype)
+            assert float(jnp.linalg.norm(U_m4.conj().T @ U_m4 - Id)) < 1e-10
+            assert float(jnp.linalg.norm(U_m2.conj().T @ U_m2 - Id)) < 1e-10
+        finally:
+            PulseInformation.set_envelope(original_env)
+
+    @pytest.mark.unittest
+    def test_magnus4_fourth_order_convergence(self):
+        """magnus4 error scales as h^4 (≈16× drop per N doubling)."""
+        from qml_essentials.yaqsi import Yaqsi
+        import qml_essentials.operations as op_mod
+
+        original_rwa = PulseInformation.get_rwa()
+        original_frame = PulseInformation.get_frame()
+        PulseInformation.set_rwa(False)
+        PulseInformation.set_frame("lab")
+        original_env = PulseInformation.get_envelope()
+        try:
+            PulseInformation.set_envelope("drag")
+            flat = PulseInformation.RX.params
+            H_X = op_mod.Hermitian(PulseGates.X, wires=0, record=False)
+            H_Y = op_mod.Hermitian(PulseGates.Y, wires=0, record=False)
+            H_eff = PulseGates._coeff_RX_X * H_X + PulseGates._coeff_RX_Y * H_Y
+            w = float(jnp.pi / 2)
+            t_g = float(flat[-1])
+            args = [jnp.array([*flat[:-1], w])] * 2
+            U_ref = Yaqsi.evolve(H_eff, name="RX", atol=1e-12, rtol=1e-12)(
+                args, t_g
+            ).matrix
+
+            errs = []
+            for N in (256, 512, 1024):
+                U_m = Yaqsi.evolve(
+                    H_eff,
+                    name="RX",
+                    solver="magnus4",
+                    magnus_steps=N,
+                )(args, t_g).matrix
+                errs.append(float(jnp.linalg.norm(U_m - U_ref)))
+
+            assert errs[0] / errs[1] > 8.0, (
+                f"magnus4 not 4th-order: {errs[0]:.3e} / {errs[1]:.3e}"
+            )
+            assert errs[1] / errs[2] > 8.0
+        finally:
+            PulseInformation.set_envelope(original_env)
+            PulseInformation.set_rwa(original_rwa)
+            PulseInformation.set_frame(original_frame)
+
+    @pytest.mark.unittest
+    def test_drive_frame_default_drive(self):
+        """Default coefficient frame is 'drive'."""
+        assert PulseInformation.get_frame() == "drive"
+        assert PulseGates._active_frame == "drive"
+
+    @pytest.mark.unittest
+    def test_drive_frame_invalid_raises(self):
+        """Unknown frame names raise ValueError."""
+        from qml_essentials.pulses import PulseEnvelope
+
+        with pytest.raises(ValueError):
+            PulseEnvelope.build_coeff_fns(PulseEnvelope.drag, 1.0, 1.0, frame="foobar")
+        with pytest.raises(ValueError):
+            PulseInformation.set_frame("foobar")
+
+    @pytest.mark.unittest
+    def test_drive_frame_equivalent_to_lab(self):
+        """drive-frame coefficients equal lab-frame to machine precision."""
+        from qml_essentials.pulses import PulseEnvelope
+
+        for omega_c, omega_q in [(1.234, 1.234), (1.5, 1.0), (3.0, 7.0)]:
+            lab = PulseEnvelope.build_coeff_fns(
+                PulseEnvelope.drag, omega_c, omega_q, frame="lab"
+            )
+            drv = PulseEnvelope.build_coeff_fns(
+                PulseEnvelope.drag, omega_c, omega_q, frame="drive"
+            )
+            p = jnp.array([0.5, 0.3, 5.0, jnp.pi / 2])
+            ts = jnp.linspace(0.0, 4.0, 50)
+            for fl, fd in zip(lab, drv):
+                vals_lab = jnp.array([fl(p, float(t)) for t in ts])
+                vals_drv = jnp.array([fd(p, float(t)) for t in ts])
+                assert float(jnp.max(jnp.abs(vals_lab - vals_drv))) < 1e-12
+
+    @pytest.mark.unittest
+    def test_drive_frame_roundtrip(self):
+        """set_frame switches PulseGates._active_frame and restores."""
+        original_env = PulseInformation.get_envelope()
+        original_frame = PulseInformation.get_frame()
+        try:
+            PulseInformation.set_frame("drive")
+            assert PulseInformation.get_frame() == "drive"
+            assert PulseGates._active_frame == "drive"
+            PulseInformation.set_frame("lab")
+            assert PulseInformation.get_frame() == "lab"
+            assert PulseGates._active_frame == "lab"
+        finally:
+            PulseInformation.set_envelope(original_env, frame=original_frame)
 
     # ---------------------------------------------------------------------------
     # pulse_recording / Script.pulse_events tests

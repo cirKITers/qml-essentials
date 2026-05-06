@@ -163,3 +163,85 @@ fig, axes = yss.draw(figure="pulse", args=(jnp.pi*0.5,))
 
 ![pulse-schedule](figures/pulse_schedule_light.png#center#only-light)
 ![pulse-schedule](figures/pulse_schedule_dark.png#center#only-dark)
+
+## Performance: pulse-level gradient throughput
+
+The pulse-level pipeline is compiled with JAX/XLA, but the underlying
+ODE integration is *sequential by construction*: each Adam step
+performs a `diffrax.Dopri8` solve over the gate duration, and the
+adaptive step controller cannot be parallelized across time.  That
+means a single `value_and_grad(loss)(params)` call typically saturates
+**one** CPU core — multi-threading helps only inside per-step matrix
+products (which are tiny: 8×8 for three qubits) and across batched
+restarts (`vmap`).
+
+The performance can be tuned on following different levels:
+
+1. **`PulseInformation.set_rwa(True)`** — opt-in rotating-wave
+   approximation.  Drops the fast counter-rotating terms in the
+   interaction-picture Hamiltonian.
+   Default is `False` (exact integration).
+
+2. **`Yaqsi.set_solver_defaults(solver=...)`** — opt-in commutator-free
+   Magnus integrator on a fixed `lax.scan` grid.  
+   No RWA, exact `H_I(t)`, but trades the adaptive Dopri8 step
+   controller for a fixed grid of `magnus_steps` substeps that fuses
+   into a single XLA program — eliminating per-step Python overhead
+   and host↔device sync entirely.
+
+   * `solver="dopri8"` (default): adaptive Dormand-Prince 8(7).
+   * `solver="magnus2"`: midpoint Magnus, one `expm` per step.
+     Second-order: error scales as `h^2`.
+   * `solver="magnus4"`: Blanes-Moan CFM4:2, two `expm` per step.
+     Fourth-order: error scales as `h^4` (≈16× drop per N doubling).
+     Typically the best accuracy/cost trade-off for smooth oscillatory
+     pulse drives — `magnus_steps=512` reaches ≲1e-7 error on a
+     standard `RX(\\pi/2)` Drag pulse.
+
+   Both Magnus integrators preserve unitarity to machine precision
+   regardless of step size.  Choose `magnus_steps` so that
+   `h = T/N` resolves the fastest oscillation in `H(t)`
+   (a few steps per period of `\\omega_c + \\omega_q`).
+
+   ```python
+   from qml_essentials.yaqsi import Yaqsi
+   Yaqsi.set_solver_defaults(solver="magnus4", magnus_steps=512)
+   ```
+
+3. **`PulseInformation.set_frame("drive")`** — algebraic rewrite of
+   the (non-RWA) coefficients via the product-to-sum identity
+   `cos(\\omega_c t) cos(\\omega_q t) = 1/2[cos(\\Delta t) + cos(\\Sigma t)]` with
+   `\\Delta = \\omega_c - \\omega_q`, `\\Sigma = \\omega_c + \\omega_q`.  Mathematically identical to
+   the default `"lab"` form (no information lost, no RWA applied).
+   Primary use: combined with `magnus2`/`magnus4`, the explicit
+   slow/fast decomposition is sometimes numerically better-conditioned
+   when the drive is detuned (`|\\Delta| << |\\Sigma|`).  Switching the frame does
+   not change the result of an adaptive solve.
+
+4. **XLA / OMP thread settings**.  Even on a single ODE solve, XLA
+   can parallelise some matmul-heavy reductions if you allow it to.
+   Reasonable defaults for a workstation:
+
+   ```bash
+   export XLA_FLAGS="--xla_cpu_multi_thread_eigen=true \
+                     intra_op_parallelism_threads=$(nproc)"
+   export OMP_NUM_THREADS=$(nproc)
+   ```
+
+   For `dim <= 16` (<= 4 qubits) the per-step matmuls are too small to
+   benefit much from threads; the dominant gain comes from `vmap`
+   parallelism.
+
+### Diagnostic helper
+
+`qml_essentials.qoc.profile_pulse_pipeline(gate, rwa=...)` builds a
+minimal pulse `Script` for the requested gate, JIT-compiles a
+forward + `value_and_grad` pass, and prints wall-clock timings for
+both compilation and steady-state evaluation:
+
+```python
+from qml_essentials.qoc import profile_pulse_pipeline
+
+profile_pulse_pipeline("RX", rwa=False)  # exact
+profile_pulse_pipeline("RX", rwa=True)   # RWA, fast benchmark mode
+```

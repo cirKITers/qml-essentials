@@ -840,7 +840,7 @@ class Encoding:
             if n_qubits is None:
                 raise ValueError("Golomb encoding requires n_qubits to be set")
 
-            d = 2 ** n_qubits
+            d = 2**n_qubits
             marks = golomb_ruler(d)
             max_mark = max(marks)
             return int(2 * omegas * max_mark + 1)
@@ -882,7 +882,7 @@ class Encoding:
             n_qubits = getattr(self, "_n_qubits", None)
             if n_qubits is None:
                 raise ValueError("Golomb encoding requires n_qubits to be set")
-            d = 2 ** n_qubits
+            d = 2**n_qubits
             marks = golomb_ruler(d)
             max_mark = max(marks)
             limit = omegas * max_mark

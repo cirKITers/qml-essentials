@@ -22,6 +22,6 @@ jobs:
       - name: Install dependencies
         run: pipx run uv sync --group dev
       - name: Test with pytest (no benchmark)
-        run: pipx run uv run pytest --cov=qml_essentials --dist load -n 4 -m "not benchmark"
+        run: pipx run uv run pytest --cov=qml_essentials --dist load -n 2 -m "not benchmark"
       - name: Test with pytest (benchmark)
         run: pipx run uv run pytest --cov=qml_essentials -m "benchmark"

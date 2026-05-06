@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Optional, List, Union, Dict, Callable, Tuple
 import csv
@@ -29,6 +30,16 @@ class DecompositionStep:
     gate: "PulseParams"
     wire_fn: str = "all"
     angle_fn: Optional[Callable] = None
+
+
+@dataclass(frozen=True)
+class PulseStateSnapshot:
+    """Snapshot of the mutable global pulse configuration."""
+
+    envelope: str
+    rwa: bool
+    frame: str
+    leaf_params: Dict[str, jnp.ndarray]
 
 
 class PulseParams:
@@ -346,10 +357,10 @@ class PulseEnvelope:
             "n_envelope_params": 2,
             "defaults": {
                 "RX": jnp.array(
-                    [30.187402725219727, 0.32704535126686096, 0.320675790309906]
+                    [0.38009941846766804, 1.631698142660167, 3.007403822238108]
                 ),
                 "RY": jnp.array(
-                    [10.794735903531707, 0.12725685459013134, 0.3157523181268348]
+                    [0.3836652338514791, 1.616595983505249, 2.9794135093698966]
                 ),
             },
         },
@@ -357,8 +368,12 @@ class PulseEnvelope:
             "fn": square.__func__,
             "n_envelope_params": 2,
             "defaults": {
-                "RX": jnp.array([1.0, 1.0, 1.0]),
-                "RY": jnp.array([1.0, 1.0, 1.0]),
+                "RX": jnp.array(
+                    [1.209655637514602, 0.8266815576721239, 1.1483122857413859]
+                ),
+                "RY": jnp.array(
+                    [1.0287942142779052, 0.9860505130182093, 0.9720116870310977]
+                ),
             },
         },
         "cosine": {
@@ -373,8 +388,22 @@ class PulseEnvelope:
             "fn": drag.__func__,
             "n_envelope_params": 3,
             "defaults": {
-                "RX": jnp.array([1.0, 1.0, 0.1, 1.0]),
-                "RY": jnp.array([1.0, 1.0, 0.1, 1.0]),
+                "RX": jnp.array(
+                    [
+                        0.326562746114197,
+                        0.4002767596709071,
+                        5.3228107728890315,
+                        3.141300761986467,
+                    ]
+                ),
+                "RY": jnp.array(
+                    [
+                        0.323287924190616,
+                        0.4065017233024265,
+                        7.00299644871222,
+                        3.139481229843545,
+                    ]
+                ),
             },
         },
         "sech": {
@@ -390,7 +419,7 @@ class PulseEnvelope:
             "n_envelope_params": 0,
             "defaults": {
                 "RZ": jnp.array([0.5]),
-                "CZ": jnp.array([0.31831514835357666]),
+                "CZ": jnp.array([0.3183098783513154]),
             },
         },
     }
@@ -416,40 +445,190 @@ class PulseEnvelope:
 
     @staticmethod
     def build_coeff_fns(
-        envelope_fn: Callable, omega_c: float
-    ) -> Tuple[Callable, Callable]:
-        """Build ``(coeff_Sx, coeff_Sy)`` for a given envelope function.
+        envelope_fn: Callable,
+        omega_c: float,
+        omega_q: float,
+        rwa: bool = True,
+        frame: str = "drive",
+    ) -> Tuple[Callable, Callable, Callable, Callable]:
+        """Build the four interaction-picture coefficient functions.
 
-        Each returned function has a unique ``__code__`` object so that
-        the yaqsi JIT solver cache (keyed on ``id(coeff_fn.__code__)``)
-        assigns a separate compiled XLA program per envelope shape.
+        The lab-frame Hamiltonian is
 
-        The rotation angle ``w`` is expected as the **last** element of the
-        parameter array ``p`` (i.e. ``p[-1]``).  Envelope parameters occupy
-        ``p[:-1]`` (excluding the evolution-time element that is passed
-        separately to ``ys.evolve``).
+            H(t,Π) = H_static + Σ_j S_j(t;Π) H_j ,
+            S_j(t;Π) = E_j(t;Π) · cos(ω_c·t + φ_c) ,
+
+        and the interaction-picture transform with respect to
+        ``H_static = (ω_q/2)·Z`` produces
+
+            H̃_j(t) = exp(+i H_static t) H_j exp(-i H_static t) ,
+            H_I(t) = Σ_j S_j(t) H̃_j(t) .
+
+        For a single qubit driven on X, ``H̃_X(t) = cos(ω_q·t) X
+        − sin(ω_q·t) Y``, so
+
+            H_I(t) = Ω(t) · cos(ω_c·t + φ) ·
+                     [ cos(ω_q·t) · X  −  sin(ω_q·t) · Y ] .
+
+        ``rwa=True`` (default) drops the fast (~2·ω_q on resonance) terms and
+        keeps only the slow envelope, yielding the analytical RWA
+
+            H_I^RWA(t) = (Ω(t)/2) · [ cos(φ) X + sin(φ) Y ] .
+
+        For RX (``φ = 0``) this reduces to ``(Ω/2)·X``; for RY
+        (``φ = +π/2``) to ``(Ω/2)·Y``.  This is dramatically cheaper to
+        integrate (no fast oscillations → adaptive ODE solver takes
+        large steps).
+
+        ``rwa=False``  keeps **both** the slow and the fast
+        counter-rotating components.
+
+        Each returned function has a unique ``__code__`` object so the
+        yaqsi solver cache assigns separate compiled XLA programs per
+        envelope shape and per (gate, component) pair.
+
+        The rotation angle ``w`` is expected as the **last** element of
+        the parameter array ``p`` (i.e. ``p[-1]``).  Envelope parameters
+        occupy ``p[:-1]``.
 
         Args:
             envelope_fn: Pure envelope function ``(p, t, t_c) -> scalar``.
             omega_c: Carrier frequency.
+            omega_q: Qubit frequency (interaction-picture rotation rate).
+            rwa: When ``True``, return the RWA-truncated coefficients
+                (no fast counter-rotating terms). Default ``True``
+            frame: Algebraic representation of the exact (non-RWA)
+                coefficients.  Mathematically equivalent options:
+
+                * ``"drive"`` (default): applies the product-to-sum identity to
+                  expose the slow ``(ω_c-ω_q)`` and fast ``(ω_c+ω_q)``
+                  modes explicitly,
+                  ``cos(ω_c t)cos(ω_q t) =
+                  ½[cos((ω_c-ω_q)t) + cos((ω_c+ω_q)t)]``.  Algebraically
+                  identical to ``"lab"`` (no RWA, no information lost).
+                  Primary use: combined with the ``magnus2``/``magnus4``
+                  yaqsi solvers, the explicit slow/fast decomposition
+                  is sometimes numerically better-conditioned and lets
+                  the user pick a fixed grid based on the slow
+                  frequency alone (``Δ = |ω_c-ω_q|``) when the fast
+                  ``(ω_c+ω_q)`` mode is well-resolved by the chosen
+                  step.
+                * ``"drive"``: the literal form
+                  ``Ω(t) cos(ω_c t + φ) cos(ω_q t)`` (and the analogous
+                  ``-sin`` term).  Two trig multiplications per call;
+                  contains all four product frequencies implicitly.
+
+                Ignored when ``rwa=True``.
 
         Returns:
-            Tuple of ``(coeff_Sx, coeff_Sy)``.
+            Tuple ``(coeff_RX_X, coeff_RX_Y, coeff_RY_X, coeff_RY_Y)``
+            of coefficient functions for the X- and Y-components of the
+            RX and RY interaction-picture Hamiltonians.
         """
+        if frame not in ("lab", "drive"):
+            raise ValueError(f"Unknown frame {frame!r}; expected 'lab' or 'drive'.")
+        if rwa:
+            # RWA-truncated coefficients (no carrier, no fast factors).
+            # H_I^RWA = (Ω(t)/2) [cos(φ) X + sin(φ) Y]; we keep the
+            # ``p[-1]`` rotation-angle scaling so the calling
+            # ParametrizedHamiltonian shape is unchanged.
+            half = jnp.asarray(0.5)
 
-        def _coeff_Sx(p, t):
+            def _coeff_RX_X(p, t):
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                return half * env * p[-1]
+
+            def _coeff_RX_Y(p, t):  # Y component vanishes for RX (φ=0)
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                return jnp.zeros_like(half * env * p[-1])
+
+            def _coeff_RY_X(p, t):  # X component vanishes for RY (φ=π/2)
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                return jnp.zeros_like(half * env * p[-1])
+
+            def _coeff_RY_Y(p, t):
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                return half * env * p[-1]
+
+            return _coeff_RX_X, _coeff_RX_Y, _coeff_RY_X, _coeff_RY_Y
+
+        if frame == "drive":
+            # Drive-frame: same exact dynamics, expressed via the
+            # product-to-sum identities so the slow ``Δ = ω_c - ω_q``
+            # and fast ``Σ = ω_c + ω_q`` modes appear explicitly.
+            # Mathematically identical to the ``lab`` branch below.
+            #
+            # Identities used:
+            #   cos(ω_c t) cos(ω_q t) = ½[cos(Δ t) + cos(Σ t)]
+            #   cos(ω_c t) sin(ω_q t) = ½[sin(Σ t) − sin(Δ t)]
+            #   −sin(ω_c t) cos(ω_q t) = −½[sin(Σ t) + sin(Δ t)]
+            #   −sin(ω_c t) sin(ω_q t) = ½[cos(Σ t) − cos(Δ t)]
+            # (RY uses cos(ω_c t + π/2) = −sin(ω_c t).)
+            omega_d = omega_c - omega_q
+            omega_s = omega_c + omega_q
+            half = jnp.asarray(0.5)
+
+            def _coeff_RX_X(p, t):
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                mod = half * (jnp.cos(omega_d * t) + jnp.cos(omega_s * t))
+                return env * mod * p[-1]
+
+            def _coeff_RX_Y(p, t):
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                mod = -half * (jnp.sin(omega_s * t) - jnp.sin(omega_d * t))
+                return env * mod * p[-1]
+
+            def _coeff_RY_X(p, t):
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                mod = -half * (jnp.sin(omega_s * t) + jnp.sin(omega_d * t))
+                return env * mod * p[-1]
+
+            def _coeff_RY_Y(p, t):
+                t_c = t / 2
+                env = envelope_fn(p, t, t_c)
+                mod = -half * (jnp.cos(omega_s * t) - jnp.cos(omega_d * t))
+                return env * mod * p[-1]
+
+            return _coeff_RX_X, _coeff_RX_Y, _coeff_RY_X, _coeff_RY_Y
+
+        # RX uses carrier phase phi = 0 so that after RWA
+        #   cos(ω_q τ)·cos(ω_q τ)  averages to +1/2  → drives +X
+        #   -cos(ω_q τ)·sin(ω_q τ) averages to  0    → Y cancels
+        # giving H_I^RWA ≈ (Ω/2)·X → U ≈ exp(-iθ/2 X), matching op.RX.
+        # The exact form below KEEPS the fast 2·ω_q components.
+        def _coeff_RX_X(p, t):
             t_c = t / 2
             env = envelope_fn(p, t, t_c)
-            carrier = jnp.cos(omega_c * t + jnp.pi)
-            return env * carrier * p[-1]
+            carrier = jnp.cos(omega_c * t)
+            return env * carrier * jnp.cos(omega_q * t) * p[-1]
 
-        def _coeff_Sy(p, t):
+        def _coeff_RX_Y(p, t):
             t_c = t / 2
             env = envelope_fn(p, t, t_c)
-            carrier = jnp.cos(omega_c * t - jnp.pi / 2)
-            return env * carrier * p[-1]
+            carrier = jnp.cos(omega_c * t)
+            return -env * carrier * jnp.sin(omega_q * t) * p[-1]
 
-        return _coeff_Sx, _coeff_Sy
+        # RY uses carrier phase phi = +pi/2 so the RWA component drives +Y.
+        def _coeff_RY_X(p, t):
+            t_c = t / 2
+            env = envelope_fn(p, t, t_c)
+            carrier = jnp.cos(omega_c * t + jnp.pi / 2)
+            return env * carrier * jnp.cos(omega_q * t) * p[-1]
+
+        def _coeff_RY_Y(p, t):
+            t_c = t / 2
+            env = envelope_fn(p, t, t_c)
+            carrier = jnp.cos(omega_c * t + jnp.pi / 2)
+            return -env * carrier * jnp.sin(omega_q * t) * p[-1]
+
+        return _coeff_RX_X, _coeff_RX_Y, _coeff_RY_X, _coeff_RY_Y
 
 
 class PulseInformation:
@@ -460,7 +639,24 @@ class PulseInformation:
     and defaults match the selected envelope.
     """
 
-    _envelope: str = "gaussian"
+    DEFAULT_ENVELOPE: str = "drag"
+    DEFAULT_RWA: bool = True
+    DEFAULT_FRAME: str = "drive"
+    LEAF_GATE_NAMES: Tuple[str, ...] = ("RX", "RY", "RZ", "CZ")
+
+    _envelope: str = DEFAULT_ENVELOPE
+    # Whether to apply the rotating-wave approximation when building the
+    # interaction-picture coefficient functions.
+    # Default ``True`` (exact dynamics, no RWA).
+    # Setting to ``True`` drops the fast counter-rotating terms —
+    # much faster to integrate
+    # See :meth:`PulseEnvelope.build_coeff_fns`.
+    _rwa: bool = DEFAULT_RWA
+    # Algebraic representation of the (non-RWA) coefficients.  Either
+    # ``"lab"`` or ``"drive"`` (product-to-sum decomposition).
+    # Mathematically equivalent — see :meth:`PulseEnvelope.build_coeff_fns`
+    # when ``"drive"`` is numerically advantageous (mainly with the Magnus solvers).
+    _frame: str = DEFAULT_FRAME
 
     @classmethod
     def _build_leaf_gates(cls):
@@ -529,7 +725,7 @@ class PulseInformation:
                 DecompositionStep(cls.CX, "all", lambda w: 0.0),
             ],
         )
-        #TODO: check if we could just make this a basis gate instead
+        # TODO: check if we could just make this a basis gate instead
         cls.CPhase = PulseParams(
             name="CPhase",
             decomposition=[
@@ -551,33 +747,170 @@ class PulseInformation:
         cls.unique_gate_set = [cls.RX, cls.RY, cls.RZ, cls.CZ]
 
     @classmethod
-    def set_envelope(cls, name: str) -> None:
+    def set_envelope(
+        cls,
+        name: str,
+        rwa: Optional[bool] = None,
+        frame: Optional[str] = None,
+    ) -> None:
         """Switch pulse envelope and rebuild all PulseParams trees.
 
         Also updates the coefficient functions used by :class:`PulseGates`.
 
         Args:
             name: One of :meth:`PulseEnvelope.available`.
+            rwa: If given, also update the RWA flag.  If ``None`` (the
+                default), the current value of ``cls._rwa`` is kept.
+                See :meth:`PulseEnvelope.build_coeff_fns` for the
+                physical meaning of the flag.
+            frame: If given, also update the coefficient frame
+                (``"lab"`` or ``"drive"``).  ``None`` keeps the current
+                value of ``cls._frame``.  Ignored when ``rwa=True`` or
+                when the existing RWA flag is on.
         """
         info = PulseEnvelope.get(name)  # validates name
         cls._envelope = name
+        if rwa is not None:
+            cls._rwa = bool(rwa)
+        if frame is not None:
+            if frame not in ("lab", "drive"):
+                raise ValueError(f"Unknown frame {frame!r}; expected 'lab' or 'drive'.")
+            cls._frame = frame
         cls._build_leaf_gates()
         cls._build_composite_gates()
 
-        # Rebuild coefficient functions on PulseGates
-        coeff_Sx, coeff_Sy = PulseEnvelope.build_coeff_fns(
-            info["fn"], PulseGates.omega_c
+        # Rebuild interaction-picture coefficient functions on PulseGates.
+        # Four functions: (RX_X, RX_Y, RY_X, RY_Y) — one per (gate, Pauli)
+        # component of the proper interaction-picture drive Hamiltonian.
+        rx_x, rx_y, ry_x, ry_y = PulseEnvelope.build_coeff_fns(
+            info["fn"],
+            PulseGates.omega_c,
+            PulseGates.omega_q,
+            rwa=cls._rwa,
+            frame=cls._frame,
         )
-        PulseGates._coeff_Sx = staticmethod(coeff_Sx)
-        PulseGates._coeff_Sy = staticmethod(coeff_Sy)
+        PulseGates._coeff_RX_X = staticmethod(rx_x)
+        PulseGates._coeff_RX_Y = staticmethod(rx_y)
+        PulseGates._coeff_RY_X = staticmethod(ry_x)
+        PulseGates._coeff_RY_Y = staticmethod(ry_y)
+        # Backward-compat aliases for older introspection (point at the
+        # X-component which dominates RX, Y-component which dominates RY).
+        PulseGates._coeff_Sx = staticmethod(rx_x)
+        PulseGates._coeff_Sy = staticmethod(ry_y)
         PulseGates._active_envelope = name
+        PulseGates._active_rwa = cls._rwa
+        PulseGates._active_frame = cls._frame
 
-        log.info(f"Pulse envelope set to '{name}'")
+        # The compiled-solver cache in ``Yaqsi`` is keyed on the code
+        # objects of the coefficient functions.  Rebuilding the coeff
+        # fns above produced fresh code objects, so any cached solver
+        # is now unreachable from the live coefficient functions and
+        # must be evicted to avoid both (a) holding compiled programs
+        # for a previous configuration alive forever and (b) returning
+        # a stale program if ``id`` collisions ever leaked through.
+        # Lazy import to prevent circular imports.
+        from qml_essentials.yaqsi import Yaqsi
+
+        Yaqsi.clear_evolve_solver_cache()
+
+        log.info(
+            f"Pulse envelope set to '{name}' "
+            f"(RWA {'on' if cls._rwa else 'off'}, frame={cls._frame})"
+        )
+
+    @classmethod
+    def set_rwa(cls, rwa: bool) -> None:
+        """Toggle the rotating-wave approximation for pulse coefficients.
+
+        Rebuilds the coefficient functions for the currently active
+        envelope so the change takes effect immediately.  Default is
+        ``False`` (exact interaction picture).
+        See :meth:`PulseEnvelope.build_coeff_fns` for details
+        """
+        cls.set_envelope(cls._envelope, rwa=bool(rwa))
 
     @classmethod
     def get_envelope(cls) -> str:
         """Return the name of the active pulse envelope."""
         return cls._envelope
+
+    @classmethod
+    def get_rwa(cls) -> bool:
+        """Return whether the RWA flag is currently active."""
+        return cls._rwa
+
+    @classmethod
+    def set_frame(cls, frame: str) -> None:
+        """Switch the algebraic representation of the (non-RWA) coefficients.
+
+        ``"lab"`` (default) and ``"drive"`` are mathematically
+        identical (no information lost, no RWA applied) — see
+        :meth:`PulseEnvelope.build_coeff_fns` for when ``"drive"`` is
+        useful.  Rebuilds the coefficient functions for the currently
+        active envelope so the change takes effect immediately.
+        """
+        cls.set_envelope(cls._envelope, frame=str(frame))
+
+    @classmethod
+    def get_frame(cls) -> str:
+        """Return the active coefficient frame (``"lab"`` or ``"drive"``)."""
+        return cls._frame
+
+    @classmethod
+    def snapshot_state(cls) -> PulseStateSnapshot:
+        """Return an immutable snapshot of the active pulse configuration."""
+        leaf_params = {}
+        for name in cls.LEAF_GATE_NAMES:
+            gate = getattr(cls, name, None)
+            if gate is not None:
+                leaf_params[name] = jnp.array(gate.params)
+
+        return PulseStateSnapshot(
+            envelope=cls._envelope,
+            rwa=cls._rwa,
+            frame=cls._frame,
+            leaf_params=leaf_params,
+        )
+
+    @classmethod
+    def restore_state(cls, snapshot: PulseStateSnapshot) -> None:
+        """Restore a snapshot produced by :meth:`snapshot_state`."""
+        cls.set_envelope(snapshot.envelope, rwa=snapshot.rwa, frame=snapshot.frame)
+
+        for name, params in snapshot.leaf_params.items():
+            gate = cls.gate_by_name(name)
+            if gate is None or not gate.is_leaf:
+                raise ValueError(f"Cannot restore unknown leaf pulse gate {name!r}.")
+            if gate.params.shape != params.shape:
+                raise ValueError(
+                    f"Snapshot for {name!r} has shape {params.shape}, "
+                    f"but active gate expects {gate.params.shape}."
+                )
+            gate.params = params
+
+    @classmethod
+    @contextmanager
+    def preserve_state(cls):
+        """Temporarily preserve global pulse state across scoped mutations."""
+        snapshot = cls.snapshot_state()
+        try:
+            yield snapshot
+        finally:
+            cls.restore_state(snapshot)
+
+    @classmethod
+    def reset_defaults(
+        cls,
+        envelope: Optional[str] = None,
+        rwa: Optional[bool] = None,
+        frame: Optional[str] = None,
+    ) -> None:
+        """Reset pulse globals to canonical defaults or explicit values."""
+        cls.set_envelope(
+            cls.DEFAULT_ENVELOPE if envelope is None else envelope,
+            rwa=cls.DEFAULT_RWA if rwa is None else rwa,
+            frame=cls.DEFAULT_FRAME if frame is None else frame,
+        )
 
     @staticmethod
     def gate_by_name(gate):
@@ -619,11 +952,6 @@ class PulseInformation:
             gate.params = jax.random.uniform(sub_key, (len(gate),))
 
 
-# Initialise PulseInformation with default (gaussian) envelope
-PulseInformation._build_leaf_gates()
-PulseInformation._build_composite_gates()
-
-
 class PulseGates:
     """Pulse-level implementations of quantum gates.
 
@@ -643,17 +971,11 @@ class PulseGates:
     omega_q = 10 * jnp.pi
     omega_c = 10 * jnp.pi
 
-    H_static = jnp.array(
-        [[jnp.exp(1j * omega_q / 2), 0], [0, jnp.exp(-1j * omega_q / 2)]]
-    )
-
-    Id = jnp.eye(2, dtype=jnp.complex64)
     X = jnp.array([[0, 1], [1, 0]])
     Y = jnp.array([[0, -1j], [1j, 0]])
     Z = jnp.array([[1, 0], [0, -1]])
 
-    _H_X = H_static.conj().T @ X @ H_static
-    _H_Y = H_static.conj().T @ Y @ H_static
+    Id = jnp.eye(2, dtype=jnp.complex64)
 
     _H_CZ = (jnp.pi / 4) * (
         jnp.kron(Id, Id) - jnp.kron(Z, Id) - jnp.kron(Id, Z) + jnp.kron(Z, Z)
@@ -662,22 +984,53 @@ class PulseGates:
     _H_corr = jnp.pi / 2 * jnp.eye(2, dtype=jnp.complex64)
 
     _active_envelope: str = "gaussian"
+    # Mirrors :attr:`PulseInformation._rwa`; kept here for introspection
+    # of which coefficient regime the active ``_coeff_*`` functions
+    # implement.  Updated by :meth:`PulseInformation.set_envelope` /
+    # :meth:`PulseInformation.set_rwa`.
+    _active_rwa: bool = True
+    _active_frame: str = "drive"
+
+    # Default coefficient functions for the gaussian envelope; the active
+    # envelope's `set_envelope` will overwrite these.  Each gate uses two
+    # coefficients (X- and Y-component of the proper interaction-picture
+    # drive Hamiltonian).
 
     @staticmethod
-    def _coeff_Sx(p, t):
-        """Coefficient function for RX pulse (active envelope)."""
+    def _coeff_RX_X(p, t):
+        """RX coefficient for the X term (gaussian default)."""
         t_c = t / 2
         env = PulseEnvelope.gaussian(p, t, t_c)
-        carrier = jnp.cos(PulseGates.omega_c * t + jnp.pi)
-        return env * carrier * p[-1]
+        carrier = jnp.cos(PulseGates.omega_c * t)
+        return env * carrier * jnp.cos(PulseGates.omega_q * t) * p[-1]
 
     @staticmethod
-    def _coeff_Sy(p, t):
-        """Coefficient function for RY pulse (active envelope)."""
+    def _coeff_RX_Y(p, t):
+        """RX coefficient for the Y term (gaussian default)."""
         t_c = t / 2
         env = PulseEnvelope.gaussian(p, t, t_c)
-        carrier = jnp.cos(PulseGates.omega_c * t - jnp.pi / 2)
-        return env * carrier * p[-1]
+        carrier = jnp.cos(PulseGates.omega_c * t)
+        return -env * carrier * jnp.sin(PulseGates.omega_q * t) * p[-1]
+
+    @staticmethod
+    def _coeff_RY_X(p, t):
+        """RY coefficient for the X term (gaussian default)."""
+        t_c = t / 2
+        env = PulseEnvelope.gaussian(p, t, t_c)
+        carrier = jnp.cos(PulseGates.omega_c * t + jnp.pi / 2)
+        return env * carrier * jnp.cos(PulseGates.omega_q * t) * p[-1]
+
+    @staticmethod
+    def _coeff_RY_Y(p, t):
+        """RY coefficient for the Y term (gaussian default)."""
+        t_c = t / 2
+        env = PulseEnvelope.gaussian(p, t, t_c)
+        carrier = jnp.cos(PulseGates.omega_c * t + jnp.pi / 2)
+        return -env * carrier * jnp.sin(PulseGates.omega_q * t) * p[-1]
+
+    # Backward-compat aliases (resolve to the dominant component of each gate).
+    _coeff_Sx = _coeff_RX_X
+    _coeff_Sy = _coeff_RY_Y
 
     @staticmethod
     def _coeff_Sz(p, t):
@@ -809,15 +1162,26 @@ class PulseGates:
         pulse_params = PulseInformation.RX.split_params(pulse_params)
 
         PulseGates._record_pulse_event("RX", w, wires, pulse_params)
+        t = pulse_params[-1]
 
-        _H = op.Hermitian(PulseGates._H_X, wires=wires, record=False)
-        H_eff = PulseGates._coeff_Sx * _H
+        # Proper interaction-picture drive Hamiltonian for RX:
+        #   H_I(τ) = Ω(τ)·cos(ω_c·τ) · [ cos(ω_q·τ)·X − sin(ω_q·τ)·Y ]
+        # which on resonance averages (RWA) to +(Ω/2)·X while the
+        # 2·ω_q counter-rotating part oscillates and cancels.
+        H_X = op.Hermitian(PulseGates.X, wires=wires, record=False)
+        H_Y = op.Hermitian(PulseGates.Y, wires=wires, record=False)
+        H_eff = PulseGates._coeff_RX_X * H_X + PulseGates._coeff_RX_Y * H_Y
 
         # Pack: [envelope_params..., w] - evolution time is the last element
         # of pulse_params (pulse_params[-1]).
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        env_params = jnp.array([*pulse_params[:-1], w])
-        ys.evolve(H_eff, name="RX")([env_params], pulse_params[-1])
+        # Use jnp.concatenate over Python list-splat to keep the trace graph
+        # compact (no per-element unpacking + restack).
+        env_params = jnp.concatenate(
+            [jnp.ravel(pulse_params[:-1]), jnp.ravel(jnp.asarray(w))]
+        )
+        # Both terms share the same parameter array.
+        ys.evolve(H_eff, name="RX")([env_params, env_params], t)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -841,15 +1205,21 @@ class PulseGates:
         pulse_params = PulseInformation.RY.split_params(pulse_params)
 
         PulseGates._record_pulse_event("RY", w, wires, pulse_params)
+        t = pulse_params[-1]
 
-        _H = op.Hermitian(PulseGates._H_Y, wires=wires, record=False)
-        H_eff = PulseGates._coeff_Sy * _H
+        # See NOTE in RX: same proper interaction-picture form, with
+        # carrier phase ϕ = +π/2 so the slow RWA component drives +Y.
+        H_X = op.Hermitian(PulseGates.X, wires=wires, record=False)
+        H_Y = op.Hermitian(PulseGates.Y, wires=wires, record=False)
+        H_eff = PulseGates._coeff_RY_X * H_X + PulseGates._coeff_RY_Y * H_Y
 
         # Pack w into the params so the coefficient function doesn't need
         # a closure - this enables JIT solver cache sharing across all RY calls.
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        env_params = jnp.array([*pulse_params[:-1], w])
-        ys.evolve(H_eff, name="RY")([env_params], pulse_params[-1])
+        env_params = jnp.concatenate(
+            [jnp.ravel(pulse_params[:-1]), jnp.ravel(jnp.asarray(w))]
+        )
+        ys.evolve(H_eff, name="RY")([env_params, env_params], t)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -886,11 +1256,14 @@ class PulseGates:
 
         # Pack w into the params so the coefficient function doesn't need
         # a closure - [pulse_param_scalar, w] enables JIT solver cache sharing.
-        # pulse_params may be a 1-element array or scalar; ravel + index to
-        # ensure a scalar for concatenation.
+        # pulse_params may be a 1-element array or scalar; ravel + slice the first
+        # element to preserve the original semantics, then concatenate with w.
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        pp_scalar = jnp.ravel(jnp.asarray(pulse_params))[0]
-        ys.evolve(H_eff, name="RZ")([jnp.array([pp_scalar, w])], 1)
+        pp_flat = jnp.ravel(jnp.asarray(pulse_params))
+        ys.evolve(H_eff, name="RZ")(
+            [jnp.concatenate([pp_flat[:1], jnp.ravel(jnp.asarray(w))])],
+            1,
+        )
 
         UnitaryGates.Noise(wires, noise_params)
 
@@ -1159,3 +1532,8 @@ class PulseParamManager:
         params = self.pulse_params[self.idx : self.idx + n].squeeze()
         self.idx += n
         return params
+
+
+# Initialise PulseInformation after PulseGates exists so leaf defaults,
+# composite trees, mirrored PulseGates flags, and coefficient functions agree.
+PulseInformation.reset_defaults()

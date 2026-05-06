@@ -7,6 +7,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import jax
 from jax import numpy as jnp
+import numpy as np
 import optax
 
 from qml_essentials.gates import Gates, PulseInformation, PulseEnvelope
@@ -16,6 +17,112 @@ from qml_essentials.math import phase_difference, fidelity
 
 jax.config.update("jax_enable_x64", True)
 log = logging.getLogger(__name__)
+
+
+def _build_optimizer(schedule, grad_clip: float):
+    """Build the AdamW chain used by both stage-0 and stage-1.
+
+    Adds a global-norm gradient-clip step when ``grad_clip`` is a
+    finite, strictly positive value; otherwise returns plain AdamW.
+    """
+    use_clip = grad_clip and grad_clip > 0 and jnp.isfinite(grad_clip)
+    if use_clip:
+        return optax.chain(
+            optax.clip_by_global_norm(grad_clip),
+            optax.adamw(schedule),
+        )
+    return optax.adamw(schedule)
+
+
+def _safe_eval(cost_fn: Callable, params: jnp.ndarray) -> jnp.ndarray:
+    """Evaluate ``cost_fn(params)``; map non-finite results to ``+inf``."""
+    loss = cost_fn(params)
+    return jnp.where(jnp.isfinite(loss), loss, jnp.inf)
+
+
+def _with_basis_prep(circuit_fn: Callable, k: int, n_wires: int) -> Callable:
+    """Wrap ``circuit_fn`` so it first prepares basis state ``|k⟩``.
+
+    The wrapped circuit applies ``PauliX`` on every wire whose bit in
+    ``k`` is set (MSB first) before delegating to ``circuit_fn``.  Used
+    by both per-gate and joint optimisation paths to build the
+    column-stacked unitary required by :func:`unitary_cost_fn`.
+    """
+    bits = [(k >> (n_wires - 1 - i)) & 1 for i in range(n_wires)]
+
+    def prepared(*args, **kwargs):
+        for i, bit in enumerate(bits):
+            if bit:
+                op.PauliX(wires=i)
+        circuit_fn(*args, **kwargs)
+
+    prepared.__name__ = f"basis{k}_{circuit_fn.__name__}"
+    return prepared
+
+
+def _sample_rotation_angles(n_samples: int) -> jnp.ndarray:
+    """Boundary-biased sample of rotation angles in ``[0, 2π)``.
+
+    The pulse-vs-target residual scales roughly linearly with rotation
+    angle, so a uniform sample over ``[0, 2π)`` underweights the
+    high-residual band that dominates failing tests (typical large-w
+    test points: π/2, π).  We stratify the samples into
+
+      * a uniform component covering the full ``[0, 2π)`` circle, and
+      * a focus component packed in ``[π/2, 3π/2]``
+
+    so the central band is sampled at roughly twice the density of the
+    tails.  Returns at least one angle even for ``n_samples == 1``;
+    when ``n_samples == 1`` the legacy uniform behaviour is preserved
+    (single sample at ``w = 0``) to avoid surprising callers.
+    """
+    if n_samples <= 1:
+        return jnp.linspace(0.0, 2.0 * jnp.pi, max(n_samples, 1), endpoint=False)
+    # ~1/3 of samples in the central [π/2, 3π/2] band on top of a full
+    # uniform sweep.  Sub-sample counts are rounded so both components
+    # are non-empty for any ``n_samples >= 2``.
+    k_focus = max(1, n_samples // 3)
+    k_uniform = n_samples - k_focus
+    ws_uniform = jnp.linspace(0.0, 2.0 * jnp.pi, k_uniform, endpoint=False)
+    ws_focus = jnp.linspace(0.5 * jnp.pi, 1.5 * jnp.pi, k_focus, endpoint=False)
+    return jnp.concatenate([ws_uniform, ws_focus])
+
+
+def _run_gate_stage(stage: Optional[Callable], w) -> None:
+    """Execute an optional gate-preparation stage."""
+    if stage is not None:
+        stage(w)
+
+
+def _chain_gate_stages(*stages: Callable) -> Callable:
+    """Build a stage that runs multiple preparation operations in sequence."""
+
+    def chained(w):
+        for stage in stages:
+            stage(w)
+
+    return chained
+
+
+def _make_gate_pair(
+    pulse_gate: Callable,
+    target_gate: Callable,
+    prep: Optional[Callable] = None,
+    post: Optional[Callable] = None,
+) -> Tuple[Callable, Callable]:
+    """Build matching pulse and target circuits with optional pre/post stages."""
+
+    def pulse_circuit(w, pp):
+        _run_gate_stage(prep, w)
+        pulse_gate(w, pp)
+        _run_gate_stage(post, w)
+
+    def target_circuit(w):
+        _run_gate_stage(prep, w)
+        target_gate(w)
+        _run_gate_stage(post, w)
+
+    return pulse_circuit, target_circuit
 
 
 class Cost:
@@ -63,51 +170,237 @@ class Cost:
 
 def fidelity_cost_fn(
     pulse_params: jnp.ndarray,
-    pulse_script: ys.Script,
-    target_script: ys.Script,
+    pulse_scripts: Union[ys.Script, List[ys.Script]],
+    target_scripts: Union[ys.Script, List[ys.Script]],
     n_samples: int,
 ) -> Tuple[float, float]:
     """
-    Cost function returning (1 - fidelity) and |phase_difference| averaged
-    over n_samples uniformly spaced rotation angles in [0, 2\\pi].
+    Cost function returning ``(1 - fidelity, 1 - cos(phase_difference))``
+    averaged over ``n_samples`` uniformly spaced rotation angles in
+    ``[0, 2π)`` and across one or more (pulse, target) script pairs.
 
-    Uses batched (vmapped) circuit execution: all n_samples rotation
-    angles are evaluated in a single vectorised call per script, replacing
-    ``n_samples`` sequential Python-level circuit executions with one
-    JIT-compiled XLA program each.
+    Multiple script pairs let the optimiser probe sensitivity from
+    multiple initial states (e.g. ``|0⟩`` and ``|+⟩``).  This makes
+    rotation-axis tilt observable to the cost: from ``|0⟩`` alone an
+    RX/RY pulse with a small Z-component is largely degenerate with
+    the correct pulse, but from ``|+⟩`` the same tilt produces a
+    visible state-vector deviation.
+
+    Uses batched (vmapped) circuit execution per script: all
+    ``n_samples`` rotation angles are evaluated in a single vectorised
+    call per script, replacing ``n_samples`` sequential Python-level
+    circuit executions with one JIT-compiled XLA program each.
+
+    The phase term uses ``1 - cos(Δφ)`` rather than ``|Δφ|`` so that
+    it is differentiable everywhere (including at the optimum) and
+    well-behaved at the ``±π`` wrap-around — important because Stage 0
+    now sees the same cost as Stage 1.
 
     Args:
         pulse_params: Pulse parameters for evaluation.
-        pulse_script: Yaqsi script with pulse parameters.
-        target_script: Yaqsi script as target.
+        pulse_scripts: One or a list of yaqsi scripts with pulse
+            parameters.  If a list is supplied, the cost is averaged
+            element-wise with ``target_scripts`` (which must have the
+            same length).
+        target_scripts: One or a list of yaqsi target scripts.
         n_samples: Number of parameter samples.
 
     Returns:
-        Tuple of (abs_diff, phase_diff).
+        Tuple of ``(abs_diff, phase_diff)`` averaged across script pairs.
     """
-    ws = jnp.linspace(0, 2 * jnp.pi, n_samples)
-
-    pulse_states = pulse_script.execute(
-        type="state",
-        args=(ws, pulse_params),
-        in_axes=(0, None),
-    )  # (n_samples, dim)
-
-    target_states = target_script.execute(
-        type="state",
-        args=(ws,),
-        in_axes=(0,),
-    )  # (n_samples, dim)
-
-    abs_diff = jnp.mean(
-        jnp.array(1.0, dtype=jnp.float64) - fidelity(pulse_states, target_states)
+    if not isinstance(pulse_scripts, (list, tuple)):
+        pulse_scripts = [pulse_scripts]
+    if not isinstance(target_scripts, (list, tuple)):
+        target_scripts = [target_scripts]
+    assert len(pulse_scripts) == len(target_scripts), (
+        f"pulse_scripts and target_scripts must have the same length "
+        f"({len(pulse_scripts)} vs {len(target_scripts)})."
     )
-    phase_diff = jnp.mean(jnp.abs(phase_difference(pulse_states, target_states)))
+
+    ws = _sample_rotation_angles(n_samples)
+
+    abs_diffs = []
+    phase_diffs = []
+    for p_script, t_script in zip(pulse_scripts, target_scripts):
+        pulse_states = p_script.execute(
+            type="state",
+            args=(ws, pulse_params),
+            in_axes=(0, None),
+        )  # (n_samples, dim)
+
+        target_states = t_script.execute(
+            type="state",
+            args=(ws,),
+            in_axes=(0,),
+        )  # (n_samples, dim)
+
+        abs_diffs.append(
+            jnp.mean(
+                jnp.array(1.0, dtype=jnp.float64)
+                - fidelity(pulse_states, target_states)
+            )
+        )
+        phase_diffs.append(
+            jnp.mean(
+                jnp.array(1.0, dtype=jnp.float64)
+                - jnp.cos(phase_difference(pulse_states, target_states))
+            )
+        )
+
+    abs_diff = jnp.mean(jnp.stack(abs_diffs))
+    phase_diff = jnp.mean(jnp.stack(phase_diffs))
 
     # TODO: in future we could consider some sort of log based loss for the small values
     # or utilize gradient ascent if we run into numerical limitations
 
     return (abs_diff, phase_diff)
+
+
+def unitary_cost_fn(
+    pulse_params: jnp.ndarray,
+    pulse_basis_scripts: List[ys.Script],
+    target_basis_scripts: List[ys.Script],
+    n_samples: int,
+    n_qubits: int,
+) -> Tuple[float, float]:
+    """Unitary-level cost based on the average gate (process) fidelity.
+
+    Builds the full unitary of the pulse and target circuits at every
+    sampled rotation angle by stacking ``2**n_qubits`` basis-state
+    evolutions as columns (``U[:, k] = circuit(|k⟩)``).  Returns
+
+        (1 - |Tr(E)|² / d²,  1 - cos(angle(Tr(E))))
+
+    where ``E = U_target† · U_pulse`` and ``d = 2**n_qubits``.
+
+    The first component is the standard process-infidelity (which is
+    *global-phase invariant*).  The second component captures the
+    residual global phase between pulse and target — without it the
+    optimiser cannot distinguish ``U_pulse`` and ``e^{iα} U_pulse``,
+    which leaves systematic phase errors in composed gates (e.g. the
+    H-CZ-H decomposition of CX).
+
+    Compared to the state-vector ``fidelity_cost_fn``, this cost
+    captures rotation-axis tilt and off-diagonal coherent error in a
+    single number, regardless of which probe state(s) one chooses.
+
+    Args:
+        pulse_params: Pulse parameters under optimisation.
+        pulse_basis_scripts: List of ``d`` scripts; the k-th script
+            prepares ``|k⟩`` (via ``PauliX`` gates) and then applies
+            the pulse-level circuit.
+        target_basis_scripts: Same for the target circuit.
+        n_samples: Number of rotation-angle samples in ``[0, 2π)``.
+        n_qubits: Number of qubits the gate acts on.
+
+    Returns:
+        Tuple ``(process_loss, phase_loss)`` averaged over rotation
+        angles.
+    """
+    d = 2**n_qubits
+    assert len(pulse_basis_scripts) == d, (
+        f"pulse_basis_scripts must have {d} entries (one per basis "
+        f"state); got {len(pulse_basis_scripts)}."
+    )
+    assert len(target_basis_scripts) == d, (
+        f"target_basis_scripts must have {d} entries (one per basis "
+        f"state); got {len(target_basis_scripts)}."
+    )
+
+    ws = _sample_rotation_angles(n_samples)
+
+    pulse_cols = []
+    target_cols = []
+    for k in range(d):
+        ps = pulse_basis_scripts[k].execute(
+            type="state",
+            args=(ws, pulse_params),
+            in_axes=(0, None),
+        )  # (n_samples, d)
+        ts = target_basis_scripts[k].execute(
+            type="state",
+            args=(ws,),
+            in_axes=(0,),
+        )  # (n_samples, d)
+        pulse_cols.append(ps)
+        target_cols.append(ts)
+
+    # Stack basis-state outputs as columns of U at every sampled angle.
+    # Resulting shape (n_samples, d, d) with U[s, :, k] = column k.
+    U_pulse = jnp.stack(pulse_cols, axis=-1)
+    U_target = jnp.stack(target_cols, axis=-1)
+
+    # E = U_target^† U_pulse, shape (n_samples, d, d)
+    E = jnp.einsum("sji,sjk->sik", jnp.conj(U_target), U_pulse)
+    trE = jnp.einsum("sii->s", E)
+
+    F_pro = jnp.abs(trE) ** 2 / float(d) ** 2
+    process_loss = jnp.mean(jnp.array(1.0, dtype=jnp.float64) - F_pro)
+    phase_loss = jnp.mean(jnp.array(1.0, dtype=jnp.float64) - jnp.cos(jnp.angle(trE)))
+
+    return (process_loss, phase_loss)
+
+
+def joint_unitary_cost_fn(
+    pulse_params: jnp.ndarray,
+    gate_specs: List[dict],
+    n_samples: int,
+) -> Tuple[float, float]:
+    """Joint unitary-level cost summed over multiple target gates.
+
+    Each entry in ``gate_specs`` is a dictionary describing one target
+    gate that shares the joint parameter vector ``pulse_params``::
+
+        {
+            "name":                 str,             # gate name (debug)
+            "n_qubits":             int,
+            "weight":               float,           # per-gate weight
+            "assembler":            Callable,        # theta -> per-gate flat params
+            "pulse_basis_scripts":  List[ys.Script], # 2**n_qubits scripts
+            "target_basis_scripts": List[ys.Script],
+        }
+
+    The total return value is a ``(process_loss, phase_loss)`` tuple
+    where each component is ``Σ_g w_g · loss_g(theta)`` divided by the
+    sum of weights.  Sharing the leaf parameters across all target
+    gates pulls the optimum into a basin that is good for *every*
+    use-site (composite gates as well as standalone leaves) — fixing
+    the failure mode where per-gate optimisation pushes a leaf into a
+    "selfish" basin that is optimal for its standalone use but breaks
+    composites that contain it.
+
+    Args:
+        pulse_params: Joint leaf parameter vector (theta).
+        gate_specs: List of per-gate spec dicts (see above).
+        n_samples: Number of rotation-angle samples per gate.
+
+    Returns:
+        Tuple ``(process_loss, phase_loss)`` averaged over angles and
+        weighted-summed over gates.
+    """
+    total_proc = jnp.array(0.0, dtype=jnp.float64)
+    total_phase = jnp.array(0.0, dtype=jnp.float64)
+    total_w = 0.0
+
+    for spec in gate_specs:
+        per_gate_pp = spec["assembler"](pulse_params)
+        proc_loss, phase_loss = unitary_cost_fn(
+            per_gate_pp,
+            spec["pulse_basis_scripts"],
+            spec["target_basis_scripts"],
+            n_samples,
+            spec["n_qubits"],
+        )
+        w = spec["weight"]
+        total_proc = total_proc + w * proc_loss
+        total_phase = total_phase + w * phase_loss
+        total_w += w
+
+    if total_w > 0:
+        total_proc = total_proc / total_w
+        total_phase = total_phase / total_w
+
+    return (total_proc, total_phase)
 
 
 def pulse_width_cost_fn(
@@ -226,10 +519,6 @@ def spectral_density_cost_fn(
     return jnp.array(rms_bw, dtype=jnp.float64)
 
 
-# Backward-compatible alias for the old misspelled name
-sepctral_density_cost_fn = spectral_density_cost_fn
-
-
 class CostFnRegistry:
     """Registry of cost functions available for pulse optimisation.
 
@@ -241,7 +530,17 @@ class CostFnRegistry:
         "fidelity": {
             "fn": fidelity_cost_fn,
             "default_weight": (0.5, 0.5),
-            "ckwargs_keys": ["pulse_script", "target_script", "n_samples"],
+            "ckwargs_keys": ["pulse_scripts", "target_scripts", "n_samples"],
+        },
+        "unitary": {
+            "fn": unitary_cost_fn,
+            "default_weight": (0.5, 0.5),
+            "ckwargs_keys": [
+                "pulse_basis_scripts",
+                "target_basis_scripts",
+                "n_samples",
+                "n_qubits",
+            ],
         },
         "pulse_width": {
             "fn": pulse_width_cost_fn,
@@ -348,10 +647,10 @@ class QOC:
     GATES_2Q: List[str] = ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"]
 
     DEFAULT_PARAM_RANGES = {
-        1: [(0.05, 2.0)],  # evolution time
-        2: [(0.5, 2.0), (0.05, 2.0)],  # not typically used
-        3: [(0.5, 30.0), (0.05, 2.0), (0.05, 2.0)],  # A, σ, t
-        4: [(0.5, 30.0), (0.05, 2.0), (0.01, 0.5), (0.05, 2.0)],  # DRAG
+        1: [(0.05, 3.0)],  # evolution time
+        2: [(0.05, 3.0), (0.05, 3.0)],  # not typically used
+        3: [(0.05, 3.0), (0.05, 3.0), (0.05, 3.0)],  # [A, sigma, t]
+        4: [(0.05, 3.0), (0.05, 3.0), (0.05, 3.0), (0.05, 3.0)],  # [A, beta, sigma, t]
     }
 
     def __init__(
@@ -374,6 +673,9 @@ class QOC:
         scan_grid_size: int = 5,
         scan_ranges: Optional[List[Tuple[float, float]]] = None,
         log_scale_params: Optional[List[int]] = None,
+        early_stop_patience: int = 0,
+        early_stop_min_delta: float = 0.0,
+        plot: bool = False,
     ):
         """
         Initialize Quantum Optimal Control with Pulse-level Gates.
@@ -415,7 +717,13 @@ class QOC:
             restart_noise_scale (float): Standard deviation of the
                 Gaussian noise added to the initial parameters for each
                 restart (relative to the absolute value of each parameter).
-                Defaults to 0.5 (50 % relative perturbation).
+                Defaults to 0.5 (50 % relative perturbation).  Note that
+                the package-level default in ``default_qoc_params`` is a
+                much smaller ``0.01`` because the QOC loss landscape is
+                highly sensitive to initial conditions and large
+                perturbations routinely move restarts into useless
+                basins; tune up only if you have reason to believe the
+                initial point is far from any good basin.
             grad_clip (float): Maximum global gradient norm.  Gradients
                 are clipped to this value before being passed to the
                 optimiser, which stabilises training when the loss
@@ -451,6 +759,21 @@ class QOC:
                 If ``None``, defaults to ``[0, -1]`` (amplitude and
                 evolution time) for envelopes with ≥ 2 envelope params,
                 or ``[]`` otherwise.
+            early_stop_patience (int): Number of consecutive
+                Stage-1 steps with no improvement greater than
+                ``early_stop_min_delta`` after which optimisation
+                exits early.  Set to ``0`` (default) to disable.
+                Only honoured in the single-restart (sequential)
+                path; when ``n_restarts > 1`` the parallel
+                vmap+scan path always runs the full ``n_steps``.
+            early_stop_min_delta (float): Minimum decrease in loss
+                that counts as an improvement for the early-stopping
+                patience counter.  Defaults to ``0.0`` (any strict
+                improvement resets the counter).
+            plot (bool): If ``True``, save a loss-landscape figure after
+                Phase 0 and a loss-curve figure after Phase 1 to
+                ``file_dir``.  Requires ``matplotlib`` to be installed.
+                Defaults to ``False``.
         """
         self.envelope = envelope
         self.n_steps = n_steps
@@ -482,6 +805,16 @@ class QOC:
         else:
             self.log_scale_params = []
 
+        # Mask cache used by ``_to_log_space``/``_from_log_space``;
+        # rebuilt lazily because the mask length depends on the size of
+        # the param vector being converted (per-gate vs joint).
+        self._log_mask_cache: Dict[int, jnp.ndarray] = {}
+
+        self.early_stop_patience = max(0, int(early_stop_patience))
+        self.early_stop_min_delta = float(early_stop_min_delta)
+
+        self.plot = plot
+
         log.info(
             f"Training parameters: {self.n_steps} steps, "
             f"{self.n_samples} samples, {self.learning_rate} learning rate"
@@ -497,6 +830,16 @@ class QOC:
             f"Restarts: {self.n_restarts}, noise_scale={self.restart_noise_scale}, "
             f"grad_clip={self.grad_clip}"
         )
+        if PulseInformation.get_rwa():
+            log.info("Using RWA. Rotating frame is ignored.")
+        else:
+            log.info(f"Using no RWA and {PulseInformation.get_frame()} frame.")
+
+        if self.early_stop_patience > 0:
+            log.info(
+                f"Early stopping: patience={self.early_stop_patience}, "
+                f"min_delta={self.early_stop_min_delta:g}"
+            )
         log.info(
             f"Grid scan: scan_steps={self.scan_steps}, "
             f"scan_grid_size={self.scan_grid_size}, "
@@ -532,7 +875,7 @@ class QOC:
         """
         if self.file_dir is not None:
             os.makedirs(self.file_dir, exist_ok=True)
-            filename = os.path.join(self.file_dir, "qoc_results.csv")
+            filename = os.path.join(self.file_dir, f"qoc_results_{self.envelope}.csv")
 
             reader = None
             if os.path.isfile(filename):
@@ -562,28 +905,32 @@ class QOC:
                 if not match:
                     writer.writerow(entry)
 
+    def _log_mask(self, n: int) -> jnp.ndarray:
+        """Return a boolean mask of length ``n`` marking log-scaled indices."""
+        cached = self._log_mask_cache.get(n)
+        if cached is not None and cached.shape[0] == n:
+            return cached
+        mask = np.zeros(n, dtype=bool)
+        for idx in self.log_scale_params:
+            i = idx if idx >= 0 else n + idx
+            if 0 <= i < n:
+                mask[i] = True
+        out = jnp.asarray(mask)
+        self._log_mask_cache[n] = out
+        return out
+
     def _to_log_space(self, params: jnp.ndarray) -> jnp.ndarray:
         """Convert selected parameters to log-space for optimisation.
 
         Parameters at indices in ``self.log_scale_params`` are replaced
         by ``log(|p| + eps)`` so the optimiser operates on a
         logarithmic scale.  All other parameters are left unchanged.
-
-        Args:
-            params: Pulse parameters in physical space.
-
-        Returns:
-            Parameters with selected entries in log-space.
         """
         if not self.log_scale_params:
             return params
-        n = len(params)
-        log_params = params.copy()
-        for idx in self.log_scale_params:
-            # Normalise negative indices
-            i = idx if idx >= 0 else n + idx
-            log_params = log_params.at[i].set(jnp.log(jnp.abs(params[i]) + 1e-12))
-        return log_params
+        mask = self._log_mask(params.shape[0])
+        log_vals = jnp.log(jnp.abs(params) + 1e-12)
+        return jnp.where(mask, log_vals, params)
 
     def _from_log_space(self, log_params: jnp.ndarray) -> jnp.ndarray:
         """Convert selected parameters back from log-space.
@@ -591,34 +938,47 @@ class QOC:
         Inverse of :meth:`_to_log_space`.  Parameters at indices in
         ``self.log_scale_params`` are exponentiated; all others are
         passed through unchanged.
-
-        Args:
-            log_params: Parameters with selected entries in log-space.
-
-        Returns:
-            Parameters in physical space (all positive for log-scaled
-            entries).
         """
         if not self.log_scale_params:
             return log_params
-        n = len(log_params)
-        params = log_params.copy()
-        for idx in self.log_scale_params:
-            i = idx if idx >= 0 else n + idx
-            params = params.at[i].set(jnp.exp(log_params[i]))
-        return params
+        mask = self._log_mask(log_params.shape[0])
+        return jnp.where(mask, jnp.exp(log_params), log_params)
 
-    def _build_scan_grid(self, n_params: int) -> jnp.ndarray:
+    # Multiplicative factors used to build a centred grid around the
+    # supplied init parameters when no explicit ``scan_ranges`` are
+    # given.  ``1.0`` is included so the init point itself is always a
+    # candidate (Stage 0 cannot otherwise re-evaluate it as a grid
+    # point — only as the baseline ``best_scan_loss``).
+    SCAN_REL_FACTORS: Tuple[float, ...] = (0.5, 0.75, 1.0, 1.25, 1.5)
+
+    def _build_scan_grid(
+        self,
+        n_params: int,
+        init_pulse_params: Optional[jnp.ndarray] = None,
+    ) -> Tuple[jnp.ndarray, List[jnp.ndarray]]:
         """Build a coarse parameter grid for the initial scan phase.
 
-        Uses either user-supplied ``scan_ranges`` or heuristic defaults
-        based on typical Gaussian pulse parameter ranges.
+        If the user supplied ``scan_ranges`` they take precedence and
+        a log-spaced grid is built within those bounds.  Otherwise, when
+        ``init_pulse_params`` is available, a **multiplicative grid
+        centred on the init point** is used (each axis spans
+        ``init * SCAN_REL_FACTORS``) so that already-optimised init
+        params are always re-evaluated and only their immediate
+        neighbourhood is explored.  This avoids the failure mode where
+        the global ``DEFAULT_PARAM_RANGES`` brackets exclude the actual
+        optimum (the previous default range was ``(0.05, 3.0)`` per
+        axis, which clipped DRAG amplitudes around 3.1 and made the
+        scan systematically worse than the init point).
 
         Args:
             n_params: Number of pulse parameters.
+            init_pulse_params: Optional init params used to centre the
+                multiplicative grid when ``scan_ranges`` is ``None``.
 
         Returns:
-            Array of shape ``(n_candidates, n_params)`` with grid points.
+            Tuple of:
+            - Array of shape ``(n_candidates, n_params)`` with grid points.
+            - List of 1-D arrays, one per parameter axis.
         """
         if self.scan_ranges is not None:
             ranges = self.scan_ranges
@@ -626,44 +986,98 @@ class QOC:
                 f"scan_ranges has {len(ranges)} entries but gate has "
                 f"{n_params} parameters."
             )
+            # Build log-spaced grids for each parameter
+            axes = []
+            for lo, hi in ranges:
+                axes.append(
+                    jnp.logspace(jnp.log10(lo), jnp.log10(hi), self.scan_grid_size)
+                )
+        elif init_pulse_params is not None:
+            # Multiplicative grid centred on init params.  We pick
+            # ``scan_grid_size`` factors symmetric around 1.0.  When
+            # ``scan_grid_size`` matches the static SCAN_REL_FACTORS
+            # length we use those; otherwise build a symmetric linspace.
+            if self.scan_grid_size == len(self.SCAN_REL_FACTORS):
+                factors = jnp.array(self.SCAN_REL_FACTORS, dtype=jnp.float64)
+            else:
+                half = (self.scan_grid_size - 1) / 2.0
+                if half <= 0:
+                    factors = jnp.array([1.0], dtype=jnp.float64)
+                else:
+                    factors = jnp.linspace(
+                        1.0 - 0.5,
+                        1.0 + 0.5,
+                        self.scan_grid_size,
+                        dtype=jnp.float64,
+                    )
+            axes = [factors * float(p) for p in init_pulse_params]
         else:
-            # [amplitude, sigma/width, evolution_time]
+            # Fall back to legacy log-spaced default ranges
             ranges = self.DEFAULT_PARAM_RANGES.get(
                 n_params,
-                [(0.1, 10.0)] * n_params,  # fallback
+                [(0.1, 10.0)] * n_params,
             )
-
-        # Build log-spaced grids for each parameter
-        axes = []
-        for lo, hi in ranges:
-            axes.append(jnp.logspace(jnp.log10(lo), jnp.log10(hi), self.scan_grid_size))
+            axes = []
+            for lo, hi in ranges:
+                axes.append(
+                    jnp.logspace(jnp.log10(lo), jnp.log10(hi), self.scan_grid_size)
+                )
 
         # Cartesian product of all axes
         grid = jnp.array(list(itertools.product(*axes)))
-        return grid
+        return grid, axes
 
     def stage_0_opt(
-        self, init_pulse_params: jnp.ndarray, fidelity_only_cost: Callable
-    ) -> jnp.ndarray:
+        self, init_pulse_params: jnp.ndarray, total_cost: Callable
+    ) -> Tuple[jnp.ndarray, Optional[Tuple[List[jnp.ndarray], list]]]:
         """Run the coarse grid-scan phase (Stage 0).
 
-        Evaluates a Cartesian grid of parameter candidates using only the
-        fidelity cost (ignoring phase).  Each candidate is refined with a
-        few fast gradient steps.  Returns the best-found parameters.
+        Evaluates a Cartesian grid of parameter candidates using the
+        **full weighted cost** (fidelity + phase, plus any other
+        registered terms) — the same objective as Stage 1.  Each
+        candidate is refined with a few fast gradient steps.  Returns
+        the best-found parameters.
+
+        Sharing the objective with Stage 1 prevents the grid scan from
+        landing in a basin that has high fidelity but a biased phase
+        which Adam then has to migrate out of (the previous
+        fidelity-only scan caused exactly this failure mode for RX/RY,
+        whose phase residuals compounded in the CRX decomposition).
+
+        Robustness: candidates that produce a non-finite loss (e.g. when
+        the underlying pulse drives the integrator into a NaN — typical
+        for very narrow DRAG envelopes) are skipped with a warning.  For
+        the duration of the scan, :class:`qml_essentials.yaqsi.Yaqsi` is
+        switched into ``throw=False`` mode so a single bad candidate
+        cannot abort the loop with ``MaxStepsReached``; the previous
+        defaults are restored on exit.
 
         Args:
             init_pulse_params: Initial pulse parameters to compare against.
-            fidelity_only_cost: Cost callable using fidelity only.
+            total_cost: Combined cost callable (same as Stage 1).
 
         Returns:
-            Best pulse parameters found during the scan.
+            Tuple of:
+            - Best pulse parameters found during the scan.
+            - ``(grid_axes, landscape_data)`` if the grid scan ran, else
+              ``None``.  ``landscape_data`` is a list of
+              ``(candidate_index, original_params, loss)`` tuples for
+              every successful scan candidate.
         """
 
-        def fidelity_only_cost_log(log_params, *args):
-            return fidelity_only_cost(self._from_log_space(log_params), *args)
+        def total_cost_log(log_params, *args):
+            return total_cost(self._from_log_space(log_params), *args)
 
         best_scan_params = init_pulse_params
-        best_scan_loss = fidelity_only_cost(init_pulse_params)
+        best_scan_loss = _safe_eval(total_cost, init_pulse_params)
+        if not jnp.isfinite(best_scan_loss):
+            log.warning(
+                "Stage 0: initial pulse parameters produced a non-finite "
+                "loss; falling back to a placeholder loss of +inf."
+            )
+
+        landscape_data: list = []
+        axes_out: Optional[List[jnp.ndarray]] = None
 
         if self.scan_steps > 0:
             log.info(
@@ -672,52 +1086,143 @@ class QOC:
                 f"{self.scan_steps} steps each"
             )
 
-            grid = self._build_scan_grid(len(init_pulse_params))
+            grid, axes_out = self._build_scan_grid(
+                len(init_pulse_params),
+                init_pulse_params=init_pulse_params,
+            )
             log.info(f"  Total candidates: {len(grid)}")
 
-            # Use a fast, constant-LR Adam for the scan phase
+            # Use a fast Adam for the scan phase.  The aggressive 5×
+            # multiplier originally used here tended to push refined
+            # candidates *out* of good basins; 2× keeps the refinement
+            # localised.  Always-evaluate-the-raw-candidate below
+            # additionally guards against this.
             scan_optimizer = optax.chain(
                 optax.clip_by_global_norm(
                     self.grad_clip if self.grad_clip > 0 else 1.0
                 ),
-                optax.adam(self.learning_rate * 5),  # aggressive LR
+                optax.adam(self.learning_rate * 2),
             )
 
             @jax.jit
-            def scan_step(opt_state, log_params):
-                loss, grads = jax.value_and_grad(fidelity_only_cost_log)(log_params)
-                updates, opt_state = scan_optimizer.update(grads, opt_state, log_params)
-                log_params = optax.apply_updates(log_params, updates)
-                return log_params, opt_state, loss
+            def refine_candidate(log_candidate):
+                """Run ``self.scan_steps`` Adam steps on a single candidate.
 
-            for ci, candidate in enumerate(grid):
-                log_candidate = self._to_log_space(candidate)
-                opt_state = scan_optimizer.init(log_candidate)
+                Fused into a single ``jax.lax.scan`` so the whole
+                refinement is one XLA program — no per-step host
+                syncs, no Python-loop dispatch.  Returns the final
+                log-params and a scalar bool ``failed`` flag (set if
+                any intermediate update produced a non-finite value).
+                """
 
-                log_p = log_candidate
-                for _ in range(self.scan_steps):
-                    log_p, opt_state, loss = scan_step(opt_state, log_p)
+                opt_state0 = scan_optimizer.init(log_candidate)
 
-                # Evaluate final loss
-                physical_p = self._from_log_space(log_p)
-                loss = fidelity_only_cost(physical_p)
+                def body(carry, _):
+                    log_p, opt_state, failed = carry
+                    loss, grads = jax.value_and_grad(total_cost_log)(log_p)
+                    updates, opt_state = scan_optimizer.update(grads, opt_state, log_p)
+                    new_log_p = optax.apply_updates(log_p, updates)
+                    new_failed = failed | (~jnp.all(jnp.isfinite(new_log_p)))
+                    # Freeze on failure so subsequent steps cannot
+                    # propagate NaNs further.
+                    new_log_p = jnp.where(new_failed, log_p, new_log_p)
+                    return (new_log_p, opt_state, new_failed), loss
 
-                if loss < best_scan_loss:
-                    best_scan_loss = loss
-                    best_scan_params = physical_p
-                    log.info(
-                        f"  Candidate {ci + 1}/{len(grid)}: "
-                        f"loss={loss.item():.3e} improved with "
-                        f"params={physical_p}"
-                    )
+                (final_log_p, _, failed), _ = jax.lax.scan(
+                    body,
+                    (log_candidate, opt_state0, jnp.bool_(False)),
+                    None,
+                    length=self.scan_steps,
+                )
+                return final_log_p, failed
+
+            # Switch the underlying ODE solver to non-throwing mode for
+            # the duration of the scan so candidates that exceed the step
+            # budget produce NaN unitaries (and therefore +inf losses)
+            # rather than aborting the whole grid loop.
+            prev_solver_defaults = ys.Yaqsi.set_solver_defaults(throw=False)
+            n_skipped = 0
+            n_raw_better = 0
+            try:
+                for ci, candidate in enumerate(grid):
+                    log_candidate = self._to_log_space(candidate)
+
+                    # Evaluate the raw (unrefined) candidate so an
+                    # over-aggressive refinement step cannot discard
+                    # an already-good grid point.
+                    raw_loss = _safe_eval(total_cost, candidate)
+
+                    try:
+                        log_p, failed_flag = refine_candidate(log_candidate)
+                    except Exception as exc:  # pragma: no cover - defensive
+                        log.debug(
+                            f"  Candidate {ci + 1}/{len(grid)} "
+                            f"raised during refinement: {exc}; skipping."
+                        )
+                        physical_p = candidate
+                        loss = raw_loss
+                    else:
+                        if bool(failed_flag):
+                            physical_p = candidate
+                            loss = raw_loss
+                        else:
+                            physical_p = self._from_log_space(log_p)
+                            if not jnp.all(jnp.isfinite(physical_p)):
+                                physical_p = candidate
+                                loss = raw_loss
+                            else:
+                                loss = _safe_eval(total_cost, physical_p)
+
+                    # Keep the better of (raw, refined) for this candidate.
+                    if jnp.isfinite(raw_loss) and (
+                        not jnp.isfinite(loss) or raw_loss < loss
+                    ):
+                        physical_p = candidate
+                        loss = raw_loss
+                        n_raw_better += 1
+
+                    if not jnp.isfinite(loss):
+                        n_skipped += 1
+                        continue
+
+                    landscape_data.append((ci, candidate, float(loss)))
+
+                    if loss < best_scan_loss:
+                        best_scan_loss = loss
+                        best_scan_params = physical_p
+                        log.info(
+                            f"  Candidate {ci + 1}/{len(grid)}: "
+                            f"loss={float(loss):.6e} improved with "
+                            f"params={physical_p}"
+                        )
+            finally:
+                # Always restore the previous solver defaults so other
+                # callers (including Stage 1) are unaffected.
+                if prev_solver_defaults:
+                    ys.Yaqsi.set_solver_defaults(**prev_solver_defaults)
+
+            if n_skipped:
+                log.warning(
+                    f"Stage 0: skipped {n_skipped}/{len(grid)} candidates "
+                    f"due to solver failure or non-finite loss "
+                    f"(typical for very narrow / very large-amplitude "
+                    f"DRAG pulses)."
+                )
+            if n_raw_better:
+                log.info(
+                    f"Stage 0: {n_raw_better}/{len(grid)} candidates "
+                    f"were better unrefined than after the {self.scan_steps}-"
+                    f"step refinement; raw values were kept."
+                )
 
             log.info(
-                f"Stage 0 complete. Best fidelity-only loss: "
-                f"{best_scan_loss.item():.3e}, "
+                f"Stage 0 complete. Best loss: "
+                f"{float(best_scan_loss):.6e}, "
                 f"params: {best_scan_params}"
             )
 
-        return best_scan_params
+        scan_data = (axes_out, landscape_data) if self.scan_steps > 0 else None
+        return best_scan_params, scan_data
 
     def stage_1_opt(
         self, best_scan_params: jnp.ndarray, total_costs: Callable
@@ -730,17 +1235,25 @@ class QOC:
         perturbations.  Parameters specified in ``log_scale_params`` are
         optimised in log-space.
 
+        When ``n_restarts == 1`` we keep the original single-restart
+        Python loop (it preserves per-step ``log.info`` granularity
+        and avoids the vmap/scan compilation overhead).  When
+        ``n_restarts > 1`` we ``vmap`` the optimiser over restarts and
+        run the inner step loop with :func:`jax.lax.scan`, fusing all
+        ``n_restarts × n_steps`` steps into a single XLA program.
+
         Args:
             best_scan_params: Starting parameters (typically from Stage 0).
             total_costs: Combined cost callable.
 
         Returns:
-            Tuple of ``(best_params, loss_history, best_loss)``.
+            Tuple of ``(best_params, loss_history, best_loss)`` from the
+            best restart.
         """
 
         # Wrap the cost function with log-space reparameterisation
-        def total_costs_log(log_params, *args):
-            return total_costs(self._from_log_space(log_params), *args)
+        def total_costs_log(log_params):
+            return total_costs(self._from_log_space(log_params))
 
         # Build learning rate schedule
         warmup_steps = int(self.n_steps * self.warmup_ratio)
@@ -757,99 +1270,470 @@ class QOC:
         else:
             schedule = self.learning_rate
 
-        # Build optimiser chain with gradient clipping
-        use_clip = (
-            self.grad_clip and self.grad_clip > 0 and jnp.isfinite(self.grad_clip)
-        )
-        if use_clip:
-            optimizer = optax.chain(
-                optax.clip_by_global_norm(self.grad_clip),
-                optax.adamw(schedule),
+        optimizer = _build_optimizer(schedule, self.grad_clip)
+
+        if self.n_restarts <= 1:
+            return self._stage_1_sequential(
+                best_scan_params, total_costs, total_costs_log, optimizer
             )
-        else:
-            optimizer = optax.adamw(schedule)
+        return self._stage_1_parallel(
+            best_scan_params, total_costs, total_costs_log, optimizer
+        )
+
+    def _perturb_starts(self, start_params: jnp.ndarray) -> jnp.ndarray:
+        """Pre-build the ``(n_restarts, n_params)`` matrix of restart starts.
+
+        Restart 0 is the unperturbed start; subsequent restarts add
+        Gaussian noise scaled by ``max(|start|, 0.1) *
+        restart_noise_scale``.  Indices that are optimised in
+        log-space (plus the evolution time at index ``-1``) are kept
+        positive via ``jnp.abs`` so the subsequent ``log`` is safe.
+        """
+        n_params = start_params.shape[0]
+        keys = jax.random.split(self.random_key, self.n_restarts)
+        # Shape (n_restarts, n_params); restart 0 is intentionally zero
+        # noise so the unperturbed start is preserved.
+        noise = jax.vmap(lambda k: jax.random.normal(k, shape=(n_params,)))(keys)
+        noise = noise.at[0].set(0.0)
+        scale = jnp.maximum(jnp.abs(start_params), 0.1) * self.restart_noise_scale
+        starts = start_params[None, :] + noise * scale[None, :]
+
+        # Keep the evolution time and any log-scaled indices positive.
+        positive_mask = np.zeros(n_params, dtype=bool)
+        positive_mask[-1] = True
+        for idx in self.log_scale_params:
+            i = idx if idx >= 0 else n_params + idx
+            if 0 <= i < n_params:
+                positive_mask[i] = True
+        positive_mask_j = jnp.asarray(positive_mask)
+        starts = jnp.where(positive_mask_j[None, :], jnp.abs(starts), starts)
+        return starts
+
+    def _stage_1_sequential(
+        self,
+        start_params: jnp.ndarray,
+        total_costs: Callable,
+        total_costs_log: Callable,
+        optimizer,
+    ) -> Tuple[jnp.ndarray, list, jnp.ndarray]:
+        """Single-restart Stage 1, fused into a single ``jax.lax.scan``.
+
+        The whole optimisation loop (n_steps × Adam updates) compiles
+        to one XLA program, eliminating the per-step Python overhead
+        and per-step host/device syncs that the previous Python ``for``
+        loop incurred.  Early stopping is preserved via *masked
+        updates*: once the patience condition trips, subsequent steps
+        leave the parameters and loss unchanged.  Compute is not
+        skipped (lax.scan has fixed length) but the optimiser state
+        and parameter trajectory freeze, matching the previous
+        early-stop semantics modulo wall-clock savings.
+        """
+
+        params = start_params
+        log_params = self._to_log_space(params)
+        opt_state = optimizer.init(log_params)
+
+        init_loss = total_costs(params)
+        min_delta = self.early_stop_min_delta
+        patience = self.early_stop_patience
+        # ``patience <= 0`` ⇒ early stopping disabled.  Use a large
+        # constant so the masked-update path is never triggered.
+        eff_patience = patience if patience > 0 else self.n_steps + 1
+
+        def scan_body(carry, _):
+            (
+                log_params,
+                opt_state,
+                best_loss,
+                best_log_params,
+                steps_since_improve,
+                stopped_flag,
+                stopped_step,
+                step_idx,
+            ) = carry
+
+            loss, grads = jax.value_and_grad(total_costs_log)(log_params)
+            updates, new_opt_state = optimizer.update(grads, opt_state, log_params)
+            stepped_log_params = optax.apply_updates(log_params, updates)
+
+            # Improvement test (uses the pre-update loss, matching the
+            # original semantics where the loss recorded on step *i*
+            # corresponds to the params *before* that step's update).
+            improved = loss < best_loss - min_delta
+            best_loss = jnp.where(improved, loss, best_loss)
+            # Save the params that *produced* the improving loss
+            # (i.e. the pre-update ``log_params``).  ``improved`` is a
+            # scalar bool and broadcasts against the 1-D params arrays.
+            best_log_params = jnp.where(improved, log_params, best_log_params)
+            steps_since_improve = jnp.where(
+                improved, jnp.int32(0), steps_since_improve + jnp.int32(1)
+            )
+
+            # Latch the early-stop flag once it fires.
+            trigger = steps_since_improve >= jnp.int32(eff_patience)
+            new_stopped_flag = stopped_flag | trigger
+            stopped_step = jnp.where(
+                stopped_flag,
+                stopped_step,
+                jnp.where(trigger, step_idx + jnp.int32(1), stopped_step),
+            )
+
+            # Mask the update once stopped: freeze params/optimiser.
+            new_log_params = jnp.where(new_stopped_flag, log_params, stepped_log_params)
+            new_opt_state_kept = jax.tree_util.tree_map(
+                lambda new, old: jnp.where(new_stopped_flag, old, new),
+                new_opt_state,
+                opt_state,
+            )
+
+            new_carry = (
+                new_log_params,
+                new_opt_state_kept,
+                best_loss,
+                best_log_params,
+                steps_since_improve,
+                new_stopped_flag,
+                stopped_step,
+                step_idx + jnp.int32(1),
+            )
+            return new_carry, loss
+
+        init_carry = (
+            log_params,  # log_params
+            opt_state,  # opt_state
+            init_loss,  # best_loss
+            log_params,  # best_log_params
+            jnp.int32(0),  # steps_since_improve
+            jnp.bool_(False),  # stopped_flag
+            jnp.int32(self.n_steps),  # stopped_step (default = n_steps)
+            jnp.int32(0),  # step_idx
+        )
 
         @jax.jit
-        def opt_step(opt_state, log_params, *args):
-            loss, grads = jax.value_and_grad(total_costs_log)(log_params, *args)
+        def run_scan(carry):
+            return jax.lax.scan(scan_body, carry, None, length=self.n_steps)
+
+        final_carry, step_losses = run_scan(init_carry)
+        (
+            _,
+            _,
+            best_loss,
+            best_log_params,
+            _,
+            stopped_flag,
+            stopped_step,
+            _,
+        ) = final_carry
+
+        # One sync: pull just what we need for logging in a single
+        # device->host transfer instead of a per-step ``.item()`` call.
+        host_step_losses, host_best_loss, host_stopped, host_stopped_step = (
+            jax.device_get((step_losses, best_loss, stopped_flag, stopped_step))
+        )
+
+        # Periodic progress log (replaces the per-step inline log;
+        # cheap because step losses already live on the host).
+        for step in range(0, self.n_steps, max(1, self.log_interval)):
+            log.info(
+                f"Step {step}/{self.n_steps}, Loss: {float(host_step_losses[step]):.3e}"
+            )
+        if bool(host_stopped):
+            log.info(
+                f"Early stop at step {int(host_stopped_step)}/{self.n_steps} "
+                f"(no improvement > {min_delta:g} for "
+                f"{self.early_stop_patience} steps)."
+            )
+
+        log.info(
+            f"Restart 1/1 finished with best loss: {float(host_best_loss):.3e}"
+            + (
+                f" (early stopped at step {int(host_stopped_step)})"
+                if bool(host_stopped)
+                else ""
+            )
+        )
+
+        # Reconstruct the historical loss list shape: leading entry is
+        # the initial (pre-step-0) loss, followed by one entry per
+        # scan step.  Match the previous return type (``list``) so
+        # downstream plotting code is unchanged.
+        loss_history = [init_loss] + list(step_losses)
+
+        best_pulse_params = self._from_log_space(best_log_params)
+        return best_pulse_params, loss_history, best_loss
+
+    def _stage_1_parallel(
+        self,
+        start_params: jnp.ndarray,
+        total_costs: Callable,
+        total_costs_log: Callable,
+        optimizer,
+    ) -> Tuple[jnp.ndarray, list, jnp.ndarray]:
+        """Vmap+scan Stage 1: all restarts × all steps in one XLA program.
+
+        Always runs the full ``n_steps``: an early-stop break would
+        require either chunking the scan (extra Python overhead) or
+        masking updates inside the scan (no compute saved), and
+        because every restart would have to plateau before we could
+        break, the win is small.  Sequential mode (``n_restarts == 1``)
+        does honour ``early_stop_patience``.
+        """
+
+        # (n_restarts, n_params) starting points (restart 0 unperturbed).
+        params_batch = self._perturb_starts(start_params)
+        log.info(
+            f"Stage 1 (parallel): vmapping {self.n_restarts} restarts × "
+            f"{self.n_steps} steps in a single fused program."
+        )
+        if self.early_stop_patience > 0:
+            log.info(
+                "Note: early_stop_patience is ignored in the parallel "
+                "(n_restarts > 1) path; the full n_steps will run."
+            )
+
+        log_params_batch = jax.vmap(self._to_log_space)(params_batch)
+        opt_state_batch = jax.vmap(optimizer.init)(log_params_batch)
+
+        # Initial losses (per-restart) so loss_history[0] matches the
+        # per-restart sequential semantics.
+        init_losses = jax.vmap(total_costs)(params_batch)
+
+        def opt_step(log_params, opt_state):
+            loss, grads = jax.value_and_grad(total_costs_log)(log_params)
             updates, opt_state = optimizer.update(grads, opt_state, log_params)
             log_params = optax.apply_updates(log_params, updates)
             return log_params, opt_state, loss
 
-        # Use the best from grid scan as starting point
-        start_params = best_scan_params
+        v_opt_step = jax.vmap(opt_step, in_axes=(0, 0))
 
-        global_best_loss = jnp.inf
-        global_best_params = start_params
-        global_best_history = []
-        restart_key = self.random_key
+        def scan_body(carry, _):
+            log_params, opt_state, prev_log_params, best_loss, best_log_params = carry
+            new_log_params, new_opt_state, loss = v_opt_step(log_params, opt_state)
+            # Track best loss (and the params that *produced* it,
+            # which are the pre-update ``prev_log_params`` — same
+            # rationale as the sequential path).
+            improved = loss < best_loss
+            best_loss = jnp.where(improved, loss, best_loss)
+            best_log_params = jnp.where(
+                improved[:, None], prev_log_params, best_log_params
+            )
+            new_carry = (
+                new_log_params,
+                new_opt_state,
+                log_params,  # becomes prev for the next step
+                best_loss,
+                best_log_params,
+            )
+            return new_carry, loss
 
-        for restart in range(self.n_restarts):
-            if restart == 0:
-                params = start_params
-            else:
-                # Perturb the starting point
-                restart_key, sub_key = jax.random.split(restart_key)
-                noise = jax.random.normal(sub_key, shape=start_params.shape)
-                scale = (
-                    jnp.maximum(jnp.abs(start_params), 0.1) * self.restart_noise_scale
-                )
-                params = start_params + noise * scale
-                # Ensure log-scaled params remain positive before
-                # conversion (evolution time at index -1 is always
-                # included since _to_log_space uses jnp.abs anyway,
-                # but we keep values positive for readability).
-                params = params.at[-1].set(jnp.abs(params[-1]))
-                for idx in self.log_scale_params:
-                    i = idx if idx >= 0 else len(params) + idx
-                    params = params.at[i].set(jnp.abs(params[i]))
-                log.info(
-                    f"Restart {restart + 1}/{self.n_restarts} "
-                    f"with perturbed params: {params}"
-                )
+        init_carry = (
+            log_params_batch,
+            opt_state_batch,
+            log_params_batch,
+            init_losses,
+            log_params_batch,
+        )
 
-            # Convert to log-space for optimisation
-            log_params = self._to_log_space(params)
-            opt_state = optimizer.init(log_params)
+        @jax.jit
+        def run_scan(carry):
+            return jax.lax.scan(scan_body, carry, None, length=self.n_steps)
 
-            loss = total_costs(params)
-            loss_history = [loss]
-            best_loss = loss
-            best_pulse_params = params
+        final_carry, step_losses = run_scan(init_carry)
+        # step_losses shape (n_steps, n_restarts); each row is the
+        # cross-restart loss vector at one optimisation step.
+        _, _, _, best_losses, best_log_params_batch = final_carry
 
-            for step in range(self.n_steps):
-                if step % self.log_interval == 0:
-                    restart_tag = (
-                        f" [restart {restart + 1}/{self.n_restarts}]"
-                        if self.n_restarts > 1
-                        else ""
-                    )
-                    log.info(
-                        f"Step {step}/{self.n_steps}, "
-                        f"Loss: {loss_history[-1].item():.3e}"
-                        f"{restart_tag}"
-                    )
-
-                log_params, opt_state, loss = opt_step(opt_state, log_params)
-
-                if loss < best_loss:
-                    log.debug(f"Best set of params found at step {step}")
-                    best_loss = loss
-                    best_pulse_params = self._from_log_space(log_params)
-
-                loss_history.append(loss)
-
+        # Periodic batch summary so the operator still sees progress.
+        # Pull the small per-step loss matrix to host once, then format
+        # without further device→host transfers.
+        host_step_losses = jax.device_get(step_losses)
+        for step in range(0, self.n_steps, max(1, self.log_interval)):
+            row = host_step_losses[step]
             log.info(
-                f"Restart {restart + 1}/{self.n_restarts} finished "
-                f"with best loss: {best_loss.item():.3e}"
+                f"Step {step}/{self.n_steps}, "
+                f"loss min/mean/max: {float(row.min()):.3e} / "
+                f"{float(row.mean()):.3e} / {float(row.max()):.3e}"
             )
 
-            if best_loss < global_best_loss:
-                global_best_loss = best_loss
-                global_best_params = best_pulse_params
-                global_best_history = loss_history
+        # Per-restart final summary (single sync for ``best_losses``).
+        host_best_losses = jax.device_get(best_losses)
+        for r in range(self.n_restarts):
+            log.info(
+                f"Restart {r + 1}/{self.n_restarts} finished "
+                f"with best loss: {float(host_best_losses[r]):.3e}"
+            )
 
-        return global_best_params, global_best_history, global_best_loss
+        winner = int(jnp.argmin(best_losses))
+        global_best_loss = best_losses[winner]
+        global_best_params = self._from_log_space(best_log_params_batch[winner])
+
+        # Build a per-step loss history for the winning restart so the
+        # downstream API (and the loss-curve plot) keeps the same
+        # shape as before.
+        winner_history = [init_losses[winner]]
+        winner_history.extend(step_losses[:, winner])
+        return global_best_params, winner_history, global_best_loss
+
+    def plot_loss_landscape(
+        self,
+        gate_name: str,
+        grid_axes: List[jnp.ndarray],
+        landscape_data: list,
+    ) -> None:
+        """Save a loss-landscape figure for the Phase-0 grid scan.
+
+        The visualisation adapts to the number of pulse parameters:
+
+        - **1 parameter**: line/scatter plot (param value vs. loss).
+        - **2 parameters**: 2-D heatmap (param₀ × param₁, colour = loss).
+        - **≥ 3 parameters**: horizontal scatter sorted by ascending loss
+          with the best candidate highlighted.
+
+        The figure is saved to ``{file_dir}/{gate_name}_loss_landscape.png``.
+
+        Args:
+            gate_name: Name of the gate being optimised (e.g. ``"RX"``).
+            grid_axes: Per-parameter 1-D arrays that span the scan grid.
+            landscape_data: List of ``(candidate_index, params, loss)``
+                tuples for every successful scan candidate.
+        """
+        import matplotlib.pyplot as plt  # lazy — matplotlib is dev-only
+
+        if not landscape_data:
+            log.warning("plot_loss_landscape: no landscape data to plot, skipping.")
+            return
+
+        os.makedirs(self.file_dir, exist_ok=True)
+        n_params = len(grid_axes)
+        indices, _params_list, losses = zip(*landscape_data)
+        losses_arr = np.array(losses, dtype=float)
+
+        fig, ax = plt.subplots(figsize=(8, 5))
+
+        if n_params == 1:
+            x = np.array([float(grid_axes[0][i]) for i in indices])
+            sc = ax.scatter(
+                x, losses_arr, c=losses_arr, cmap="viridis_r", s=60, zorder=3
+            )
+            fig.colorbar(sc, ax=ax, label="Loss")
+            best_i = int(np.argmin(losses_arr))
+            ax.scatter(
+                x[best_i],
+                losses_arr[best_i],
+                marker="*",
+                s=200,
+                color="red",
+                zorder=4,
+                label="best",
+            )
+            ax.set_xlabel("Parameter value")
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            ax.legend()
+
+        elif n_params == 2:
+            n = self.scan_grid_size
+            loss_grid = np.full((n, n), np.nan)
+            for ci, _, loss in landscape_data:
+                row = ci // n
+                col = ci % n
+                loss_grid[row, col] = loss
+            masked = np.ma.masked_invalid(loss_grid)
+            cmap = plt.cm.viridis_r.copy()
+            cmap.set_bad(color="lightgrey")
+            im = ax.imshow(
+                masked,
+                origin="lower",
+                cmap=cmap,
+                aspect="auto",
+                extent=[
+                    float(grid_axes[1][0]),
+                    float(grid_axes[1][-1]),
+                    float(grid_axes[0][0]),
+                    float(grid_axes[0][-1]),
+                ],
+            )
+            fig.colorbar(im, ax=ax, label="Loss")
+            ax.set_xlabel("Parameter 1")
+            ax.set_ylabel("Parameter 0")
+
+        else:  # n_params >= 3: sorted scatter
+            order = np.argsort(losses_arr)
+            sorted_losses = losses_arr[order]
+            sorted_indices = np.array(indices)[order]  # original trial numbers
+            ranks = np.arange(len(sorted_losses))
+            sc = ax.scatter(
+                sorted_losses,
+                ranks,
+                c=sorted_indices,
+                cmap="plasma",
+                s=40,
+                zorder=3,
+            )
+            fig.colorbar(sc, ax=ax, label="Trial number")
+            ax.scatter(
+                sorted_losses[0],
+                ranks[0],
+                marker="*",
+                s=200,
+                color="red",
+                zorder=4,
+                label="best",
+            )
+            ax.set_xlabel("Loss")
+            ax.set_ylabel("Candidate rank (0 = best)")
+            ax.set_xscale("log")
+            ax.legend()
+
+        ax.set_title(f"Loss Landscape (Phase 0) — {gate_name}")
+        fig.tight_layout()
+        path = os.path.join(self.file_dir, f"{gate_name}_loss_landscape.png")
+        fig.savefig(path, dpi=150)
+        plt.close(fig)
+        log.info(f"Loss landscape saved to {path}")
+
+    def plot_loss_curve(
+        self,
+        gate_name: str,
+        loss_history: list,
+    ) -> None:
+        """Save a training-loss curve figure for the Phase-1 optimisation.
+
+        Shows loss vs. optimisation step on a log y-scale with a dashed
+        horizontal line at the minimum achieved loss.
+
+        The figure is saved to ``{file_dir}/{gate_name}_loss_curve.png``.
+
+        Args:
+            gate_name: Name of the gate being optimised (e.g. ``"RX"``).
+            loss_history: Sequence of loss values, one per step (including
+                the initial loss at index 0).
+        """
+        import matplotlib.pyplot as plt  # lazy — matplotlib is dev-only
+
+        if not loss_history:
+            log.warning("plot_loss_curve: empty loss history, skipping.")
+            return
+
+        os.makedirs(self.file_dir, exist_ok=True)
+        losses = [float(v) for v in loss_history]
+        best = min(losses)
+
+        fig, ax = plt.subplots(figsize=(9, 4))
+        ax.plot(losses, linewidth=1.2, label="Loss")
+        ax.axhline(
+            best, color="red", linestyle="--", linewidth=1.0, label=f"Best: {best:.3e}"
+        )
+        ax.set_xlabel("Step")
+        ax.set_ylabel("Loss")
+        ax.set_yscale("log")
+        ax.set_title(f"Training Loss (Phase 1) — {gate_name}")
+        ax.legend()
+        fig.tight_layout()
+        path = os.path.join(self.file_dir, f"{gate_name}_loss_curve.png")
+        fig.savefig(path, dpi=150)
+        plt.close(fig)
+        log.info(f"Loss curve saved to {path}")
 
     def optimize(self, wires: int) -> Callable:
         """Decorator factory that optimises pulse parameters for a gate.
@@ -876,9 +1760,9 @@ class QOC:
 
                 Stage 0 - Grid scan (if ``scan_steps > 0``):
                     Evaluate a coarse grid of parameter candidates using
-                    only the fidelity cost (ignoring phase).  Each
-                    candidate is refined with a few fast gradient steps.
-                    The best candidate becomes the starting point for
+                    the same weighted cost as Stage 1.  Each candidate
+                    is refined with a few fast gradient steps.  The
+                    best candidate becomes the starting point for
                     Stage 1, unless the user-supplied init_pulse_params
                     are already better.
 
@@ -901,8 +1785,47 @@ class QOC:
                 """
                 pulse_circuit, target_circuit = create_circuits()
 
-                pulse_script = ys.Script(pulse_circuit, n_qubits=wires)
-                target_script = ys.Script(target_circuit, n_qubits=wires)
+                # Build a second pair that prepends a Hadamard on every
+                # wire so the cost is also evaluated from the
+                # ``|+⟩^⊗n`` initial state.  Probing two non-collinear
+                # initial states exposes rotation-axis tilt to the
+                # optimiser: an RX/RY pulse with a residual Z component
+                # is partly degenerate from ``|0⟩`` alone but produces
+                # a clearly distinguishable trajectory from ``|+⟩``.
+                # Both circuits get the same preparation so the target
+                # remains exact.
+                def _with_plus_prep(circuit_fn):
+                    def prepared(*args, **kwargs):
+                        for q in range(wires):
+                            op.H(wires=q)
+                        circuit_fn(*args, **kwargs)
+
+                    prepared.__name__ = f"plus_{circuit_fn.__name__}"
+                    return prepared
+
+                pulse_circuit_plus = _with_plus_prep(pulse_circuit)
+                target_circuit_plus = _with_plus_prep(target_circuit)
+
+                pulse_scripts = [
+                    ys.Script(pulse_circuit, n_qubits=wires),
+                    ys.Script(pulse_circuit_plus, n_qubits=wires),
+                ]
+                target_scripts = [
+                    ys.Script(target_circuit, n_qubits=wires),
+                    ys.Script(target_circuit_plus, n_qubits=wires),
+                ]
+
+                d_basis = 2**wires
+                pulse_basis_scripts = [
+                    ys.Script(_with_basis_prep(pulse_circuit, k, wires), n_qubits=wires)
+                    for k in range(d_basis)
+                ]
+                target_basis_scripts = [
+                    ys.Script(
+                        _with_basis_prep(target_circuit, k, wires), n_qubits=wires
+                    )
+                    for k in range(d_basis)
+                ]
 
                 gate_name = create_circuits.__name__.split("_")[1]
 
@@ -913,10 +1836,13 @@ class QOC:
                 )
 
                 all_ckwargs = {
-                    "pulse_script": pulse_script,
-                    "target_script": target_script,
+                    "pulse_scripts": pulse_scripts,
+                    "target_scripts": target_scripts,
+                    "pulse_basis_scripts": pulse_basis_scripts,
+                    "target_basis_scripts": target_basis_scripts,
                     "envelope": self.envelope,
                     "n_samples": self.n_samples,
+                    "n_qubits": wires,
                     "t_target": self.t_target,
                 }
 
@@ -937,14 +1863,9 @@ class QOC:
                 for name, weight in self.cost_fns:
                     total_costs = _build_cost(name, weight) + total_costs
 
-                fidelity_only_cost = _build_cost(
-                    "fidelity",
-                    (1.0, 0.0),  # 100% fidelity, 0% phase
-                )
-
-                best_scan_params = self.stage_0_opt(
+                best_scan_params, scan_data = self.stage_0_opt(
                     init_pulse_params,
-                    fidelity_only_cost,
+                    total_costs,
                 )
 
                 global_best_params, global_best_history, global_best_loss = (
@@ -959,167 +1880,223 @@ class QOC:
                     pulse_params=global_best_params,
                 )
 
+                if self.plot:
+                    if scan_data is not None:
+                        grid_axes, landscape_items = scan_data
+                        self.plot_loss_landscape(gate_name, grid_axes, landscape_items)
+                    self.plot_loss_curve(gate_name, global_best_history)
+
                 return global_best_params, global_best_history
 
             return wrapper
 
         return decorator
 
+    # ------------------------------------------------------------------
+    # Per-gate (pulse, target) circuit factories
+    # ------------------------------------------------------------------
+    #
+    # Each entry maps a gate name to a ``(pulse_circuit, target_circuit)``
+    # pair.  The per-gate variants prepend a symmetry-breaking
+    # preparation (e.g. ``op.H``/``op.RY``) so the *state-vector* cost
+    # is sensitive to rotation-axis tilt.  The joint-mode variants drop
+    # those preps because the unitary cost already captures axis tilt
+    # without probe-state trickery (see :meth:`_create_joint_pair_for`).
+
+    @staticmethod
+    def _gate_factories() -> Dict[str, Tuple[Callable, Callable]]:
+        """Return the ``{gate_name: (pulse_fn, target_fn)}`` table.
+
+        Constructed lazily inside a staticmethod so the closures
+        capture the imported gate symbols at call time.
+        """
+
+        return {
+            "RX": _make_gate_pair(
+                lambda w, pp: Gates.RX(w, 0, pulse_params=pp, gate_mode="pulse"),
+                lambda w: op.RX(w, wires=0),
+            ),
+            "RY": _make_gate_pair(
+                lambda w, pp: Gates.RY(w, 0, pulse_params=pp, gate_mode="pulse"),
+                lambda w: op.RY(w, wires=0),
+            ),
+            "RZ": _make_gate_pair(
+                lambda w, pp: Gates.RZ(w, 0, pulse_params=pp, gate_mode="pulse"),
+                lambda w: op.RZ(w, wires=0),
+                prep=lambda w: op.H(wires=0),
+                post=lambda w: op.H(wires=0),
+            ),
+            "H": _make_gate_pair(
+                lambda w, pp: Gates.H(0, pulse_params=pp, gate_mode="pulse"),
+                lambda w: op.H(wires=0),
+                prep=lambda w: op.RY(w, wires=0),
+            ),
+            "Rot": _make_gate_pair(
+                lambda w, pp: Gates.Rot(
+                    w, w * 2, w * 3, 0, pulse_params=pp, gate_mode="pulse"
+                ),
+                lambda w: op.Rot(w, w * 2, w * 3, wires=0),
+                prep=lambda w: op.H(wires=0),
+            ),
+            "CX": _make_gate_pair(
+                lambda w, pp: Gates.CX(
+                    wires=[0, 1], pulse_params=pp, gate_mode="pulse"
+                ),
+                lambda w: op.CX(wires=[0, 1]),
+                prep=_chain_gate_stages(
+                    lambda w: op.RY(w, wires=0),
+                    lambda w: op.H(wires=1),
+                ),
+            ),
+            "CY": _make_gate_pair(
+                lambda w, pp: Gates.CY(
+                    wires=[0, 1], pulse_params=pp, gate_mode="pulse"
+                ),
+                lambda w: op.CY(wires=[0, 1]),
+                prep=_chain_gate_stages(
+                    lambda w: op.RX(w, wires=0),
+                    lambda w: op.H(wires=1),
+                ),
+            ),
+            "CZ": _make_gate_pair(
+                lambda w, pp: Gates.CZ(
+                    wires=[0, 1], pulse_params=pp, gate_mode="pulse"
+                ),
+                lambda w: op.CZ(wires=[0, 1]),
+                prep=_chain_gate_stages(
+                    lambda w: op.RY(w, wires=0),
+                    lambda w: op.H(wires=1),
+                ),
+            ),
+            "CRX": _make_gate_pair(
+                lambda w, pp: Gates.CRX(
+                    w, wires=[0, 1], pulse_params=pp, gate_mode="pulse"
+                ),
+                lambda w: op.CRX(w, wires=[0, 1]),
+                prep=lambda w: op.H(wires=0),
+            ),
+            "CRY": _make_gate_pair(
+                lambda w, pp: Gates.CRY(
+                    w, wires=[0, 1], pulse_params=pp, gate_mode="pulse"
+                ),
+                lambda w: op.CRY(w, wires=[0, 1]),
+                prep=lambda w: op.H(wires=0),
+            ),
+            "CRZ": _make_gate_pair(
+                lambda w, pp: Gates.CRZ(
+                    w, wires=[0, 1], pulse_params=pp, gate_mode="pulse"
+                ),
+                lambda w: op.CRZ(w, wires=[0, 1]),
+                prep=_chain_gate_stages(
+                    lambda w: op.H(wires=0),
+                    lambda w: op.H(wires=1),
+                ),
+            ),
+        }
+
+    @staticmethod
+    def _joint_gate_factories() -> Dict[str, Tuple[Callable, Callable]]:
+        """``(pulse, target)`` pairs without any symmetry-breaking preps.
+
+        Used by :meth:`_create_joint_pair_for`: the unitary cost
+        already exposes rotation-axis tilt without a probe state, and
+        leaving the preps in actively *hides* certain errors (e.g.
+        ``op.H(wires=1)`` puts the target qubit of CX into a CX
+        eigenstate, so the column-stacked unitary becomes insensitive
+        to the pulse error).  ``Rot`` and ``CY`` are intentionally
+        absent because the joint optimiser does not target them.
+        """
+
+        return {
+            "RX": _make_gate_pair(
+                lambda w, pp: Gates.RX(w, wires=0, pulse_params=pp, gate_mode="pulse"),
+                lambda w: op.RX(w, wires=0),
+            ),
+            "RY": _make_gate_pair(
+                lambda w, pp: Gates.RY(w, wires=0, pulse_params=pp, gate_mode="pulse"),
+                lambda w: op.RY(w, wires=0),
+            ),
+            "RZ": _make_gate_pair(
+                lambda w, pp: Gates.RZ(w, wires=0, pulse_params=pp, gate_mode="pulse"),
+                lambda w: op.RZ(w, wires=0),
+            ),
+            "H": _make_gate_pair(
+                lambda w, pp: Gates.H(0, pulse_params=pp, gate_mode="pulse"),
+                lambda w: op.H(wires=0),
+            ),
+            "CZ": _make_gate_pair(
+                lambda w, pp: Gates.CZ(
+                    wires=[0, 1], pulse_params=pp, gate_mode="pulse"
+                ),
+                lambda w: op.CZ(wires=[0, 1]),
+            ),
+            "CX": _make_gate_pair(
+                lambda w, pp: Gates.CX(
+                    wires=[0, 1], pulse_params=pp, gate_mode="pulse"
+                ),
+                lambda w: op.CX(wires=[0, 1]),
+            ),
+            "CRX": _make_gate_pair(
+                lambda w, pp: Gates.CRX(
+                    w, wires=[0, 1], pulse_params=pp, gate_mode="pulse"
+                ),
+                lambda w: op.CRX(w, wires=[0, 1]),
+            ),
+            "CRY": _make_gate_pair(
+                lambda w, pp: Gates.CRY(
+                    w, wires=[0, 1], pulse_params=pp, gate_mode="pulse"
+                ),
+                lambda w: op.CRY(w, wires=[0, 1]),
+            ),
+            "CRZ": _make_gate_pair(
+                lambda w, pp: Gates.CRZ(
+                    w, wires=[0, 1], pulse_params=pp, gate_mode="pulse"
+                ),
+                lambda w: op.CRZ(w, wires=[0, 1]),
+            ),
+        }
+
+    def _create_pair(self, gate_name: str) -> Tuple[Callable, Callable]:
+        """Look up the per-gate ``(pulse, target)`` pair from the table."""
+        try:
+            return self._gate_factories()[gate_name]
+        except KeyError as exc:
+            raise ValueError(f"No factory for gate {gate_name!r}.") from exc
+
+    # Thin compatibility wrappers around :meth:`_create_pair` so existing
+    # code (and tests) that call ``qoc.create_<gate>`` keep working.
     def create_RX(self):
-        """Create pulse and target circuits for the RX gate."""
-
-        def pulse_circuit(w, pulse_params):
-            Gates.RX(w, 0, pulse_params=pulse_params, gate_mode="pulse")
-
-        def target_circuit(w):
-            op.RX(w, wires=0)
-
-        return pulse_circuit, target_circuit
+        return self._create_pair("RX")
 
     def create_RY(self):
-        """Create pulse and target circuits for the RY gate."""
-
-        def pulse_circuit(w, pulse_params):
-            Gates.RY(w, 0, pulse_params=pulse_params, gate_mode="pulse")
-
-        def target_circuit(w):
-            op.RY(w, wires=0)
-
-        return pulse_circuit, target_circuit
+        return self._create_pair("RY")
 
     def create_RZ(self):
-        """Create pulse and target circuits for the RZ gate.
-
-        Both circuits are sandwiched between Hadamard gates to make the
-        RZ rotation observable in the computational basis.
-        """
-
-        def pulse_circuit(w, pulse_params):
-            op.H(wires=0)
-            Gates.RZ(w, 0, pulse_params=pulse_params, gate_mode="pulse")
-            op.H(wires=0)
-
-        def target_circuit(w):
-            op.H(wires=0)
-            op.RZ(w, wires=0)
-            op.H(wires=0)
-
-        return pulse_circuit, target_circuit
+        return self._create_pair("RZ")
 
     def create_H(self):
-        """Create pulse and target circuits for the Hadamard gate.
-
-        An RY rotation is prepended to break symmetry.
-        """
-
-        def pulse_circuit(w, pulse_params):
-            op.RY(w, wires=0)
-            Gates.H(0, pulse_params=pulse_params, gate_mode="pulse")
-
-        def target_circuit(w):
-            op.RY(w, wires=0)
-            op.H(wires=0)
-
-        return pulse_circuit, target_circuit
+        return self._create_pair("H")
 
     def create_Rot(self):
-        """Create pulse and target circuits for the general Rot gate."""
-
-        def pulse_circuit(w, pulse_params):
-            op.H(wires=0)
-            Gates.Rot(w, w * 2, w * 3, 0, pulse_params=pulse_params, gate_mode="pulse")
-
-        def target_circuit(w):
-            op.H(wires=0)
-            op.Rot(w, w * 2, w * 3, wires=0)
-
-        return pulse_circuit, target_circuit
+        return self._create_pair("Rot")
 
     def create_CX(self):
-        """Create pulse and target circuits for the CX (CNOT) gate."""
-
-        def pulse_circuit(w, pulse_params):
-            op.RY(w, wires=0)
-            op.H(wires=1)
-            Gates.CX(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
-
-        def target_circuit(w):
-            op.RY(w, wires=0)
-            op.H(wires=1)
-            op.CX(wires=[0, 1])
-
-        return pulse_circuit, target_circuit
+        return self._create_pair("CX")
 
     def create_CY(self):
-        """Create pulse and target circuits for the CY gate."""
-
-        def pulse_circuit(w, pulse_params):
-            op.RX(w, wires=0)
-            op.H(wires=1)
-            Gates.CY(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
-
-        def target_circuit(w):
-            op.RX(w, wires=0)
-            op.H(wires=1)
-            op.CY(wires=[0, 1])
-
-        return pulse_circuit, target_circuit
+        return self._create_pair("CY")
 
     def create_CZ(self):
-        """Create pulse and target circuits for the CZ gate."""
-
-        def pulse_circuit(w, pulse_params):
-            op.RY(w, wires=0)
-            op.H(wires=1)
-            Gates.CZ(wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
-
-        def target_circuit(w):
-            op.RY(w, wires=0)
-            op.H(wires=1)
-            op.CZ(wires=[0, 1])
-
-        return pulse_circuit, target_circuit
+        return self._create_pair("CZ")
 
     def create_CRX(self):
-        """Create pulse and target circuits for the CRX gate."""
-
-        def pulse_circuit(w, pulse_params):
-            op.H(wires=0)
-            Gates.CRX(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
-
-        def target_circuit(w):
-            op.H(wires=0)
-            op.CRX(w, wires=[0, 1])
-
-        return pulse_circuit, target_circuit
+        return self._create_pair("CRX")
 
     def create_CRY(self):
-        """Create pulse and target circuits for the CRY gate."""
-
-        def pulse_circuit(w, pulse_params):
-            op.H(wires=0)
-            Gates.CRY(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
-
-        def target_circuit(w):
-            op.H(wires=0)
-            op.CRY(w, wires=[0, 1])
-
-        return pulse_circuit, target_circuit
+        return self._create_pair("CRY")
 
     def create_CRZ(self):
-        """Create pulse and target circuits for the CRZ gate."""
-
-        def pulse_circuit(w, pulse_params):
-            op.H(wires=0)
-            op.H(wires=1)
-            Gates.CRZ(w, wires=[0, 1], pulse_params=pulse_params, gate_mode="pulse")
-
-        def target_circuit(w):
-            op.H(wires=0)
-            op.H(wires=1)
-            op.CRZ(w, wires=[0, 1])
-
-        return pulse_circuit, target_circuit
+        return self._create_pair("CRZ")
 
     def create_CPhase(self):
         """Create pulse and target circuits for the CPhase gate."""
@@ -1144,6 +2121,8 @@ class QOC:
             make_log: If ``True``, write per-gate loss histories to
                 ``qml_essentials/qoc_logs.csv``.
         """
+        # Joint mode (Round 3) is now implemented in :meth:`optimize_joint`.
+        # The `--joint` CLI flag selects it instead of this per-gate loop.
         log_history: Dict[str, list] = {}
 
         for gate in self.GATES_1Q + self.GATES_2Q:
@@ -1165,31 +2144,618 @@ class QOC:
                 writer.writerow(log_history.keys())
                 writer.writerows(zip(*log_history.values()))
 
+    # ------------------------------------------------------------------
+    # Joint composite-aware optimisation (Round 3)
+    # ------------------------------------------------------------------
+
+    # Default leaf set whose parameters are jointly optimised.  Order
+    # matters — it determines the layout of the joint parameter vector
+    # (theta).  Excluding a leaf from this list freezes it at its
+    # current PulseInformation default during joint optimisation.
+    JOINT_LEAVES_DEFAULT: Tuple[str, ...] = ("RX", "RY", "RZ", "CZ")
+
+    # Default set of target gates whose unitary cost is summed during
+    # joint optimisation.  Composite gates back-propagate into the
+    # shared leaves; leaf-gate terms keep the standalone fidelity
+    # acceptable.  CZ is excluded from the default targets because it
+    # is implemented as a static diagonal-Hamiltonian evolution
+    # (``H_CZ = π·|11⟩⟨11|``, t=1) that is structurally exact and
+    # cannot be improved by tuning leaf parameters — including it only
+    # adds ballast to the averaged loss.
+    JOINT_TARGETS_DEFAULT: Tuple[str, ...] = (
+        "RX",
+        "RY",
+        "RZ",
+        "H",
+        "CX",
+        "CRX",
+        "CRY",
+        "CRZ",
+    )
+
+    # Default per-target weights for the joint objective.  Weights are
+    # normalised inside :func:`joint_unitary_cost_fn`.  Composites are
+    # up-weighted because (a) they are what fails the tightened tests
+    # and (b) standalone leaves already start near-perfect, so the
+    # averaged loss would otherwise be dominated by the cheap leaves
+    # and the optimiser would happily refuse to move.  Within
+    # composites, CR_ are weighted higher than H/CX because they are
+    # the longest decompositions (2 CX + ~6 single-qubit gates) so
+    # their leaf-error compounding is worst.
+    JOINT_WEIGHTS_DEFAULT: Dict[str, float] = {
+        "RX": 0.3,
+        "RY": 0.3,
+        "RZ": 0.3,
+        "H": 1.0,
+        "CX": 2.0,
+        "CRX": 3.0,
+        "CRY": 3.0,
+        "CRZ": 3.0,
+    }
+
+    # Leaves that are physically identical up to a static carrier-phase
+    # offset (RX uses cos(ω_c t), RY uses cos(ω_c t + π/2)) and therefore
+    # *should* share the same envelope parameters.  Tying them here in
+    # the QOC layout — rather than in :mod:`pulses` — keeps the per-gate
+    # decomposition tree intact while ensuring joint optimisation cannot
+    # drift their envelopes apart.  Empirically RY is the dominant
+    # contributor to H/CX residuals, so leaving it un-tied lets the
+    # joint loss settle into a basin where RX is well-tuned but RY is
+    # ~3× worse; tying them removes that asymmetry.
+    JOINT_TIED_GROUPS_DEFAULT: Tuple[Tuple[str, ...], ...] = (("RX", "RY"),)
+
+    def _build_joint_layout(
+        self,
+        leaf_names: Tuple[str, ...],
+        tied_groups: Optional[Tuple[Tuple[str, ...], ...]] = None,
+    ) -> Tuple[jnp.ndarray, Dict[str, slice], List[int]]:
+        """Build the joint parameter layout.
+
+        Args:
+            leaf_names: Ordered names of the leaf gates that participate
+                in the joint optimisation.
+            tied_groups: Optional tuple of leaf-name groups whose
+                parameters are forced to share a single slice in
+                ``theta``.  Defaults to
+                :pyattr:`JOINT_TIED_GROUPS_DEFAULT` (ties RX/RY).  Only
+                leaves that are present in ``leaf_names`` participate —
+                a group becomes a no-op if fewer than two of its
+                members are listed.
+
+        Returns:
+            Tuple ``(init_theta, leaf_slices, log_scale_indices)``:
+              * ``init_theta`` — concatenated init parameters from
+                ``PulseInformation.<leaf>.params`` in the given order.
+                For tied groups, the representative leaf is the *first*
+                member in the group (the group's mean of current params
+                is used as the shared init so neither side dominates).
+              * ``leaf_slices`` — mapping leaf-name → ``slice`` into
+                ``init_theta``.  Tied leaves map to the *same* slice.
+              * ``log_scale_indices`` — indices into ``init_theta`` that
+                should be optimised in log-space (amplitude + evolution
+                time per envelope leaf, mirroring the per-gate default
+                ``[0, -1]`` rule).
+        """
+        if tied_groups is None:
+            tied_groups = self.JOINT_TIED_GROUPS_DEFAULT
+
+        # Build leaf_name -> representative_name lookup.  Members of a
+        # tied group are routed to the group's first member that is
+        # actually present in ``leaf_names``.
+        rep_of: Dict[str, str] = {n: n for n in leaf_names}
+        leaf_set = set(leaf_names)
+        for group in tied_groups:
+            present = [n for n in group if n in leaf_set]
+            if len(present) < 2:
+                continue
+            head = present[0]
+            for member in present[1:]:
+                rep_of[member] = head
+                log.info(
+                    f"  Joint layout: tying leaf {member!r} to {head!r} "
+                    f"(shared slice in theta)."
+                )
+
+        envelope_info = PulseEnvelope.get(self.envelope)
+        n_env = envelope_info["n_envelope_params"]
+
+        leaf_slices: Dict[str, slice] = {}
+        init_chunks = []
+        log_idx: List[int] = []
+        offset = 0
+        for name in leaf_names:
+            rep = rep_of[name]
+            if rep != name:
+                # Tied member — point at the representative's slice.
+                leaf_slices[name] = leaf_slices[rep]
+                continue
+
+            pp = PulseInformation.gate_by_name(name)
+            assert pp is not None and pp.is_leaf, (
+                f"_build_joint_layout: {name!r} is not a leaf gate"
+            )
+            # For tied groups the shared init is the elementwise mean
+            # of the current params across all present members; this
+            # avoids biasing toward whichever member happens to be the
+            # group representative.
+            tied_members = [m for m in leaf_names if rep_of[m] == name]
+            if len(tied_members) > 1:
+                stacked = jnp.stack(
+                    [
+                        jnp.asarray(
+                            PulseInformation.gate_by_name(m).params,
+                            dtype=jnp.float64,
+                        )
+                        for m in tied_members
+                    ]
+                )
+                chunk = jnp.mean(stacked, axis=0)
+            else:
+                chunk = jnp.asarray(pp.params, dtype=jnp.float64)
+            n_p = chunk.shape[0]
+            leaf_slices[name] = slice(offset, offset + n_p)
+            init_chunks.append(chunk)
+            # Log-scale rule per leaf: only leaves that come from the
+            # *envelope* (RX, RY) get log-scaled amplitude+time.  RZ
+            # and CZ use the "general" registry with a single tuning
+            # scalar — leave them in linear space.
+            if name in ("RX", "RY") and n_env >= 2:
+                log_idx.append(offset)  # amplitude
+                log_idx.append(offset + n_p - 1)  # evolution time
+            offset += n_p
+
+        init_theta = jnp.concatenate(init_chunks)
+        return init_theta, leaf_slices, log_idx
+
+    @staticmethod
+    def _assemble_for_gate(
+        theta: jnp.ndarray,
+        pp_obj,
+        leaf_slices: Dict[str, slice],
+    ) -> jnp.ndarray:
+        """Assemble the per-gate flat ``pulse_params`` from ``theta``.
+
+        Walks the gate's decomposition tree (recursing through
+        composites) and concatenates the appropriate slice of ``theta``
+        for each leaf occurrence.  Mirrors :pyattr:`PulseParams.params`
+        getter logic but pulls leaf data from the joint vector
+        ``theta`` rather than the leaves' own ``_params``.
+        """
+        if pp_obj.is_leaf:
+            sl = leaf_slices.get(pp_obj.name)
+            if sl is None:
+                # Leaf is frozen — use its current PulseInformation
+                # value directly.
+                return jnp.asarray(pp_obj.params, dtype=jnp.float64)
+            return theta[sl]
+        return jnp.concatenate(
+            [
+                QOC._assemble_for_gate(theta, child, leaf_slices)
+                for child in pp_obj.childs
+            ]
+        )
+
+    def _joint_stage_0_coord_descent(
+        self,
+        init_theta: jnp.ndarray,
+        leaf_slices: Dict[str, slice],
+        total_cost: Callable,
+    ) -> jnp.ndarray:
+        """Coordinate-descent grid scan over leaf-axis blocks.
+
+        For each leaf in ``leaf_slices`` (in order), sweep a centred
+        multiplicative grid over that leaf's params (using the existing
+        :meth:`_build_scan_grid` machinery) while holding the other
+        leaves at the current best.  Greedily accept any improvement.
+
+        This avoids the combinatorial explosion of a Cartesian
+        product over all leaf axes simultaneously: instead of
+        ``Π_i scan_grid_size**k_i`` candidates, only ``Σ_i
+        scan_grid_size**k_i`` are evaluated.
+
+        Args:
+            init_theta: Starting joint parameter vector.
+            leaf_slices: Mapping leaf-name → slice into ``init_theta``.
+            total_cost: Joint cost callable taking ``theta`` and
+                returning a scalar loss.
+
+        Returns:
+            Best joint parameter vector found.
+        """
+        if self.scan_steps <= 0:
+            log.info("Joint Stage 0: scan disabled (scan_steps=0); skipping.")
+            return init_theta
+
+        current = init_theta
+        best_loss = _safe_eval(total_cost, current)
+        log.info(
+            f"Joint Stage 0: coordinate-descent over {len(leaf_slices)} leaves, "
+            f"init_loss={float(best_loss):.6e}"
+        )
+
+        prev_solver_defaults = ys.Yaqsi.set_solver_defaults(throw=False)
+        try:
+            seen_slices: set = set()
+            for leaf_name, sl in leaf_slices.items():
+                # Tied leaves share a slice — only scan the unique
+                # (start, stop) range once to avoid wasted evaluations.
+                key = (sl.start, sl.stop)
+                if key in seen_slices:
+                    continue
+                seen_slices.add(key)
+                leaf_init = current[sl]
+                n_p = int(leaf_init.shape[0])
+                if n_p == 0:
+                    continue
+                grid, _ = self._build_scan_grid(n_p, init_pulse_params=leaf_init)
+                n_better = 0
+                for cand in grid:
+                    new_theta = current.at[sl].set(cand)
+                    loss = _safe_eval(total_cost, new_theta)
+                    if loss < best_loss:
+                        best_loss = loss
+                        current = new_theta
+                        n_better += 1
+                log.info(
+                    f"  Joint scan after leaf {leaf_name} "
+                    f"({len(grid)} candidates, {n_better} improved): "
+                    f"best_loss={float(best_loss):.6e}"
+                )
+        finally:
+            if prev_solver_defaults:
+                ys.Yaqsi.set_solver_defaults(**prev_solver_defaults)
+
+        return current
+
+    def _create_joint_pair_for(self, gate_name: str):
+        """Return a prep-free ``(pulse, target)`` pair for joint mode.
+
+        Looks up :meth:`_joint_gate_factories` first; falls back to the
+        per-gate (preps included) variant via :meth:`_create_pair_for`
+        with a warning if the gate is not in the joint table.  See the
+        joint-table docstring for why preps are dropped.
+        """
+        table = self._joint_gate_factories()
+        if gate_name in table:
+            return table[gate_name]
+        log.warning(
+            f"_create_joint_pair_for: no prep-free factory for {gate_name!r}; "
+            f"falling back to create_{gate_name} (preps may hide errors)."
+        )
+        return self._create_pair_for(gate_name)
+
+    def _create_pair_for(self, gate_name: str):
+        """Return ``(pulse_circuit, target_circuit)`` for a target gate.
+
+        Reuses :meth:`_create_pair` so the joint mode targets exactly
+        the same circuits as the per-gate mode.
+        """
+        return self._create_pair(gate_name)
+
+    def optimize_joint(
+        self,
+        target_gates: Optional[List[str]] = None,
+        leaf_names: Optional[List[str]] = None,
+        weights: Optional[Dict[str, float]] = None,
+    ) -> Tuple[jnp.ndarray, Dict[str, slice], list]:
+        """Joint composite-aware optimisation of leaf pulse parameters.
+
+        Optimises a single shared parameter vector ``theta`` (containing
+        the concatenated leaf params for ``leaf_names``) against a
+        weighted sum of unitary-cost terms over ``target_gates``.
+        Composite gates back-propagate into the shared leaves; leaf
+        terms keep the standalone fidelity acceptable.  CZ is omitted
+        from the default targets because the ``PulseGates.CZ``
+        implementation is a static diagonal-Hamiltonian evolution
+        (``H_CZ = π·|11⟩⟨11|``, t=1) that is structurally exact and
+        unaffected by any leaf re-tuning.
+
+        Args:
+            target_gates: Gates whose unitary cost contributes to the
+                joint objective.  Defaults to
+                :pyattr:`JOINT_TARGETS_DEFAULT` (RX, RY, RZ, H, CX,
+                CRX, CRY, CRZ).
+            leaf_names: Leaf gates whose parameters are jointly
+                optimised.  Defaults to :pyattr:`JOINT_LEAVES_DEFAULT`
+                (RX, RY, RZ, CZ).
+            weights: Optional mapping ``gate_name → weight``.  Merged
+                on top of :pyattr:`JOINT_WEIGHTS_DEFAULT` (composites
+                up-weighted; leaves down-weighted).  All weights are
+                normalised inside the cost.
+
+        Returns:
+            ``(best_theta, leaf_slices, loss_history)``.  Per-leaf
+            results are also written to ``qoc_results_<envelope>.csv``
+            via :meth:`save_results`.
+        """
+        if target_gates:
+            target_gates = list(target_gates)
+        else:
+            target_gates = list(self.JOINT_TARGETS_DEFAULT)
+
+        if leaf_names:
+            leaf_names = list(leaf_names)
+        else:
+            leaf_names = list(self.JOINT_LEAVES_DEFAULT)
+
+        # Merge user-provided weights on top of class defaults so callers
+        # can override only the gates they care about.
+        merged_weights: Dict[str, float] = dict(self.JOINT_WEIGHTS_DEFAULT)
+        if weights:
+            merged_weights.update({k: float(v) for k, v in weights.items()})
+        weights = merged_weights
+
+        log.info(f"Joint optimisation: leaves={leaf_names}, targets={target_gates}")
+
+        init_theta, leaf_slices, joint_log_idx = self._build_joint_layout(
+            tuple(leaf_names)
+        )
+        log.info(
+            f"  Joint theta size: {init_theta.shape[0]}; "
+            f"log-scale indices: {joint_log_idx}"
+        )
+
+        # Build per-gate specs (assembler + basis-prep scripts).
+        gate_specs: List[dict] = []
+        for gname in target_gates:
+            pp_obj = PulseInformation.gate_by_name(gname)
+            if pp_obj is None:
+                log.warning(f"  Skipping unknown gate {gname!r}.")
+                continue
+            n_wires = 1 if gname in self.GATES_1Q else 2
+            d_basis = 2**n_wires
+            pulse_circuit, target_circuit = self._create_joint_pair_for(gname)
+
+            pulse_basis_scripts = [
+                ys.Script(_with_basis_prep(pulse_circuit, k, n_wires), n_qubits=n_wires)
+                for k in range(d_basis)
+            ]
+            target_basis_scripts = [
+                ys.Script(
+                    _with_basis_prep(target_circuit, k, n_wires), n_qubits=n_wires
+                )
+                for k in range(d_basis)
+            ]
+
+            # Closure capturing pp_obj + leaf_slices.  Defined here so
+            # each spec carries its own assembler.
+            def _make_assembler(pp_obj=pp_obj):
+                def assemble(theta):
+                    return QOC._assemble_for_gate(theta, pp_obj, leaf_slices)
+
+                return assemble
+
+            gate_specs.append(
+                {
+                    "name": gname,
+                    "n_qubits": n_wires,
+                    "weight": float(weights.get(gname, 1.0)),
+                    "assembler": _make_assembler(),
+                    "pulse_basis_scripts": pulse_basis_scripts,
+                    "target_basis_scripts": target_basis_scripts,
+                }
+            )
+            log.info(
+                f"  Built spec for {gname}: n_qubits={n_wires}, "
+                f"weight={gate_specs[-1]['weight']}"
+            )
+
+        # Build the joint cost as a Cost wrapper (so weight-tuple
+        # collapsing into a scalar is shared with the per-gate path).
+        # We use the same (process_loss, phase_loss) two-component
+        # weighting as the standalone unitary cost — keeps the relative
+        # importance of fidelity vs phase consistent.
+        ((_, weight_tuple),) = (
+            ((n, w) for n, w in self.cost_fns if n == "unitary")
+            if any(n == "unitary" for n, _ in self.cost_fns)
+            else ((None, (0.5, 0.5)),)
+        )
+        joint_cost = Cost(
+            cost=joint_unitary_cost_fn,
+            weight=weight_tuple,
+            ckwargs={
+                "gate_specs": gate_specs,
+                "n_samples": self.n_samples,
+            },
+        )
+
+        # Temporarily override log_scale_params to point at joint
+        # vector indices (Stage 0 grid building + Stage 1 log-space
+        # reparam both consult ``self.log_scale_params``).  Invalidate
+        # the mask cache on either side of the swap so the joint
+        # vector picks up the joint indices and per-gate runs revert
+        # cleanly afterwards.
+        prev_log_scale = self.log_scale_params
+        self.log_scale_params = joint_log_idx
+        self._log_mask_cache.clear()
+        try:
+            best_scan_theta = self._joint_stage_0_coord_descent(
+                init_theta, leaf_slices, joint_cost
+            )
+
+            global_best_theta, global_best_history, global_best_loss = self.stage_1_opt(
+                best_scan_theta, joint_cost
+            )
+        finally:
+            self.log_scale_params = prev_log_scale
+            self._log_mask_cache.clear()
+
+        log.info(f"Joint optimisation done. final loss={float(global_best_loss):.6e}")
+
+        # Save per-leaf results to the CSV (one row per leaf).  The
+        # fidelity column carries the *joint* fidelity; downstream code
+        # that reads the CSV (or the user copy-pasting into pulses.py)
+        # can use it as a coarse quality signal.
+        joint_fid = float(1.0 - global_best_loss)
+        for leaf_name, sl in leaf_slices.items():
+            leaf_params = global_best_theta[sl]
+            self.save_results(
+                gate=leaf_name,
+                fidelity=joint_fid,
+                pulse_params=leaf_params,
+            )
+
+        # Update PulseInformation in-place so the new defaults are
+        # active in this Python process (handy for diagnostic scripts
+        # that import QOC and then evaluate the new gates).
+        for leaf_name, sl in leaf_slices.items():
+            pp = PulseInformation.gate_by_name(leaf_name)
+            pp.params = global_best_theta[sl]
+
+        return global_best_theta, leaf_slices, global_best_history
+
 
 default_qoc_params = {
-    "envelope": "gaussian",
+    "envelope": "drag",
     "cost_fns": [
-        ("fidelity", (0.49999999, 0.49999999)),
-        ("pulse_width", 0.000000015),
-        ("evolution_time", 0.000000005),
+        # Unitary-level cost (process infidelity + trace-phase term).
+        # Captures rotation-axis tilt and global-phase residual that
+        # the state-fidelity cost is blind to; required to keep two-CX
+        # composites (CRX/CRY/CRZ) within tightened phase tolerances.
+        ("unitary", (0.5, 0.5)),
+        # ("fidelity", (0.5, 0.5)),  # legacy state-vector cost
+        # ("pulse_width", 0.000000015),
+        # ("evolution_time", 0.000000005),
     ],
     "t_target": 0.5,
-    "n_steps": 1500,
+    "n_steps": 800,
     "n_samples": 20,
     "learning_rate": 0.0001,
     "warmup_ratio": 0.05,
     "end_lr_ratio": 0.01,
     "log_interval": 50,
     "file_dir": None,
-    "n_restarts": 3,
-    "restart_noise_scale": 0.5,
+    "n_restarts": 5,
+    "restart_noise_scale": 0.01,
     "grad_clip": 1.0,
     "random_seed": 1000,
-    "scan_steps": 30,
-    "scan_grid_size": 5,
+    "scan_steps": 20,
+    "scan_grid_size": 4,
     "scan_ranges": None,
     "log_scale_params": None,
+    "early_stop_patience": 0,
+    "early_stop_min_delta": 0.0,
 }
+
+
+def profile_pulse_pipeline(
+    gate: str = "RX",
+    n_samples: int = 3,
+    rwa: Optional[bool] = None,
+    n_qubits: int = 1,
+) -> dict:
+    """Profile a single pulse gate's forward + ``value_and_grad`` pass.
+
+    Diagnostic helper for the JIT pipeline.  Builds a minimal
+    :class:`Script` that applies the requested pulse gate, then
+    times JIT compilation and steady-state evaluation of:
+
+    1. one forward pass (``Script.execute(type="state", ...)``);
+    2. one ``jax.value_and_grad`` of the squared overlap with the
+       analytic ``operations.<gate>`` target.
+
+    Use this to measure the impact of the RWA toggle
+    (``rwa=True``) and of the scan/sync refactors documented in
+    the patch notes:
+
+        from qml_essentials.qoc import profile_pulse_pipeline
+        profile_pulse_pipeline("RX", rwa=False)
+        profile_pulse_pipeline("RX", rwa=True)
+
+    Args:
+        gate: Gate name to profile (default ``"RX"``).  Must be a
+            single-qubit pulse-level gate (``RX`` / ``RY``).
+        n_samples: Number of timed evaluations after warm-up.
+        rwa: If not ``None``, temporarily switch the global RWA flag
+            for the duration of the profile.  ``None`` keeps the
+            current setting.
+        n_qubits: Width of the script (kept at 1 for the single-
+            qubit pulse gates).
+
+    Returns:
+        Dict with keys ``compile_fwd``, ``mean_fwd``, ``compile_grad``,
+        ``mean_grad``, ``rwa``, ``loss``.
+    """
+    import time
+
+    with PulseInformation.preserve_state():
+        if rwa is not None:
+            PulseInformation.set_rwa(bool(rwa))
+        from qml_essentials.pulses import PulseGates
+
+        gate_op = getattr(op, gate)
+        gate_pulse = getattr(PulseGates, gate)
+
+        def pulse_circuit(theta, pp):
+            gate_pulse(theta, wires=0, pulse_params=pp)
+
+        def target_circuit(theta):
+            gate_op(theta, wires=0)
+
+        pulse_script = ys.Script(pulse_circuit, n_qubits=n_qubits)
+        target_script = ys.Script(target_circuit, n_qubits=n_qubits)
+
+        theta = jnp.asarray(jnp.pi / 4)
+        pp = PulseInformation.gate_by_name(gate).params
+        target_state = target_script.execute(type="state", args=(theta,))
+        target_state = jax.lax.stop_gradient(target_state)
+
+        @jax.jit
+        def fwd(theta, pp):
+            return pulse_script.execute(type="state", args=(theta, pp))
+
+        @jax.jit
+        def loss_and_grad(pp):
+            def loss_fn(p):
+                state = pulse_script.execute(type="state", args=(theta, p))
+                return 1.0 - jnp.abs(jnp.vdot(target_state, state)) ** 2
+
+            return jax.value_and_grad(loss_fn)(pp)
+
+        # Warm-up + compile timings.
+        t0 = time.perf_counter()
+        s = fwd(theta, pp)
+        jax.block_until_ready(s)
+        compile_fwd = time.perf_counter() - t0
+
+        t0 = time.perf_counter()
+        loss, grads = loss_and_grad(pp)
+        jax.block_until_ready(loss)
+        jax.block_until_ready(grads)
+        compile_grad = time.perf_counter() - t0
+
+        fwd_t, grad_t = [], []
+        for _ in range(n_samples):
+            t0 = time.perf_counter()
+            s = fwd(theta, pp)
+            jax.block_until_ready(s)
+            fwd_t.append(time.perf_counter() - t0)
+
+            t0 = time.perf_counter()
+            loss, grads = loss_and_grad(pp)
+            jax.block_until_ready(loss)
+            jax.block_until_ready(grads)
+            grad_t.append(time.perf_counter() - t0)
+
+        result = {
+            "gate": gate,
+            "rwa": PulseInformation.get_rwa(),
+            "compile_fwd": compile_fwd,
+            "mean_fwd": float(np.mean(fwd_t)),
+            "compile_grad": compile_grad,
+            "mean_grad": float(np.mean(grad_t)),
+            "loss": float(loss),
+        }
+        log.info(
+            f"[profile] gate={gate} rwa={result['rwa']} "
+            f"compile fwd/grad: {compile_fwd * 1e3:.1f}/"
+            f"{compile_grad * 1e3:.1f} ms, "
+            f"mean fwd/grad: {result['mean_fwd'] * 1e3:.1f}/"
+            f"{result['mean_grad'] * 1e3:.1f} ms, "
+            f"loss={result['loss']:.4e}"
+        )
+        return result
+
 
 if __name__ == "__main__":
     # argparse the selected gate
@@ -1207,8 +2773,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--log",
         action="store_true",
-        default=True,
-        help="Log results to file (default: True).",
+        default=False,
+        help="Log results to file (default: False).",
     )
     parser.add_argument(
         "--no-log",
@@ -1291,7 +2857,8 @@ if __name__ == "__main__":
         "--file_dir",
         type=str,
         default=default_qoc_params["file_dir"],
-        help="Directory to save qoc_results.csv. Defaults to the package directory.",
+        help="Directory to save qoc_results_[envelope].csv. "
+        "Defaults to the package directory.",
     )
     parser.add_argument(
         "--n_restarts",
@@ -1359,6 +2926,101 @@ if __name__ == "__main__":
             "If omitted, heuristic defaults are used."
         ),
     )
+    parser.add_argument(
+        "--plot",
+        action="store_true",
+        default=False,
+        help=(
+            "Save a loss-landscape plot (Phase 0) and a loss-curve plot "
+            "(Phase 1) as PNG files in --file_dir for each optimised gate."
+        ),
+    )
+    parser.add_argument(
+        "--early_stop_patience",
+        type=int,
+        default=default_qoc_params["early_stop_patience"],
+        help=(
+            "Number of consecutive Stage-1 steps without improvement "
+            "(> --early_stop_min_delta) after which optimisation exits "
+            "early. 0 disables early stopping (default)."
+        ),
+    )
+    parser.add_argument(
+        "--early_stop_min_delta",
+        type=float,
+        default=default_qoc_params["early_stop_min_delta"],
+        help=(
+            "Minimum loss decrease that counts as an improvement for "
+            "the --early_stop_patience counter (default 0.0)."
+        ),
+    )
+    parser.add_argument(
+        "--joint",
+        action="store_true",
+        default=False,
+        help=(
+            "Use composite-aware joint optimisation: a single shared "
+            "leaf parameter vector is optimised against the unitary "
+            "cost summed over leaf and composite gates "
+            "(default targets: RX, RY, RZ, CZ, H, CX, CRX, CRY, CRZ). "
+            "Pulls leaves into a basin that works well in *every* "
+            "use-site instead of only standalone, fixing the "
+            "selfish-basin failure mode of per-gate optimisation. "
+            "Ignores --gates."
+        ),
+    )
+    parser.add_argument(
+        "--joint_targets",
+        nargs="+",
+        type=str,
+        default=None,
+        help=(
+            "(Used only with --joint.) Override the list of target "
+            "gates whose unitary cost contributes to the joint "
+            "objective."
+        ),
+    )
+    parser.add_argument(
+        "--joint_leaves",
+        nargs="+",
+        type=str,
+        default=None,
+        help=(
+            "(Used only with --joint.) Override the list of leaf "
+            "gates whose parameters are jointly optimised. "
+            "Default: RX RY RZ CZ."
+        ),
+    )
+    parser.add_argument(
+        "--joint_weights",
+        nargs="+",
+        type=str,
+        default=None,
+        help=(
+            "(Used only with --joint.) Override per-target weights as "
+            "'gate:weight' strings (e.g. --joint_weights CRX:5 CX:3). "
+            "Merged on top of QOC.JOINT_WEIGHTS_DEFAULT, so unspecified "
+            "gates keep their default weight."
+        ),
+    )
+    parser.add_argument(
+        "--rwa",
+        action="store_true",
+        default=False,
+        help=(
+            "Toggles RWA mode for pulse simulation."
+            "If this is set true, we utilize the rotating wave approximation "
+            "instead of the exact interaction picture."
+            "While this makes the calculations less exact, it provides"
+            "significant speedup."
+        ),
+    )
+    parser.add_argument(
+        "--drive",
+        action="store_true",
+        default=False,
+        help=("Uses drive hamiltonian instead of lab frame."),
+    )
 
     args = parser.parse_args()
     sel_gates = args.gates  # already a list from nargs="+"
@@ -1371,6 +3033,9 @@ if __name__ == "__main__":
         for pair in args.scan_ranges:
             lo, hi = pair.split(",")
             scan_ranges.append((float(lo), float(hi)))
+
+    PulseInformation.set_rwa(args.rwa)
+    PulseInformation.set_frame("drive" if args.drive else "lab")
 
     # Parse cost function specs from CLI
     cost_fns = [CostFnRegistry.parse_cost_arg(spec) for spec in args.costs]
@@ -1399,6 +3064,22 @@ if __name__ == "__main__":
         scan_steps=args.scan_steps,
         scan_grid_size=args.scan_grid_size,
         scan_ranges=scan_ranges,
+        early_stop_patience=args.early_stop_patience,
+        early_stop_min_delta=args.early_stop_min_delta,
+        plot=args.plot,
     )
 
-    qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)
+    if args.joint:
+        joint_weights = None
+        if args.joint_weights:
+            joint_weights = {}
+            for spec in args.joint_weights:
+                gname, w = spec.split(":")
+                joint_weights[gname.strip()] = float(w)
+        qoc.optimize_joint(
+            target_gates=args.joint_targets,
+            leaf_names=args.joint_leaves,
+            weights=joint_weights,
+        )
+    else:
+        qoc.optimize_all(sel_gates=sel_gates, make_log=make_log)

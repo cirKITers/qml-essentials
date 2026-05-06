@@ -1,9 +1,10 @@
-import csv
 import pytest
 import jax
 import jax.numpy as jnp
+import itertools
 
-
+import qml_essentials.yaqsi as ys
+from qml_essentials.pulses import PulseInformation
 from qml_essentials.qoc import (
     Cost,
     CostFnRegistry,
@@ -11,15 +12,22 @@ from qml_essentials.qoc import (
     fidelity_cost_fn,
     pulse_width_cost_fn,
     evolution_time_cost_fn,
-    sepctral_density_cost_fn,
+    spectral_density_cost_fn,
     default_qoc_params,
 )
 
 jax.config.update("jax_enable_x64", True)
 
-# overwrite to make tests a bit easier
-default_qoc_params["n_steps"] = 50
-default_qoc_params["scan_steps"] = 0
+
+def qoc_test_params(**overrides):
+    """Return fast QOC defaults without mutating package-level defaults."""
+    params = {
+        **default_qoc_params,
+        "n_steps": 50,
+        "scan_steps": 0,
+    }
+    params.update(overrides)
+    return params
 
 
 class TestCost:
@@ -98,7 +106,6 @@ class TestCostFnRegistry:
         meta = CostFnRegistry.get("fidelity")
         assert meta["fn"] is fidelity_cost_fn
         assert meta["default_weight"] == (0.5, 0.5)
-        assert "pulse_script" in meta["ckwargs_keys"]
 
     def test_get_unknown_raises(self):
         """Getting an unregistered name raises ValueError."""
@@ -188,23 +195,23 @@ class TestEvolutionTimeCostFn:
 
 
 class TestSpectralDensityCostFn:
-    """Tests for the sepctral_density_cost_fn."""
+    """Tests for the spectral_density_cost_fn."""
 
     def test_general_envelope_returns_zero(self):
         """Envelopes with no tuneable shape params (general) return zero cost."""
         params = jnp.array([0.5])
-        cost = sepctral_density_cost_fn(params, envelope="general")
+        cost = spectral_density_cost_fn(params, envelope="general")
         assert jnp.isclose(cost, 0.0)
 
     def test_gaussian_lower_than_square(self):
         """A Gaussian pulse has a narrower spectrum than a rectangular pulse."""
         # Gaussian: [A, sigma, t_evol]
         gauss_params = jnp.array([1.0, 0.3, 2.0])
-        gauss_cost = sepctral_density_cost_fn(gauss_params, envelope="gaussian")
+        gauss_cost = spectral_density_cost_fn(gauss_params, envelope="gaussian")
 
         # Square: [A, width, t_evol]
         square_params = jnp.array([1.0, 1.0, 2.0])
-        square_cost = sepctral_density_cost_fn(square_params, envelope="square")
+        square_cost = spectral_density_cost_fn(square_params, envelope="square")
 
         assert gauss_cost < square_cost, (
             f"Gaussian cost ({gauss_cost}) should be lower than "
@@ -214,7 +221,7 @@ class TestSpectralDensityCostFn:
     def test_output_is_bounded(self):
         """The spectral-width cost should be in [0, 1]."""
         params = jnp.array([1.0, 0.5, 1.0])
-        cost = sepctral_density_cost_fn(params, envelope="gaussian")
+        cost = spectral_density_cost_fn(params, envelope="gaussian")
         assert 0.0 <= float(cost) <= 1.0
 
     def test_narrow_gaussian_lower_than_wide(self):
@@ -222,8 +229,8 @@ class TestSpectralDensityCostFn:
         narrow_params = jnp.array([1.0, 0.05, 2.0])  # small sigma
         wide_params = jnp.array([1.0, 0.5, 2.0])  # large sigma
 
-        narrow_cost = sepctral_density_cost_fn(narrow_params, envelope="gaussian")
-        wide_cost = sepctral_density_cost_fn(wide_params, envelope="gaussian")
+        narrow_cost = spectral_density_cost_fn(narrow_params, envelope="gaussian")
+        wide_cost = spectral_density_cost_fn(wide_params, envelope="gaussian")
 
         # Narrow time-domain pulse => wider spectrum => higher cost
         assert wide_cost < narrow_cost, (
@@ -233,7 +240,7 @@ class TestSpectralDensityCostFn:
 
     def test_is_differentiable(self):
         """JAX can compute gradients through the spectral density cost."""
-        grad_fn = jax.grad(lambda p: sepctral_density_cost_fn(p, envelope="gaussian"))
+        grad_fn = jax.grad(lambda p: spectral_density_cost_fn(p, envelope="gaussian"))
         grads = grad_fn(jnp.array([1.0, 0.3, 2.0]))
         # At least sigma (index 1) should have nonzero gradient
         assert not jnp.all(jnp.isclose(grads, 0.0))
@@ -244,14 +251,14 @@ class TestQOCInit:
 
     def test_default_cost_fns(self):
         """cost_fns from default_qoc_params are stored correctly."""
-        qoc = QOC(**default_qoc_params)
+        qoc = QOC(**qoc_test_params())
         names = [name for name, _ in qoc.cost_fns]
-        assert "fidelity" in names
+        assert "unitary" in names
 
     def test_custom_cost_fns(self):
         """Custom cost_fns override the defaults."""
         custom = [("fidelity", (0.5, 0.5))]
-        params = {**default_qoc_params, "cost_fns": custom}
+        params = qoc_test_params(cost_fns=custom)
         qoc = QOC(**params)
         assert qoc.cost_fns == custom
 
@@ -276,70 +283,8 @@ class TestQOCInit:
     def test_unknown_cost_fn_raises(self):
         """Using an unregistered cost function name raises ValueError."""
         with pytest.raises(ValueError, match="Unknown cost function"):
-            params = {**default_qoc_params, "cost_fns": [("nonexistent", 0.5)]}
+            params = qoc_test_params(cost_fns=[("nonexistent", 0.5)])
             QOC(**params)
-
-
-class TestSaveResults:
-    """Tests for QOC.save_results CSV I/O."""
-
-    @pytest.mark.parametrize(
-        "writes,expected_rows,expected_gate_fidelity",
-        [
-            (
-                [("RX", 0.95, [1.0, 2.0, 3.0])],
-                1,
-                {"RX": 0.95},
-            ),
-            (
-                [("RX", 0.9, [1.0, 2.0]), ("RY", 0.8, [3.0, 4.0])],
-                2,
-                {"RX": 0.9, "RY": 0.8},
-            ),
-            (
-                [("RX", 0.9, [1.0, 2.0]), ("RX", 0.95, [5.0, 6.0])],
-                1,
-                {"RX": 0.95},
-            ),
-            (
-                [("RX", 0.9, [1.0]), ("RY", 0.8, [2.0]), ("RX", 0.95, [3.0])],
-                2,
-                {"RX": 0.95, "RY": 0.8},
-            ),
-        ],
-        ids=[
-            "creates_new_file",
-            "appends_new_gate",
-            "overwrites_existing_gate",
-            "preserves_other_gates_on_overwrite",
-        ],
-    )
-    def test_save_results_csv(
-        self, tmp_path, writes, expected_rows, expected_gate_fidelity
-    ):
-        """save_results writes/overwrites CSV rows correctly."""
-        params = {**default_qoc_params, "file_dir": str(tmp_path)}
-        qoc = QOC(**params)
-        for gate, fid, params in writes:
-            qoc.save_results(gate, fid, params)
-
-        csv_path = tmp_path / "qoc_results.csv"
-        assert csv_path.exists()
-
-        with open(csv_path) as f:
-            rows = list(csv.reader(f))
-        assert len(rows) == expected_rows
-        gate_map = {r[0]: float(r[1]) for r in rows}
-        for gate, fid in expected_gate_fidelity.items():
-            assert gate_map[gate] == pytest.approx(fid)
-
-    def test_no_file_when_file_dir_is_none(self, tmp_path):
-        """When file_dir is explicitly None, nothing is written."""
-        params = {**default_qoc_params, "file_dir": str(tmp_path)}
-        qoc = QOC(**params)
-        qoc.file_dir = None
-        qoc.save_results("RX", 0.9, [1.0])
-        assert not (tmp_path / "qoc_results.csv").exists()
 
 
 class TestOptimizeSmoke:
@@ -347,7 +292,7 @@ class TestOptimizeSmoke:
 
     def test_optimize_returns_params_and_history(self, tmp_path):
         """optimize() returns (params, loss_history) and loss decreases."""
-        params = {**default_qoc_params, "file_dir": str(tmp_path)}
+        params = qoc_test_params(file_dir=str(tmp_path))
         qoc = QOC(
             **params,
         )
@@ -355,9 +300,7 @@ class TestOptimizeSmoke:
         best_params, loss_history = opt_1q(qoc.create_RX)()
 
         assert best_params is not None
-        assert (
-            len(loss_history) == default_qoc_params["n_steps"] + 1
-        )  # initial + n_steps
+        assert len(loss_history) == params["n_steps"] + 1  # initial + n_steps
 
     @pytest.mark.parametrize(
         "factory_name",
@@ -376,8 +319,66 @@ class TestOptimizeSmoke:
         ],
     )
     def test_create_circuits_return_callables(self, factory_name):
-        qoc = QOC(**default_qoc_params)
+        qoc = QOC(**qoc_test_params())
         factory = getattr(qoc, factory_name)
         pulse_c, target_c = factory()
         assert callable(pulse_c)
         assert callable(target_c)
+
+
+class TestFidelity:
+    single_qubit_pulse_testdata = itertools.product(
+        ["RX", "RY", "RZ", "H"],
+        [0.0, jnp.pi / 4, jnp.pi / 2, 3 * jnp.pi / 4, jnp.pi],
+    )
+    two_qubit_pulse_testdata = itertools.product(
+        ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"], [0.0, jnp.pi / 4, jnp.pi / 2, jnp.pi]
+    )
+
+    @pytest.mark.unittest
+    @pytest.mark.parametrize("gate,w", single_qubit_pulse_testdata)
+    def test_single_qubit_pulse_gate(self, gate, w):
+        qoc = QOC(**qoc_test_params())
+        pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
+        pulse_script = ys.Script(pulse_circuit, n_qubits=1)
+        target_script = ys.Script(target_circuit, n_qubits=1)
+
+        state_pulse = pulse_script.execute(
+            type="state", args=(w, PulseInformation.gate_by_name(gate).params)
+        )
+        state_target = target_script.execute(type="state", args=(w,))
+
+        fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
+        assert fidelity <= 1.0 + 1e-6, f"Fidelity of {gate} can't be larger 1 for w={w}"
+        assert jnp.isclose(fidelity, 1.0, atol=1e-2), (
+            f"Fidelity too low for w={w}: {fidelity}"
+        )
+
+        phase_diff = jnp.angle(jnp.vdot(state_target, state_pulse))
+        assert jnp.isclose(phase_diff, 0.0, atol=1e-2), (
+            f"Phase off for w={w}: {phase_diff}"
+        )
+
+    @pytest.mark.unittest
+    @pytest.mark.parametrize("gate,w", two_qubit_pulse_testdata)
+    def test_two_qubit_pulse_gate(self, gate, w):
+        qoc = QOC(**qoc_test_params())
+        pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
+        pulse_script = ys.Script(pulse_circuit, n_qubits=2)
+        target_script = ys.Script(target_circuit, n_qubits=2)
+
+        state_pulse = pulse_script.execute(
+            type="state", args=(w, PulseInformation.gate_by_name(gate).params)
+        )
+        state_target = target_script.execute(type="state", args=(w,))
+
+        fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
+        assert fidelity <= 1.0 + 1e-6, f"Fidelity of {gate} can't be larger 1 for w={w}"
+        assert jnp.isclose(fidelity, 1.0, atol=1e-2), (
+            f"Fidelity too low for w={w}: {fidelity}"
+        )
+
+        phase_diff = jnp.angle(jnp.vdot(state_target, state_pulse))
+        assert jnp.isclose(phase_diff, 0.0, atol=1e-2), (
+            f"Phase off for w={w}: {phase_diff}"
+        )
