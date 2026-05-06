@@ -175,7 +175,7 @@ means a single `value_and_grad(loss)(params)` call typically saturates
 products (which are tiny: 8×8 for three qubits) and across batched
 restarts (`vmap`).
 
-Two performance levers are exposed:
+The performance can be tuned on following different levels:
 
 1. **`PulseInformation.set_rwa(True)`** — opt-in rotating-wave
    approximation.  Drops the fast counter-rotating terms in the
@@ -191,17 +191,17 @@ Two performance levers are exposed:
 
    * `solver="dopri8"` (default): adaptive Dormand-Prince 8(7).
    * `solver="magnus2"`: midpoint Magnus, one `expm` per step.
-     Second-order: error scales as `h²`.
+     Second-order: error scales as `h^2`.
    * `solver="magnus4"`: Blanes-Moan CFM4:2, two `expm` per step.
-     Fourth-order: error scales as `h⁴` (≈16× drop per N doubling).
+     Fourth-order: error scales as `h^4` (≈16× drop per N doubling).
      Typically the best accuracy/cost trade-off for smooth oscillatory
      pulse drives — `magnus_steps=512` reaches ≲1e-7 error on a
-     standard `RX(π/2)` Drag pulse.
+     standard `RX(\\pi/2)` Drag pulse.
 
    Both Magnus integrators preserve unitarity to machine precision
    regardless of step size.  Choose `magnus_steps` so that
    `h = T/N` resolves the fastest oscillation in `H(t)`
-   (a few steps per period of `ω_c + ω_q`).
+   (a few steps per period of `\\omega_c + \\omega_q`).
 
    ```python
    from qml_essentials.yaqsi import Yaqsi
@@ -210,12 +210,12 @@ Two performance levers are exposed:
 
 3. **`PulseInformation.set_frame("drive")`** — algebraic rewrite of
    the (non-RWA) coefficients via the product-to-sum identity
-   `cos(ω_c t) cos(ω_q t) = ½[cos(Δ t) + cos(Σ t)]` with
-   `Δ = ω_c - ω_q`, `Σ = ω_c + ω_q`.  Mathematically identical to
+   `cos(\\omega_c t) cos(\\omega_q t) = 1/2[cos(\\Delta t) + cos(\\Sigma t)]` with
+   `\\Delta = \\omega_c - \\omega_q`, `\\Sigma = \\omega_c + \\omega_q`.  Mathematically identical to
    the default `"lab"` form (no information lost, no RWA applied).
    Primary use: combined with `magnus2`/`magnus4`, the explicit
    slow/fast decomposition is sometimes numerically better-conditioned
-   when the drive is detuned (`|Δ| ≪ |Σ|`).  Switching the frame does
+   when the drive is detuned (`|\\Delta| << |\\Sigma|`).  Switching the frame does
    not change the result of an adaptive solve.
 
 4. **XLA / OMP thread settings**.  Even on a single ODE solve, XLA
@@ -228,7 +228,7 @@ Two performance levers are exposed:
    export OMP_NUM_THREADS=$(nproc)
    ```
 
-   For `dim ≤ 16` (≤ 4 qubits) the per-step matmuls are too small to
+   For `dim <= 16` (<= 4 qubits) the per-step matmuls are too small to
    benefit much from threads; the dominant gain comes from `vmap`
    parallelism.
 
