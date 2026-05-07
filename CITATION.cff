@@ -21,8 +21,8 @@ authors:
   - family-names: "Wahl"
     given-names: "Johannes"
 title: "QML Essentials"
-version: 0.1.38
-date-released: 2026-02-06
+version: 0.2.0
+date-released: 2026-05-07
 repository-code: "https://github.com/cirKITers/qml-essentials"
 url: "https://cirkiters.github.io/qml-essentials"
 license: MIT
