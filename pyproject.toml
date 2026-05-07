@@ -1,6 +1,6 @@
 [project]
 name = "qml-essentials"
-version = "0.1.38"
+version = "0.2.0"
 description = "A toolbox to make working with QML models easier."
 authors = [
     { name = "Melvin Strobl", email = "melvin.strobl@kit.edu" },
