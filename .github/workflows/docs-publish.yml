@@ -37,6 +37,9 @@ jobs:
   deploy:
     runs-on: self-hosted
     if: ${{ github.ref == 'refs/heads/main' }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/configure-pages@v5
       - uses: actions/checkout@v6
