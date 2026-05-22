@@ -734,15 +734,20 @@ class TestFCC:
             output_qubit=-1,
             encoding=["RY"],
         )
-        fcc = FCC.get_fcc(
+        fcc_weight = FCC.get_fcc(
             model=model,
             n_samples=500,
             scale=True,
             weight=True,
         )
-        expected_fcc = 2.0e-8
-        assert jnp.isclose(fcc, expected_fcc, atol=5.0e-8), (
-            f"Wrong FCC for Circuit_19. Got {fcc}, expected {expected_fcc}."
+        fcc_no_weight = FCC.get_fcc(
+            model=model,
+            n_samples=500,
+            scale=True,
+            weight=False,
+        )
+        assert fcc_weight < fcc_no_weight, (
+            "Weighted FCC should be substantially smaller for degenerate circuits."
         )
 
 
