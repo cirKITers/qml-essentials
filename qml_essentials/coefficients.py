@@ -1109,7 +1109,9 @@ class FCC:
 
         # perform weighting if requested
         fourier_fingerprint = (
-            cls._weighting(fourier_fingerprint) if weight else fourier_fingerprint
+            cls._weighting_mean(fourier_fingerprint, coeffs)
+            if weight
+            else fourier_fingerprint
         )
 
         if trim_redundant:
@@ -1439,13 +1441,13 @@ class FCC:
         return result
 
     @classmethod
-    def _weighting(cls, fourier_fingerprint: jnp.ndarray) -> jnp.ndarray:
+    def _weighting_linear(cls, fourier_fingerprint: jnp.ndarray) -> jnp.ndarray:
         """
         Performs weighting on the given correlation matrix.
         Here, low-frequent coefficients are weighted more heavily.
 
         Args:
-            correlation (jnp.ndarray): Correlation matrix
+            fourier_fingerprint (jnp.ndarray): Correlation matrix
         """
         # TODO: in Future iterations, this can be optimized by computing
         # on the trimmed matrix instead.
@@ -1491,7 +1493,39 @@ class FCC:
         weights_matrix = quadrant_to_matrix(weights)
 
         return fourier_fingerprint * weights_matrix
-        raise NotImplementedError("Weighting method is not implemented")
+
+    @classmethod
+    def _weighting_mean(
+        cls, fourier_fingerprint: jnp.ndarray, coeffs: jnp.ndarray
+    ) -> jnp.ndarray:
+        """
+        Performs weighting on the given correlation matrix.
+        Here, we use the product of the mean of the coefficients as weights.
+        This suppresses correlations where the mean of the coefficients is near zero.
+
+        Args:
+            fourier_fingerprint (jnp.ndarray): Correlation matrix
+            coeffs (jnp.ndarray): Fourier coefficients
+        """
+        # TODO: in Future iterations, this can be optimized by computing
+        # on the trimmed matrix instead.
+
+        assert fourier_fingerprint.shape[0] == fourier_fingerprint.shape[1], (
+            "Correlation matrix must be square."
+        )
+        assert len(coeffs.shape) >= 2, (
+            "Coefficient matrix must contain coefficient axes and a sample axis."
+        )
+
+        coefficient_means = jnp.abs(jnp.mean(coeffs, axis=-1))
+        coefficient_means = coefficient_means.T.reshape(-1)
+
+        assert fourier_fingerprint.shape[0] == coefficient_means.shape[0], (
+            "Correlation matrix size must match the number of Fourier coefficients."
+        )
+
+        weights_matrix = jnp.outer(coefficient_means, coefficient_means)
+        return fourier_fingerprint * weights_matrix
 
 
 class Datasets:

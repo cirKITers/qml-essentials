@@ -552,6 +552,22 @@ class TestFCC:
         )
 
     @pytest.mark.unittest
+    def test_weighting_mean(self) -> None:
+        """Mean weighting should match the coefficient order used by correlation."""
+        fourier_fingerprint = jnp.arange(16, dtype=float).reshape(4, 4)
+        coeffs = jnp.array(
+            [
+                [[1.0, 3.0], [-2.0, 4.0]],
+                [[5.0, 7.0], [8.0, 10.0]],
+            ]
+        )
+
+        coefficient_means = jnp.abs(jnp.mean(coeffs, axis=-1)).T.reshape(-1)
+        expected = fourier_fingerprint * jnp.outer(coefficient_means, coefficient_means)
+
+        assert jnp.allclose(FCC._weighting_mean(fourier_fingerprint, coeffs), expected)
+
+    @pytest.mark.unittest
     @pytest.mark.parametrize(
         "circuit_type, expected_fcc",
         [
@@ -724,8 +740,9 @@ class TestFCC:
             scale=True,
             weight=True,
         )
-        assert jnp.isclose(fcc, 0.010, atol=5.0e-3), (
-            f"Wrong FCC for Circuit_19. Got {fcc}, expected 0.010."
+        expected_fcc = 2.0e-8
+        assert jnp.isclose(fcc, expected_fcc, atol=5.0e-8), (
+            f"Wrong FCC for Circuit_19. Got {fcc}, expected {expected_fcc}."
         )
 
 
