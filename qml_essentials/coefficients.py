@@ -1030,7 +1030,8 @@ class FCC:
             n_samples (int): Number of samples to calculate average of coefficients
             random_key (Optional[random.PRNGKey]): JAX random key for parameter
                 initialization. If None, uses the model's internal random key.
-            method (Optional[str], optional): Correlation method. Defaults to "pearson".
+            method (Optional[str], optional): Correlation method. Supported values are
+                "pearson", "complex_pearson", and "spearman". Defaults to "pearson".
             scale (Optional[bool], optional): Whether to scale the number of samples.
                 Defaults to False.
             weight (Optional[bool], optional): Whether to weight the correlation matrix.
@@ -1104,7 +1105,8 @@ class FCC:
             n_samples (int): Number of samples to calculate average of coefficients
             random_key (Optional[random.PRNGKey]): JAX random key for parameter
                 initialization. If None, uses the model's internal random key.
-            method (Optional[str], optional): Correlation method. Defaults to "pearson".
+            method (Optional[str], optional): Correlation method. Supported values are
+                "pearson", "complex_pearson", and "spearman". Defaults to "pearson".
             scale (Optional[bool], optional): Whether to scale the number of samples.
                 Defaults to False.
             weight (Optional[bool], optional): Whether to weight the correlation matrix.
@@ -1160,7 +1162,9 @@ class FCC:
 
         # perform weighting if requested
         fourier_fingerprint = (
-            cls._weighting(fourier_fingerprint) if weight else fourier_fingerprint
+            cls._weighting_mean(fourier_fingerprint, coeffs)
+            if weight
+            else fourier_fingerprint
         )
 
         if trim_redundant:
@@ -1300,7 +1304,7 @@ class FCC:
     def _correlate(cls, mat: jnp.ndarray, method: str = "pearson") -> jnp.ndarray:
         """
         Correlates two arrays using `method`.
-        Currently, `pearson` and `spearman` are supported.
+        Currently, `pearson`, `complex_pearson`, and `spearman` are supported.
 
         Args:
             mat (jnp.ndarray): Array of shape (N, K)
@@ -1325,14 +1329,81 @@ class FCC:
         if method == "pearson":
             result = cls._pearson(mat.reshape(mat.shape[0], -1))
             # result = cls._pearson(mat.reshape(mat.shape[-1], -1, order="F"))
+        elif method == "complex_pearson":
+            result = cls._complex_pearson(mat.reshape(mat.shape[0], -1))
         elif method == "spearman":
             result = cls._spearman(mat.reshape(mat.shape[0], -1))
             # result = cls._spearman(mat.reshape(mat.shape[-1], -1, order="F"))
         else:
             raise ValueError(
                 f"Unknown correlation method: {method}. \
-                             Must be 'pearson' or 'spearman'."
+                             Must be 'pearson', 'complex_pearson' or 'spearman'."
             )
+
+        return result
+
+    @classmethod
+    def _complex_pearson(
+        cls, mat: jnp.ndarray, cov: Optional[bool] = False, minp: Optional[int] = 1
+    ) -> jnp.ndarray:
+        """
+        Compute the complex Pearson correlation between columns of `mat`,
+        permitting missing values (NaN or ±Inf).
+
+        This uses the Hermitian normalized covariance
+        sum(conj(x_i - mean_i) * (x_j - mean_j)) /
+        sqrt(sum(abs(x_i - mean_i)**2) * sum(abs(x_j - mean_j)**2)).
+        Consequently, if column j is exp(1j * phi) times column i, then
+        abs(corr[i, j]) is 1 and angle(corr[i, j]) is phi.
+
+        Args:
+            mat : array_like, shape (N, K)
+                Input data.
+            cov : bool, optional
+                If True, return the sample covariance matrix instead of
+                correlation. Defaults to False.
+            minp : int, optional
+                Minimum number of paired observations required to form a correlation.
+                If the number of valid pairs for (i, j) is < minp, the result is NaN.
+
+        Returns:
+            corr : ndarray, shape (K, K)
+                Complex Pearson correlation matrix.
+        """
+        mat = jnp.asarray(mat)
+        real_dtype = jnp.asarray(mat.real).dtype
+
+        mask = jnp.isfinite(mat)
+        fmask = mask.astype(real_dtype)
+        safe = jnp.where(mask, mat, 0.0)
+
+        nobs = fmask.T @ fmask
+        nobs_safe = jnp.where(nobs > 0, nobs, 1.0)
+
+        sum_x = safe.T @ fmask
+        sum_y = fmask.T @ safe
+
+        masked = safe * fmask
+        sum_conj_xy = jnp.conj(masked).T @ masked
+
+        safe_abs_sq = jnp.abs(safe) ** 2
+        sum_abs_x2 = safe_abs_sq.T @ fmask
+        sum_abs_y2 = fmask.T @ safe_abs_sq
+
+        ssx = sum_abs_x2 - jnp.abs(sum_x) ** 2 / nobs_safe
+        ssy = sum_abs_y2 - jnp.abs(sum_y) ** 2 / nobs_safe
+        sxy = sum_conj_xy - (jnp.conj(sum_x) * sum_y) / nobs_safe
+
+        if cov:
+            denom = jnp.where(nobs > 1, nobs - 1, jnp.nan)
+            result = sxy / denom
+        else:
+            denom = jnp.sqrt(ssx * ssy)
+            result = jnp.where(denom > 0, sxy / denom, jnp.nan)
+            magnitude = jnp.abs(result)
+            result = jnp.where(magnitude > 1.0, result / magnitude, result)
+
+        result = jnp.where(nobs < minp, jnp.nan, result)
 
         return result
 
@@ -1510,17 +1581,14 @@ class FCC:
         return result
 
     @classmethod
-    def _weighting(cls, fourier_fingerprint: jnp.ndarray) -> jnp.ndarray:
+    def _weighting_linear(cls, fourier_fingerprint: jnp.ndarray) -> jnp.ndarray:
         """
         Performs weighting on the given correlation matrix.
         Here, low-frequent coefficients are weighted more heavily.
 
         Args:
-            correlation (jnp.ndarray): Correlation matrix
+            fourier_fingerprint (jnp.ndarray): Correlation matrix
         """
-        # TODO: in Future iterations, this can be optimized by computing
-        # on the trimmed matrix instead.
-
         assert (
             fourier_fingerprint.shape[0] % 2 != 0
             and fourier_fingerprint.shape[1] % 2 != 0
@@ -1540,15 +1608,42 @@ class FCC:
         # where u[k] = (center - |k - center|) / (2 * center)
         # is a triangular weighting peaking at the centre (the zero
         # frequency) and decaying linearly to 0 at the spectrum edges.
-        # Building u in O(N) and applying the weighting via broadcasting
-        # avoids the four full N x N intermediates the previous
-        # implementation allocated (rot90, vstack, hstack, two deletes).
         N = fourier_fingerprint.shape[0]
         center = N // 2
         k = jnp.arange(N)
         u = (center - jnp.abs(k - center)) / (2 * center)
 
         return fourier_fingerprint * (u[:, None] + u[None, :])
+
+    @classmethod
+    def _weighting_mean(
+        cls, fourier_fingerprint: jnp.ndarray, coeffs: jnp.ndarray
+    ) -> jnp.ndarray:
+        """
+        Performs weighting on the given correlation matrix.
+        Here, we use the product of the mean of the coefficients as weights.
+        This suppresses correlations where the mean of the coefficients is near zero.
+
+        Args:
+            fourier_fingerprint (jnp.ndarray): Correlation matrix
+            coeffs (jnp.ndarray): Fourier coefficients
+        """
+        assert fourier_fingerprint.shape[0] == fourier_fingerprint.shape[1], (
+            "Correlation matrix must be square."
+        )
+        assert len(coeffs.shape) >= 2, (
+            "Coefficient matrix must contain coefficient axes and a sample axis."
+        )
+
+        coefficient_means = jnp.abs(jnp.mean(coeffs, axis=-1))
+        coefficient_means = coefficient_means.T.reshape(-1)
+
+        assert fourier_fingerprint.shape[0] == coefficient_means.shape[0], (
+            "Correlation matrix size must match the number of Fourier coefficients."
+        )
+
+        weights_matrix = jnp.outer(coefficient_means, coefficient_means)
+        return fourier_fingerprint * weights_matrix
 
 
 class Datasets:

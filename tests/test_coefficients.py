@@ -508,6 +508,61 @@ class TestFCC:
                 )
 
     @pytest.mark.unittest
+    def test_complex_pearson_correlation(self) -> None:
+        """Complex Pearson should match Hermitian normalized covariance."""
+        N = 1000
+        K = 5
+        seed = 314
+        rng = np.random.default_rng(seed)
+
+        coeffs = rng.normal(size=(N, K)) + 1j * rng.normal(size=(N, K))
+        coeffs[0, 1] = np.nan + 0.0j
+        coeffs[1, 2] = np.inf + 0.0j
+
+        complex_pearson = FCC._complex_pearson(jnp.array(coeffs))
+
+        for i in range(K):
+            for j in range(K):
+                valid = np.isfinite(coeffs[:, i]) & np.isfinite(coeffs[:, j])
+                x = coeffs[valid, i]
+                y = coeffs[valid, j]
+                x_centered = x - np.mean(x)
+                y_centered = y - np.mean(y)
+                denom = np.sqrt(
+                    np.sum(np.abs(x_centered) ** 2) * np.sum(np.abs(y_centered) ** 2)
+                )
+                reference = (
+                    np.sum(np.conj(x_centered) * y_centered) / denom
+                    if denom > 0
+                    else np.nan
+                )
+
+                assert jnp.isclose(complex_pearson[i, j], reference, atol=1.0e-5), (
+                    f"Complex Pearson mismatch at ({i},{j}): "
+                    f"got {complex_pearson[i, j]}, expected {reference}"
+                )
+
+    @pytest.mark.unittest
+    def test_complex_pearson_phase(self) -> None:
+        """Complex Pearson magnitude tracks correlation and angle tracks phase."""
+        N = 200
+        seed = 2718
+        phase = 0.37
+        rng = np.random.default_rng(seed)
+
+        x = rng.normal(size=N) + 1j * rng.normal(size=N)
+        y = np.exp(1j * phase) * x
+        coeffs = jnp.stack([jnp.array(x), jnp.array(y)], axis=1)
+
+        corr = FCC._complex_pearson(coeffs)
+        corr_from_method = FCC._correlate(coeffs, method="complex_pearson")
+
+        assert jnp.allclose(corr, corr_from_method, atol=1.0e-10)
+        assert jnp.isclose(jnp.abs(corr[0, 1]), 1.0, atol=1.0e-10)
+        assert jnp.isclose(jnp.angle(corr[0, 1]), phase, atol=1.0e-10)
+        assert jnp.isclose(jnp.angle(corr[1, 0]), -phase, atol=1.0e-10)
+
+    @pytest.mark.unittest
     def test_spearman_correlation_complex(self) -> None:
         """Spearman on complex input should match scipy on stacked real/imag."""
         N = 1000
@@ -550,6 +605,22 @@ class TestFCC:
             "Complex and real-only Pearson correlations should differ "
             "when imaginary components carry information."
         )
+
+    @pytest.mark.unittest
+    def test_weighting_mean(self) -> None:
+        """Mean weighting should match the coefficient order used by correlation."""
+        fourier_fingerprint = jnp.arange(16, dtype=float).reshape(4, 4)
+        coeffs = jnp.array(
+            [
+                [[1.0, 3.0], [-2.0, 4.0]],
+                [[5.0, 7.0], [8.0, 10.0]],
+            ]
+        )
+
+        coefficient_means = jnp.abs(jnp.mean(coeffs, axis=-1)).T.reshape(-1)
+        expected = fourier_fingerprint * jnp.outer(coefficient_means, coefficient_means)
+
+        assert jnp.allclose(FCC._weighting_mean(fourier_fingerprint, coeffs), expected)
 
     @pytest.mark.unittest
     @pytest.mark.parametrize(
@@ -718,14 +789,20 @@ class TestFCC:
             output_qubit=-1,
             encoding=["RY"],
         )
-        fcc = FCC.get_fcc(
+        fcc_weight = FCC.get_fcc(
             model=model,
             n_samples=500,
             scale=True,
             weight=True,
         )
-        assert jnp.isclose(fcc, 0.010, atol=5.0e-3), (
-            f"Wrong FCC for Circuit_19. Got {fcc}, expected 0.010."
+        fcc_no_weight = FCC.get_fcc(
+            model=model,
+            n_samples=500,
+            scale=True,
+            weight=False,
+        )
+        assert fcc_weight < fcc_no_weight, (
+            "Weighted FCC should be substantially smaller for degenerate circuits."
         )
 
 
