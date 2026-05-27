@@ -1532,37 +1532,23 @@ class FCC:
             "Correlation matrix must be square."
         )
 
-        def quadrant_to_matrix(a: jnp.ndarray) -> jnp.ndarray:
-            """
-            Transforms [[1,2],[3,4]] to
-            [[1,2,1],[3,4,3],[1,2,1]]
+        # The weight matrix produced by the previous quadrant-mirror
+        # construction has a closed form: it is a "tent" sum along the
+        # two axes. Concretely, with N = fourier_fingerprint.shape[0]
+        # (odd) and center = N // 2,
+        #     W[i, j] = u[i] + u[j]
+        # where u[k] = (center - |k - center|) / (2 * center)
+        # is a triangular weighting peaking at the centre (the zero
+        # frequency) and decaying linearly to 0 at the spectrum edges.
+        # Building u in O(N) and applying the weighting via broadcasting
+        # avoids the four full N x N intermediates the previous
+        # implementation allocated (rot90, vstack, hstack, two deletes).
+        N = fourier_fingerprint.shape[0]
+        center = N // 2
+        k = jnp.arange(N)
+        u = (center - jnp.abs(k - center)) / (2 * center)
 
-            Args:
-                a (jnp.ndarray): _description_
-
-            Returns:
-                jnp.ndarray: _description_
-            """
-            # rotates a from [[1,2],[3,4]] to [[3,4],[1,2]]
-            a_rot = jnp.rot90(a)
-            # merge the two matrices
-            left = jnp.concat([a, a_rot])
-            # merges left and right (left flipped)
-            b = jnp.concat(
-                [left, jnp.flip(left)],
-                axis=1,
-            )
-            # remove the middle column and row
-            return jnp.delete(
-                jnp.delete(b, (b.shape[0] // 2), axis=0), (b.shape[1] // 2), axis=1
-            )
-
-        nc = fourier_fingerprint.shape[0] // 2 + 1
-        weights = jnp.mgrid[0:nc:1, 0:nc:1].sum(axis=0) / ((nc - 1) * 2)
-        weights_matrix = quadrant_to_matrix(weights)
-
-        return fourier_fingerprint * weights_matrix
-        raise NotImplementedError("Weighting method is not implemented")
+        return fourier_fingerprint * (u[:, None] + u[None, :])
 
 
 class Datasets:
