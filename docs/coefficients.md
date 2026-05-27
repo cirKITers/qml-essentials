@@ -215,7 +215,10 @@ fcc = FCC.get_fcc(
 ```
 Returns `0.1442` as already in Fig. 3a of aforementioned paper.
 
-Optionally, you can choose a different correlation `method` (currently "pearson" and "spearman" are supported).
+Optionally, you can choose a different correlation `method` (currently "pearson", "complex_pearson", and "spearman" are supported).
+The default "pearson" method preserves the existing behavior for complex coefficients by correlating stacked real and imaginary parts.
+The "complex_pearson" method computes a complex-valued Pearson coefficient via Hermitian normalized covariance, so the magnitude describes correlation strength and the angle describes the relative phase between coefficient vectors.
+When calculating the scalar FCC, `calculate_fcc` uses the magnitude of the fingerprint entries.
 Similar, other methods which require specifying `n_samples` (c.f. calculation of [expressibility](expressibility.md) and [entangling capability](entanglement.md)), methods in the `FCC` class take an optional parameter `scale` (defaults to `False`), which scales the number of samples depending on the number of qubits and the number of input features as $n_\text{samples} \cdot n_\text{params} \cdot 2^{n_\text{qubits}} \cdot n_\text{features}$.
 
 As described in our paper, the FCC is calculated as the mean of the Fourier fingerprint, which in turn can be obtained separately as follows:
