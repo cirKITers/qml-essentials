@@ -1642,8 +1642,13 @@ class FCC:
             "Correlation matrix size must match the number of Fourier coefficients."
         )
 
-        weights_matrix = jnp.outer(coefficient_means, coefficient_means)
-        return fourier_fingerprint * weights_matrix
+        # Apply the rank-1 weight w[i] * w[j] via broadcasting instead
+        # of materialising an explicit `jnp.outer` N x N intermediate.
+        return (
+            fourier_fingerprint
+            * coefficient_means[:, None]
+            * coefficient_means[None, :]
+        )
 
 
 class Datasets:
