@@ -1149,6 +1149,60 @@ CRY = _make_controlled_rotation_gate(PauliY, "CRY")
 CRZ = _make_controlled_rotation_gate(PauliZ, "CRZ")
 
 
+def _make_two_qubit_rotation_gate(pauli_a: type, pauli_b: type, name: str) -> type:
+    """Factory for two-qubit Pauli-rotation gates RXX, RYY, RZZ, RZX.
+
+    Each gate has the form
+    ``R_{PQ}(\\theta) = exp(-i \\theta/2\\, P \\otimes Q)
+    = cos(\\theta/2)\\, I\\otimes I - i sin(\\theta/2)\\, P \\otimes Q``.
+
+    Args:
+        pauli_a: Pauli class acting on the first wire.
+        pauli_b: Pauli class acting on the second wire.
+        name: Class name for the generated gate (e.g. ``"RXX"``).
+
+    Returns:
+        A new :class:`Operation` subclass.
+    """
+    pa = pauli_a._matrix
+    pb = pauli_b._matrix
+    pp = jnp.kron(pa, pb)
+    II = jnp.kron(Id._matrix, Id._matrix)
+
+    class _TwoQubitRotationGate(Operation):
+        __doc__ = (
+            f"Two-qubit Pauli rotation: {name}(\\theta) =\n"
+            f"exp(-i \\theta/2\\, {pauli_a.__name__[-1]} \\otimes "
+            f"{pauli_b.__name__[-1]}).\n"
+        )
+        _num_wires = 2
+        _param_names = ("theta",)
+
+        def __init__(self, theta: float, wires: List[int] = [0, 1], **kwargs) -> None:
+            self.theta = theta
+            c = jnp.cos(theta / 2)
+            s = jnp.sin(theta / 2)
+            mat = c * II - 1j * s * pp
+            super().__init__(wires=wires, matrix=mat, **kwargs)
+
+        def generator(self) -> Operation:
+            """Return the generator as the tensor product of the two Paulis."""
+            return prod(
+                pauli_a(wires=self.wires[0], record=False),
+                pauli_b(wires=self.wires[1], record=False),
+            )
+
+    _TwoQubitRotationGate.__name__ = name
+    _TwoQubitRotationGate.__qualname__ = name
+    return _TwoQubitRotationGate
+
+
+RXX = _make_two_qubit_rotation_gate(PauliX, PauliX, "RXX")
+RYY = _make_two_qubit_rotation_gate(PauliY, PauliY, "RYY")
+RZZ = _make_two_qubit_rotation_gate(PauliZ, PauliZ, "RZZ")
+RZX = _make_two_qubit_rotation_gate(PauliZ, PauliX, "RZX")
+
+
 class ControlledPhaseShift(Operation):
     r"""Controlled phase shift gate (CPhase).
 

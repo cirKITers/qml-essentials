@@ -464,6 +464,115 @@ class UnitaryGates:
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
+    def RXX(
+        w: Union[float, jnp.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+        input_idx: int = -1,
+    ) -> None:
+        """
+        Apply two-qubit XX rotation with optional noise.
+
+        Implements ``RXX(theta) = exp(-i theta/2 X ⊗ X)``.
+
+        Args:
+            w (Union[float, jnp.ndarray, List[float]]): Rotation angle.
+            wires (Union[int, List[int]]): Two qubit indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
+            input_idx (int): Flag for the tape to track inputs.
+
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
+        """
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
+        op.RXX(w, wires=wires, input_idx=input_idx)
+        UnitaryGates.Noise(wires, noise_params)
+
+    @staticmethod
+    def RYY(
+        w: Union[float, jnp.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+        input_idx: int = -1,
+    ) -> None:
+        """
+        Apply two-qubit YY rotation with optional noise.
+
+        Implements ``RYY(theta) = exp(-i theta/2 Y ⊗ Y)``.
+
+        Args:
+            w (Union[float, jnp.ndarray, List[float]]): Rotation angle.
+            wires (Union[int, List[int]]): Two qubit indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
+            input_idx (int): Flag for the tape to track inputs.
+
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
+        """
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
+        op.RYY(w, wires=wires, input_idx=input_idx)
+        UnitaryGates.Noise(wires, noise_params)
+
+    @staticmethod
+    def RZZ(
+        w: Union[float, jnp.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+        input_idx: int = -1,
+    ) -> None:
+        """
+        Apply two-qubit ZZ rotation with optional noise.
+
+        Implements ``RZZ(theta) = exp(-i theta/2 Z ⊗ Z)``.
+
+        Args:
+            w (Union[float, jnp.ndarray, List[float]]): Rotation angle.
+            wires (Union[int, List[int]]): Two qubit indices.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
+            input_idx (int): Flag for the tape to track inputs.
+
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
+        """
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
+        op.RZZ(w, wires=wires, input_idx=input_idx)
+        UnitaryGates.Noise(wires, noise_params)
+
+    @staticmethod
+    def RZX(
+        w: Union[float, jnp.ndarray, List[float]],
+        wires: Union[int, List[int]],
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+        input_idx: int = -1,
+    ) -> None:
+        """
+        Apply two-qubit ZX rotation with optional noise.
+
+        Implements ``RZX(theta) = exp(-i theta/2 Z ⊗ X)``, with ``Z`` acting
+        on the first wire and ``X`` on the second wire.
+
+        Args:
+            w (Union[float, jnp.ndarray, List[float]]): Rotation angle.
+            wires (Union[int, List[int]]): Two qubit indices ``[zwire, xwire]``.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
+            input_idx (int): Flag for the tape to track inputs.
+
+        Returns:
+            None: Gate and noise are applied in-place to the circuit.
+        """
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
+        op.RZX(w, wires=wires, input_idx=input_idx)
+        UnitaryGates.Noise(wires, noise_params)
+
+    @staticmethod
     def CPhase(
         w: Union[float, jnp.ndarray, List[float]],
         wires: Union[int, List[int]],
