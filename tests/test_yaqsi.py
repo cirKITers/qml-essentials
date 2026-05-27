@@ -1769,7 +1769,7 @@ class TestChunk:
             for a in (small_thetas,)
         )
         cache_key = ("density", (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
-        batched_fn, _, _ = script._jit_cache[cache_key]
+        batched_fn, _, _, _ = script._jit_cache[cache_key]
 
         # Now execute a larger batch in chunks of 5 (4 chunks total).
         # The JIT kernel is already compiled so no re-tracing occurs.
@@ -1813,6 +1813,60 @@ class TestChunk:
             memory_fraction=0.00001,
         )
         assert chunk >= 1
+
+    @pytest.mark.unittest
+    def test_estimate_peak_bytes_scales_with_n_ops(self):
+        """Gate-temporary contribution must scale linearly with n_ops."""
+        # With a single gate the estimate must equal the legacy value.
+        legacy = Script._estimate_peak_bytes(6, 100, "state", False, 0)
+        same = Script._estimate_peak_bytes(6, 100, "state", False, 0, n_ops=1)
+        assert legacy == same
+
+        # Adding more gates must monotonically increase the estimate.
+        est_30 = Script._estimate_peak_bytes(6, 100, "state", False, 0, n_ops=30)
+        assert est_30 > same
+        # Roughly: gate_tmp dominates over sv for n_ops >> 1, so we expect
+        # a ~n_ops-fold increase in the gate_tmp contribution.
+        # The exact ratio depends on sv/output overhead — bound loosely.
+        assert est_30 >= same * 10
+
+    @pytest.mark.unittest
+    def test_compute_chunk_size_triggers_with_many_ops(self, monkeypatch):
+        """A deep circuit on a large batch must chunk even when the
+        single-gate estimate fits in available memory.
+
+        This regression test pins the OOM scenario from
+        ``tests_external/oom.py``: with the legacy n_ops=1 estimate the
+        full batch fits in ~0.6 GB and chunking is skipped; with the
+        n_ops-aware estimate, chunking must trigger.
+        """
+        # Pretend we have 7 GB available (typical desktop free RAM).
+        monkeypatch.setattr(
+            Script, "_available_memory_bytes", staticmethod(lambda: 7 * 1024**3)
+        )
+        # 6 qubits, B = 209498 (matches the FCC/golomb reproducer),
+        # expval with 6 single-qubit observables, ~30 ops on the tape.
+        chunk_legacy = Script._compute_chunk_size(
+            n_qubits=6,
+            batch_size=209498,
+            type="expval",
+            use_density=False,
+            n_obs=6,
+            n_ops=1,
+        )
+        chunk_real = Script._compute_chunk_size(
+            n_qubits=6,
+            batch_size=209498,
+            type="expval",
+            use_density=False,
+            n_obs=6,
+            n_ops=30,
+        )
+        # With n_ops=1 the estimate fits and chunking is skipped.
+        assert chunk_legacy == 209498
+        # With n_ops=30 chunking *must* be engaged.
+        assert chunk_real < 209498
+        assert chunk_real >= 1
 
     @staticmethod
     def _chunked_circuit_expval(theta):
@@ -1881,7 +1935,7 @@ class TestChunk:
             (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
         )
         cache_key = (exec_type, (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
-        batched_fn, _, _ = script2._jit_cache[cache_key]
+        batched_fn, _, _, _ = script2._jit_cache[cache_key]
 
         batch_size = thetas.shape[0]
         chunked_result = Script._execute_chunked(
@@ -1920,7 +1974,7 @@ class TestChunk:
             (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
         )
         cache_key = ("probs", (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
-        batched_fn, _, _ = script2._jit_cache[cache_key]
+        batched_fn, _, _, _ = script2._jit_cache[cache_key]
 
         # 7 elements, chunk_size=3 → chunks of [3, 3, 1]
         chunked_result = Script._execute_chunked(

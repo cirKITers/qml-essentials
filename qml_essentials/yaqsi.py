@@ -774,6 +774,7 @@ class Script:
         type: str,
         use_density: bool,
         n_obs: int = 0,
+        n_ops: int = 1,
     ) -> int:
         """Estimate peak memory (bytes) for a batched simulation.
 
@@ -781,7 +782,11 @@ class Script:
 
         - The batched statevector (always needed, even for density).
         - The batched output tensor (state / probs / density / expval).
-        - One gate-tensor temporary per batch element (the einsum buffer).
+        - Gate-tensor temporaries (the einsum buffers).  XLA frequently
+          keeps several per-gate ``(B, dim)`` (or ``(B, dim, dim)`` for
+          density) buffers alive simultaneously when fusion is not
+          possible, so we multiply the per-element gate cost by *n_ops*
+          (the number of operations on the recorded tape).
 
         Observable matrices are **not** counted: they are computed inside
         the JIT-compiled function and XLA manages their lifetime (reusing
@@ -806,6 +811,9 @@ class Script:
                 ``"density"``).
             use_density: Whether density-matrix simulation is used.
             n_obs: Number of observables (relevant for ``"expval"``).
+            n_ops: Number of operations on the circuit tape.  Used to
+                scale the per-gate intermediate buffers.  Defaults to 1
+                (backwards-compatible single-buffer estimate).
 
         Returns:
             Estimated peak memory in bytes.
@@ -816,6 +824,10 @@ class Script:
         elem = 16 if jax.config.x64_enabled else 8  # complex128 vs complex64
         real_elem = elem // 2  # float64 vs float32
 
+        # Clamp n_ops to at least 1 so callers that omit the argument
+        # reproduce the previous behaviour.
+        n_ops = max(int(n_ops), 1)
+
         # Statevector: always allocated during simulation
         sv_bytes = batch_size * dim * elem
 
@@ -823,9 +835,10 @@ class Script:
         # the full rho (dim × dim) must be held during gate evolution —
         # even if the final output is only probs or expval.
         # apply_to_density contracts both U and U* against rho, so at least
-        # two intermediate (dim × dim) buffers are alive simultaneously.
+        # two intermediate (dim × dim) buffers are alive simultaneously
+        # *per applied operation*.
         if use_density:
-            sim_bytes = 2 * batch_size * dim * dim * elem
+            sim_bytes = 2 * n_ops * batch_size * dim * dim * elem
         else:
             sim_bytes = 0  # statevector is already counted above
 
@@ -842,8 +855,13 @@ class Script:
         else:  # state
             out_bytes = batch_size * dim * elem
 
-        # Gate temporaries: einsum creates one (2,)*n buffer per batch elem
-        gate_tmp = batch_size * dim * elem
+        # Gate temporaries: einsum creates a ``(B, dim)`` (statevector) or
+        # ``(B, dim, dim)`` (density) buffer per gate, and XLA cannot
+        # always free them between consecutive ops, so scale by ``n_ops``.
+        if use_density:
+            gate_tmp = n_ops * batch_size * dim * dim * elem
+        else:
+            gate_tmp = n_ops * batch_size * dim * elem
 
         # Peak = max(simulation phase, output phase).  During simulation
         # the intermediate + statevector + gate temps are alive.  After
@@ -897,6 +915,7 @@ class Script:
         use_density: bool,
         n_obs: int = 0,
         memory_fraction: float = 0.8,
+        n_ops: int = 1,
     ) -> int:
         """Determine the largest chunk size that fits in available memory.
 
@@ -920,13 +939,15 @@ class Script:
             n_obs: Number of observables.
             memory_fraction: Fraction of available memory to target
                 (default 0.8 = 80%).
+            n_ops: Number of operations on the recorded tape.  Forwarded
+                to :meth:`_estimate_peak_bytes`.  Defaults to 1.
 
         Returns:
             Chunk size (number of batch elements per sub-batch).
         """
         avail = int(Script._available_memory_bytes() * memory_fraction)
         full_est = Script._estimate_peak_bytes(
-            n_qubits, batch_size, type, use_density, n_obs
+            n_qubits, batch_size, type, use_density, n_obs, n_ops=n_ops
         )
 
         if full_est <= avail:
@@ -949,7 +970,9 @@ class Script:
         avail_for_chunks = max(avail - accum_bytes, elem)  # at least 1 element
 
         # Per-element cost: the memory for computing a single batch element.
-        per_elem = Script._estimate_peak_bytes(n_qubits, 1, type, use_density, n_obs)
+        per_elem = Script._estimate_peak_bytes(
+            n_qubits, 1, type, use_density, n_obs, n_ops=n_ops
+        )
 
         if per_elem <= 0:
             return batch_size
@@ -1613,7 +1636,7 @@ class Script:
         cached = self._jit_cache.get(cache_key)
         # if cached is not None and shots is None and not in_transform:
         if cached is not None and shots is None:
-            batched_fn, n_qubits, use_density = cached
+            batched_fn, n_qubits, use_density, n_ops = cached
             # Check if we already determined the chunk size for this
             # exact batch_size (avoids repeated psutil syscalls).
             mem_key = ("_mem", cache_key, batch_size)
@@ -1625,7 +1648,7 @@ class Script:
                     batched_fn, args, in_axes, batch_size, cached_chunk
                 )
             chunk_size = self._compute_chunk_size(
-                n_qubits, batch_size, type, use_density, len(obs)
+                n_qubits, batch_size, type, use_density, len(obs), n_ops=n_ops
             )
             self._jit_cache[mem_key] = chunk_size
             if chunk_size >= batch_size:
@@ -1651,9 +1674,10 @@ class Script:
         n_qubits = self._n_qubits or self._infer_n_qubits(tape, obs)
         has_noise = any(isinstance(op, KrausChannel) for op in tape)
         use_density = type == "density" or has_noise
+        n_ops = len(tape)
 
         chunk_size = self._compute_chunk_size(
-            n_qubits, batch_size, type, use_density, len(obs)
+            n_qubits, batch_size, type, use_density, len(obs), n_ops=n_ops
         )
 
         # Re-recording inside this function is necessary: the tape may
@@ -1694,7 +1718,12 @@ class Script:
                 batched_fn = eqx.filter_jit(
                     jax.vmap(_single_execute_shots, in_axes=shot_in_axes)
                 )
-                self._jit_cache[shot_cache_key] = (batched_fn, n_qubits, use_density)
+                self._jit_cache[shot_cache_key] = (
+                    batched_fn,
+                    n_qubits,
+                    use_density,
+                    n_ops,
+                )
 
             if chunk_size >= batch_size:
                 return batched_fn(*shot_args)
@@ -1732,8 +1761,8 @@ class Script:
         # the wrapper under a different outer trace would leak its
         # tracers).
         # if not in_transform:
-        #     self._jit_cache[cache_key] = (batched_fn, n_qubits, use_density)
-        self._jit_cache[cache_key] = (batched_fn, n_qubits, use_density)
+        #     self._jit_cache[cache_key] = (batched_fn, n_qubits, use_density, n_ops)
+        self._jit_cache[cache_key] = (batched_fn, n_qubits, use_density, n_ops)
 
         if chunk_size >= batch_size:
             return batched_fn(*args)
