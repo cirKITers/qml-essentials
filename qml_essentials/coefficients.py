@@ -1043,6 +1043,28 @@ class FCC:
             float: The FCC
         """
 
+        # Memory-efficient fast path
+        if trim_redundant and not weight:
+            _, coeffs, freqs = cls._calculate_coefficients(
+                model, n_samples, random_key, scale, **kwargs
+            )
+            pos_idx = cls._calculate_mask(freqs)
+            coeffs_flat = coeffs.reshape(-1, coeffs.shape[-1])
+            coeffs_sub = coeffs_flat[pos_idx]
+
+            fp = cls._correlate(coeffs_sub.transpose(), method=method)
+            abs_fp = jnp.abs(fp)
+            diag = jnp.abs(jnp.diagonal(fp))
+
+            total_sum = jnp.nansum(abs_fp)
+            total_count = jnp.sum(jnp.isfinite(abs_fp))
+            diag_sum = jnp.nansum(diag)
+            diag_count = jnp.sum(jnp.isfinite(diag))
+
+            lower_sum = (total_sum - diag_sum) / 2.0
+            lower_count = (total_count - diag_count) / 2.0
+            return lower_sum / lower_count
+
         fourier_fingerprint, _ = cls.get_fourier_fingerprint(
             model,
             n_samples,
@@ -1101,6 +1123,35 @@ class FCC:
             model, n_samples, random_key, scale, **kwargs
         )
 
+        # Memory-efficient fast path
+        if trim_redundant and not weight:
+            pos_idx = cls._calculate_mask(freqs)
+
+            # Flatten all frequency axes; the last axis is the sample
+            # axis. `_calculate_mask` returns flat indices in C order,
+            # matching this reshape.
+            coeffs_flat = coeffs.reshape(-1, coeffs.shape[-1])
+            coeffs_sub = coeffs_flat[pos_idx]
+
+            fourier_fingerprint = cls._correlate(coeffs_sub.transpose(), method=method)
+
+            if nan_to_one:
+                fourier_fingerprint = jnp.where(
+                    jnp.isnan(fourier_fingerprint), 1.0, fourier_fingerprint
+                )
+
+            M = fourier_fingerprint.shape[0]
+            lower_tri_mask = jnp.tri(M, k=-1, dtype=bool)
+            fourier_fingerprint = jnp.where(
+                lower_tri_mask, fourier_fingerprint, jnp.nan
+            )
+
+            row_mask = jnp.any(jnp.isfinite(fourier_fingerprint), axis=1)
+            col_mask = jnp.any(jnp.isfinite(fourier_fingerprint), axis=0)
+            fourier_fingerprint = fourier_fingerprint[row_mask][:, col_mask]
+
+            return fourier_fingerprint, freqs
+
         fourier_fingerprint = cls._correlate(coeffs.transpose(), method=method)
 
         if nan_to_one:
@@ -1113,10 +1164,19 @@ class FCC:
         )
 
         if trim_redundant:
-            mask = cls._calculate_mask(freqs)
+            pos_idx = cls._calculate_mask(freqs)
 
-            # apply the mask on the fingerprint
-            fourier_fingerprint = mask * fourier_fingerprint
+            # restrict to the positive-frequency sub-block (M x M with
+            # M = number of non-negative flat-frequencies) instead of
+            # building a full N x N mask. This avoids the O(N^2) float
+            fourier_fingerprint = fourier_fingerprint[pos_idx][:, pos_idx]
+
+            # keep only the strict lower triangle; the rest -> nan
+            M = fourier_fingerprint.shape[0]
+            lower_tri_mask = jnp.tri(M, k=-1, dtype=bool)
+            fourier_fingerprint = jnp.where(
+                lower_tri_mask, fourier_fingerprint, jnp.nan
+            )
 
             row_mask = jnp.any(jnp.isfinite(fourier_fingerprint), axis=1)
             col_mask = jnp.any(jnp.isfinite(fourier_fingerprint), axis=0)
@@ -1146,40 +1206,51 @@ class FCC:
     @classmethod
     def _calculate_mask(cls, freqs: jnp.ndarray) -> jnp.ndarray:
         """
-        Method to calculate a mask filtering out redundant elements
-        of the Fourier correlation matrix, based on the provided frequency vector.
-        It does so by 'simulating' the operations that would be performed
-        by `_correlate`.
+        Determine the flat indices of the Fourier correlation matrix
+        that lie on a non-negative-frequency row/column. Together with
+        the strict-lower-triangle condition (handled by the caller),
+        these indices select the entries of the correlation matrix
+        that survive the redundancy filter applied in
+        `get_fourier_fingerprint`:
+
+        - rows/columns whose flat frequency component is negative are
+          discarded (they are the complex-conjugate redundancies of
+          their positive counterparts);
+        - of the remaining positive-frequency sub-block, only the
+          strict lower triangle is kept (the upper triangle, including
+          the diagonal, contains either duplicates from symmetry or
+          self-correlations).
 
         Args:
-            freqs (jnp.ndarray): Array of frequencies
+            freqs (jnp.ndarray): Array of frequencies. Either a 1-D
+                vector (single input feature) or a 2-D array of shape
+                ``(n_input_feat, K)`` whose rows are the per-axis
+                frequency vectors.
 
         Returns:
-            jnp.ndarray: The mask
+            jnp.ndarray: 1-D int array of flat indices selecting the
+                non-negative-frequency rows/cols of the fingerprint.
         """
-        # TODO: this part can be heavily optimized, by e.g. using a "positive_only"
-        # flag when calculating the coefficients.
-        # However this would change the numerical values
-        # (while the order should be still the same).
+        freqs_arr = jnp.asarray(freqs)
 
-        # disregard all the negativ frequencies
-        freqs[freqs < 0] = jnp.nan
-        # compute the outer product of the frequency vectors for arbitrary dimensions
-        # or just use the existing frequency vector if it is 1D
-        nd_freqs = (
-            reduce(jnp.multiply, jnp.ix_(*freqs)) if len(freqs.shape) > 1 else freqs
-        )
-        # TODO: could prevent this if we're not using .squeeze()..
+        if freqs_arr.ndim == 1:
+            pos_flat = freqs_arr >= 0
+        else:
+            # N-D case: build the per-axis non-negativity masks and
+            # combine them via broadcasting (no float `jnp.outer`!),
+            # then flatten to match the row-major flattening used by
+            # the upstream coefficient/correlation pipeline.
+            axes_pos = [freqs_arr[i] >= 0 for i in range(freqs_arr.shape[0])]
+            expanded = []
+            n_axes = len(axes_pos)
+            for i, p in enumerate(axes_pos):
+                shape = [1] * n_axes
+                shape[i] = p.shape[0]
+                expanded.append(p.reshape(shape))
+            nd_pos = reduce(jnp.logical_and, expanded)
+            pos_flat = nd_pos.flatten()
 
-        # "simulate" what would happen on correlating the coefficients
-        corr_freqs = jnp.outer(nd_freqs, nd_freqs)
-        # mask all frequencies that are nan now
-        # (i.e. all correlations with a negative frequency component)
-        corr_mask = jnp.where(jnp.isnan(corr_freqs), corr_freqs, 1)
-        # from this, disregard all the other redundant correlations (i.e. c_0_1 = c_1_0)
-        corr_mask = corr_mask.at[jnp.triu_indices(corr_mask.shape[0], 0)].set(jnp.nan)
-
-        return corr_mask
+        return jnp.where(pos_flat)[0]
 
     @classmethod
     def _calculate_coefficients(
