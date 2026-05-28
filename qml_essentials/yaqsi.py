@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import jax.scipy.linalg
 import equinox as eqx
 
+from qml_essentials.script import Script  # noqa: F401
 from qml_essentials.operations import (
     Hermitian,
     ParametrizedHamiltonian,
