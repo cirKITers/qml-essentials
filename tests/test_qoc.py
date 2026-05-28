@@ -327,16 +327,20 @@ class TestOptimizeSmoke:
 
 
 class TestFidelity:
-    single_qubit_pulse_testdata = itertools.product(
+    single_qubit_rot_pulse_testdata = itertools.product(
         ["RX", "RY", "RZ", "H"],
         [0.0, jnp.pi / 4, jnp.pi / 2, 3 * jnp.pi / 4, jnp.pi],
     )
-    two_qubit_pulse_testdata = itertools.product(
+    two_qubit_controlled_rot_pulse_testdata = itertools.product(
         ["CX", "CY", "CZ", "CRX", "CRY", "CRZ"], [0.0, jnp.pi / 4, jnp.pi / 2, jnp.pi]
+    )
+    two_qubit_rot_pulse_testdata = itertools.product(
+        ["RXX", "RYY", "RZZ", "RZX", "CRY", "CRZ"],
+        [0.0, jnp.pi / 4, jnp.pi / 2, jnp.pi],
     )
 
     @pytest.mark.unittest
-    @pytest.mark.parametrize("gate,w", single_qubit_pulse_testdata)
+    @pytest.mark.parametrize("gate,w", single_qubit_rot_pulse_testdata)
     def test_single_qubit_pulse_gate(self, gate, w):
         qoc = QOC(**qoc_test_params())
         pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
@@ -360,7 +364,7 @@ class TestFidelity:
         )
 
     @pytest.mark.unittest
-    @pytest.mark.parametrize("gate,w", two_qubit_pulse_testdata)
+    @pytest.mark.parametrize("gate,w", two_qubit_controlled_rot_pulse_testdata)
     def test_two_qubit_pulse_gate(self, gate, w):
         qoc = QOC(**qoc_test_params())
         pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
