@@ -271,16 +271,6 @@ from qml_essentials.qoc import CostFnRegistry
     options:
       heading_level: 4
 
-## Yaqsi
-
-```python
-from qml_essentials.yaqsi import Script
-```
-
-::: qml_essentials.yaqsi.Script
-    options:
-      heading_level: 3
-
 ### Yaqsi Core
 
 ```python
@@ -290,6 +280,16 @@ from qml_essentials.yaqsi import Yaqsi
 ::: qml_essentials.yaqsi.Yaqsi
     options:
       heading_level: 4
+
+## Script
+
+```python
+from qml_essentials.script import Script
+```
+
+::: qml_essentials.script.Script
+    options:
+      heading_level: 3
 
 ## Drawing
 
