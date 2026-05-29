@@ -1689,34 +1689,41 @@ class Datasets:
             jnp.ndarray: Fourier coefficients with shape ((N,)*D)
 
         """
-        # TODO: the following code can be considered to
-        # capturing a truly random spectrum.
-        # add some constraints on the spectrum, i.e. not fully
-
         # Note: one key observation for understanding the following code is,
         # that instead of wrapping your head around symmetries in multi-
         # dimensional coefficient matrices, one can simply look at the flattened
         # version of such a matrix and reshape later. It just works out.
 
-        # going from [0, 2pi] with the resolution required for highest frequency
-        # permute with input dimensionality to get an n-d grid of domain samples
-        # the output shape comes from the fact that want to create a "coordinate system"
-        domain_samples_per_input_dim = jnp.stack(
-            jnp.meshgrid(
-                *[jnp.arange(0, 2 * jnp.pi, 2 * jnp.pi / d) for d in model.degree]
-            )
-        ).T.reshape(-1, model.n_input_feat)
+        domain_samples_per_input_dim = cls.construct_domain_samples(model)
 
-        # generate the frequency indices for each dimension.
-        # this will have the same shape as the domain samples
-        frequencies = jnp.stack(jnp.meshgrid(*model.frequencies)).T.reshape(
-            -1, model.n_input_feat
+        frequencies = cls.construct_frequencies(model)
+
+        coefficients = cls.construct_coefficients(
+            random_key, model, coefficients_min, coefficients_max, zero_centered
         )
 
+        values = cls.calculate_values(
+            domain_samples_per_input_dim, frequencies, coefficients
+        )
+
+        # return all the information we have
+        return [
+            domain_samples_per_input_dim.reshape(*model.degree, -1),
+            values.reshape(model.degree),
+            coefficients.reshape(model.degree),
+        ]
+
+    def construct_coefficients(
+        cls,
+        random_key: random.PRNGKey,
+        model: Model,
+        coefficients_min: float = 0.0,
+        coefficients_max: float = 1.0,
+        zero_centered: bool = False,
+    ):
         # using the frequency information, sample coefficients for each dimension
         # shape: (input_dims, n_freqs_per_input_dim // 2 + 1)
-
-        coefficients = cls.uniform_circle(
+        result = cls.uniform_circle(
             random_key,
             low=coefficients_min,
             high=coefficients_max,
@@ -1727,24 +1734,48 @@ class Datasets:
         # we can assume the first coeff is the offset, because we're dealing
         # with a non-symmetric spectrum here
         if zero_centered:
-            coefficients = coefficients.at[0].set(0.0)
+            result = result.at[0].set(0.0)
         else:
-            coefficients = coefficients.at[0].set(coefficients[0].real)
+            result = result.at[0].set(result[0].real)
 
         # ensure symmetry (here, non_negative_ is removed!),
         # giving us the full coefficients vector
-        coefficients = jnp.concat(
+        result = jnp.concat(
             [
-                jnp.flip(coefficients[..., 1:]).conjugate(),
-                coefficients,
+                jnp.flip(result[..., 1:]).conjugate(),
+                result,
             ],
             axis=-1,
         )
 
+        return result
+
+    def construct_domain_samples(cls, model: Model):
+        # going from [0, 2pi] with the resolution required for highest frequency
+        # permute with input dimensionality to get an n-d grid of domain samples
+        # the output shape comes from the fact that want to create a "coordinate system"
+        result = jnp.stack(
+            jnp.meshgrid(
+                *[jnp.arange(0, 2 * jnp.pi, 2 * jnp.pi / d) for d in model.degree]
+            )
+        ).T.reshape(-1, model.n_input_feat)
+
+        return result
+
+    def construct_frequencies(cls, model: Model):
+        # generate the frequency indices for each dimension.
+        # this will have the same shape as the domain samples
+        result = jnp.stack(jnp.meshgrid(*model.frequencies)).T.reshape(
+            -1, model.n_input_feat
+        )
+
+        return result
+
+    def calculate_values(cls, domain_samples_per_input_dim, frequencies, coefficients):
         # Vectorized version of $f(x) = \sum_{n=0}^{N-1} c_n * e^{i * \omega_n * x}$
         # it takes into account the input dimension, i.e. the output is a matrix
         # normalization uses the n_freqs component of the coefficients
-        values = jnp.real(
+        result = jnp.real(
             (
                 jnp.exp(1j * (domain_samples_per_input_dim @ frequencies.T))
                 * coefficients
@@ -1752,12 +1783,7 @@ class Datasets:
             / coefficients.size
         )
 
-        # return all the information we have
-        return [
-            domain_samples_per_input_dim.reshape(*model.degree, -1),
-            values.reshape(model.degree),
-            coefficients.reshape(model.degree),
-        ]
+        return result
 
     @classmethod
     def uniform_circle(
