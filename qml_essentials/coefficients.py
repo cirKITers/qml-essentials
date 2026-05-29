@@ -1152,7 +1152,7 @@ class FCC:
             col_mask = jnp.any(jnp.isfinite(fourier_fingerprint), axis=0)
             fourier_fingerprint = fourier_fingerprint[row_mask][:, col_mask]
 
-            return fourier_fingerprint, freqs
+            return fourier_fingerprint, coeffs, freqs
 
         fourier_fingerprint = cls._correlate(coeffs.transpose(), method=method)
 
