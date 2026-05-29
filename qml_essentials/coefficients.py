@@ -1713,6 +1713,7 @@ class Datasets:
             coefficients.reshape(model.degree),
         ]
 
+    @classmethod
     def construct_coefficients(
         cls,
         random_key: random.PRNGKey,
@@ -1774,6 +1775,7 @@ class Datasets:
 
         return result
 
+    @classmethod
     def construct_domain_samples(cls, model: Model):
         """
         Constructs an N-dimensional grid of domain samples over ``[0, 2π)``
@@ -1803,6 +1805,7 @@ class Datasets:
 
         return result
 
+    @classmethod
     def construct_frequencies(cls, model: Model):
         """
         Constructs the N-dimensional grid of frequency indices matching the
@@ -1828,6 +1831,7 @@ class Datasets:
 
         return result
 
+    @classmethod
     def calculate_values(cls, domain_samples_per_input_dim, frequencies, coefficients):
         """
         Evaluates a Fourier series at the given domain sample points.
