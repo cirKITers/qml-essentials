@@ -1721,6 +1721,30 @@ class Datasets:
         coefficients_max: float = 1.0,
         zero_centered: bool = False,
     ):
+        """
+        Constructs a set of Fourier coefficients compatible with the model's
+        frequency spectrum.
+
+        Coefficients are sampled uniformly from the complex unit circle and
+        arranged to satisfy the Hermitian symmetry required for a real-valued
+        Fourier series. The zero-frequency (DC) coefficient can optionally be
+        forced to zero.
+
+        Args:
+            random_key (random.PRNGKey): Random number key for JAX.
+            model (Model): The quantum circuit model, used to determine the
+                number of frequencies per input dimension.
+            coefficients_min (float, optional): Minimum radius for the uniform
+                circle sampling. Defaults to 0.0.
+            coefficients_max (float, optional): Maximum radius for the uniform
+                circle sampling. Defaults to 1.0.
+            zero_centered (bool, optional): If True, the DC (zero-frequency)
+                coefficient is set to zero. Defaults to False.
+
+        Returns:
+            jnp.ndarray: Flat complex coefficient array of length
+                ``math.prod(model.degree)``, with Hermitian symmetry enforced.
+        """
         # using the frequency information, sample coefficients for each dimension
         # shape: (input_dims, n_freqs_per_input_dim // 2 + 1)
         result = cls.uniform_circle(
@@ -1751,6 +1775,23 @@ class Datasets:
         return result
 
     def construct_domain_samples(cls, model: Model):
+        """
+        Constructs an N-dimensional grid of domain samples over ``[0, 2π)``
+        for each input dimension.
+
+        The resolution along each dimension is determined by the corresponding
+        entry in ``model.degree``, ensuring that all frequencies up to the
+        model's highest frequency are properly sampled.
+
+        Args:
+            model (Model): The quantum circuit model, used to determine the
+                number of input features and the degree (resolution) per
+                dimension.
+
+        Returns:
+            jnp.ndarray: Domain sample coordinates with shape
+                ``(math.prod(model.degree), model.n_input_feat)``.
+        """
         # going from [0, 2pi] with the resolution required for highest frequency
         # permute with input dimensionality to get an n-d grid of domain samples
         # the output shape comes from the fact that want to create a "coordinate system"
@@ -1763,6 +1804,22 @@ class Datasets:
         return result
 
     def construct_frequencies(cls, model: Model):
+        """
+        Constructs the N-dimensional grid of frequency indices matching the
+        domain sample grid produced by :meth:`construct_domain_samples`.
+
+        Each row of the returned array contains the frequency index tuple
+        corresponding to one domain sample point, enabling vectorised
+        evaluation of the Fourier series.
+
+        Args:
+            model (Model): The quantum circuit model, used to retrieve the
+                per-dimension frequency vectors via ``model.frequencies``.
+
+        Returns:
+            jnp.ndarray: Frequency index grid with shape
+                ``(math.prod(model.degree), model.n_input_feat)``.
+        """
         # generate the frequency indices for each dimension.
         # this will have the same shape as the domain samples
         result = jnp.stack(jnp.meshgrid(*model.frequencies)).T.reshape(
@@ -1772,6 +1829,26 @@ class Datasets:
         return result
 
     def calculate_values(cls, domain_samples_per_input_dim, frequencies, coefficients):
+        """
+        Evaluates a Fourier series at the given domain sample points.
+
+        Computes the real part of the normalised sum
+        :math:`f(x) = \\sum_n c_n \\, e^{i \\omega_n \\cdot x}` in a
+        vectorised manner, supporting an arbitrary number of input dimensions.
+
+        Args:
+            domain_samples_per_input_dim (jnp.ndarray): Domain coordinates with
+                shape ``(S, D)``, where ``S`` is the total number of sample
+                points and ``D`` is the number of input dimensions.
+            frequencies (jnp.ndarray): Frequency index grid with shape
+                ``(S, D)``, as returned by :meth:`construct_frequencies`.
+            coefficients (jnp.ndarray): Flat complex coefficient array of
+                length ``S``, as returned by :meth:`construct_coefficients`.
+
+        Returns:
+            jnp.ndarray: Real-valued Fourier series evaluations with shape
+                ``(S,)``.
+        """
         # Vectorized version of $f(x) = \sum_{n=0}^{N-1} c_n * e^{i * \omega_n * x}$
         # it takes into account the input dimension, i.e. the output is a matrix
         # normalization uses the n_freqs component of the coefficients
