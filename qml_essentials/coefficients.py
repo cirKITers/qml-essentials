@@ -1187,7 +1187,7 @@ class FCC:
 
             fourier_fingerprint = fourier_fingerprint[row_mask][:, col_mask]
 
-        return fourier_fingerprint, freqs
+        return fourier_fingerprint, coeffs, freqs
 
     @classmethod
     def calculate_fcc(
