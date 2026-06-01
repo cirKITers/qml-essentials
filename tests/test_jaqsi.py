@@ -1116,11 +1116,10 @@ def test_evolve_multi_term_time_dependent_unitarity() -> None:
     assert err < 1e-5
 
 
-@pytest.mark.skip()
 @pytest.mark.benchmark
 @pytest.mark.unittest
 @pytest.mark.parametrize(
-    "mode,speedup", [("probs", 70), ("expval", 80), ("state", 70), ("density", 65)]
+    "mode,speedup", [("probs", 110), ("expval", 110), ("state", 110), ("density", 70)]
 )
 def test_mode_performances(benchmark, mode, speedup) -> None:
     """
@@ -1770,7 +1769,7 @@ class TestChunk:
             for a in (small_thetas,)
         )
         cache_key = ("density", (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
-        batched_fn, _, _, _ = script._jit_cache[cache_key]
+        batched_fn, *_ = script._jit_cache[cache_key]
 
         # Now execute a larger batch in chunks of 5 (4 chunks total).
         # The JIT kernel is already compiled so no re-tracing occurs.
@@ -1936,7 +1935,7 @@ class TestChunk:
             (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
         )
         cache_key = (exec_type, (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
-        batched_fn, _, _, _ = script2._jit_cache[cache_key]
+        batched_fn, *_ = script2._jit_cache[cache_key]
 
         batch_size = thetas.shape[0]
         chunked_result = Script._execute_chunked(
@@ -1975,7 +1974,7 @@ class TestChunk:
             (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
         )
         cache_key = ("probs", (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
-        batched_fn, _, _, _ = script2._jit_cache[cache_key]
+        batched_fn, *_ = script2._jit_cache[cache_key]
 
         # 7 elements, chunk_size=3 → chunks of [3, 3, 1]
         chunked_result = Script._execute_chunked(
