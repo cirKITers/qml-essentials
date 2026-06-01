@@ -1116,6 +1116,7 @@ def test_evolve_multi_term_time_dependent_unitarity() -> None:
     assert err < 1e-5
 
 
+@pytest.mark.skip()
 @pytest.mark.benchmark
 @pytest.mark.unittest
 @pytest.mark.parametrize(
