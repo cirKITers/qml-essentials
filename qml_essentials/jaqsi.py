@@ -303,7 +303,7 @@ class Jaqsi:
                 throw=throw,
             )
 
-            y_final = sol.js[0]
+            y_final = sol.ys[0]
             U = y_final[0] + 1j * y_final[1]
 
             if not throw:
