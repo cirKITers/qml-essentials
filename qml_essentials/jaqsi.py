@@ -1,5 +1,6 @@
 from functools import reduce
 from typing import Any, Callable, List, Optional, Tuple, Union
+import math
 import threading
 
 import diffrax
@@ -202,8 +203,6 @@ class Jaqsi:
                     return jax.scipy.linalg.expm(Omega) @ U, None
 
             else:
-                import math
-
                 sqrt3 = math.sqrt(3.0)
                 c1 = 0.5 - sqrt3 / 6.0
                 c2 = 0.5 + sqrt3 / 6.0
