@@ -49,6 +49,7 @@ from qml_essentials.gates import (
     PulseInformation,
     PulseGates,
 )
+from qml_essentials import memory
 
 import logging
 
@@ -1710,8 +1711,8 @@ class TestMemory:
     @pytest.mark.unittest
     def test_estimate_peak_bytes_basic(self):
         """Memory estimates should be positive and scale with batch size."""
-        est1 = Script._estimate_peak_bytes(5, 1, "state", False)
-        est100 = Script._estimate_peak_bytes(5, 100, "state", False)
+        est1 = memory.estimate_peak_bytes(5, 1, "state", False)
+        est100 = memory.estimate_peak_bytes(5, 100, "state", False)
         assert est1 > 0
         assert est100 > est1
         # Should scale roughly linearly (within safety factor tolerance)
@@ -1720,15 +1721,15 @@ class TestMemory:
     @pytest.mark.unittest
     def test_estimate_peak_bytes_density_larger(self):
         """Density mode should estimate more memory than state mode."""
-        est_state = Script._estimate_peak_bytes(5, 100, "state", False)
-        est_density = Script._estimate_peak_bytes(5, 100, "density", True)
+        est_state = memory.estimate_peak_bytes(5, 100, "state", False)
+        est_density = memory.estimate_peak_bytes(5, 100, "density", True)
         assert est_density > est_state
 
     @pytest.mark.unittest
     def test_estimate_peak_bytes_qubits_scaling(self):
         """Memory should scale exponentially with qubit count."""
-        est4 = Script._estimate_peak_bytes(4, 10, "state", False)
-        est8 = Script._estimate_peak_bytes(8, 10, "state", False)
+        est4 = memory.estimate_peak_bytes(4, 10, "state", False)
+        est8 = memory.estimate_peak_bytes(8, 10, "state", False)
         # 8 qubits: dim=256 vs 4 qubits: dim=16  → ~16x more
         assert est8 > est4 * 10
 
@@ -1774,7 +1775,7 @@ class TestChunk:
         # Now execute a larger batch in chunks of 5 (4 chunks total).
         # The JIT kernel is already compiled so no re-tracing occurs.
         thetas = jnp.linspace(0, jnp.pi, 20)
-        result = Script._execute_chunked(
+        result = memory.execute_chunked(
             batched_fn, (thetas,), (0,), batch_size=20, chunk_size=5
         )
         assert result.shape == (20, 2**n_qubits, 2**n_qubits)
@@ -1783,7 +1784,7 @@ class TestChunk:
     def test_compute_chunk_size_fits(self):
         """When everything fits, chunk_size == batch_size."""
         # 2 qubits, 10 batch, state mode — tiny, always fits
-        chunk = Script._compute_chunk_size(2, 10, "state", False)
+        chunk = memory.compute_chunk_size(2, 10, "state", False)
         assert chunk == 10
 
     @pytest.mark.unittest
@@ -1791,7 +1792,7 @@ class TestChunk:
         """When batch doesn't fit, chunk_size < batch_size."""
         # Simulate a scenario that would exceed memory by using an absurd
         # qubit count — 30 qubits x 1M batch x density mode
-        chunk = Script._compute_chunk_size(
+        chunk = memory.compute_chunk_size(
             n_qubits=30,
             batch_size=1000000,
             type="density",
@@ -1804,7 +1805,7 @@ class TestChunk:
     @pytest.mark.unittest
     def test_compute_chunk_size_minimum_one(self):
         """Chunk size should never be less than 1."""
-        chunk = Script._compute_chunk_size(
+        chunk = memory.compute_chunk_size(
             n_qubits=30,
             batch_size=100,
             type="density",
@@ -1818,12 +1819,12 @@ class TestChunk:
     def test_estimate_peak_bytes_scales_with_n_ops(self):
         """Gate-temporary contribution must scale linearly with n_ops."""
         # With a single gate the estimate must equal the legacy value.
-        legacy = Script._estimate_peak_bytes(6, 100, "state", False, 0)
-        same = Script._estimate_peak_bytes(6, 100, "state", False, 0, n_ops=1)
+        legacy = memory.estimate_peak_bytes(6, 100, "state", False, 0)
+        same = memory.estimate_peak_bytes(6, 100, "state", False, 0, n_ops=1)
         assert legacy == same
 
         # Adding more gates must monotonically increase the estimate.
-        est_30 = Script._estimate_peak_bytes(6, 100, "state", False, 0, n_ops=30)
+        est_30 = memory.estimate_peak_bytes(6, 100, "state", False, 0, n_ops=30)
         assert est_30 > same
         # Roughly: gate_tmp dominates over sv for n_ops >> 1, so we expect
         # a ~n_ops-fold increase in the gate_tmp contribution.
@@ -1841,12 +1842,10 @@ class TestChunk:
         n_ops-aware estimate, chunking must trigger.
         """
         # Pretend we have 7 GB available (typical desktop free RAM).
-        monkeypatch.setattr(
-            Script, "_available_memory_bytes", staticmethod(lambda: 7 * 1024**3)
-        )
+        monkeypatch.setattr(memory, "available_memory_bytes", lambda: 7 * 1024**3)
         # 6 qubits, B = 209498 (matches the FCC/golomb reproducer),
         # expval with 6 single-qubit observables, ~30 ops on the tape.
-        chunk_legacy = Script._compute_chunk_size(
+        chunk_legacy = memory.compute_chunk_size(
             n_qubits=6,
             batch_size=209498,
             type="expval",
@@ -1854,7 +1853,7 @@ class TestChunk:
             n_obs=6,
             n_ops=1,
         )
-        chunk_real = Script._compute_chunk_size(
+        chunk_real = memory.compute_chunk_size(
             n_qubits=6,
             batch_size=209498,
             type="expval",
@@ -1938,7 +1937,7 @@ class TestChunk:
         batched_fn, *_ = script2._jit_cache[cache_key]
 
         batch_size = thetas.shape[0]
-        chunked_result = Script._execute_chunked(
+        chunked_result = memory.execute_chunked(
             batched_fn, (thetas,), (0,), batch_size=batch_size, chunk_size=chunk_size
         )
 
@@ -1977,7 +1976,7 @@ class TestChunk:
         batched_fn, *_ = script2._jit_cache[cache_key]
 
         # 7 elements, chunk_size=3 → chunks of [3, 3, 1]
-        chunked_result = Script._execute_chunked(
+        chunked_result = memory.execute_chunked(
             batched_fn, (thetas,), (0,), batch_size=7, chunk_size=3
         )
 

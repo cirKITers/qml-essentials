@@ -5,7 +5,7 @@ import optax
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Gates, Encoding
 from qml_essentials.utils import PauliCircuit
-from qml_essentials.jaqsi import Script
+from qml_essentials import simulation
 from qml_essentials.pulses import PulseInformation
 from qml_essentials.coefficients import Datasets
 import pytest
@@ -1198,7 +1198,7 @@ def test_pauli_circuit_model() -> None:
         )
 
         # Execute the Pauli tape via jaqsi's statevector simulator
-        result_pauli_circuit = Script._simulate_and_measure(
+        result_pauli_circuit = simulation.simulate_and_measure(
             pauli_tape.operations,
             model.n_qubits,
             "expval",
