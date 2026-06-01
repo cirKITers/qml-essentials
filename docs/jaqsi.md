@@ -1,12 +1,12 @@
-# YAQSI
+# JAQSI
 
-This page aims to provide a brief overview of the YAQSI (yet another quantum simulator) embedded in our package.
+This page aims to provide a brief overview of the JAQSI (just another quantum simulator) embedded in our package.
 
 The simulator aims to be fully abstracted by the `Model` class, so for most usecases, it should not be required to interact with the simulator directly.
 However, some scenarios require building a custom circuits or require more granular control.
 
-In the figure below, you can see how YAQSI provides the Foundation for the more standard interfaces `Model`, `Ansaetze` and `Gates`.
-With the latter two being responsible of constructing quantum circuits and therefore interface direction with the `Operations` module of YAQSI, `Model` interfaces with the `Script` class, the main interface for circuit execution.
+In the figure below, you can see how JAQSI provides the Foundation for the more standard interfaces `Model`, `Ansaetze` and `Gates`.
+With the latter two being responsible of constructing quantum circuits and therefore interface direction with the `Operations` module of JAQSI, `Model` interfaces with the `Script` class, the main interface for circuit execution.
 
 Generally, all operations are registered on a `Tape` when being created in the context of a `Script` (see examples below).
 All matrix definitions (including Kraus channels for noisy simulation) are registered in the `Operations` module. 
@@ -26,7 +26,7 @@ The API of our simulator is very similar to what one might be used to know from 
 For a basic circuit execution, we have to do two imports:
 
 ```python
-import qml_essentials.yaqsi as ys
+import qml_essentials.jaqsi as ys
 import qml_essentials.operations as op
 ```
 
@@ -43,7 +43,7 @@ obs = [op.PauliZ(wires=0), op.PauliZ(wires=1)]
 Finally, creating a `Script` and excute it will give us the probabilities for this standard Bell-Circuit:
 
 ```python
-yss = ys.Script(circuit)
+yss = js.Script(circuit)
 yss.execute(type="probs", obs=obs)
 ```
 
@@ -59,7 +59,7 @@ def circuit(phi, theta, omega):
     op.Rot(jnp.pi, 1/2*jnp.pi, 1/4*jnp.pi, wires=0)
 
 obs = [op.PauliZ(wires=i) for i in range(n_qubits)]
-yss = ys.Script(circuit)
+yss = js.Script(circuit)
 yss.execute(type="expval", obs=obs, args=(jnp.pi, 1/2*jnp.pi, 1/4*jnp.pi))
 ```
 
@@ -94,7 +94,7 @@ def circuit():
         op.PauliX(wires=0).power(2)
 
 obs = [op.PauliZ(0)]
-yss = ys.Script(circuit)
+yss = js.Script(circuit)
 res = yss.execute(type="expval", obs=obs)
 
 print(res) # we expect to end up in |0⟩ again
@@ -109,13 +109,13 @@ def circuit():
     op.DepolarizingChannel(0.1, wires=0)
     op.DepolarizingChannel(0.1, wires=1)
 
-yss = ys.Script(circuit)
+yss = js.Script(circuit)
 rho = yss.execute(type="density")
 purity = jnp.real(jnp.trace(rho @ rho))
 print(purity) # Purity should be < 1 
 ```
 
-As [Pulse Gates](pulses.md) are built entirely upon YAQSI operations, you can also use those in the circuit to perform pulse level simulation:
+As [Pulse Gates](pulses.md) are built entirely upon JAQSI operations, you can also use those in the circuit to perform pulse level simulation:
 
 ```python
 from qml_essentials.gates import PulseGates
@@ -124,7 +124,7 @@ def circuit(w):
     PulseGates.RX(w, wires=0)
 
 obs = [op.PauliZ(0)]
-yss = ys.Script(circuit)
+yss = js.Script(circuit)
 res = yss.execute(type="expval", obs=obs, args=(jnp.pi*0.5,))
 print(res) # expect sth. around 0 (but not too close)
 ```
@@ -139,7 +139,7 @@ def circuit(w):
     op.DepolarizingChannel(0.1, wires=0)
     op.DepolarizingChannel(0.1, wires=1)
 
-yss = ys.Script(circuit)
+yss = js.Script(circuit)
 res = yss.execute(type="density", args=(jnp.pi*0.5,))
 purity = jnp.real(jnp.trace(rho @ rho))
 print(purity) # Purity should be < 1 
@@ -156,7 +156,7 @@ def circuit(w):
     PulseGates.H(wires=1)
     PulseGates.H(wires=1)
 
-yss = ys.Script(circuit)
+yss = js.Script(circuit)
 
 fig, axes = yss.draw(figure="pulse", args=(jnp.pi*0.5,))
 ```
@@ -182,7 +182,7 @@ The performance can be tuned on following different levels:
    interaction-picture Hamiltonian.
    Default is `False` (exact integration).
 
-2. **`Yaqsi.set_solver_defaults(solver=...)`** — opt-in commutator-free
+2. **`Jaqsi.set_solver_defaults(solver=...)`** — opt-in commutator-free
    Magnus integrator on a fixed `lax.scan` grid.  
    No RWA, exact `H_I(t)`, but trades the adaptive Dopri8 step
    controller for a fixed grid of `magnus_steps` substeps that fuses
@@ -204,8 +204,8 @@ The performance can be tuned on following different levels:
    (a few steps per period of `\\omega_c + \\omega_q`).
 
    ```python
-   from qml_essentials.yaqsi import Yaqsi
-   Yaqsi.set_solver_defaults(solver="magnus4", magnus_steps=512)
+   from qml_essentials.jaqsi import Jaqsi
+   Jaqsi.set_solver_defaults(solver="magnus4", magnus_steps=512)
    ```
 
 3. **`PulseInformation.set_frame("drive")`** — algebraic rewrite of

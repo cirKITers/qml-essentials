@@ -271,13 +271,13 @@ from qml_essentials.qoc import CostFnRegistry
     options:
       heading_level: 4
 
-### Yaqsi Core
+### Jaqsi Core
 
 ```python
-from qml_essentials.yaqsi import Yaqsi
+from qml_essentials.jaqsi import Jaqsi
 ```
 
-::: qml_essentials.yaqsi.Yaqsi
+::: qml_essentials.jaqsi.Jaqsi
     options:
       heading_level: 4
 

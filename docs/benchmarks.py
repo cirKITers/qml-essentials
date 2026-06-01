@@ -8,10 +8,9 @@ import matplotlib.lines as mlines
 import matplotlib.ticker
 import csv
 import numpy as np
+import logging
 
-jax.config.update("jax_enable_x64", True)
-
-from qml_essentials.yaqsi import (
+from qml_essentials.jaqsi import (
     Script,
 )
 from qml_essentials.operations import (
@@ -20,7 +19,7 @@ from qml_essentials.operations import (
     PauliZ,
 )
 
-import logging
+jax.config.update("jax_enable_x64", True)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -64,9 +63,9 @@ def var_ghz_benchmark(mode, q) -> None:
         subkey, shape=(n_iters + 1, batch_size), minval=-jnp.pi, maxval=jnp.pi
     )
 
-    logger.info("Running Yaqsi benchmark")
+    logger.info("Running Jaqsi benchmark")
 
-    # --- Yaqsi ---
+    # --- Jaqsi ---
     def yaqsi_circuit(phi):
         for i in range(n_qubits):
             H(wires=i)
@@ -102,8 +101,8 @@ def var_ghz_benchmark(mode, q) -> None:
     std_ys = float(np.std(ys_times))
 
     logger.info(
-        f"Yaqsi {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
-        f"{t_ys*1000:.2f} ± {std_ys*1000:.2f} ms"
+        f"Jaqsi {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
+        f"{t_ys * 1000:.2f} ± {std_ys * 1000:.2f} ms"
     )
 
     # Now the same thing for pennylane
@@ -140,12 +139,12 @@ def var_ghz_benchmark(mode, q) -> None:
 
     logger.info(
         f"PennyLane {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
-        f"{t_pl*1000:.2f} ± {std_pl*1000:.2f} ms"
+        f"{t_pl * 1000:.2f} ± {std_pl * 1000:.2f} ms"
     )
-    logger.info(f"Ratio pl/yaqsi: {t_pl/t_ys:.2f}x")
+    logger.info(f"Ratio pl/jaqsi: {t_pl / t_ys:.2f}x")
 
     res_pl_arr = jnp.array(res_pl)
-    # PennyLane returns expval as (n_obs, batch) while Yaqsi returns
+    # PennyLane returns expval as (n_obs, batch) while Jaqsi returns
     # (batch, n_obs).  For other modes the shapes already agree.
     if mode == "expval":
         res_pl_arr = res_pl_arr.T
@@ -153,7 +152,7 @@ def var_ghz_benchmark(mode, q) -> None:
     if not jnp.allclose(res_ys, res_pl_arr, atol=precision):
         logger.error(
             f"Error occured at {q} qubits for mode {mode}:\
-                    Results do not match; got Yaqsi: {res_ys}\
+                    Results do not match; got Jaqsi: {res_ys}\
                     and Pennylane: {res_pl_arr}\
                     Shape is {res_ys.shape} and {res_pl_arr.shape}"
         )
@@ -164,7 +163,6 @@ def var_ghz_benchmark(mode, q) -> None:
     return [t_ys, t_pl, std_ys, std_pl]
 
 
-# results[mode] = {"ys": [...], "pl": [...], "std_ys": [...], "std_pl": [...]} indexed by qubit_sizes
 results = {mode: {"ys": [], "pl": [], "std_ys": [], "std_pl": []} for mode in modes}
 
 if LOAD_LATEST:
@@ -290,9 +288,9 @@ for mode in modes:
 ax.axhline(1.0, color="gray", linestyle=":", linewidth=2, label="_nolegend_")
 
 ax.set_xlabel("Number of qubits")
-ax.set_ylabel("Time ratio  PennyLane / Yaqsi")
+ax.set_ylabel("Time ratio  PennyLane / Jaqsi")
 ax.set_title(
-    f"Yaqsi vs PennyLane - Rel., Parametric, Avg. over {n_iters} Iters, {batch_size} Batches"
+    f"Jaqsi vs PennyLane - Rel., Par., Avg. over {n_iters} Iters, {batch_size} Batches"
 )
 # ax.set_xscale("log")
 ax.set_yscale("log")

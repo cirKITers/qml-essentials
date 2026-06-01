@@ -594,7 +594,7 @@ class FourierTree:
 
         inputs = self.model._inputs_validation([1.0])
 
-        # Record the circuit tape using yaqsi's tape recording
+        # Record the circuit tape using jaqsi's tape recording
         raw_tape = self.model.script._record(params=model.params, inputs=inputs)
 
         # Build observables from the model's output_qubit configuration
@@ -671,7 +671,7 @@ class FourierTree:
                 "Currently, noise is not supported when building FourierTree."
             )
 
-        # Record the circuit tape using yaqsi's tape recording
+        # Record the circuit tape using jaqsi's tape recording
         raw_tape = self.model.script._record(params=self.model.params, inputs=inputs)
 
         # Build observables from the model's output_qubit configuration

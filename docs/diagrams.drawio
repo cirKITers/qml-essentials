@@ -271,7 +271,7 @@
       </root>
     </mxGraphModel>
   </diagram>
-  <diagram id="spa1uVqdiQQ0YvOVlW3r" name="yaqsi">
+  <diagram id="spa1uVqdiQQ0YvOVlW3r" name="jaqsi">
     <mxGraphModel dx="961" dy="1112" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
@@ -300,7 +300,7 @@
         <mxCell id="vOIiD02KDP2FM9wRCSIt-23" edge="1" parent="1" source="vOIiD02KDP2FM9wRCSIt-14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;fontSize=14;sketch=1;curveFitting=1;jiggle=2;curved=1;" target="PHgeUpY-ib7LMYt7HyUQ-1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="qWqGzGG-b71D2YMG60HP-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=bottom;strokeWidth=3;fontSize=18;sketch=1;curveFitting=1;jiggle=2;spacingTop=0;spacingBottom=5;strokeColor=#E69F00;fillColor=none;" value="QuantumScript (yaqsi.py)" vertex="1">
+        <mxCell id="qWqGzGG-b71D2YMG60HP-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=bottom;strokeWidth=3;fontSize=18;sketch=1;curveFitting=1;jiggle=2;spacingTop=0;spacingBottom=5;strokeColor=#E69F00;fillColor=none;" value="QuantumScript (jaqsi.py)" vertex="1">
           <mxGeometry height="250" width="410.12195121951225" x="724.8780487804879" y="525" as="geometry" />
         </mxCell>
         <mxCell id="PHgeUpY-ib7LMYt7HyUQ-2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=bottom;strokeWidth=3;fontSize=18;sketch=1;curveFitting=1;jiggle=2;spacingTop=0;spacingBottom=5;strokeColor=#009371;fillColor=none;" value="Operations (operations.py)" vertex="1">
@@ -312,7 +312,7 @@
         <mxCell id="PHgeUpY-ib7LMYt7HyUQ-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=bottom;strokeWidth=3;fontSize=18;sketch=1;curveFitting=1;jiggle=2;spacingTop=0;spacingBottom=5;strokeColor=#ED665A;fillColor=none;" value="Tape (tape.py)" vertex="1">
           <mxGeometry height="140" width="410.12195121951225" x="724.8780487804879" y="825" as="geometry" />
         </mxCell>
-        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=bottom;strokeWidth=3;fontSize=18;sketch=1;curveFitting=1;jiggle=2;spacingTop=0;spacingBottom=5;strokeColor=#009371;fillColor=none;" value="Yaqsi (yaqsi.py)" vertex="1">
+        <mxCell id="PHgeUpY-ib7LMYt7HyUQ-4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=bottom;strokeWidth=3;fontSize=18;sketch=1;curveFitting=1;jiggle=2;spacingTop=0;spacingBottom=5;strokeColor=#009371;fillColor=none;" value="Jaqsi (jaqsi.py)" vertex="1">
           <mxGeometry height="140" width="410.12195121951225" x="250" y="825" as="geometry" />
         </mxCell>
         <mxCell id="vOIiD02KDP2FM9wRCSIt-14" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=bottom;strokeWidth=3;fontSize=18;sketch=1;curveFitting=1;jiggle=2;spacingTop=0;spacingBottom=5;strokeColor=#002D4C;fillColor=none;" value="Ansaetze (ansaetze.py)" vertex="1">

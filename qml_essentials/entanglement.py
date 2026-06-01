@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from qml_essentials import yaqsi as ys
+from qml_essentials import jaqsi as js
 from qml_essentials import operations as op
 from qml_essentials.math import logm_v
 from qml_essentials.model import Model
@@ -91,7 +91,7 @@ class Entanglement:
                 # Formula 6 in https://doi.org/10.48550/arXiv.quant-ph/0305094
                 # Trace out qubit j, keep all others
                 keep = qb[:j] + qb[j + 1 :]
-                density = ys.partial_trace(rhos, n_qubits, keep)
+                density = js.partial_trace(rhos, n_qubits, keep)
                 # only real values, because imaginary part will be separate
                 # in all following calculations anyway
                 # entropy should be 1/2 <= entropy <= 1
@@ -165,7 +165,7 @@ class Entanglement:
                 op.CX(wires=[q, q + n])
                 op.H(wires=q)
 
-        bell_script = ys.Script(f=_bell_circuit, n_qubits=2 * n)
+        bell_script = js.Script(f=_bell_circuit, n_qubits=2 * n)
 
         if n_samples is not None and n_samples > 0:
             random_key = model.initialize_params(random_key, repeat=n_samples)
@@ -202,7 +202,7 @@ class Entanglement:
         # The last probability in each pair gives P(|11⟩) for that qubit pair
         per_qubit = []
         for q in range(n):
-            marg = ys.marginalize_probs(result, 2 * n, [q, q + n])
+            marg = js.marginalize_probs(result, 2 * n, [q, q + n])
             per_qubit.append(marg)
         # per_qubit[q] has shape (n_samples, 4) or (4,)
         exp = jnp.stack(per_qubit, axis=-2)  # (..., n, 4)
@@ -481,7 +481,7 @@ class Entanglement:
 
         This method utilizes the Concentratable Entanglement measure from
         https://arxiv.org/abs/2104.06923.  The swap test is implemented
-        directly in yaqsi using a ``3 * n_qubits`` circuit.
+        directly in jaqsi using a ``3 * n_qubits`` circuit.
 
         Args:
             model (Model): The quantum circuit model.
@@ -533,7 +533,7 @@ class Entanglement:
             for i in range(n):
                 op.H(wires=i)
 
-        swap_script = ys.Script(f=_swap_test_circuit, n_qubits=3 * n)
+        swap_script = js.Script(f=_swap_test_circuit, n_qubits=3 * n)
 
         if n_samples is not None and n_samples > 0:
             random_key = model.initialize_params(random_key, repeat=n_samples)
@@ -547,7 +547,7 @@ class Entanglement:
         inputs = model._inputs_validation(kwargs.get("inputs", None))
         n_batch = params.shape[0]
 
-        marg_probs = jax.jit(ys.marginalize_probs, static_argnums=(1, 2))
+        marg_probs = jax.jit(js.marginalize_probs, static_argnums=(1, 2))
 
         if n_batch > 1:
             from qml_essentials.utils import safe_random_split
@@ -589,7 +589,7 @@ class Entanglement:
 
         This method utilizes the Concentratable Entanglement measure from
         https://arxiv.org/abs/2104.06923.  The swap test is implemented
-        directly in yaqsi using a ``3 * n_qubits`` circuit.
+        directly in jaqsi using a ``3 * n_qubits`` circuit.
 
         Args:
             model (Model): The quantum circuit model.
@@ -635,7 +635,7 @@ class Entanglement:
                 op.CX(wires=[i, i + n])
                 op.H(wires=i)
 
-        bell_basis_script = ys.Script(f=_bell_basis_measurement, n_qubits=2 * n)
+        bell_basis_script = js.Script(f=_bell_basis_measurement, n_qubits=2 * n)
 
         if n_samples is not None and n_samples > 0:
             random_key = model.initialize_params(random_key, repeat=n_samples)
