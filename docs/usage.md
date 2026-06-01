@@ -304,7 +304,7 @@ Therefore, this section provides an example on how to use a custom circuit.
 ```python
 from qml_essentials.gates import Gates as g
 from qml_essentials.model import Model
-import qml_essentials.jaqsi as ys
+import qml_essentials.jaqsi as js
 import jax.numpy as jnp
 
 def my_circuit(params, inputs, *args, **kwargs) -> None:

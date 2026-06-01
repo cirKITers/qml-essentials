@@ -26,7 +26,7 @@ The API of our simulator is very similar to what one might be used to know from 
 For a basic circuit execution, we have to do two imports:
 
 ```python
-import qml_essentials.jaqsi as ys
+import qml_essentials.jaqsi as js
 import qml_essentials.operations as op
 ```
 
@@ -43,8 +43,8 @@ obs = [op.PauliZ(wires=0), op.PauliZ(wires=1)]
 Finally, creating a `Script` and excute it will give us the probabilities for this standard Bell-Circuit:
 
 ```python
-yss = js.Script(circuit)
-yss.execute(type="probs", obs=obs)
+jss = js.Script(circuit)
+jss.execute(type="probs", obs=obs)
 ```
 
 Parameterization of circuits is straightforward; you just have to pass the args to the `execute` function:
@@ -59,8 +59,8 @@ def circuit(phi, theta, omega):
     op.Rot(jnp.pi, 1/2*jnp.pi, 1/4*jnp.pi, wires=0)
 
 obs = [op.PauliZ(wires=i) for i in range(n_qubits)]
-yss = js.Script(circuit)
-yss.execute(type="expval", obs=obs, args=(jnp.pi, 1/2*jnp.pi, 1/4*jnp.pi))
+jss = js.Script(circuit)
+jss.execute(type="expval", obs=obs, args=(jnp.pi, 1/2*jnp.pi, 1/4*jnp.pi))
 ```
 
 Training those circuits is a breeze as we entirely build upon JAX and can just use OPTAX for this purpose:
@@ -70,7 +70,7 @@ import optax as otx
 
 def cost_fct(params):
     phi, theta, omega = params
-    return yss.execute(type="expval", obs=[op.PauliZ(0)], args=(phi, theta, omega))[0]
+    return jss.execute(type="expval", obs=[op.PauliZ(0)], args=(phi, theta, omega))[0]
 
 params = jax.numpy.array([0.1, 0.2, 0.3])
 opt = otx.adam(0.01)
@@ -94,8 +94,8 @@ def circuit():
         op.PauliX(wires=0).power(2)
 
 obs = [op.PauliZ(0)]
-yss = js.Script(circuit)
-res = yss.execute(type="expval", obs=obs)
+jss = js.Script(circuit)
+res = jss.execute(type="expval", obs=obs)
 
 print(res) # we expect to end up in |0⟩ again
 ```
@@ -109,8 +109,8 @@ def circuit():
     op.DepolarizingChannel(0.1, wires=0)
     op.DepolarizingChannel(0.1, wires=1)
 
-yss = js.Script(circuit)
-rho = yss.execute(type="density")
+jss = js.Script(circuit)
+rho = jss.execute(type="density")
 purity = jnp.real(jnp.trace(rho @ rho))
 print(purity) # Purity should be < 1 
 ```
@@ -124,8 +124,8 @@ def circuit(w):
     PulseGates.RX(w, wires=0)
 
 obs = [op.PauliZ(0)]
-yss = js.Script(circuit)
-res = yss.execute(type="expval", obs=obs, args=(jnp.pi*0.5,))
+jss = js.Script(circuit)
+res = jss.execute(type="expval", obs=obs, args=(jnp.pi*0.5,))
 print(res) # expect sth. around 0 (but not too close)
 ```
 
@@ -139,8 +139,8 @@ def circuit(w):
     op.DepolarizingChannel(0.1, wires=0)
     op.DepolarizingChannel(0.1, wires=1)
 
-yss = js.Script(circuit)
-res = yss.execute(type="density", args=(jnp.pi*0.5,))
+jss = js.Script(circuit)
+res = jss.execute(type="density", args=(jnp.pi*0.5,))
 purity = jnp.real(jnp.trace(rho @ rho))
 print(purity) # Purity should be < 1 
 ```
@@ -156,9 +156,9 @@ def circuit(w):
     PulseGates.H(wires=1)
     PulseGates.H(wires=1)
 
-yss = js.Script(circuit)
+jss = js.Script(circuit)
 
-fig, axes = yss.draw(figure="pulse", args=(jnp.pi*0.5,))
+fig, axes = jss.draw(figure="pulse", args=(jnp.pi*0.5,))
 ```
 
 ![pulse-schedule](figures/pulse_schedule_light.png#center#only-light)

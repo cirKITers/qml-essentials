@@ -163,7 +163,7 @@ def var_ghz_benchmark(mode, q) -> None:
     return [t_ys, t_pl, std_ys, std_pl]
 
 
-results = {mode: {"ys": [], "pl": [], "std_ys": [], "std_pl": []} for mode in modes}
+results = {mode: {"js": [], "pl": [], "std_ys": [], "std_pl": []} for mode in modes}
 
 if LOAD_LATEST:
     # Find the most recent benchmarks CSV in the current directory
@@ -191,11 +191,11 @@ if LOAD_LATEST:
         for row in rows:
             mode = row["mode"]
             if mode not in results:
-                results[mode] = {"ys": [], "pl": [], "std_ys": [], "std_pl": []}
+                results[mode] = {"js": [], "pl": [], "std_ys": [], "std_pl": []}
 
         for mode in results:
             mode_rows = [r for r in rows if r["mode"] == mode]
-            results[mode]["ys"] = [float(r["t_ys_ms"]) for r in mode_rows]
+            results[mode]["js"] = [float(r["t_ys_ms"]) for r in mode_rows]
             results[mode]["pl"] = [float(r["t_pl_ms"]) for r in mode_rows]
             results[mode]["std_ys"] = [float(r["std_ys_ms"]) for r in mode_rows]
             results[mode]["std_pl"] = [float(r["std_pl_ms"]) for r in mode_rows]
@@ -219,7 +219,7 @@ else:
     for q_idx in qubit_sizes:
         for mode in modes:
             t_ys, t_pl, std_ys, std_pl = var_ghz_benchmark(mode, q_idx)
-            results[mode]["ys"].append(t_ys * 1000)  # convert to ms
+            results[mode]["js"].append(t_ys * 1000)  # convert to ms
             results[mode]["pl"].append(t_pl * 1000)
             results[mode]["std_ys"].append(std_ys * 1000)
             results[mode]["std_pl"].append(std_pl * 1000)
@@ -229,7 +229,7 @@ else:
         with open(f"benchmarks-{identifier}.csv", "a", newline="") as f:
             writer = csv.writer(f)
             for mode in modes:
-                t_ys_ms = results[mode]["ys"][-1]
+                t_ys_ms = results[mode]["js"][-1]
                 t_pl_ms = results[mode]["pl"][-1]
                 writer.writerow(
                     [
@@ -258,17 +258,17 @@ fig, ax = plt.subplots(figsize=(9, 5))
 
 for mode in modes:
     color = mode_colors[mode]
-    ys = results[mode]["ys"]
+    js = results[mode]["js"]
     pl = results[mode]["pl"]
     std_ys = results[mode]["std_ys"]
     std_pl = results[mode]["std_pl"]
 
-    ratio = [p / y for y, p in zip(ys, pl)]
-    # Error propagation for ratio r = pl/ys:
-    # σ_r = r * sqrt((σ_pl/pl)² + (σ_ys/ys)²)
+    ratio = [p / y for y, p in zip(js, pl)]
+    # Error propagation for ratio r = pl/js:
+    # σ_r = r * sqrt((σ_pl/pl)² + (σ_ys/js)²)
     ratio_err = [
         r * ((sp / p) ** 2 + (sy / y) ** 2) ** 0.5
-        for r, y, p, sy, sp in zip(ratio, ys, pl, std_ys, std_pl)
+        for r, y, p, sy, sp in zip(ratio, js, pl, std_ys, std_pl)
     ]
 
     ax.errorbar(
