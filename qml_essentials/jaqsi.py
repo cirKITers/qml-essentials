@@ -21,7 +21,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-class Yaqsi:
+class Jaqsi:
     # Module-level cache for JIT-compiled ODE solvers.  Keyed on
     # (coeff_fn_id, dim, atol, rtol, max_steps, throw) so that all
     # evolve() calls with the same pulse shape function and matrix size
@@ -672,7 +672,7 @@ class Yaqsi:
 
 
 # Convenience access to internal classmethods
-partial_trace = Yaqsi.partial_trace
-evolve = Yaqsi.evolve
-marginalize_probs = Yaqsi.marginalize_probs
-build_parity_observable = Yaqsi.build_parity_observable
+partial_trace = Jaqsi.partial_trace
+evolve = Jaqsi.evolve
+marginalize_probs = Jaqsi.marginalize_probs
+build_parity_observable = Jaqsi.build_parity_observable

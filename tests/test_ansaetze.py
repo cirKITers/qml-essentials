@@ -1,19 +1,19 @@
 from typing import Optional
-from qml_essentials.model import Model
-from qml_essentials.ansaetze import Ansaetze, Circuit
-from qml_essentials.gates import Gates, UnitaryGates
-from qml_essentials.gates import PulseInformation as pinfo
-from qml_essentials import yaqsi as ys
-from qml_essentials.qoc import QOC, default_qoc_params
-from qml_essentials import operations as op
 import numpy as np
 import jax
 from jax import numpy as jnp
 import pytest
 import inspect
 import time
-
 import logging
+
+from qml_essentials import jaqsi as js
+from qml_essentials.model import Model
+from qml_essentials.ansaetze import Ansaetze, Circuit
+from qml_essentials.gates import Gates, UnitaryGates
+from qml_essentials.gates import PulseInformation as pinfo
+from qml_essentials.qoc import QOC, default_qoc_params
+from qml_essentials import operations as op
 
 jax.config.update("jax_enable_x64", True)
 
@@ -30,7 +30,7 @@ def test_gate_error_noise():
 
     obs = [op.PauliZ(wires=0)]
 
-    script = ys.Script(circuit, n_qubits=1)
+    script = js.Script(circuit, n_qubits=1)
     no_noise = script.execute(type="expval", obs=obs, args=({},))
     with_noise = script.execute(type="expval", obs=obs, args=({"GateError": 50},))
 
@@ -85,7 +85,7 @@ def test_gate_bitflip_noise():
 
     obs = [op.PauliZ(wires=0)]
 
-    script = ys.Script(circuit, n_qubits=1)
+    script = js.Script(circuit, n_qubits=1)
     no_noise = script.execute(type="expval", obs=obs, args=({},))
     with_noise = script.execute(type="expval", obs=obs, args=({"BitFlip": 0.5},))
 
@@ -104,7 +104,7 @@ def test_gate_phaseflip_noise():
 
     obs = [op.PauliX(wires=0)]
 
-    script = ys.Script(circuit, n_qubits=1)
+    script = js.Script(circuit, n_qubits=1)
     no_noise = script.execute(type="expval", obs=obs, args=({},))
     with_noise = script.execute(type="expval", obs=obs, args=({"PhaseFlip": 0.5},))
 
@@ -123,7 +123,7 @@ def test_gate_depolarizing_noise():
 
     obs = [op.PauliZ(wires=0)]
 
-    script = ys.Script(circuit, n_qubits=1)
+    script = js.Script(circuit, n_qubits=1)
     no_noise = script.execute(type="expval", obs=obs, args=({},))
     with_noise = script.execute(type="expval", obs=obs, args=({"Depolarizing": 3 / 4},))
 
@@ -143,7 +143,7 @@ def test_gate_nqubitdepolarizing_noise():
 
     obs_two = [op.PauliZ(wires=1)]
 
-    script_two = ys.Script(circuit_two, n_qubits=2)
+    script_two = js.Script(circuit_two, n_qubits=2)
     no_noise_two = script_two.execute(type="expval", obs=obs_two, args=({},))
     with_noise_two = script_two.execute(
         type="expval", obs=obs_two, args=({"MultiQubitDepolarizing": 15 / 16},)
@@ -162,9 +162,9 @@ def test_gate_nqubitdepolarizing_noise():
                 noise_params.get("MultiQubitDepolarizing", 0), wires=[0, 1, 2]
             )
 
-    obs_three = [ys.build_parity_observable([0, 1, 2])]
+    obs_three = [js.build_parity_observable([0, 1, 2])]
 
-    script_three = ys.Script(circuit_three, n_qubits=3)
+    script_three = js.Script(circuit_three, n_qubits=3)
     no_noise_three = script_three.execute(type="expval", obs=obs_three, args=({},))
     with_noise_three = script_three.execute(
         type="expval",
@@ -508,7 +508,7 @@ def test_cphase_gate():
         Gates.CPhase(w, wires=[0, 1])  # apply controlled phase
 
     obs = [op.PauliZ(wires=0), op.PauliZ(wires=1)]
-    script = ys.Script(circuit_cphase, n_qubits=2)
+    script = js.Script(circuit_cphase, n_qubits=2)
 
     # CPhase(0) should not change anything: both qubits still |1>
     res_zero = script.execute(type="expval", obs=obs, args=(0.0,))
@@ -531,7 +531,7 @@ def test_cphase_gate():
         Gates.H(wires=0)  # convert phase to amplitude
 
     obs_q0 = [op.PauliZ(wires=0)]
-    script_kb = ys.Script(circuit_kickback, n_qubits=2)
+    script_kb = js.Script(circuit_kickback, n_qubits=2)
 
     # CPhase(0): no phase -> H undoes H -> |0>, so <Z_0> = 1
     res_kb_zero = script_kb.execute(type="expval", obs=obs_q0, args=(0.0,))
@@ -557,7 +557,7 @@ def test_cphase_gate():
         Gates.CPhase(np.pi / 4, wires=[0, 1], noise_params=noise_params)
 
     obs_noisy = [op.PauliZ(wires=1)]
-    script_noisy = ys.Script(circuit_noisy, n_qubits=2)
+    script_noisy = js.Script(circuit_noisy, n_qubits=2)
 
     res_clean = script_noisy.execute(type="expval", obs=obs_noisy, args=({},))
     res_noisy = script_noisy.execute(
@@ -588,8 +588,8 @@ def test_cphase_pulse_gate(w):
     gate = "CPhase"
     qoc = QOC(**default_qoc_params)
     pulse_circuit, target_circuit = qoc.create_CPhase()
-    pulse_script = ys.Script(pulse_circuit, n_qubits=2)
-    target_script = ys.Script(target_circuit, n_qubits=2)
+    pulse_script = js.Script(pulse_circuit, n_qubits=2)
+    target_script = js.Script(target_circuit, n_qubits=2)
 
     state_pulse = pulse_script.execute(
         type="state", args=(w, pinfo.gate_by_name(gate).params)
