@@ -87,22 +87,22 @@ def var_ghz_benchmark(mode, q) -> None:
     # do the actual benchmarking
     # Note that each execution uses a different phi vector, i.e. this is not
     # just repeating the same computation!
-    ys_times = []
+    js_times = []
     for i in range(n_iters):
         t0 = time.perf_counter()
-        res_ys = script.execute(
+        res_js = script.execute(
             type=mode,
             obs=[PauliZ(wires=i, record=False) for i in range(n_qubits)],
             args=(all_phis[i],),
             in_axes=(0,),
         )
-        ys_times.append(time.perf_counter() - t0)
-    t_ys = float(np.mean(ys_times))
-    std_ys = float(np.std(ys_times))
+        js_times.append(time.perf_counter() - t0)
+    t_js = float(np.mean(js_times))
+    std_js = float(np.std(js_times))
 
     logger.info(
         f"Jaqsi {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
-        f"{t_ys * 1000:.2f} ± {std_ys * 1000:.2f} ms"
+        f"{t_js * 1000:.2f} ± {std_js * 1000:.2f} ms"
     )
 
     # Now the same thing for pennylane
@@ -141,7 +141,7 @@ def var_ghz_benchmark(mode, q) -> None:
         f"PennyLane {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
         f"{t_pl * 1000:.2f} ± {std_pl * 1000:.2f} ms"
     )
-    logger.info(f"Ratio pl/jaqsi: {t_pl / t_ys:.2f}x")
+    logger.info(f"Ratio pl/jaqsi: {t_pl / t_js:.2f}x")
 
     res_pl_arr = jnp.array(res_pl)
     # PennyLane returns expval as (n_obs, batch) while Jaqsi returns
@@ -149,21 +149,21 @@ def var_ghz_benchmark(mode, q) -> None:
     if mode == "expval":
         res_pl_arr = res_pl_arr.T
 
-    if not jnp.allclose(res_ys, res_pl_arr, atol=precision):
+    if not jnp.allclose(res_js, res_pl_arr, atol=precision):
         logger.error(
             f"Error occured at {q} qubits for mode {mode}:\
-                    Results do not match; got Jaqsi: {res_ys}\
+                    Results do not match; got Jaqsi: {res_js}\
                     and Pennylane: {res_pl_arr}\
-                    Shape is {res_ys.shape} and {res_pl_arr.shape}"
+                    Shape is {res_js.shape} and {res_pl_arr.shape}"
         )
         raise RuntimeError("Results mismatch")
     else:
         logger.info("Results match")
 
-    return [t_ys, t_pl, std_ys, std_pl]
+    return [t_js, t_pl, std_js, std_pl]
 
 
-results = {mode: {"js": [], "pl": [], "std_ys": [], "std_pl": []} for mode in modes}
+results = {mode: {"js": [], "pl": [], "std_js": [], "std_pl": []} for mode in modes}
 
 if LOAD_LATEST:
     # Find the most recent benchmarks CSV in the current directory
@@ -191,13 +191,13 @@ if LOAD_LATEST:
         for row in rows:
             mode = row["mode"]
             if mode not in results:
-                results[mode] = {"js": [], "pl": [], "std_ys": [], "std_pl": []}
+                results[mode] = {"js": [], "pl": [], "std_js": [], "std_pl": []}
 
         for mode in results:
             mode_rows = [r for r in rows if r["mode"] == mode]
-            results[mode]["js"] = [float(r["t_ys_ms"]) for r in mode_rows]
+            results[mode]["js"] = [float(r["t_js_ms"]) for r in mode_rows]
             results[mode]["pl"] = [float(r["t_pl_ms"]) for r in mode_rows]
-            results[mode]["std_ys"] = [float(r["std_ys_ms"]) for r in mode_rows]
+            results[mode]["std_js"] = [float(r["std_js_ms"]) for r in mode_rows]
             results[mode]["std_pl"] = [float(r["std_pl_ms"]) for r in mode_rows]
 else:
     logger.info(f"Preparing header in benchmarks-{identifier}.csv")
@@ -208,20 +208,20 @@ else:
             [
                 "n_qubits",
                 "mode",
-                "t_ys_ms",
+                "t_js_ms",
                 "t_pl_ms",
-                "std_ys_ms",
+                "std_js_ms",
                 "std_pl_ms",
-                "ratio_pl_ys",
+                "ratio_pl_js",
             ]
         )
 
     for q_idx in qubit_sizes:
         for mode in modes:
-            t_ys, t_pl, std_ys, std_pl = var_ghz_benchmark(mode, q_idx)
-            results[mode]["js"].append(t_ys * 1000)  # convert to ms
+            t_js, t_pl, std_js, std_pl = var_ghz_benchmark(mode, q_idx)
+            results[mode]["js"].append(t_js * 1000)  # convert to ms
             results[mode]["pl"].append(t_pl * 1000)
-            results[mode]["std_ys"].append(std_ys * 1000)
+            results[mode]["std_js"].append(std_js * 1000)
             results[mode]["std_pl"].append(std_pl * 1000)
 
         # --- CSV export ---
@@ -229,17 +229,17 @@ else:
         with open(f"benchmarks-{identifier}.csv", "a", newline="") as f:
             writer = csv.writer(f)
             for mode in modes:
-                t_ys_ms = results[mode]["js"][-1]
+                t_js_ms = results[mode]["js"][-1]
                 t_pl_ms = results[mode]["pl"][-1]
                 writer.writerow(
                     [
                         q_idx,
                         mode,
-                        t_ys_ms,
+                        t_js_ms,
                         t_pl_ms,
-                        results[mode]["std_ys"][-1],
+                        results[mode]["std_js"][-1],
                         results[mode]["std_pl"][-1],
-                        t_pl_ms / t_ys_ms,
+                        t_pl_ms / t_js_ms,
                     ]
                 )
 
@@ -260,15 +260,15 @@ for mode in modes:
     color = mode_colors[mode]
     js = results[mode]["js"]
     pl = results[mode]["pl"]
-    std_ys = results[mode]["std_ys"]
+    std_js = results[mode]["std_js"]
     std_pl = results[mode]["std_pl"]
 
     ratio = [p / y for y, p in zip(js, pl)]
     # Error propagation for ratio r = pl/js:
-    # σ_r = r * sqrt((σ_pl/pl)² + (σ_ys/js)²)
+    # σ_r = r * sqrt((σ_pl/pl)² + (σ_js/js)²)
     ratio_err = [
         r * ((sp / p) ** 2 + (sy / y) ** 2) ** 0.5
-        for r, y, p, sy, sp in zip(ratio, js, pl, std_ys, std_pl)
+        for r, y, p, sy, sp in zip(ratio, js, pl, std_js, std_pl)
     ]
 
     ax.errorbar(

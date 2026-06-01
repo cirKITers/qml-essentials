@@ -1155,26 +1155,26 @@ def test_mode_performances(benchmark, mode, speedup) -> None:
         in_axes=(0,),
     )
 
-    def ys_benchmark():
-        ys_times = []
+    def js_benchmark():
+        js_times = []
         for i in range(n_iters):
             t0 = time.perf_counter()
-            res_ys = script.execute(
+            res_js = script.execute(
                 type=mode,
                 obs=[PauliZ(wires=i, record=False) for i in range(n_qubits)],
                 args=(all_phis[i],),
                 in_axes=(0,),
             )
-            ys_times.append(time.perf_counter() - t0)
-        return ys_times, res_ys
+            js_times.append(time.perf_counter() - t0)
+        return js_times, res_js
 
-    ys_times, res_ys = benchmark(ys_benchmark)
-    t_ys = float(np.mean(ys_times))
-    std_ys = float(np.std(ys_times))
+    js_times, res_js = benchmark(js_benchmark)
+    t_js = float(np.mean(js_times))
+    std_js = float(np.std(js_times))
 
     logger.info(
         f"Jaqsi {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
-        f"{t_ys * 1000:.2f} ± {std_ys * 1000:.2f} ms"
+        f"{t_js * 1000:.2f} ± {std_js * 1000:.2f} ms"
     )
 
     # --- PennyLane ---
@@ -1213,17 +1213,17 @@ def test_mode_performances(benchmark, mode, speedup) -> None:
         f"PennyLane {mode} ({n_qubits}q, batch={batch_size}, avg {n_iters}): "
         f"{t_pl * 1000:.2f} ± {std_pl * 1000:.2f} ms"
     )
-    ratio = t_pl / t_ys
+    ratio = t_pl / t_js
     logger.info(f"Ratio pl/jaqsi: {ratio:.2f}x")
     assert ratio >= speedup, (
         f"Jaqsi not significantly faster than PennyLane. {ratio:2f}x"
     )
 
     res_pl_arr = jnp.array(res_pl)
-    if res_pl_arr.shape != res_ys.shape:
+    if res_pl_arr.shape != res_js.shape:
         res_pl_arr = res_pl_arr.T
 
-    assert jnp.allclose(res_ys, res_pl_arr, atol=1e-10), "Results do not match"
+    assert jnp.allclose(res_js, res_pl_arr, atol=1e-10), "Results do not match"
     logger.info("Results match")
 
 
