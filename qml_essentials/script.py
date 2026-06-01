@@ -5,20 +5,11 @@ import jax.numpy as jnp
 import equinox as eqx
 import numpy as np  # needed to prevent jitting some operations
 
-from qml_essentials.operations import (
-    Barrier,
-    Operation,
-    KrausChannel,
-    _einsum_subscript,
-    _cdtype,
-)
+from qml_essentials.operations import Operation, KrausChannel
 from qml_essentials.tape import recording, pulse_recording
 from qml_essentials.drawing import draw_text, draw_mpl, draw_tikz
 from qml_essentials.unitary import UnitaryGates
-
-import logging
-
-log = logging.getLogger(__name__)
+from qml_essentials import simulation, memory
 
 
 def _make_hashable(obj):
@@ -47,6 +38,11 @@ class Script:
     simulated using either a statevector or density-matrix kernel depending on
     whether noise channels are present.
 
+    The stateless simulation/measurement kernels live in
+    :mod:`qml_essentials.simulation` and the memory-estimation/chunking helpers
+    in :mod:`qml_essentials.memory`; this class orchestrates recording,
+    batching, caching, and drawing around them.
+
     Attributes:
         f: The circuit function whose body instantiates ``Operation`` objects.
         _n_qubits: Optionally pre-declared number of qubits.  When ``None``
@@ -61,14 +57,6 @@ class Script:
         >>> result = script.execute(type="expval", obs=[PauliZ(0)])
     """
 
-    # Whether to call ``jax.clear_caches()`` between memory-aware
-    # chunks in :meth:`Script._execute_chunked`.  Default ``False``:
-    # clearing caches between chunks forces XLA to recompile the same
-    # batched program for every chunk, which is a major performance hit
-    # when many chunks are needed.  Set ``True`` only if you observe
-    # OOM growth across chunks.
-    _clear_caches_between_chunks: bool = False
-
     def __init__(self, f: Callable[..., None], n_qubits: Optional[int] = None) -> None:
         """Initialise a Script.
 
@@ -81,314 +69,6 @@ class Script:
         self.f = f
         self._n_qubits = n_qubits
         self._jit_cache: dict = {}  # keyed on (type, in_axes, arg_shapes, gateError)
-
-    @staticmethod
-    def _estimate_peak_bytes(
-        n_qubits: int,
-        batch_size: int,
-        type: str,
-        use_density: bool,
-        n_obs: int = 0,
-        n_ops: int = 1,
-    ) -> int:
-        """Estimate peak memory (bytes) for a batched simulation.
-
-        The estimate accounts for:
-
-        - The batched statevector (always needed, even for density).
-        - The batched output tensor (state / probs / density / expval).
-        - Gate-tensor temporaries (the einsum buffers).  XLA frequently
-          keeps several per-gate ``(B, dim)`` (or ``(B, dim, dim)`` for
-          density) buffers alive simultaneously when fusion is not
-          possible, so we multiply the per-element gate cost by *n_ops*
-          (the number of operations on the recorded tape).
-
-        Observable matrices are **not** counted: they are computed inside
-        the JIT-compiled function and XLA manages their lifetime (reusing
-        buffers between observables).  Similarly, the outer-product
-        temporary for pure-circuit density mode is transient within XLA.
-
-        Element size is determined dynamically from ``jax.config.x64_enabled``:
-        when x64 mode is disabled (the JAX default), complex values are
-        ``complex64`` (8 bytes) and floats are ``float32`` (4 bytes),
-        halving memory usage compared to the x64 path.
-
-        A 1.5× safety factor is applied to cover XLA compiler temporaries,
-        padding, and other allocations not directly visible to Python.
-
-        This is a pure Python arithmetic calculation with no JAX calls —
-        it adds essentially zero overhead.
-
-        Args:
-            n_qubits: Number of qubits in the circuit.
-            batch_size: Number of batch elements.
-            type: Measurement type (``"state"``, ``"probs"``, ``"expval"``,
-                ``"density"``).
-            use_density: Whether density-matrix simulation is used.
-            n_obs: Number of observables (relevant for ``"expval"``).
-            n_ops: Number of operations on the circuit tape.  Used to
-                scale the per-gate intermediate buffers.  Defaults to 1
-                (backwards-compatible single-buffer estimate).
-
-        Returns:
-            Estimated peak memory in bytes.
-        """
-        dim = 2**n_qubits
-        # Detect actual element size: JAX silently truncates complex128
-        # to complex64 when x64 mode is disabled (the default).
-        elem = 16 if jax.config.x64_enabled else 8  # complex128 vs complex64
-        real_elem = elem // 2  # float64 vs float32
-
-        # Clamp n_ops to at least 1 so callers that omit the argument
-        # reproduce the previous behaviour.
-        n_ops = max(int(n_ops), 1)
-
-        # Statevector: always allocated during simulation
-        sv_bytes = batch_size * dim * elem
-
-        # Simulation intermediate: when density-matrix simulation is used,
-        # the full rho (dim × dim) must be held during gate evolution —
-        # even if the final output is only probs or expval.
-        # apply_to_density contracts both U and U* against rho, so at least
-        # two intermediate (dim × dim) buffers are alive simultaneously
-        # *per applied operation*.
-        if use_density:
-            sim_bytes = 2 * n_ops * batch_size * dim * dim * elem
-        else:
-            sim_bytes = 0  # statevector is already counted above
-
-        # Output tensor: this is the *returned* array, not the simulation
-        # intermediate.  For probs/expval with density simulation the
-        # density matrix is reduced to a small output *before* returning,
-        # so only the reduced output coexists with the next chunk.
-        if type == "density":
-            out_bytes = batch_size * dim * dim * elem
-        elif type == "expval":
-            out_bytes = batch_size * max(n_obs, 1) * real_elem
-        elif type == "probs":
-            out_bytes = batch_size * dim * real_elem
-        else:  # state
-            out_bytes = batch_size * dim * elem
-
-        # Gate temporaries: einsum creates a ``(B, dim)`` (statevector) or
-        # ``(B, dim, dim)`` (density) buffer per gate, and XLA cannot
-        # always free them between consecutive ops, so scale by ``n_ops``.
-        if use_density:
-            gate_tmp = n_ops * batch_size * dim * dim * elem
-        else:
-            gate_tmp = n_ops * batch_size * dim * elem
-
-        # Peak = max(simulation phase, output phase).  During simulation
-        # the intermediate + statevector + gate temps are alive.  After
-        # measurement, only the output survives.  So peak is whichever
-        # phase is larger.
-        sim_peak = sv_bytes + sim_bytes + gate_tmp
-        out_peak = out_bytes
-        raw = max(sim_peak, out_peak)
-
-        # 1.5× safety factor for XLA compiler temporaries, padding, etc.
-        return int(raw * 1.5)
-
-    @staticmethod
-    def _available_memory_bytes() -> int:
-        """Return available system memory in bytes.
-
-        Uses ``psutil.virtual_memory().available`` for cross-platform
-        support (Linux, macOS, Windows).  Falls back to reading
-        ``/proc/meminfo`` on Linux, and finally to a conservative 4 GiB
-        default if neither approach succeeds.
-
-        Returns:
-            Available memory in bytes.
-        """
-        mem = 4 * 1024**3
-        # Primary: psutil (works on Linux, macOS, Windows)
-        try:
-            import psutil
-
-            mem = psutil.virtual_memory().available
-        except Exception:
-            log.debug("psutil not available. Fallback to /proc/meminfo")
-
-        # Fallback: /proc/meminfo (Linux only)
-        try:
-            with open("/proc/meminfo", "r") as f:
-                for line in f:
-                    if line.startswith("MemAvailable:"):
-                        mem = int(line.split()[1]) * 1024  # kB → bytes
-        except Exception:
-            log.debug("Failed to read /proc/meminfo. Falling back to 4 GiB")
-
-        log.debug(f"Available memory: {mem / 1024**3:.1f} GB")
-        return mem
-
-    @staticmethod
-    def _compute_chunk_size(
-        n_qubits: int,
-        batch_size: int,
-        type: str,
-        use_density: bool,
-        n_obs: int = 0,
-        memory_fraction: float = 0.8,
-        n_ops: int = 1,
-    ) -> int:
-        """Determine the largest chunk size that fits in available memory.
-
-        If the full batch fits, returns *batch_size* (i.e. no chunking).
-        Otherwise, returns the largest chunk size such that the computation
-        of one chunk **plus** the full output accumulator fits within
-        ``memory_fraction`` of available RAM.
-
-        The output accumulator is the final ``(batch_size, ...)`` array that
-        holds all results.  When chunking, this array must coexist with the
-        active chunk computation, so its size is subtracted from available
-        memory before computing how many elements fit per chunk.
-
-        The minimum chunk size is 1 (fully serialised).
-
-        Args:
-            n_qubits: Number of qubits.
-            batch_size: Total batch size.
-            type: Measurement type.
-            use_density: Whether density-matrix simulation is used.
-            n_obs: Number of observables.
-            memory_fraction: Fraction of available memory to target
-                (default 0.8 = 80%).
-            n_ops: Number of operations on the recorded tape.  Forwarded
-                to :meth:`_estimate_peak_bytes`.  Defaults to 1.
-
-        Returns:
-            Chunk size (number of batch elements per sub-batch).
-        """
-        avail = int(Script._available_memory_bytes() * memory_fraction)
-        full_est = Script._estimate_peak_bytes(
-            n_qubits, batch_size, type, use_density, n_obs, n_ops=n_ops
-        )
-
-        if full_est <= avail:
-            return batch_size  # everything fits — no chunking
-
-        # The output accumulator (the final (batch_size, ...) result array)
-        # must coexist with each chunk's computation, so subtract its size
-        # from available memory before sizing chunks.
-        dim = 2**n_qubits
-        elem = 16 if jax.config.x64_enabled else 8
-        real_elem = elem // 2
-        if type == "density":
-            accum_bytes = batch_size * dim * dim * elem
-        elif type == "expval":
-            accum_bytes = batch_size * max(n_obs, 1) * real_elem
-        elif type == "probs":
-            accum_bytes = batch_size * dim * real_elem
-        else:
-            accum_bytes = batch_size * dim * elem
-        avail_for_chunks = max(avail - accum_bytes, elem)  # at least 1 element
-
-        # Per-element cost: the memory for computing a single batch element.
-        per_elem = Script._estimate_peak_bytes(
-            n_qubits, 1, type, use_density, n_obs, n_ops=n_ops
-        )
-
-        if per_elem <= 0:
-            return batch_size
-
-        chunk = avail_for_chunks // per_elem
-        chunk = max(1, min(chunk, batch_size))
-
-        if chunk == 1 and per_elem > avail:
-            log.warning(
-                f"A single batch element requires ~{per_elem / 1024**3:.2f} GB "
-                f"but only ~{avail / 1024**3:.2f} GB is available. "
-                f"Proceeding with chunk_size=1 but OOM is possible. "
-                f"Consider reducing n_qubits or switching measurement type."
-            )
-
-        log.info(
-            f"Computation requires ~{full_est / 1024**3:.2f} GB which "
-            f"does not fit in ~{avail / 1024**3:.2f} GB. "
-            f"Using chunk size {chunk}."
-        )
-        return chunk
-
-    @staticmethod
-    def _execute_chunked(
-        batched_fn: Callable,
-        args: tuple,
-        in_axes: Tuple,
-        batch_size: int,
-        chunk_size: int,
-    ) -> jnp.ndarray:
-        """Execute a vmapped function in memory-safe chunks.
-
-        Splits the batch dimension into sub-batches of at most *chunk_size*
-        elements, runs each through the JIT-compiled *batched_fn*, and
-        writes results into a pre-allocated output array.
-
-        Only one chunk's intermediate result is alive at a time: each
-        chunk is computed, copied into the output buffer, and then its
-        reference is dropped — allowing JAX/XLA to reclaim the memory
-        before the next chunk starts.  This keeps peak memory at roughly
-        ``output_buffer + one_chunk_computation`` rather than the sum of
-        all chunk outputs.
-
-        Args:
-            batched_fn: A JIT-compiled, vmapped callable.
-            args: Full-batch arguments (before slicing).
-            in_axes: Per-argument batch axis specification.
-            batch_size: Total number of batch elements.
-            chunk_size: Maximum elements per chunk.
-
-        Returns:
-            Batched results with the same leading dimension as the
-            full batch.
-        """
-        n_chunks = (batch_size + chunk_size - 1) // chunk_size
-        log.debug(
-            f"Memory-aware chunking: splitting batch of {batch_size} into "
-            f"{n_chunks} chunks of <={chunk_size} elements."
-        )
-
-        output = None
-        for chunk_idx in range(n_chunks):
-            start = chunk_idx * chunk_size
-            end = min(start + chunk_size, batch_size)
-            size = end - start
-
-            # Slice each batched argument along its batch axis
-            chunk_args = tuple(
-                (
-                    jax.lax.dynamic_slice_in_dim(a, start, size, axis=ax)
-                    if ax is not None
-                    else a
-                )
-                for a, ax in zip(args, in_axes)
-            )
-
-            chunk_result = batched_fn(*chunk_args)
-
-            if output is None:
-                # Pre-allocate the full output buffer on first chunk
-                out_shape = (batch_size,) + chunk_result.shape[1:]
-                output = jnp.zeros(out_shape, dtype=chunk_result.dtype)
-
-            # Copy chunk into the output buffer; the slice assignment
-            # creates a new array (JAX arrays are immutable) but the old
-            # `output` reference is immediately replaced, letting XLA
-            # reclaim it.
-            output = output.at[start:end].set(chunk_result)
-
-            # Explicitly drop the chunk reference so XLA can free the
-            # chunk's device memory before computing the next one.
-            del chunk_result, chunk_args
-            # Optionally trigger a JAX cache clear to release device
-            # buffers — disabled by default because it forces full
-            # recompilation of ``batched_fn`` on every subsequent
-            # chunk.  Set ``Script._clear_caches_between_chunks = True``
-            # if you actually observe OOM growth across chunks.
-            if Script._clear_caches_between_chunks:
-                jax.clear_caches()  # TODO: confirm to remove
-
-        return output
 
     def _record(self, *args, **kwargs) -> List[Operation]:
         """Run the circuit function and collect the recorded operations.
@@ -429,346 +109,6 @@ class Script:
             with recording():
                 self.f(*args, **kwargs)
         return events
-
-    @staticmethod
-    def _infer_n_qubits(ops: List[Operation], obs: List[Operation]) -> int:
-        """Infer the number of qubits from a list of operations and observables.
-
-        Args:
-            ops: Gate operations recorded on the tape.
-            obs: Observable operations used for measurement.
-
-        Returns:
-            The smallest number of qubits that covers all wire indices, i.e.
-            ``max(all_wires) + 1`` (at least 1).
-        """
-        all_wires: set[int] = set()
-        for op in ops + obs:
-            all_wires.update(op.wires)
-        return max(all_wires) + 1 if all_wires else 1
-
-    @staticmethod
-    def _simulate_pure(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
-        """Statevector simulation kernel.
-
-        Starts from |00…0⟩ and applies each gate in *tape* via tensor
-        contraction.  The state is kept in rank-*n* tensor form ``(2,)*n``
-        throughout the gate loop to avoid per-gate ``reshape`` dispatch;
-        only the initial and final conversions to/from the flat ``(2**n,)``
-        representation incur a reshape.
-
-        All gate tensors and einsum subscript strings are pre-extracted from
-        the tape before the simulation loop so that each iteration performs
-        only a single ``jnp.einsum`` call with zero additional Python
-        overhead (no method dispatch, no property access, no cache lookup).
-
-        Args:
-            tape: Ordered list of gate operations to apply.
-            n_qubits: Total number of qubits.
-
-        Returns:
-            Statevector of shape ``(2**n_qubits,)``.
-        """
-        dim = 2**n_qubits
-
-        # Pre-extract gate tensors and einsum subscripts — eliminates all
-        # per-gate Python overhead (method calls, property lookups, cache
-        # hits on _einsum_subscript) from the hot loop.
-        compiled = []
-        for op in tape:
-            if isinstance(op, Barrier):
-                continue
-            k = len(op.wires)
-            gt = op._gate_tensor(k)
-            sub = _einsum_subscript(n_qubits, k, tuple(op.wires))
-            compiled.append((gt, sub))
-
-        state = jnp.zeros(dim, dtype=_cdtype()).at[0].set(1.0)
-        psi = state.reshape((2,) * n_qubits)
-        for gt, sub in compiled:
-            psi = jnp.einsum(sub, gt, psi)
-        return psi.reshape(dim)
-
-    @staticmethod
-    def _simulate_mixed(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
-        """Density-matrix simulation kernel.
-
-        Starts from \\rho  = \\vert 0\\rangle\\langle 0\\vert and
-        applies each gate in *tape* via
-        :meth:`~qml_essentials.operations.Operation.apply_to_density`
-        (\\rho  -> U\\rho U† for unitaries, \\Sigma_k K_k \\rho  K_k\\dagger
-        for Kraus channels).
-        Required for noisy circuits.
-
-        Args:
-            tape: Ordered list of gate or channel operations to apply.
-            n_qubits: Total number of qubits.
-
-        Returns:
-            Density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
-        """
-        dim = 2**n_qubits
-        rho = jnp.zeros((dim, dim), dtype=_cdtype()).at[0, 0].set(1.0)
-        for op in tape:
-            rho = op.apply_to_density(rho, n_qubits)
-        return rho
-
-    @staticmethod
-    def _simulate_and_measure(
-        tape: List[Operation],
-        n_qubits: int,
-        type: str,
-        obs: List[Operation],
-        use_density: bool,
-        shots: Optional[int] = None,
-        key: Optional[jnp.ndarray] = None,
-    ) -> jnp.ndarray:
-        """Run simulation and measurement in a single dispatch.
-
-        Chooses statevector or density-matrix simulation based on
-        *use_density*, then applies the appropriate measurement function.
-        This eliminates duplicated branching logic in single-sample and
-        batched execution paths.
-
-        When *shots* is not ``None``, the exact probability distribution is
-        first computed, then ``shots`` samples are drawn from it to produce
-        a noisy estimate of the requested measurement (``"probs"`` or
-        ``"expval"``).
-
-        Pure-circuit density optimisation — when ``type == "density"``
-        but no noise channels are present on the tape, the density matrix
-        is computed via statevector simulation followed by an outer product
-        ``\\rho  = \\vert\\psi\\rangle\\langle\\psi\\vert``
-        instead of evolving the full ``2^n\\times 2^n`` matrix
-        gate by gate.  This reduces the per-gate cost from O(4^n) to
-        O(2^n), giving a significant speed-up for medium qubit counts
-        (~4x for 5 qubits).
-
-        Args:
-            tape: Ordered list of gate/channel operations to apply.
-            n_qubits: Total number of qubits.
-            type: Measurement type (``"state"``/``"probs"``/``"expval"``/
-                ``"density"``).
-            obs: Observables for ``"expval"`` measurements.
-            use_density: If ``True``, use density-matrix simulation.
-            shots: Number of measurement shots.  If ``None`` (default),
-                exact analytic results are returned.
-            key: JAX PRNG key for shot sampling.  Required when *shots*
-                is not ``None``.
-
-        Returns:
-            Measurement result (shape depends on *type*).
-        """
-        if use_density:
-            # Check if any operation is actually a noise channel.
-            has_noise = any(isinstance(o, KrausChannel) for o in tape)
-            if has_noise:
-                # Must do full density-matrix evolution for Kraus channels.
-                rho = Script._simulate_mixed(tape, n_qubits)
-            else:
-                # Pure circuit requesting density output: simulate the
-                # statevector (O(depth\times 2^n)) and form  # noqa: W605
-                # \rho  = \vert\psi\rangle\langle\psi\vert once  # noqa: W605
-                # (O(4^n)).  This avoids the O(depth\times 4^n) cost of  # noqa: W605
-                # evolving the full density matrix gate by gate.
-                state = Script._simulate_pure(tape, n_qubits)
-                rho = jnp.outer(state, jnp.conj(state))
-
-            if shots is not None and type in ("probs", "expval"):
-                exact_probs = jnp.real(jnp.diag(rho))
-                return Script._sample_shots(
-                    exact_probs, n_qubits, type, obs, shots, key
-                )
-            return Script._measure_density(rho, n_qubits, type, obs)
-
-        state = Script._simulate_pure(tape, n_qubits)
-
-        if shots is not None and type in ("probs", "expval"):
-            exact_probs = jnp.abs(state) ** 2
-            return Script._sample_shots(exact_probs, n_qubits, type, obs, shots, key)
-        return Script._measure_state(state, n_qubits, type, obs)
-
-    @staticmethod
-    def _measure_state(
-        state: jnp.ndarray,
-        n_qubits: int,
-        type: str,
-        obs: List[Operation],
-    ) -> jnp.ndarray:
-        """Apply the requested measurement to a pure statevector.
-
-        Args:
-            state: Statevector of shape ``(2**n_qubits,)``.
-            n_qubits: Total number of qubits.
-            type: Measurement type — one of ``"state"``, ``"probs"``,
-                or ``"expval"``.
-            obs: Observables used when *type* is ``"expval"``.
-
-        Returns:
-            Measurement result whose shape depends on *type*:
-
-            - ``"state"``  -> ``(2**n_qubits,)``
-            - ``"probs"``  -> ``(2**n_qubits,)``
-            - ``"expval"`` -> ``(len(obs),)``
-
-        Raises:
-            ValueError: If *type* is not a recognised measurement type.
-        """
-        if type == "state":
-            return state
-
-        if type == "probs":
-            return jnp.abs(state) ** 2
-
-        if type == "expval":
-            # Fast path for single-qubit diagonal observables (PauliZ, etc.)
-            # where d0, d1 are the diagonal elements of the 2x2 observable.
-            # This replaces n_obs tensor contractions with a single |ψ|²
-            # and n_obs reductions over the probability vector.
-
-            def _is_single_qubit_diag(ob):
-                m = ob.__class__._matrix
-                if m is None or len(ob.wires) != 1:
-                    return False
-                # Convert to NumPy to ensure concrete boolean evaluation
-                m_np = np.asarray(m)
-                return np.allclose(m_np - np.diag(np.diag(m_np)), 0)
-
-            all_single_qubit_diag = all(_is_single_qubit_diag(ob) for ob in obs)
-
-            if all_single_qubit_diag:
-                probs = jnp.abs(state) ** 2
-                psi_t = probs.reshape((2,) * n_qubits)
-                results = []
-                for ob in obs:
-                    q = ob.wires[0]
-                    d = np.real(np.diag(np.asarray(ob.__class__._matrix)))
-                    # Sum probabilities over all axes except qubit q
-                    p_q = jnp.sum(
-                        psi_t, axis=tuple(i for i in range(n_qubits) if i != q)
-                    )
-                    results.append(d[0] * p_q[0] + d[1] * p_q[1])
-                return jnp.array(results)
-
-            # General path: stack observable matrices and use a single
-            # batched matmul instead of a Python loop of tensor contractions.
-            # O_states[i] = obs[i] |ψ⟩, then ⟨O_i⟩ = Re(⟨ψ|O_states[i]⟩).
-            obs_mats = jnp.stack(
-                [ob.lifted_matrix(n_qubits) for ob in obs], axis=0
-            )  # (n_obs, dim, dim)
-            # Batched matvec: (n_obs, dim, dim) @ (dim,) -> (n_obs, dim)
-            O_states = jnp.einsum("oij,j->oi", obs_mats, state)
-            return jnp.real(jnp.einsum("i,oi->o", jnp.conj(state), O_states))
-
-        raise ValueError(f"Unknown measurement type: {type!r}")
-
-    @staticmethod
-    def _measure_density(
-        rho: jnp.ndarray,
-        n_qubits: int,
-        type: str,
-        obs: List[Operation],
-    ) -> jnp.ndarray:
-        """Apply the requested measurement to a density matrix.
-
-        Args:
-            rho: Density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
-            n_qubits: Total number of qubits.
-            type: Measurement type — one of ``"density"``, ``"probs"``,
-                or ``"expval"``.
-            obs: Observables used when *type* is ``"expval"``.
-
-        Returns:
-            Measurement result whose shape depends on *type*:
-
-            - ``"density"`` -> ``(2**n_qubits, 2**n_qubits)``
-            - ``"probs"``   -> ``(2**n_qubits,)``
-            - ``"expval"``  -> ``(len(obs),)``
-
-        Raises:
-            ValueError: If *type* is ``"state"`` (not valid for mixed circuits)
-                or another unrecognised type.
-        """
-        if type == "density":
-            return rho
-
-        if type == "probs":
-            return jnp.real(jnp.diag(rho))
-
-        if type == "expval":
-            # Tr(O \\rho ) = \\Sigma_ij O_ij \\rho _ji
-            # Stack all observable matrices and compute all traces in one
-            # batched operation.
-            obs_mats = jnp.stack(
-                [ob.lifted_matrix(n_qubits) for ob in obs], axis=0
-            )  # (n_obs, dim, dim)
-            # einsum "oij,ji->o" computes Tr(O_o @ \\rho ) for each observable
-            return jnp.real(jnp.einsum("oij,ji->o", obs_mats, rho))
-
-        raise ValueError(
-            "Measurement type 'state' is not defined for mixed (noisy) circuits. "
-            "Use 'density' instead."
-        )
-
-    @staticmethod
-    def _sample_shots(
-        probs: jnp.ndarray,
-        n_qubits: int,
-        type: str,
-        obs: List[Operation],
-        shots: int,
-        key: jnp.ndarray,
-    ) -> jnp.ndarray:
-        """Convert exact probabilities into shot-sampled results.
-
-        Draws *shots* samples from the computational-basis probability
-        distribution and returns either estimated probabilities or
-        shot-based expectation values.
-
-        Args:
-            probs: Exact probability vector of shape ``(2**n_qubits,)``.
-            n_qubits: Total number of qubits.
-            type: Measurement type — ``"probs"`` or ``"expval"``.
-            obs: Observables used when *type* is ``"expval"``.
-            shots: Number of measurement shots.
-            key: JAX PRNG key for sampling.
-
-        Returns:
-            Shot-sampled measurement result:
-
-            - ``"probs"``  → ``(2**n_qubits,)`` estimated probabilities.
-            - ``"expval"`` → ``(len(obs),)`` estimated expectation values.
-        """
-        dim = 2**n_qubits
-
-        # Draw `shots` samples from the computational basis.
-        # Each sample is an integer in [0, dim) representing a basis state.
-        samples = jax.random.choice(key, dim, shape=(shots,), p=probs)
-
-        # Build a histogram of counts for each basis state.
-        counts = jnp.zeros(dim, dtype=jnp.int32)
-        counts = counts.at[samples].add(1)
-        estimated_probs = counts / shots
-
-        if type == "probs":
-            return estimated_probs
-
-        if type == "expval":
-            # For each observable, compute O from the shot-sampled
-            # probabilities.  For diagonal observables this is exact;
-            # for general observables we use Tr(O · diag(estimated_probs)).
-            results = []
-            for ob in obs:
-                O_mat = ob.lifted_matrix(n_qubits)
-                # diagonal approximation from
-                # computational basis measurements, which is exact for
-                # diagonal observables like PauliZ)
-                results.append(jnp.real(jnp.dot(jnp.diag(O_mat), estimated_probs)))
-            return jnp.array(results)
-
-        raise ValueError(
-            f"Shot simulation is only supported for 'probs' and 'expval', got {type!r}."
-        )
 
     def execute(
         self,
@@ -839,12 +179,11 @@ class Script:
             )
         else:
             tape = self._record(*args, **kwargs)
-            n_qubits = self._n_qubits or self._infer_n_qubits(tape, obs)
+            n_qubits = self._n_qubits or simulation.infer_n_qubits(tape, obs)
 
-            has_noise = any(isinstance(op, KrausChannel) for op in tape)
-            use_density = type == "density" or has_noise
+            use_density = simulation.uses_density(tape, type)
 
-            return self._simulate_and_measure(
+            return simulation.simulate_and_measure(
                 tape,
                 n_qubits,
                 type,
@@ -1003,7 +342,7 @@ class Script:
             mem_key = ("_mem", cache_key, batch_size)
             chunk_size = self._jit_cache.get(mem_key)
             if chunk_size is None:
-                chunk_size = self._compute_chunk_size(
+                chunk_size = memory.compute_chunk_size(
                     n_qubits, batch_size, type, use_density, len(obs), n_ops=n_ops
                 )
                 self._jit_cache[mem_key] = chunk_size
@@ -1011,8 +350,13 @@ class Script:
                 return self._fast_call(
                     cache_key, batched_fn, plain_fn, args, batch_size
                 )
-            return self._execute_chunked(
-                batched_fn, args, in_axes, batch_size, chunk_size
+            return memory.execute_chunked(
+                batched_fn,
+                args,
+                in_axes,
+                batch_size,
+                chunk_size,
+                clear_caches=memory.CLEAR_CACHES_BETWEEN_CHUNKS,
             )
 
         # Record the tape once using scalar slices of each arg.
@@ -1029,12 +373,11 @@ class Script:
             _slice_first(a, ax) if ax is not None else a for a, ax in zip(args, in_axes)
         )
         tape = self._record(*scalar_args, **kwargs)
-        n_qubits = self._n_qubits or self._infer_n_qubits(tape, obs)
-        has_noise = any(isinstance(op, KrausChannel) for op in tape)
-        use_density = type == "density" or has_noise
+        n_qubits = self._n_qubits or simulation.infer_n_qubits(tape, obs)
+        use_density = simulation.uses_density(tape, type)
         n_ops = len(tape)
 
-        chunk_size = self._compute_chunk_size(
+        chunk_size = memory.compute_chunk_size(
             n_qubits, batch_size, type, use_density, len(obs), n_ops=n_ops
         )
 
@@ -1049,10 +392,10 @@ class Script:
             def _single_execute_shots(*single_args_and_key):
                 *single_args, shot_key = single_args_and_key
                 single_tape = self._record(*single_args, **kwargs)
-                exact_result = self._simulate_and_measure(
+                exact_result = simulation.simulate_and_measure(
                     single_tape, n_qubits, "probs", obs, use_density
                 )
-                return Script._sample_shots(
+                return simulation.sample_shots(
                     exact_result, n_qubits, type, obs, shots, shot_key
                 )
 
@@ -1085,13 +428,18 @@ class Script:
 
             if chunk_size >= batch_size:
                 return batched_fn(*shot_args)
-            return self._execute_chunked(
-                batched_fn, shot_args, shot_in_axes, batch_size, chunk_size
+            return memory.execute_chunked(
+                batched_fn,
+                shot_args,
+                shot_in_axes,
+                batch_size,
+                chunk_size,
+                clear_caches=memory.CLEAR_CACHES_BETWEEN_CHUNKS,
             )
 
         def _single_execute(*single_args):
             single_tape = self._record(*single_args, **kwargs)
-            return self._simulate_and_measure(
+            return simulation.simulate_and_measure(
                 single_tape, n_qubits, type, obs, use_density
             )
 
@@ -1135,7 +483,14 @@ class Script:
 
         if chunk_size >= batch_size:
             return self._fast_call(cache_key, batched_fn, plain_fn, args, batch_size)
-        return self._execute_chunked(batched_fn, args, in_axes, batch_size, chunk_size)
+        return memory.execute_chunked(
+            batched_fn,
+            args,
+            in_axes,
+            batch_size,
+            chunk_size,
+            clear_caches=memory.CLEAR_CACHES_BETWEEN_CHUNKS,
+        )
 
     def draw(
         self,
@@ -1199,7 +554,7 @@ class Script:
             return draw_pulse_schedule(events, n_qubits, **draw_kwargs)
 
         tape = self._record(*args, **kwargs)
-        n_qubits = self._n_qubits or self._infer_n_qubits(tape, [])
+        n_qubits = self._n_qubits or simulation.infer_n_qubits(tape, [])
 
         # Filter out noise channels for drawing — they clutter the diagram
         ops = [op for op in tape if not isinstance(op, KrausChannel)]
