@@ -14,6 +14,7 @@ from qml_essentials.operations import (
 )
 from qml_essentials.tape import recording, pulse_recording
 from qml_essentials.drawing import draw_text, draw_mpl, draw_tikz
+from qml_essentials.unitary import UnitaryGates
 
 import logging
 
@@ -853,6 +854,54 @@ class Script:
                 key=key,
             )
 
+    @staticmethod
+    def _args_contain_tracer(args: tuple) -> bool:
+        """Return ``True`` if any leaf of *args* is a JAX tracer.
+
+        When :meth:`execute` runs under an outer transform (``jax.grad``,
+        ``jax.jacrev``, an enclosing ``jax.jit``/``vmap``) the positional
+        arguments are tracers rather than concrete arrays.  In that case the
+        per-:class:`Script` wrapper cache must be bypassed: a cached function
+        built for a previous trace closes over that trace's tracers and would
+        leak them into the current one.  The concrete-only fast path (the
+        ahead-of-time-compiled executable) is likewise invalid for tracers.
+        """
+        return any(
+            isinstance(x, jax.core.Tracer) for x in jax.tree_util.tree_leaves(args)
+        )
+
+    def _fast_call(
+        self,
+        cache_key: tuple,
+        batched_fn: Callable,
+        plain_fn: Optional[Callable],
+        args: tuple,
+        batch_size: int,
+    ) -> jnp.ndarray:
+        """Dispatch a full (unchunked) batch through the leanest path available.
+
+        When *plain_fn* is provided (every positional argument is a concrete
+        array), the vmapped kernel is ahead-of-time lowered and compiled to an
+        XLA executable, cached per ``(cache_key, batch_size)``, and invoked
+        directly.  Calling the compiled executable skips both the per-call
+        pytree partition/combine of :func:`eqx.filter_jit` and the
+        just-in-time cache-key recomputation; for small circuits evaluated in
+        a tight loop (e.g. training iterations) that dispatch overhead, not the
+        XLA compute, dominates wall-clock time.
+
+        Falls back to *batched_fn* (the ``eqx.filter_jit`` wrapper) when no
+        AOT-eligible *plain_fn* exists — i.e. when an argument is a non-array
+        Python value handled as static, or the call is under a transform.
+        """
+        if plain_fn is None:
+            return batched_fn(*args)
+        aot_key = ("_aot", cache_key, batch_size)
+        compiled = self._jit_cache.get(aot_key)
+        if compiled is None:
+            compiled = plain_fn.lower(*args).compile()
+            self._jit_cache[aot_key] = compiled
+        return compiled(*args)
+
     def _execute_batched(
         self,
         type: str,
@@ -930,8 +979,6 @@ class Script:
         )
 
         # TODO: we need to fix the dirty class-level `batch_gate_error` hack
-        from qml_essentials.gates import UnitaryGates
-
         cache_key = (
             type,
             in_axes,
@@ -940,33 +987,30 @@ class Script:
             UnitaryGates.batch_gate_error,
         )
 
-        # When called under an outer JAX transform (e.g. ``jacrev``) the
-        # cached ``batched_fn`` from a previous outer trace would leak that
-        # trace's tracers.  Bypass the per-Script wrapper cache in that
-        # case; XLA-level compilation caching is unaffected.
-        # in_transform = _args_contain_tracer(args)
+        # Running under an outer JAX transform (e.g. ``jax.jacrev``) makes
+        # ``args`` tracers.  A cached wrapper/executable built for a previous
+        # (or concrete) trace would leak tracers if reused here, so bypass the
+        # per-Script wrapper cache entirely in that case; XLA-level
+        # compilation caching is unaffected.
+        in_transform = self._args_contain_tracer(args)
 
-        # --- Cache-hit fast path (no shots) ---
+        # --- Cache-hit fast path (no shots, concrete args) ---
         cached = self._jit_cache.get(cache_key)
-        # if cached is not None and shots is None and not in_transform:
-        if cached is not None and shots is None:
-            batched_fn, n_qubits, use_density, n_ops = cached
-            # Check if we already determined the chunk size for this
-            # exact batch_size (avoids repeated psutil syscalls).
+        if cached is not None and shots is None and not in_transform:
+            batched_fn, n_qubits, use_density, n_ops, plain_fn = cached
+            # Reuse the chunk size determined for this exact batch_size
+            # (avoids repeated psutil syscalls).
             mem_key = ("_mem", cache_key, batch_size)
-            cached_chunk = self._jit_cache.get(mem_key)
-            if cached_chunk is not None:
-                if cached_chunk >= batch_size:
-                    return batched_fn(*args)
-                return self._execute_chunked(
-                    batched_fn, args, in_axes, batch_size, cached_chunk
+            chunk_size = self._jit_cache.get(mem_key)
+            if chunk_size is None:
+                chunk_size = self._compute_chunk_size(
+                    n_qubits, batch_size, type, use_density, len(obs), n_ops=n_ops
                 )
-            chunk_size = self._compute_chunk_size(
-                n_qubits, batch_size, type, use_density, len(obs), n_ops=n_ops
-            )
-            self._jit_cache[mem_key] = chunk_size
+                self._jit_cache[mem_key] = chunk_size
             if chunk_size >= batch_size:
-                return batched_fn(*args)
+                return self._fast_call(
+                    cache_key, batched_fn, plain_fn, args, batch_size
+                )
             return self._execute_chunked(
                 batched_fn, args, in_axes, batch_size, chunk_size
             )
@@ -1051,35 +1095,46 @@ class Script:
                 single_tape, n_qubits, type, obs, use_density
             )
 
-        # Wrapping the vmapped function in eqx.filter_jit has two effects:
-        # 1. Multi-core utilisation — the JIT-compiled XLA program can
-        #    use intra-op parallelism to distribute independent SIMD lanes
-        #    across CPU threads, unlike an eager vmap which runs
-        #    single-threaded.
-        # 2. Compilation caching — subsequent calls with the same input
-        #    shapes reuse the compiled kernel and skip all Python-level
-        #    tracing, eliminating the O(B\\times circuit_depth) Python overhead.
-        #
-        # The compiled function is cached on this Script instance,
-        # keyed on (type, in_axes, arg_shapes).  Repeated calls with the
-        # same structure (e.g. training iterations) skip both Python-level
-        # tracing and XLA compilation entirely — they jump straight to the
-        # cache check at the top of this method.
+        # General dispatch path.  Wrapping the vmapped function in
+        # eqx.filter_jit has three effects:
+        # 1. Static/dynamic partitioning — non-array arguments are treated as
+        #    static, so circuit signatures mixing arrays and Python values work.
+        # 2. Multi-core utilisation — the JIT-compiled XLA program can use
+        #    intra-op parallelism across CPU threads, unlike an eager vmap.
+        # 3. Compilation caching — subsequent calls with the same input shapes
+        #    reuse the compiled kernel and skip Python-level tracing.
         # NOTE: when altering properties of the model, this might not get re-compiled
         # TODO: we might want to rework the data_reupload mechanism at some point
         batched_fn = eqx.filter_jit(jax.vmap(_single_execute, in_axes=in_axes))
-        # Cache the function together with metadata for fast-path memory
-        # checks on subsequent calls.  Skip caching when the call is under
-        # an outer JAX transform (the closure of ``_single_execute``
-        # captures ``n_qubits``/``obs``/``kwargs`` of this trace; reusing
-        # the wrapper under a different outer trace would leak its
-        # tracers).
-        # if not in_transform:
-        #     self._jit_cache[cache_key] = (batched_fn, n_qubits, use_density, n_ops)
-        self._jit_cache[cache_key] = (batched_fn, n_qubits, use_density, n_ops)
+
+        # Fast lane: when every positional argument is a concrete array, the
+        # same vmapped kernel can be ahead-of-time compiled and the resulting
+        # XLA executable called directly (see :meth:`_fast_call`), which is
+        # markedly cheaper to dispatch in a repeated-call loop.  Build the
+        # plain ``jax.jit`` wrapper here; ``_fast_call`` lowers+compiles it
+        # lazily per batch size.  Skipped under an outer transform, where only
+        # the tracer-tolerant ``batched_fn`` is valid.
+        plain_fn = None
+        if not in_transform and all(
+            isinstance(a, (jnp.ndarray, np.ndarray)) for a in args
+        ):
+            plain_fn = jax.jit(jax.vmap(_single_execute, in_axes=in_axes))
+
+        # Cache the wrappers + metadata for subsequent calls.  Skip caching
+        # under an outer transform: ``_single_execute`` closes over this
+        # trace's ``n_qubits``/``obs``/``kwargs``, so reusing the wrapper in a
+        # different trace would leak tracers.
+        if not in_transform:
+            self._jit_cache[cache_key] = (
+                batched_fn,
+                n_qubits,
+                use_density,
+                n_ops,
+                plain_fn,
+            )
 
         if chunk_size >= batch_size:
-            return batched_fn(*args)
+            return self._fast_call(cache_key, batched_fn, plain_fn, args, batch_size)
         return self._execute_chunked(batched_fn, args, in_axes, batch_size, chunk_size)
 
     def draw(
