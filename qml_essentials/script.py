@@ -3,7 +3,6 @@ from typing import Any, Callable, List, NamedTuple, Optional, Tuple, Union
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-import numpy as np  # needed to prevent jitting some operations
 
 from qml_essentials.operations import Operation, KrausChannel
 from qml_essentials.tape import recording, pulse_recording
@@ -225,11 +224,11 @@ class Script:
 
         When :meth:`execute` runs under an outer transform (``jax.grad``,
         ``jax.jacrev``, an enclosing ``jax.jit``/``vmap``) the positional
-        arguments are tracers rather than concrete arrays.  In that case the
-        per-:class:`Script` wrapper cache must be bypassed: a cached function
-        built for a previous trace closes over that trace's tracers and would
-        leak them into the current one.  The concrete-only fast path (the
-        ahead-of-time-compiled executable) is likewise invalid for tracers.
+        arguments are tracers rather than concrete arrays.  The tracer-tolerant
+        ``eqx.filter_jit`` wrapper is still reused in that case (its closure
+        captures only concrete metadata), but the concrete-only fast path — the
+        ahead-of-time-compiled XLA executable — is invalid for tracers and must
+        be skipped.
         """
         return any(
             isinstance(x, jax.core.Tracer) for x in jax.tree_util.tree_leaves(args)
@@ -277,16 +276,16 @@ class Script:
         args: tuple,
         kwargs: dict,
         in_axes: Tuple,
-        in_transform: bool,
     ) -> _BatchPlan:
         """Trace the circuit once and build the cacheable execution plan.
 
         Records the tape from scalar slices of *args* (to derive
         ``n_qubits``/noise), then builds the vmapped ``eqx.filter_jit``
-        wrapper.  When every positional argument is a concrete array — and the
-        call is not under an outer transform — an AOT-eligible plain
-        ``jax.jit`` wrapper is built too; :meth:`_dispatch` lowers and compiles
-        it lazily per batch size.
+        wrapper.  When every positional argument is array-like (so plain
+        ``jax.jit`` — which has no static-argument handling — is valid) an
+        AOT-eligible plain ``jax.jit`` wrapper is built too; :meth:`_dispatch`
+        lowers and compiles it lazily per batch size, and only with concrete
+        args (the AOT path is gated off under a transform by the caller).
         """
         scalar_args = tuple(
             self._slice_first(a, ax) if ax is not None else a
@@ -315,10 +314,16 @@ class Script:
         # TODO: we might want to rework the data_reupload mechanism at some point
         batched_fn = eqx.filter_jit(jax.vmap(_single_execute, in_axes=in_axes))
 
+        # AOT eligibility is a structural property of the signature: plain
+        # ``jax.jit`` has no static-argument handling, so it is valid only when
+        # every positional argument is array-like.  ``hasattr(a, "shape")`` is
+        # true for concrete arrays, numpy arrays, and tracers, but false for
+        # Python statics (str/None/dict).  Building the wrapper is pure (it
+        # traces nothing); the lower+compile happens lazily in :meth:`_dispatch`
+        # and only with concrete args, so this is safe to build under a
+        # transform — its use is gated off there by the caller.
         plain_fn = None
-        if not in_transform and all(
-            isinstance(a, (jnp.ndarray, np.ndarray)) for a in args
-        ):
+        if all(hasattr(a, "shape") for a in args):
             plain_fn = jax.jit(jax.vmap(_single_execute, in_axes=in_axes))
 
         return _BatchPlan(batched_fn, plain_fn, n_qubits, use_density, n_ops)
@@ -330,17 +335,14 @@ class Script:
         type: str,
         n_obs: int,
         batch_size: int,
-        in_transform: bool,
     ) -> int:
         """Largest batch chunk that fits in memory, memoized per batch size.
 
         The result is cached under ``("_mem", cache_key, batch_size)`` to avoid
-        repeated ``psutil`` syscalls across a tight repeated-call loop.  Caching
-        is skipped under an outer transform, where the per-Script cache is
-        bypassed entirely.
+        repeated ``psutil`` syscalls across a tight repeated-call loop.
         """
         mem_key = ("_mem", cache_key, batch_size)
-        chunk_size = None if in_transform else self._jit_cache.get(mem_key)
+        chunk_size = self._jit_cache.get(mem_key)
         if chunk_size is None:
             chunk_size = memory.compute_chunk_size(
                 plan.n_qubits,
@@ -350,8 +352,7 @@ class Script:
                 n_obs,
                 n_ops=plan.n_ops,
             )
-            if not in_transform:
-                self._jit_cache[mem_key] = chunk_size
+            self._jit_cache[mem_key] = chunk_size
         return chunk_size
 
     def _dispatch(
@@ -460,10 +461,9 @@ class Script:
         batch_size = self._batch_size(args, in_axes)
 
         # Running under an outer JAX transform (e.g. ``jax.jacrev``) makes
-        # ``args`` tracers.  A cached wrapper/executable built for a previous
-        # (or concrete) trace would leak tracers if reused here, so bypass the
-        # per-Script cache entirely in that case; XLA-level compilation caching
-        # is unaffected.
+        # ``args`` tracers.  The tracer-tolerant ``batched_fn`` wrapper is still
+        # cached and reused (see exact-mode dispatch below); only the AOT
+        # ``plain_fn`` executable is gated off, as it cannot accept tracers.
         in_transform = self._args_contain_tracer(args)
 
         arg_shapes = tuple(
@@ -480,7 +480,7 @@ class Script:
             shot_in_axes = in_axes + (0,)  # shot key batched over axis 0
             shot_args = args + (jax.random.split(key, batch_size),)
 
-            plan = None if in_transform else self._jit_cache.get(shot_cache_key)
+            plan = self._jit_cache.get(shot_cache_key)
             if plan is None:
                 scalar_args = tuple(
                     self._slice_first(a, ax) if ax is not None else a
@@ -507,11 +507,10 @@ class Script:
                     jax.vmap(_single_execute_shots, in_axes=shot_in_axes)
                 )
                 plan = _BatchPlan(batched_fn, None, n_qubits, use_density, n_ops)
-                if not in_transform:
-                    self._jit_cache[shot_cache_key] = plan
+                self._jit_cache[shot_cache_key] = plan
 
             chunk_size = self._chunk_size(
-                shot_cache_key, plan, type, len(obs), batch_size, in_transform
+                shot_cache_key, plan, type, len(obs), batch_size
             )
             # Shot mode never uses the AOT fast path (plain_fn is None).
             return self._dispatch(
@@ -530,21 +529,23 @@ class Script:
         )
         cache_key = (type, in_axes, arg_shapes, cache_kwargs, gate_error)
 
-        plan = None if in_transform else self._jit_cache.get(cache_key)
+        # The cached ``batched_fn`` (eqx.filter_jit wrapper) is reused across
+        # calls including under an outer transform: its ``_single_execute``
+        # closure captures only concrete metadata (n_qubits/obs/use_density and
+        # non-array kwargs), so it leaks no tracers, and reusing one wrapper
+        # lets JAX hit its aval-keyed trace cache instead of re-tracing the
+        # circuit every call.  Only the AOT ``plain_fn`` (a compiled executable)
+        # is invalid for tracers; its use is gated below by ``in_transform``.
+        plan = self._jit_cache.get(cache_key)
         if plan is None:
-            plan = self._build_plan(type, obs, args, kwargs, in_axes, in_transform)
-            # Skip caching under an outer transform: the plan's closures hold
-            # this trace's metadata and would leak tracers if reused elsewhere.
-            if not in_transform:
-                self._jit_cache[cache_key] = plan
+            plan = self._build_plan(type, obs, args, kwargs, in_axes)
+            self._jit_cache[cache_key] = plan
 
-        chunk_size = self._chunk_size(
-            cache_key, plan, type, len(obs), batch_size, in_transform
-        )
+        chunk_size = self._chunk_size(cache_key, plan, type, len(obs), batch_size)
         return self._dispatch(
             ("_aot", cache_key, batch_size),
             plan.batched_fn,
-            plan.plain_fn,
+            None if in_transform else plan.plain_fn,
             args,
             in_axes,
             batch_size,

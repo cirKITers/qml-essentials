@@ -1252,7 +1252,7 @@ def test_gate_mode_training() -> None:
         model.params = params
     end = time.time()
     print(f"Time taken: {end - start}")
-    assert end - start < 80000000, "Time limit of 80 seconds exceeded"
+    assert end - start < 120, "Time limit of 120 seconds exceeded"
 
 
 @pytest.mark.benchmark
@@ -1305,4 +1305,4 @@ def test_pulse_mode_training() -> None:
     PulseInformation.set_rwa(original_rwa)
     end = time.time()
     print(f"Time taken: {end - start}")
-    assert end - start < 80000000, "Time limit of 80 seconds exceeded"
+    assert end - start < 60, "Time limit of 60 seconds exceeded"
