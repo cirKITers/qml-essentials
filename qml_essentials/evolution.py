@@ -4,8 +4,7 @@ This module houses the :class:`Evolution` class, which turns a (static or
 time-dependent) Hamiltonian into a gate factory by solving the Schrödinger
 equation ``dU/dt = -i H(t) U``.  It is the pulse/gate-dependent counterpart to
 the otherwise pulse-agnostic :mod:`qml_essentials.jaqsi` entry point, which
-re-exports :func:`evolve` and keeps ``Jaqsi`` as a backward-compatible alias for
-:class:`Evolution`.
+re-exports :func:`evolve` through `Evolution.evolve`
 """
 
 from typing import Any, Callable, List, Optional, Tuple, Union
@@ -562,7 +561,3 @@ class Evolution:
             return Operation(wires=wires, matrix=U, name=name)
 
         return _apply
-
-
-# Convenience module-level access to the evolve gate factory.
-evolve = Evolution.evolve

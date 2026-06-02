@@ -32,7 +32,7 @@ Together they form a pipeline that turns a circuit function into a measurement r
 - `simulation.py` : the compute engine. A set of pure, stateless functions that run a recorded tape: `simulate_pure` (statevector), `simulate_mixed` (density matrix) and the measurement kernels (`measure_state`, `measure_density`, `sample_shots`). Being pure JAX functions, they are fully differentiable and `jit`/`vmap`-compatible.
 - `memory.py` : memory accounting. Pure helpers that estimate the peak memory of a batched run and, when it would not fit in available RAM, split the batch into chunks that do (`estimate_peak_bytes`, `compute_chunk_size`, `execute_chunked`). `Script` calls these to drive its memory-aware `vmap` chunking.
 - `evolution.py` : Hamiltonian time-evolution. The `Evolution` class builds gates that evolve a (parametrized) Hamiltonian in time, either analytically (`exp(-i t H)` for a static `H`) or by solving the Schrödinger equation with an adaptive `diffrax` solver or a fixed-step Magnus integrator. This module backs the pulse-level simulation.
-- `jaqsi.py` : the entry-point module. Re-exports `Script` for circuit building together with a few pulse/gate-independent quantum-info helpers (`partial_trace`, `marginalize_probs`, `build_parity_observable`). For backward compatibility it also re-exports `evolve` and keeps `Jaqsi` as an alias for `Evolution`.
+- `jaqsi.py` : the entry-point module. Re-exports `Script` for circuit building together with a few pulse/gate-independent quantum-info helpers (`partial_trace`, `marginalize_probs`, `build_parity_observable`). It also re-exports `evolve` through `Evolution.evolve` for pulse-level simulation.
 
 A call to `Script.execute(...)` then runs four stages:
 

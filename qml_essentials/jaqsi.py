@@ -17,14 +17,10 @@ import jax
 import jax.numpy as jnp
 
 from qml_essentials.script import Script  # noqa: F401
-from qml_essentials.evolution import Evolution, evolve  # noqa: F401
+from qml_essentials.evolution import Evolution
 from qml_essentials.operations import Hermitian, PauliZ
 
-# Backward-compatible alias: the evolution/solver machinery moved to
-# :mod:`qml_essentials.evolution`.  ``Jaqsi`` is retained as an alias for
-# :class:`Evolution` so existing ``Jaqsi.<member>`` references — including the
-# shared ``_evolve_solver_cache`` / ``_solver_defaults`` state — keep working.
-Jaqsi = Evolution
+evolve = Evolution.evolve
 
 
 def _partial_trace_single(
