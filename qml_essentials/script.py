@@ -126,8 +126,9 @@ class Script:
         Args:
             type: Measurement type.  One of:
 
-                - ``"expval"``  — expectation value ⟨ψ|O|ψ⟩ / Tr(O\\rho ) for
-                  each observable in *obs*.
+                - ``"expval"``  — expectation value
+                    \\langle\\psi|O|\\psi\\rangle / Tr(O\\rho )
+                    for each observable in *obs*.
                 - ``"probs"``   — probability vector of shape ``(2**n,)``.
                 - ``"state"``   — raw statevector of shape ``(2**n,)``.
                 - ``"density"`` — full density matrix of shape
@@ -219,7 +220,7 @@ class Script:
     ) -> jnp.ndarray:
         """Dispatch a full (unchunked) batch through the leanest path available.
 
-        When *plain_fn* is provided (every positional argument is a concrete
+        When ``plain_fn`` is provided (every positional argument is a concrete
         array), the vmapped kernel is ahead-of-time lowered and compiled to an
         XLA executable, cached per ``(cache_key, batch_size)``, and invoked
         directly.  Calling the compiled executable skips both the per-call
@@ -228,8 +229,8 @@ class Script:
         a tight loop (e.g. training iterations) that dispatch overhead, not the
         XLA compute, dominates wall-clock time.
 
-        Falls back to *batched_fn* (the ``eqx.filter_jit`` wrapper) when no
-        AOT-eligible *plain_fn* exists — i.e. when an argument is a non-array
+        Falls back to ``batched_fn`` (the ``eqx.filter_jit`` wrapper) when no
+        AOT-eligible ``plain_fn`` exists — i.e. when an argument is a non-array
         Python value handled as static, or the call is under a transform.
         """
         if plain_fn is None:
