@@ -1,12 +1,12 @@
 from typing import Any, Dict, Optional, Tuple, Callable, Union, List
 
-from qml_essentials import operations as op
-from qml_essentials import yaqsi as ys
 import warnings
 import jax.numpy as jnp
 import numpy as np
 from jax import random
 
+from qml_essentials import jaqsi as js
+from qml_essentials import operations as op
 from qml_essentials.tape import recording
 from qml_essentials.operations import KrausChannel
 from qml_essentials.ansaetze import Ansaetze, Circuit, Encoding
@@ -203,11 +203,11 @@ class Model:
 
         log.info(f"Initialized pulse parameters with shape {self.pulse_params.shape}.")
 
-        # Initialise the yaqsi Script that wraps _variational.
-        # No device selection needed - yaqsi auto-routes between statevector
+        # Initialise the jaqsi Script that wraps _variational.
+        # No device selection needed - jaqsi auto-routes between statevector
         # and density-matrix simulation based on whether noise channels are
         # present on the tape.
-        self.script = ys.Script(f=self._variational, n_qubits=self.n_qubits)
+        self.script = js.Script(f=self._variational, n_qubits=self.n_qubits)
 
     @property
     def noise_params(self) -> Optional[Dict[str, Union[float, Dict[str, float]]]]:
@@ -887,7 +887,7 @@ class Model:
                 random_key=sub_key,
             )
 
-            # visual barrier (no-op in yaqsi, purely cosmetic in PennyLane)
+            # visual barrier (no-op in jaqsi, purely cosmetic in PennyLane)
 
         # final ansatz layer
         if self.has_dru:  # same check as in init
@@ -906,11 +906,11 @@ class Model:
             self._apply_general_noise(noise_params=noise_params)
 
     def _build_obs(self) -> Tuple[str, List[op.Operation]]:
-        """Build the yaqsi measurement type and observable list.
+        """Build the jaqsi measurement type and observable list.
 
         Translates the model's ``execution_type`` and ``output_qubit``
         settings into parameters suitable for
-        :meth:`~qml_essentials.yaqsi.Script.execute`.
+        :meth:`~qml_essentials.jaqsi.Script.execute`.
 
         Returns:
             Tuple ``(meas_type, obs)`` where *meas_type* is one of
@@ -930,7 +930,7 @@ class Model:
                     obs.append(op.PauliZ(wires=qubit_spec))
                 else:
                     # parity: Z \\otimes Z \\otimes …
-                    obs.append(ys.build_parity_observable(list(qubit_spec)))
+                    obs.append(js.build_parity_observable(list(qubit_spec)))
             return "expval", obs
 
         if self.execution_type == "probs":
@@ -1111,7 +1111,7 @@ class Model:
         saved_noise = self._noise_params
         self._noise_params = None
 
-        draw_script = ys.Script(f=self._variational, n_qubits=self.n_qubits)
+        draw_script = js.Script(f=self._variational, n_qubits=self.n_qubits)
         result = draw_script.draw(
             figure=figure,
             args=(params, inp),
@@ -1145,7 +1145,7 @@ class Model:
         params = self.params[0] if self.params.ndim == 3 else self.params
         inp = inputs[0] if inputs.ndim == 2 else inputs
 
-        draw_script = ys.Script(f=self._variational, n_qubits=self.n_qubits)
+        draw_script = js.Script(f=self._variational, n_qubits=self.n_qubits)
         return draw_script.draw(
             figure="pulse",
             args=(params, inp),
@@ -1600,7 +1600,7 @@ class Model:
         # Build measurement type & observables from execution_type / output_qubit
         meas_type, obs = self._build_obs()
 
-        # Yaqsi auto-routes between statevector and density-matrix simulation
+        # Jaqsi auto-routes between statevector and density-matrix simulation
         # based on whether noise channels appear on the tape, so a single
         B = np.prod(self.eff_batch_shape)
 
@@ -1652,19 +1652,19 @@ class Model:
 
         # --- Post-processing for partial-qubit measurements ---------------
         if self.execution_type == "density" and not self.all_qubit_measurement:
-            result = ys.partial_trace(result, self.n_qubits, self.output_qubit)
+            result = js.partial_trace(result, self.n_qubits, self.output_qubit)
 
         if self.execution_type == "probs" and not self.all_qubit_measurement:
             if isinstance(self.output_qubit[0], (list, tuple)):
                 # list of qubit groups - marginalize each independently
                 result = jnp.stack(
                     [
-                        ys.marginalize_probs(result, self.n_qubits, list(group))
+                        js.marginalize_probs(result, self.n_qubits, list(group))
                         for group in self.output_qubit
                     ]
                 )
             else:
-                result = ys.marginalize_probs(result, self.n_qubits, self.output_qubit)
+                result = js.marginalize_probs(result, self.n_qubits, self.output_qubit)
 
         result = jnp.asarray(result)
         result = result.reshape((*self.eff_batch_shape, *self._result_shape)).squeeze()

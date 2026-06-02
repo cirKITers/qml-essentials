@@ -606,7 +606,7 @@ class ParametrizedHamiltonian:
         Raises:
             ValueError: If the term list is empty, or if terms act on
                 differing wire sets (multi-wire broadcasting is
-                deferred — see :mod:`yaqsi`), or if term matrices have
+                deferred — see :mod:`jaqsi`), or if term matrices have
                 incompatible shapes.
         """
         if len(terms) == 0:

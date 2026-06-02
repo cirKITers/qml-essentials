@@ -304,7 +304,7 @@ Therefore, this section provides an example on how to use a custom circuit.
 ```python
 from qml_essentials.gates import Gates as g
 from qml_essentials.model import Model
-import qml_essentials.yaqsi as ys
+import qml_essentials.jaqsi as js
 import jax.numpy as jnp
 
 def my_circuit(params, inputs, *args, **kwargs) -> None:
@@ -331,5 +331,5 @@ model.frequencies = (-3, -1, 0, 1, 3)  # here we define the actual frequencies
 # We need to define which shape the parameters have
 model._params_shape = (2, 1)  # (n_layers, n_params_per_layer)
 # Overwrite the script with our own variational circuit
-model.script = ys.Script(f=my_circuit)
+model.script = js.Script(f=my_circuit)
 ```

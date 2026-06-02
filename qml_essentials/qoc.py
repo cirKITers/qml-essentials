@@ -10,9 +10,9 @@ from jax import numpy as jnp
 import numpy as np
 import optax
 
+from qml_essentials import jaqsi as js
 from qml_essentials.gates import Gates, PulseInformation, PulseEnvelope
 from qml_essentials import operations as op
-from qml_essentials import yaqsi as ys
 from qml_essentials.math import phase_difference, fidelity
 
 jax.config.update("jax_enable_x64", True)
@@ -170,8 +170,8 @@ class Cost:
 
 def fidelity_cost_fn(
     pulse_params: jnp.ndarray,
-    pulse_scripts: Union[ys.Script, List[ys.Script]],
-    target_scripts: Union[ys.Script, List[ys.Script]],
+    pulse_scripts: Union[js.Script, List[js.Script]],
+    target_scripts: Union[js.Script, List[js.Script]],
     n_samples: int,
 ) -> Tuple[float, float]:
     """
@@ -198,11 +198,11 @@ def fidelity_cost_fn(
 
     Args:
         pulse_params: Pulse parameters for evaluation.
-        pulse_scripts: One or a list of yaqsi scripts with pulse
+        pulse_scripts: One or a list of jaqsi scripts with pulse
             parameters.  If a list is supplied, the cost is averaged
             element-wise with ``target_scripts`` (which must have the
             same length).
-        target_scripts: One or a list of yaqsi target scripts.
+        target_scripts: One or a list of jaqsi target scripts.
         n_samples: Number of parameter samples.
 
     Returns:
@@ -258,8 +258,8 @@ def fidelity_cost_fn(
 
 def unitary_cost_fn(
     pulse_params: jnp.ndarray,
-    pulse_basis_scripts: List[ys.Script],
-    target_basis_scripts: List[ys.Script],
+    pulse_basis_scripts: List[js.Script],
+    target_basis_scripts: List[js.Script],
     n_samples: int,
     n_qubits: int,
 ) -> Tuple[float, float]:
@@ -356,8 +356,8 @@ def joint_unitary_cost_fn(
             "n_qubits":             int,
             "weight":               float,           # per-gate weight
             "assembler":            Callable,        # theta -> per-gate flat params
-            "pulse_basis_scripts":  List[ys.Script], # 2**n_qubits scripts
-            "target_basis_scripts": List[ys.Script],
+            "pulse_basis_scripts":  List[js.Script], # 2**n_qubits scripts
+            "target_basis_scripts": List[js.Script],
         }
 
     The total return value is a ``(process_loss, phase_loss)`` tuple
@@ -1047,7 +1047,7 @@ class QOC:
         Robustness: candidates that produce a non-finite loss (e.g. when
         the underlying pulse drives the integrator into a NaN — typical
         for very narrow DRAG envelopes) are skipped with a warning.  For
-        the duration of the scan, :class:`qml_essentials.yaqsi.Yaqsi` is
+        the duration of the scan, :class:`qml_essentials.jaqsi.Jaqsi` is
         switched into ``throw=False`` mode so a single bad candidate
         cannot abort the loop with ``MaxStepsReached``; the previous
         defaults are restored on exit.
@@ -1140,7 +1140,7 @@ class QOC:
             # the duration of the scan so candidates that exceed the step
             # budget produce NaN unitaries (and therefore +inf losses)
             # rather than aborting the whole grid loop.
-            prev_solver_defaults = ys.Yaqsi.set_solver_defaults(throw=False)
+            prev_solver_defaults = js.Jaqsi.set_solver_defaults(throw=False)
             n_skipped = 0
             n_raw_better = 0
             try:
@@ -1199,7 +1199,7 @@ class QOC:
                 # Always restore the previous solver defaults so other
                 # callers (including Stage 1) are unaffected.
                 if prev_solver_defaults:
-                    ys.Yaqsi.set_solver_defaults(**prev_solver_defaults)
+                    js.Jaqsi.set_solver_defaults(**prev_solver_defaults)
 
             if n_skipped:
                 log.warning(
@@ -1807,21 +1807,21 @@ class QOC:
                 target_circuit_plus = _with_plus_prep(target_circuit)
 
                 pulse_scripts = [
-                    ys.Script(pulse_circuit, n_qubits=wires),
-                    ys.Script(pulse_circuit_plus, n_qubits=wires),
+                    js.Script(pulse_circuit, n_qubits=wires),
+                    js.Script(pulse_circuit_plus, n_qubits=wires),
                 ]
                 target_scripts = [
-                    ys.Script(target_circuit, n_qubits=wires),
-                    ys.Script(target_circuit_plus, n_qubits=wires),
+                    js.Script(target_circuit, n_qubits=wires),
+                    js.Script(target_circuit_plus, n_qubits=wires),
                 ]
 
                 d_basis = 2**wires
                 pulse_basis_scripts = [
-                    ys.Script(_with_basis_prep(pulse_circuit, k, wires), n_qubits=wires)
+                    js.Script(_with_basis_prep(pulse_circuit, k, wires), n_qubits=wires)
                     for k in range(d_basis)
                 ]
                 target_basis_scripts = [
-                    ys.Script(
+                    js.Script(
                         _with_basis_prep(target_circuit, k, wires), n_qubits=wires
                     )
                     for k in range(d_basis)
@@ -2373,7 +2373,7 @@ class QOC:
             f"init_loss={float(best_loss):.6e}"
         )
 
-        prev_solver_defaults = ys.Yaqsi.set_solver_defaults(throw=False)
+        prev_solver_defaults = js.Jaqsi.set_solver_defaults(throw=False)
         try:
             seen_slices: set = set()
             for leaf_name, sl in leaf_slices.items():
@@ -2403,7 +2403,7 @@ class QOC:
                 )
         finally:
             if prev_solver_defaults:
-                ys.Yaqsi.set_solver_defaults(**prev_solver_defaults)
+                js.Jaqsi.set_solver_defaults(**prev_solver_defaults)
 
         return current
 
@@ -2507,11 +2507,11 @@ class QOC:
             pulse_circuit, target_circuit = self._create_joint_pair_for(gname)
 
             pulse_basis_scripts = [
-                ys.Script(_with_basis_prep(pulse_circuit, k, n_wires), n_qubits=n_wires)
+                js.Script(_with_basis_prep(pulse_circuit, k, n_wires), n_qubits=n_wires)
                 for k in range(d_basis)
             ]
             target_basis_scripts = [
-                ys.Script(
+                js.Script(
                     _with_basis_prep(target_circuit, k, n_wires), n_qubits=n_wires
                 )
                 for k in range(d_basis)
@@ -2692,8 +2692,8 @@ def profile_pulse_pipeline(
         def target_circuit(theta):
             gate_op(theta, wires=0)
 
-        pulse_script = ys.Script(pulse_circuit, n_qubits=n_qubits)
-        target_script = ys.Script(target_circuit, n_qubits=n_qubits)
+        pulse_script = js.Script(pulse_circuit, n_qubits=n_qubits)
+        target_script = js.Script(target_circuit, n_qubits=n_qubits)
 
         theta = jnp.asarray(jnp.pi / 4)
         pp = PulseInformation.gate_by_name(gate).params

@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import itertools
 
-import qml_essentials.yaqsi as ys
+from qml_essentials import jaqsi as js
 from qml_essentials.pulses import PulseInformation
 from qml_essentials.qoc import (
     Cost,
@@ -344,8 +344,8 @@ class TestFidelity:
     def test_single_qubit_pulse_gate(self, gate, w):
         qoc = QOC(**qoc_test_params())
         pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
-        pulse_script = ys.Script(pulse_circuit, n_qubits=1)
-        target_script = ys.Script(target_circuit, n_qubits=1)
+        pulse_script = js.Script(pulse_circuit, n_qubits=1)
+        target_script = js.Script(target_circuit, n_qubits=1)
 
         state_pulse = pulse_script.execute(
             type="state", args=(w, PulseInformation.gate_by_name(gate).params)
@@ -368,8 +368,8 @@ class TestFidelity:
     def test_two_qubit_pulse_gate(self, gate, w):
         qoc = QOC(**qoc_test_params())
         pulse_circuit, target_circuit = getattr(qoc, "create_" + gate)()
-        pulse_script = ys.Script(pulse_circuit, n_qubits=2)
-        target_script = ys.Script(target_circuit, n_qubits=2)
+        pulse_script = js.Script(pulse_circuit, n_qubits=2)
+        target_script = js.Script(target_circuit, n_qubits=2)
 
         state_pulse = pulse_script.execute(
             type="state", args=(w, PulseInformation.gate_by_name(gate).params)

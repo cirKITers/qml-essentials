@@ -6,8 +6,8 @@ import csv
 import jax.numpy as jnp
 import jax
 
+from qml_essentials import jaqsi as js
 from qml_essentials import operations as op
-from qml_essentials import yaqsi as ys
 from qml_essentials.utils import safe_random_split
 from qml_essentials.tape import active_pulse_tape
 from qml_essentials.unitary import UnitaryGates
@@ -484,7 +484,7 @@ class PulseEnvelope:
         counter-rotating components.
 
         Each returned function has a unique ``__code__`` object so the
-        yaqsi solver cache assigns separate compiled XLA programs per
+        jaqsi solver cache assigns separate compiled XLA programs per
         envelope shape and per (gate, component) pair.
 
         The rotation angle ``w`` is expected as the **last** element of
@@ -507,7 +507,7 @@ class PulseEnvelope:
                   ½[cos((ω_c-ω_q)t) + cos((ω_c+ω_q)t)]``.  Algebraically
                   identical to ``"lab"`` (no RWA, no information lost).
                   Primary use: combined with the ``magnus2``/``magnus4``
-                  yaqsi solvers, the explicit slow/fast decomposition
+                  jaqsi solvers, the explicit slow/fast decomposition
                   is sometimes numerically better-conditioned and lets
                   the user pick a fixed grid based on the slow
                   frequency alone (``Δ = |ω_c-ω_q|``) when the fast
@@ -843,7 +843,7 @@ class PulseInformation:
         PulseGates._active_rwa = cls._rwa
         PulseGates._active_frame = cls._frame
 
-        # The compiled-solver cache in ``Yaqsi`` is keyed on the code
+        # The compiled-solver cache in ``Jaqsi`` is keyed on the code
         # objects of the coefficient functions.  Rebuilding the coeff
         # fns above produced fresh code objects, so any cached solver
         # is now unreachable from the live coefficient functions and
@@ -851,9 +851,9 @@ class PulseInformation:
         # for a previous configuration alive forever and (b) returning
         # a stale program if ``id`` collisions ever leaked through.
         # Lazy import to prevent circular imports.
-        from qml_essentials.yaqsi import Yaqsi
+        from qml_essentials.jaqsi import Jaqsi
 
-        Yaqsi.clear_evolve_solver_cache()
+        Jaqsi.clear_evolve_solver_cache()
 
         log.info(
             f"Pulse envelope set to '{name}' "
@@ -1223,7 +1223,7 @@ class PulseGates:
             [jnp.ravel(pulse_params[:-1]), jnp.ravel(jnp.asarray(w))]
         )
         # Both terms share the same parameter array.
-        ys.evolve(H_eff, name="RX")([env_params, env_params], t)
+        js.evolve(H_eff, name="RX")([env_params, env_params], t)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -1261,7 +1261,7 @@ class PulseGates:
         env_params = jnp.concatenate(
             [jnp.ravel(pulse_params[:-1]), jnp.ravel(jnp.asarray(w))]
         )
-        ys.evolve(H_eff, name="RY")([env_params, env_params], t)
+        js.evolve(H_eff, name="RY")([env_params, env_params], t)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -1302,7 +1302,7 @@ class PulseGates:
         # element to preserve the original semantics, then concatenate with w.
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         pp_flat = jnp.ravel(jnp.asarray(pulse_params))
-        ys.evolve(H_eff, name="RZ")(
+        js.evolve(H_eff, name="RZ")(
             [jnp.concatenate([pp_flat[:1], jnp.ravel(jnp.asarray(w))])],
             1,
         )
@@ -1398,7 +1398,7 @@ class PulseGates:
         # Correction phase unique to the H gate
         _H = op.Hermitian(PulseGates._H_corr, wires=wires, record=False)
         H_corr = PulseGates._coeff_Sc * _H
-        ys.evolve(H_corr, name="H")([0], 1)
+        js.evolve(H_corr, name="H")([0], 1)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -1470,7 +1470,7 @@ class PulseGates:
 
         _H = op.Hermitian(PulseGates._H_CZ, wires=wires, record=False)
         H_eff = PulseGates._coeff_Scz * _H
-        ys.evolve(H_eff, name="CZ")([pulse_params], 1)
+        js.evolve(H_eff, name="CZ")([pulse_params], 1)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
