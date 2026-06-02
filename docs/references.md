@@ -271,13 +271,13 @@ from qml_essentials.qoc import CostFnRegistry
     options:
       heading_level: 4
 
-### Jaqsi Core
+### Evolution Engine
 
 ```python
-from qml_essentials.jaqsi import Jaqsi
+from qml_essentials.jaqsi import Evolution
 ```
 
-::: qml_essentials.jaqsi.Jaqsi
+::: qml_essentials.evolution.Evolution
     options:
       heading_level: 4
 

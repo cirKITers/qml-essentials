@@ -9,7 +9,7 @@ import time
 
 from qml_essentials.jaqsi import (
     Script,
-    evolve,
+    Evolution,
     partial_trace,
     marginalize_probs,
     build_parity_observable,
@@ -94,13 +94,13 @@ def parametrized_circuit(theta):
 
 
 def evol_circuit(t):
-    time_evol = evolve(Hermitian(matrix=PauliZ._matrix, wires=0))
+    time_evol = Hermitian(matrix=PauliZ._matrix, wires=0).evolve()
     time_evol(t=t, wires=0)
 
 
 def evol_circuit_plus(t):
     H(wires=0)  # prepare |+⟩
-    time_evol = evolve(Hermitian(matrix=PauliZ._matrix, wires=0))
+    time_evol = Hermitian(matrix=PauliZ._matrix, wires=0).evolve()
     time_evol(t=t, wires=0)
 
 
@@ -169,7 +169,7 @@ class TestEvolve:
 
         # Static evolve
         def static_circuit(t):
-            gate = evolve(Hermitian(matrix=Z, wires=0, record=False))
+            gate = Hermitian(matrix=Z, wires=0, record=False).evolve()
             gate(t=t, wires=0)
 
         script_s = Script(f=static_circuit)
@@ -181,7 +181,7 @@ class TestEvolve:
 
         def param_circuit(T):
             ph = const_coeff * Hermitian(matrix=Z, wires=0, record=False)
-            evolve(ph)([0.0], T)  # coeff_args=[0.0] unused
+            ph.evolve()([0.0], T)  # coeff_args=[0.0] unused
 
         script_p = Script(f=param_circuit)
         state_param = script_p.execute(type="state", args=(T_val,))
@@ -200,7 +200,7 @@ class TestEvolve:
         Z = PauliZ._matrix
         ph = coeff * Hermitian(matrix=Z, wires=0, record=False)
 
-        gate_factory = evolve(ph)
+        gate_factory = ph.evolve()
         op = gate_factory([jnp.array([2.0, 3.0])], 1.5)
         U = op.matrix
         assert jnp.allclose(U.conj().T @ U, jnp.eye(2), atol=1e-8), "U is not unitary"
@@ -224,7 +224,7 @@ class TestEvolve:
             def circuit(p_val):
                 H(wires=0)  # prepare |+⟩
                 ph = coeff * Hermitian(matrix=Z, wires=0, record=False)
-                evolve(ph)([p_val], 1.0)
+                ph.evolve()([p_val], 1.0)
 
             script = Script(f=circuit)
             return script.execute(type="expval", obs=[PauliX(0)], args=(p,))[0]
@@ -248,7 +248,7 @@ class TestEvolve:
         ph = coeff * Hermitian(matrix=PauliZ._matrix, wires=0, record=False)
 
         with recording() as tape:
-            evolve(ph)([0.0], 1.0)
+            ph.evolve()([0.0], 1.0)
 
         assert len(tape) == 1, f"Expected 1 op on tape, got {len(tape)}"
         assert tape[0].wires == [0]
@@ -268,7 +268,7 @@ class TestEvolve:
         with recording() as tape:
             herm = Hermitian(matrix=PauliZ._matrix, wires=0, record=False)
             ph = coeff * herm
-            evolve(ph)([0.0], 1.0)
+            ph.evolve()([0.0], 1.0)
 
         # Only the EvolvedOp should be on the tape
         assert len(tape) == 1, (
@@ -280,13 +280,13 @@ class TestEvolve:
     def test_evolve_type_error(self) -> None:
         """evolve() with an unsupported type raises TypeError."""
         with pytest.raises(TypeError, match="evolve"):
-            evolve("not a hamiltonian")
+            Evolution.evolve("not a hamiltonian")
 
     @pytest.mark.unittest
     def test_evolve_max_steps_throws_by_default(self) -> None:
         """A tight ``max_steps`` budget on a fast-oscillating Hamiltonian
         triggers a solver error (default ``throw=True``)."""
-        from qml_essentials.jaqsi import Jaqsi
+        from qml_essentials.jaqsi import Evolution
 
         # Highly oscillatory coefficient — Tsit5 will need many steps
         def fast_coeff(p, t):
@@ -295,18 +295,18 @@ class TestEvolve:
         Z = PauliZ._matrix
         ph = fast_coeff * Hermitian(matrix=Z, wires=0, record=False)
 
-        prev = Jaqsi.set_solver_defaults(max_steps=4, throw=True)
+        prev = Evolution.set_solver_defaults(max_steps=4, throw=True)
         try:
             with pytest.raises(Exception):
-                evolve(ph)([jnp.array([1.0])], 1.0)
+                ph.evolve()([jnp.array([1.0])], 1.0)
         finally:
-            Jaqsi.set_solver_defaults(**prev)
+            Evolution.set_solver_defaults(**prev)
 
     @pytest.mark.unittest
     def test_evolve_throw_false_returns_nan_on_failure(self) -> None:
         """With ``throw=False`` and an unreachable budget, a failed solve
         returns a NaN-filled unitary instead of raising."""
-        from qml_essentials.jaqsi import Jaqsi
+        from qml_essentials.jaqsi import Evolution
 
         def fast_coeff(p, t):
             return p[0] * jnp.cos(1.0e3 * t)
@@ -314,23 +314,23 @@ class TestEvolve:
         Z = PauliZ._matrix
         ph = fast_coeff * Hermitian(matrix=Z, wires=0, record=False)
 
-        prev = Jaqsi.set_solver_defaults(max_steps=4, throw=False)
+        prev = Evolution.set_solver_defaults(max_steps=4, throw=False)
         try:
-            op_ = evolve(ph)([jnp.array([1.0])], 1.0)
+            op_ = ph.evolve()([jnp.array([1.0])], 1.0)
             U = op_.matrix
             assert jnp.all(jnp.isnan(U)), (
                 "Expected NaN-filled unitary on solver failure with "
                 f"throw=False, got\n{U}"
             )
         finally:
-            Jaqsi.set_solver_defaults(**prev)
+            Evolution.set_solver_defaults(**prev)
 
     @pytest.mark.unittest
     def test_evolve_throw_false_succeeds_on_easy_problem(self) -> None:
         """``throw=False`` does not affect well-behaved problems: the
         returned unitary is finite and equals the static-evolve result
         for a constant coefficient."""
-        from qml_essentials.jaqsi import Jaqsi
+        from qml_essentials.jaqsi import Evolution
 
         def const_coeff(p, t):
             return 1.0
@@ -338,11 +338,11 @@ class TestEvolve:
         Z = PauliZ._matrix
         ph = const_coeff * Hermitian(matrix=Z, wires=0, record=False)
 
-        prev = Jaqsi.set_solver_defaults(throw=False)
+        prev = Evolution.set_solver_defaults(throw=False)
         try:
-            U = evolve(ph)([jnp.array([0.0])], 0.5).matrix
+            U = ph.evolve()([jnp.array([0.0])], 0.5).matrix
         finally:
-            Jaqsi.set_solver_defaults(**prev)
+            Evolution.set_solver_defaults(**prev)
 
         U_static = jax.scipy.linalg.expm(-1j * 0.5 * Z)
         assert jnp.all(jnp.isfinite(U))
@@ -1088,7 +1088,7 @@ def test_evolve_multi_term_constant_matches_expm() -> None:
 
     ph = one_x * H_X + one_y * H_Y
     T = 0.5
-    gate = evolve(ph)
+    gate = ph.evolve()
     op = gate([jnp.array([]), jnp.array([])], T)
     U_ode = op.matrix
 
@@ -1110,7 +1110,7 @@ def test_evolve_multi_term_time_dependent_unitarity() -> None:
         return -jnp.sin(2.0 * t)
 
     ph = fx * H_X + fy * H_Y
-    gate = evolve(ph)
+    gate = ph.evolve()
     op = gate([jnp.array([]), jnp.array([])], 0.7)
     U = op.matrix
     err = jnp.linalg.norm(U.conj().T @ U - jnp.eye(2))
@@ -2773,22 +2773,22 @@ class TestPulse:
     @pytest.mark.unittest
     def test_solver_default_dopri8(self):
         """Default solver is dopri8 (adaptive RK)."""
-        from qml_essentials.jaqsi import Jaqsi
+        from qml_essentials.jaqsi import Evolution
 
-        assert Jaqsi._solver_defaults["solver"] == "dopri8"
+        assert Evolution._solver_defaults["solver"] == "dopri8"
 
     @pytest.mark.unittest
     def test_solver_invalid_name_raises(self):
         """Unknown solver names raise ValueError."""
-        from qml_essentials.jaqsi import Jaqsi
+        from qml_essentials.jaqsi import Evolution
 
         with pytest.raises(ValueError):
-            Jaqsi.set_solver_defaults(solver="foobar")
+            Evolution.set_solver_defaults(solver="foobar")
 
     @pytest.mark.unittest
     def test_magnus_matches_dopri8_rx(self):
         """magnus2 / magnus4 reproduce dopri8 unitaries to high accuracy."""
-        from qml_essentials.jaqsi import Jaqsi
+        from qml_essentials.jaqsi import Evolution
         import qml_essentials.operations as op_mod
 
         original_env = PulseInformation.get_envelope()
@@ -2803,15 +2803,15 @@ class TestPulse:
             t_g = float(flat[-1])
             args = [jnp.array([*flat[:-1], w])] * 2
 
-            U_ref = Jaqsi.evolve(H_eff, name="RX", atol=1e-12, rtol=1e-12)(
+            U_ref = Evolution.evolve(H_eff, name="RX", atol=1e-12, rtol=1e-12)(
                 args, t_g
             ).matrix
-            U_m2 = Jaqsi.evolve(H_eff, name="RX", solver="magnus2", magnus_steps=2048)(
-                args, t_g
-            ).matrix
-            U_m4 = Jaqsi.evolve(H_eff, name="RX", solver="magnus4", magnus_steps=512)(
-                args, t_g
-            ).matrix
+            U_m2 = Evolution.evolve(
+                H_eff, name="RX", solver="magnus2", magnus_steps=2048
+            )(args, t_g).matrix
+            U_m4 = Evolution.evolve(
+                H_eff, name="RX", solver="magnus4", magnus_steps=512
+            )(args, t_g).matrix
 
             assert float(jnp.linalg.norm(U_m2 - U_ref)) < 1e-3
             assert float(jnp.linalg.norm(U_m4 - U_ref)) < 1e-5
@@ -2825,7 +2825,7 @@ class TestPulse:
     @pytest.mark.unittest
     def test_magnus4_fourth_order_convergence(self):
         """magnus4 error scales as h^4 (≈16× drop per N doubling)."""
-        from qml_essentials.jaqsi import Jaqsi
+        from qml_essentials.jaqsi import Evolution
         import qml_essentials.operations as op_mod
 
         original_rwa = PulseInformation.get_rwa()
@@ -2842,13 +2842,13 @@ class TestPulse:
             w = float(jnp.pi / 2)
             t_g = float(flat[-1])
             args = [jnp.array([*flat[:-1], w])] * 2
-            U_ref = Jaqsi.evolve(H_eff, name="RX", atol=1e-12, rtol=1e-12)(
+            U_ref = Evolution.evolve(H_eff, name="RX", atol=1e-12, rtol=1e-12)(
                 args, t_g
             ).matrix
 
             errs = []
             for N in (256, 512, 1024):
-                U_m = Jaqsi.evolve(
+                U_m = Evolution.evolve(
                     H_eff,
                     name="RX",
                     solver="magnus4",

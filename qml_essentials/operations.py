@@ -560,6 +560,23 @@ class Hermitian(Operation):
             )
         return ParametrizedHamiltonian(terms=[(coeff_fn, self.matrix, self.wires)])
 
+    def evolve(self, name: Optional[str] = None, **odeint_kwargs) -> Callable:
+        """Return a gate factory for static evolution ``U = exp(-i t H)``.
+
+        Thin delegator to :meth:`qml_essentials.evolution.Evolution.evolve`.
+
+        Args:
+            name: Optional name for the produced :class:`Operation`.
+            **odeint_kwargs: Unused for static evolution (accepted for a
+                uniform signature with :meth:`ParametrizedHamiltonian.evolve`).
+
+        Returns:
+            A callable gate factory ``(t, wires=0) -> Operation``.
+        """
+        from qml_essentials.evolution import Evolution  # deferred: circular import
+
+        return Evolution.evolve(self, name=name, **odeint_kwargs)
+
 
 class ParametrizedHamiltonian:
     """A time-dependent Hamiltonian as a sum of ``coeff * Hermitian`` terms.
@@ -582,7 +599,7 @@ class ParametrizedHamiltonian:
 
         # evolve under the composite Hamiltonian; coeff_args is a list of
         # parameter sets, one per term, in the order the terms were added:
-        evolve(H_td)([px, py], T=1.0)
+        H_td.evolve()([px, py], T=1.0)
 
     Attributes:
         coeff_fns: Tuple of callables ``(params, t) -> scalar``, one per term.
@@ -676,6 +693,27 @@ class ParametrizedHamiltonian:
         if not isinstance(other, ParametrizedHamiltonian):
             return NotImplemented
         return self + (-other)
+
+    # --- evolution -----------------------------------------------------
+
+    def evolve(self, name: Optional[str] = None, **odeint_kwargs) -> Callable:
+        """Return a gate factory for time-dependent evolution.
+
+        Solves ``dU/dt = -i [sum_i f_i(p_i, t) H_i] U``.  Thin delegator to
+        :meth:`qml_essentials.evolution.Evolution.evolve`.
+
+        Args:
+            name: Optional name for the produced :class:`Operation`.
+            **odeint_kwargs: Solver options forwarded to ``Evolution.evolve``
+                (``atol``, ``rtol``, ``max_steps``, ``throw``, ``solver``,
+                ``magnus_steps``).
+
+        Returns:
+            A callable gate factory ``(coeff_args, T) -> Operation``.
+        """
+        from qml_essentials.evolution import Evolution  # deferred: circular import
+
+        return Evolution.evolve(self, name=name, **odeint_kwargs)
 
 
 class Id(Operation):

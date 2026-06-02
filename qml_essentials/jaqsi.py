@@ -1,26 +1,60 @@
 """Pulse/gate-independent entry point for building and simulating circuits.
 
 This module is the main interaction point for manually creating circuits.  It
-re-exports the :class:`~qml_essentials.script.Script` circuit container and a few
-general (pulse/gate-independent) quantum-info utilities.
+exposes the :class:`~qml_essentials.script.Script` circuit container, the
+:func:`Hamiltonian` factory for time-evolution sources, and a few general
+(pulse/gate-independent) quantum-info utilities.
 
-The Hamiltonian time-evolution machinery used to live here on a ``Jaqsi`` class;
-it now resides in :mod:`qml_essentials.evolution` as :class:`Evolution`.  For
-backward compatibility, :func:`evolve` is re-exported and ``Jaqsi`` is kept as an
-alias for :class:`~qml_essentials.evolution.Evolution`.
+Time evolution is invoked as a method on the Hamiltonian object::
+
+    H = Hamiltonian(matrix, wires=0)          # static  -> Hermitian
+    H_t = coeff_fn * Hamiltonian(matrix, 0)   # time-dep -> ParametrizedHamiltonian
+    H_t.evolve(name="RX")([params], t)        # gate factory
+
+The time-evolution engine itself lives in :mod:`qml_essentials.evolution` as
+:class:`Evolution`, which is re-exported here for solver configuration
+(``Evolution.set_solver_defaults`` / ``Evolution.clear_evolve_solver_cache``).
 """
 
 from functools import reduce
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import jax
 import jax.numpy as jnp
 
 from qml_essentials.script import Script  # noqa: F401
-from qml_essentials.evolution import Evolution
-from qml_essentials.operations import Hermitian, PauliZ
+from qml_essentials.evolution import Evolution  # noqa: F401
+from qml_essentials.operations import (  # noqa: F401
+    Hermitian,
+    ParametrizedHamiltonian,
+    PauliZ,
+)
 
-evolve = Evolution.evolve
+
+def Hamiltonian(
+    matrix: jnp.ndarray,
+    wires: Union[int, List[int]] = 0,
+    record: bool = False,
+) -> Hermitian:
+    """Construct a (static) Hamiltonian as a :class:`Hermitian` operator.
+
+    This is a thin factory over the existing :class:`Hermitian` operation —
+    not a new type.  Multiply it by a coefficient function ``f(params, t)`` to
+    obtain a time-dependent :class:`ParametrizedHamiltonian`.  Both expose an
+    :meth:`evolve` method that returns a gate factory.
+
+    Args:
+        matrix: The Hermitian matrix defining this Hamiltonian.
+        wires: Qubit index or list of qubit indices it acts on.
+        record: Whether to record on the active tape.  Defaults to ``False``
+            since a Hamiltonian used as an evolution source should not appear
+            as a gate; the recorded operation is the one produced by
+            :meth:`evolve`.
+
+    Returns:
+        A :class:`Hermitian` instance.
+    """
+    return Hermitian(matrix, wires=wires, record=record)
 
 
 def _partial_trace_single(

@@ -3,8 +3,12 @@
 This module houses the :class:`Evolution` class, which turns a (static or
 time-dependent) Hamiltonian into a gate factory by solving the Schrödinger
 equation ``dU/dt = -i H(t) U``.  It is the pulse/gate-dependent counterpart to
-the otherwise pulse-agnostic :mod:`qml_essentials.jaqsi` entry point, which
-re-exports :func:`evolve` through `Evolution.evolve`
+the otherwise pulse-agnostic :mod:`qml_essentials.jaqsi` entry point.
+
+The engine is normally reached through the :meth:`evolve` method on the
+Hamiltonian object (``Hermitian`` / ``ParametrizedHamiltonian``), which delegates
+to :meth:`Evolution.evolve`.  :class:`Evolution` is also where solver defaults
+live (:meth:`Evolution.set_solver_defaults`).
 """
 
 from typing import Any, Callable, List, Optional, Tuple, Union
@@ -323,18 +327,21 @@ class Evolution:
     ) -> Callable:
         """Return a gate-factory for Hamiltonian time evolution.
 
+        Engine for the :meth:`Hermitian.evolve` / :meth:`ParametrizedHamiltonian.evolve`
+        methods (the usual entry point); it dispatches on the Hamiltonian type.
+
         Supports two modes:
 
         Static — when *hamiltonian* is a :class:`Hermitian`::
 
-            gate = evolve(Hermitian(H_mat, wires=0))
+            gate = Hermitian(H_mat, wires=0).evolve()
             gate(t=0.5)            # U = exp(-i*0.5*H)
 
         Time-dependent — when *hamiltonian* is a
         :class:`ParametrizedHamiltonian` (created via ``coeff_fn * Hermitian``)::
 
             H_td = coeff_fn * Hermitian(H_mat, wires=0)
-            gate = evolve(H_td)
+            gate = H_td.evolve()
             gate([A, sigma], T)    # U via ODE: dU/dt = -i f(p,t) H * U
 
         The time-dependent case solves the Schrödinger equation numerically
