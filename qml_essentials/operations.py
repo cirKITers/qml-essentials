@@ -1103,52 +1103,6 @@ class CSWAP(Operation):
         super().__init__(wires=wires, **kwargs)
 
 
-def _make_controlled_rotation_gate(pauli_class: type, name: str) -> type:
-    """Factory for controlled rotation gates CRX, CRY, CRZ.
-
-    Each gate has the form
-    ``CR_P(\\theta) = |0><0| \\otimes I + |1><1| \\otimes R_P(\\theta)``.
-
-    Args:
-        pauli_class: One of PauliX, PauliY, PauliZ.
-        name: Class name for the generated gate (e.g. ``"CRX"``).
-
-    Returns:
-        A new :class:`Operation` subclass.
-    """
-    pauli_mat = pauli_class._matrix
-
-    class _CRotationGate(Operation):
-        __doc__ = (
-            f"Controlled rotation around the {name[2]} axis.\n\n"
-            f"Applies R{name[2]}(\\theta) on the target qubit conditioned on the "
-            f"control qubit being in state |1\\rangle.\n\n"
-            f".. math::\n"
-            f"{name}(\\theta) = |0\\rangle\\langle 0| \\otimes I\n"
-            f"                  + |1\\rangle\\langle 1| \\otimes R{name[2]}(\\theta)"
-        )
-        _num_wires = 2
-        _param_names = ("theta",)
-        is_controlled = True
-
-        def __init__(self, theta: float, wires: List[int] = [0, 1], **kwargs) -> None:
-            self.theta = theta
-            c = jnp.cos(theta / 2)
-            s = jnp.sin(theta / 2)
-            rot = c * Id._matrix - 1j * s * pauli_mat
-            mat = jnp.kron(_P0, Id._matrix) + jnp.kron(_P1, rot)
-            super().__init__(wires=wires, matrix=mat, **kwargs)
-
-    _CRotationGate.__name__ = name
-    _CRotationGate.__qualname__ = name
-    return _CRotationGate
-
-
-CRX = _make_controlled_rotation_gate(PauliX, "CRX")
-CRY = _make_controlled_rotation_gate(PauliY, "CRY")
-CRZ = _make_controlled_rotation_gate(PauliZ, "CRZ")
-
-
 class ControlledPhaseShift(Operation):
     r"""Controlled phase shift gate (CPhase).
 
@@ -1287,6 +1241,152 @@ class PauliRot(Operation):
         pauli_matrices = [self._PAULI_MAP[c] for c in self.pauli_word]
         P = _reduce(jnp.kron, pauli_matrices)
         return Hermitian(matrix=P, wires=self.wires, record=False)
+
+
+def _make_pauli_rotation_subclass(name: str, word: str) -> type:
+    """Build a thin :class:`PauliRot` subclass with the Pauli word fixed.
+
+    Used to expose multi-qubit Pauli rotations (``RXX``, ``RYY``, ``RZZ``,
+    ``RZX``, ...) as standalone classes while sharing PauliRot's matrix
+    construction and generator logic.
+    """
+
+    sep = " \\otimes "
+    doc = (
+        f"{name}(\\theta) = exp(-i \\theta/2\\, {sep.join(word)}).\n\n"
+        f"Thin :class:`PauliRot` subclass with ``pauli_word={word!r}``."
+    )
+
+    class _PauliRotSubclass(PauliRot):
+        __doc__ = doc
+        _num_wires = len(word)
+
+        def __init__(
+            self,
+            theta: float,
+            wires: Union[int, List[int]] = None,
+            **kwargs,
+        ) -> None:
+            if wires is None:
+                wires = list(range(len(word)))
+            super().__init__(theta, word, wires=wires, **kwargs)
+
+    _PauliRotSubclass.__name__ = name
+    _PauliRotSubclass.__qualname__ = name
+    return _PauliRotSubclass
+
+
+RXX = _make_pauli_rotation_subclass("RXX", "XX")
+RYY = _make_pauli_rotation_subclass("RYY", "YY")
+RZZ = _make_pauli_rotation_subclass("RZZ", "ZZ")
+RZX = _make_pauli_rotation_subclass("RZX", "ZX")
+
+
+# --- Controlled multi-qubit Pauli rotation ---------------------------------
+
+
+class ControlledPauliRot(Operation):
+    r"""Multi-controlled multi-qubit Pauli rotation.
+
+    Applies ``PauliRot(theta, pauli_word)`` on the *target* wires
+    conditioned on all *control* wires being in :math:`|1\rangle`.
+
+    For a single control wire and a single-character Pauli word this
+    reduces to the textbook controlled rotations ``CRX``, ``CRY``,
+    ``CRZ`` — these are exposed below as thin subclasses.
+
+    The wire layout is ``[control_0, ..., control_{n_controls-1},
+    target_0, ..., target_{m-1}]`` where ``m = len(pauli_word)``.
+    """
+
+    _param_names = ("theta",)
+    is_controlled = True
+
+    def __init__(
+        self,
+        theta: float,
+        pauli_word: str,
+        wires: List[int],
+        n_controls: int = 1,
+        **kwargs,
+    ) -> None:
+        from functools import reduce as _reduce
+
+        self.theta = theta
+        self.pauli_word = pauli_word
+        self.n_controls = n_controls
+
+        wires_list = [wires] if isinstance(wires, int) else list(wires)
+        n_targets = len(pauli_word)
+        if len(wires_list) != n_controls + n_targets:
+            raise ValueError(
+                f"ControlledPauliRot expects {n_controls + n_targets} wires "
+                f"({n_controls} control + {n_targets} target), got "
+                f"{len(wires_list)}."
+            )
+
+        pauli_matrices = [PauliRot._PAULI_MAP[c] for c in pauli_word]
+        P = _reduce(jnp.kron, pauli_matrices)
+        d_t = P.shape[0]
+        R = (
+            jnp.cos(theta / 2) * jnp.eye(d_t, dtype=_cdtype())
+            - 1j * jnp.sin(theta / 2) * P
+        )
+
+        d_c = 2**n_controls
+        dim = d_c * d_t
+        # All control patterns except |1...1> act trivially; the active
+        # block sits in the last d_t x d_t slot.
+        mat = jnp.eye(dim, dtype=_cdtype())
+        start = (d_c - 1) * d_t
+        mat = mat.at[start : start + d_t, start : start + d_t].set(R)
+
+        super().__init__(wires=wires_list, matrix=mat, **kwargs)
+
+    def generator(self) -> Operation:
+        """Return the (Hermitian) generator on the full wire set."""
+        from functools import reduce as _reduce
+
+        pauli_matrices = [PauliRot._PAULI_MAP[c] for c in self.pauli_word]
+        P = _reduce(jnp.kron, pauli_matrices)
+        d_t = P.shape[0]
+        d_c = 2**self.n_controls
+        dim = d_c * d_t
+        gen = jnp.zeros((dim, dim), dtype=_cdtype())
+        start = (d_c - 1) * d_t
+        gen = gen.at[start : start + d_t, start : start + d_t].set(P)
+        return Hermitian(matrix=gen, wires=self.wires, record=False)
+
+
+def _make_controlled_rotation_subclass(name: str, axis: str) -> type:
+    """Build a single-control controlled single-qubit rotation subclass.
+
+    Reproduces the historical ``CRX``, ``CRY``, ``CRZ`` API as thin
+    :class:`ControlledPauliRot` subclasses.
+    """
+
+    class _CRotation(ControlledPauliRot):
+        __doc__ = (
+            f"Controlled rotation around the {axis} axis.\n\n"
+            f"Applies R{axis}(\\theta) on the target qubit conditioned on the "
+            f"control qubit being in state |1\\rangle.\n\n"
+            f".. math::\n"
+            f"{name}(\\theta) = |0\\rangle\\langle 0| \\otimes I\n"
+            f"                  + |1\\rangle\\langle 1| \\otimes R{axis}(\\theta)"
+        )
+        _num_wires = 2
+
+        def __init__(self, theta: float, wires: List[int] = [0, 1], **kwargs) -> None:
+            super().__init__(theta, axis, wires=wires, n_controls=1, **kwargs)
+
+    _CRotation.__name__ = name
+    _CRotation.__qualname__ = name
+    return _CRotation
+
+
+CRX = _make_controlled_rotation_subclass("CRX", "X")
+CRY = _make_controlled_rotation_subclass("CRY", "Y")
+CRZ = _make_controlled_rotation_subclass("CRZ", "Z")
 
 
 class KrausChannel(Operation):

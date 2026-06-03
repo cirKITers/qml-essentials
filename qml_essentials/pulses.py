@@ -736,6 +736,48 @@ class PulseInformation:
                 DecompositionStep(cls.CX, "all", lambda w: 0.0),
             ],
         )
+        cls.RZZ = PulseParams(
+            name="RZZ",
+            decomposition=[
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+                DecompositionStep(cls.RZ, "target", lambda w: w),
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+            ],
+        )
+        cls.RXX = PulseParams(
+            name="RXX",
+            decomposition=[
+                DecompositionStep(cls.H, "control", lambda w: 0.0),
+                DecompositionStep(cls.H, "target", lambda w: 0.0),
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+                DecompositionStep(cls.RZ, "target", lambda w: w),
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+                DecompositionStep(cls.H, "control", lambda w: 0.0),
+                DecompositionStep(cls.H, "target", lambda w: 0.0),
+            ],
+        )
+        cls.RYY = PulseParams(
+            name="RYY",
+            decomposition=[
+                DecompositionStep(cls.RX, "control", lambda w: jnp.pi / 2),
+                DecompositionStep(cls.RX, "target", lambda w: jnp.pi / 2),
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+                DecompositionStep(cls.RZ, "target", lambda w: w),
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+                DecompositionStep(cls.RX, "control", lambda w: -jnp.pi / 2),
+                DecompositionStep(cls.RX, "target", lambda w: -jnp.pi / 2),
+            ],
+        )
+        cls.RZX = PulseParams(
+            name="RZX",
+            decomposition=[
+                DecompositionStep(cls.H, "target", lambda w: 0.0),
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+                DecompositionStep(cls.RZ, "target", lambda w: w),
+                DecompositionStep(cls.CX, "all", lambda w: 0.0),
+                DecompositionStep(cls.H, "target", lambda w: 0.0),
+            ],
+        )
         cls.Rot = PulseParams(
             name="Rot",
             decomposition=[
@@ -1324,6 +1366,10 @@ class PulseGates:
                 "CRY",
                 "CRZ",
                 "CPhase",
+                "RXX",
+                "RYY",
+                "RZZ",
+                "RZX",
             ):
                 child_gate(child_w, wires=child_wires, pulse_params=child_params)
             # Other composite gates (H, CX, CY, ...)
@@ -1516,6 +1562,107 @@ class PulseGates:
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         PulseGates._execute_composite("CPhase", w, wires, pulse_params)
+        UnitaryGates.Noise(wires, noise_params)
+
+    @staticmethod
+    def RXX(
+        w: float,
+        wires: List[int],
+        pulse_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
+        """Apply two-qubit RXX rotation via decomposition.
+
+        Implements ``RXX(theta) = exp(-i theta/2 X ⊗ X)`` as
+        ``(H ⊗ H) · RZZ(theta) · (H ⊗ H)``.
+
+        Args:
+            w (float): Rotation angle in radians.
+            wires (List[int]): Two qubit indices.
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
+        """
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
+        PulseGates._execute_composite("RXX", w, wires, pulse_params)
+        UnitaryGates.Noise(wires, noise_params)
+
+    @staticmethod
+    def RYY(
+        w: float,
+        wires: List[int],
+        pulse_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
+        """Apply two-qubit RYY rotation via decomposition.
+
+        Implements ``RYY(theta) = exp(-i theta/2 Y ⊗ Y)`` by conjugating the
+        RZZ skeleton with ``RX(pi/2)`` rotations on both wires.
+
+        Args:
+            w (float): Rotation angle in radians.
+            wires (List[int]): Two qubit indices.
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
+        """
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
+        PulseGates._execute_composite("RYY", w, wires, pulse_params)
+        UnitaryGates.Noise(wires, noise_params)
+
+    @staticmethod
+    def RZZ(
+        w: float,
+        wires: List[int],
+        pulse_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
+        """Apply two-qubit RZZ rotation via decomposition.
+
+        Implements ``RZZ(theta) = exp(-i theta/2 Z ⊗ Z)`` as
+        ``CX · RZ(theta)_target · CX``.
+
+        Args:
+            w (float): Rotation angle in radians.
+            wires (List[int]): Two qubit indices.
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
+        """
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
+        PulseGates._execute_composite("RZZ", w, wires, pulse_params)
+        UnitaryGates.Noise(wires, noise_params)
+
+    @staticmethod
+    def RZX(
+        w: float,
+        wires: List[int],
+        pulse_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, float]] = None,
+        random_key: Optional[jax.random.PRNGKey] = None,
+    ) -> None:
+        """Apply two-qubit RZX rotation via decomposition.
+
+        Implements ``RZX(theta) = exp(-i theta/2 Z ⊗ X)`` (Z on the first
+        wire, X on the second) by conjugating the RZZ skeleton with a
+        Hadamard on the target wire.
+
+        Args:
+            w (float): Rotation angle in radians.
+            wires (List[int]): Two qubit indices ``[zwire, xwire]``.
+            pulse_params (Optional[jnp.ndarray]): Pulse parameters for the
+                composing gates. If None, uses optimized parameters.
+            noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
+            random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
+        """
+        w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
+        PulseGates._execute_composite("RZX", w, wires, pulse_params)
         UnitaryGates.Noise(wires, noise_params)
 
 
