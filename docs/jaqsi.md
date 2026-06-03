@@ -46,6 +46,9 @@ As the whole pipeline is built on JAX, any execution can be differentiated, JIT-
 ## Usage
 
 The API of our simulator is very similar to what one might be used to know from pennylane.
+
+### Gate Level
+
 For a basic circuit execution, we have to do two imports:
 
 ```python
@@ -138,6 +141,12 @@ purity = jnp.real(jnp.trace(rho @ rho))
 print(purity) # Purity should be < 1 
 ```
 
+
+### Pulse Level
+
+This section is focussing on the Pulse-level related interface of the simulator.
+If you want to work with the higher-level `Model` interface instead, head over to the [pulses](pulses.md) documentation.
+
 As [Pulse Gates](pulses.md) are built entirely upon JAQSI operations, you can also use those in the circuit to perform pulse level simulation:
 
 ```python
@@ -187,3 +196,64 @@ fig, axes = jss.draw(figure="pulse", args=(jnp.pi*0.5,))
 ![pulse-schedule](figures/pulse_schedule_light.png#center#only-light)
 ![pulse-schedule](figures/pulse_schedule_dark.png#center#only-dark)
 
+Now let's get a level deeper into the pulse interface.
+Under the hood what happens when you run a pulse gate, is that you evolve a Hermitian matrix in time.
+To demonstrate this, we build a very simple circuit:
+
+```python
+def evol_circuit(t):
+    time_evol = op.Hermitian(matrix=op.PauliZ._matrix, wires=0).evolve()
+    time_evol(t=t, wires=0)
+```
+
+We can use this circuit directly in JAQSI by passing it to the `Script` class we've seen above:
+
+```python
+jss = js.Script(f=evol_circuit)
+res = jss.execute(type="expval", obs=[PauliX(0)], args=(0.3,))
+```
+
+Here, we let the circuit evolve for `t=0.3` and measure the qubit in the `X` basis.
+Obviously this isn't particluarly usefull, because it doesn't change the state of the qubit.
+However, we can extend this circuit a little bit to start in the `|+⟩` state instead:
+
+```python
+def evol_circuit(t):
+    H(wires=0)  # prepare |+⟩
+    time_evol = op.Hermitian(matrix=op.PauliZ._matrix, wires=0).evolve()
+    time_evol(t=t, wires=0)
+```
+
+Note, how we combine a "standard" gate here and combine it with a Hermitian evolution.
+We can then measure:
+
+```python
+t = 0.3
+jss = js.Script(f=evol_circuit)
+res = jss.execute(type="expval", obs=[PauliX(0)], args=(t,))
+```
+
+which gives us exactly `jnp.cos(2 * t)`.
+
+We've just seen an example for a static Hermitian evolution.
+Naturally we can extend this to a parameterized Hermitian as well:
+
+```python
+def coeff(p, t):
+    return p
+
+def circuit(p,t):
+    H(wires=0)  # prepare |+⟩
+    ph = coeff * Hermitian(matrix=Z, wires=0, record=False)
+    ph.evolve()([p], t)
+```
+
+Note here, that `coeff` is a callable.
+While it seems a little bit strange to first use a callable and the parameterize it directly afterwards, this mechanism allows us to pre-compile the operation.
+
+```python
+jss = js.Script(f=circuit)
+res = jss.execute(type="expval", obs=[PauliX(0)], args=(p,))
+```
+
+Naturally, we can now use this parameter in a training-scenario and leverage the performance advantage we got through the pre-compilation.
