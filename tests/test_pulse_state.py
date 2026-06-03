@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 
 from qml_essentials.pulses import PulseGates, PulseInformation
-from qml_essentials.jaqsi import Jaqsi, Script
+from qml_essentials.jaqsi import Evolution, Script
 
 jax.config.update("jax_enable_x64", True)
 
@@ -93,13 +93,13 @@ def test_set_envelope_evicts_stale_solver_cache():
     Script(pulse_circuit, n_qubits=1).execute(
         type="state", args=(jnp.pi / 4, PulseInformation.RX.params)
     )
-    assert len(Jaqsi._evolve_solver_cache) >= 1
+    assert len(Evolution._evolve_solver_cache) >= 1
 
     # Switch back to the default envelope.  Stale entries that referenced
     # the gaussian coefficient functions must be evicted so they cannot
     # be returned for the new (drag) coefficient functions.
     PulseInformation.set_envelope(PulseInformation.DEFAULT_ENVELOPE)
-    assert len(Jaqsi._evolve_solver_cache) == 0
+    assert len(Evolution._evolve_solver_cache) == 0
 
     pulse_script = Script(pulse_circuit, n_qubits=1)
     target_script = Script(target_circuit, n_qubits=1)

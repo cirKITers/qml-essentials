@@ -7,7 +7,6 @@ import jax.numpy as jnp
 import jax
 
 from qml_essentials import jaqsi as js
-from qml_essentials import operations as op
 from qml_essentials.utils import safe_random_split
 from qml_essentials.tape import active_pulse_tape
 from qml_essentials.unitary import UnitaryGates
@@ -843,17 +842,14 @@ class PulseInformation:
         PulseGates._active_rwa = cls._rwa
         PulseGates._active_frame = cls._frame
 
-        # The compiled-solver cache in ``Jaqsi`` is keyed on the code
+        # The compiled-solver cache in ``Evolution`` is keyed on the code
         # objects of the coefficient functions.  Rebuilding the coeff
         # fns above produced fresh code objects, so any cached solver
         # is now unreachable from the live coefficient functions and
         # must be evicted to avoid both (a) holding compiled programs
         # for a previous configuration alive forever and (b) returning
         # a stale program if ``id`` collisions ever leaked through.
-        # Lazy import to prevent circular imports.
-        from qml_essentials.jaqsi import Jaqsi
-
-        Jaqsi.clear_evolve_solver_cache()
+        js.Evolution.clear_evolve_solver_cache()
 
         log.info(
             f"Pulse envelope set to '{name}' "
@@ -1210,8 +1206,8 @@ class PulseGates:
         #   H_I(τ) = Ω(τ)·cos(ω_c·τ) · [ cos(ω_q·τ)·X − sin(ω_q·τ)·Y ]
         # which on resonance averages (RWA) to +(Ω/2)·X while the
         # 2·ω_q counter-rotating part oscillates and cancels.
-        H_X = op.Hermitian(PulseGates.X, wires=wires, record=False)
-        H_Y = op.Hermitian(PulseGates.Y, wires=wires, record=False)
+        H_X = js.Hamiltonian(PulseGates.X, wires=wires)
+        H_Y = js.Hamiltonian(PulseGates.Y, wires=wires)
         H_eff = PulseGates._coeff_RX_X * H_X + PulseGates._coeff_RX_Y * H_Y
 
         # Pack: [envelope_params..., w] - evolution time is the last element
@@ -1223,7 +1219,7 @@ class PulseGates:
             [jnp.ravel(pulse_params[:-1]), jnp.ravel(jnp.asarray(w))]
         )
         # Both terms share the same parameter array.
-        js.evolve(H_eff, name="RX")([env_params, env_params], t)
+        H_eff.evolve(name="RX")([env_params, env_params], t)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -1251,8 +1247,8 @@ class PulseGates:
 
         # See NOTE in RX: same proper interaction-picture form, with
         # carrier phase ϕ = +π/2 so the slow RWA component drives +Y.
-        H_X = op.Hermitian(PulseGates.X, wires=wires, record=False)
-        H_Y = op.Hermitian(PulseGates.Y, wires=wires, record=False)
+        H_X = js.Hamiltonian(PulseGates.X, wires=wires)
+        H_Y = js.Hamiltonian(PulseGates.Y, wires=wires)
         H_eff = PulseGates._coeff_RY_X * H_X + PulseGates._coeff_RY_Y * H_Y
 
         # Pack w into the params so the coefficient function doesn't need
@@ -1261,7 +1257,7 @@ class PulseGates:
         env_params = jnp.concatenate(
             [jnp.ravel(pulse_params[:-1]), jnp.ravel(jnp.asarray(w))]
         )
-        js.evolve(H_eff, name="RY")([env_params, env_params], t)
+        H_eff.evolve(name="RY")([env_params, env_params], t)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -1293,7 +1289,7 @@ class PulseGates:
 
         PulseGates._record_pulse_event("RZ", w, wires, pulse_params)
 
-        _H = op.Hermitian(PulseGates.Z, wires=wires, record=False)
+        _H = js.Hamiltonian(PulseGates.Z, wires=wires)
         H_eff = PulseGates._coeff_Sz * _H
 
         # Pack w into the params so the coefficient function doesn't need
@@ -1302,7 +1298,7 @@ class PulseGates:
         # element to preserve the original semantics, then concatenate with w.
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
         pp_flat = jnp.ravel(jnp.asarray(pulse_params))
-        js.evolve(H_eff, name="RZ")(
+        H_eff.evolve(name="RZ")(
             [jnp.concatenate([pp_flat[:1], jnp.ravel(jnp.asarray(w))])],
             1,
         )
@@ -1396,9 +1392,9 @@ class PulseGates:
         PulseGates._execute_composite("H", 0.0, wires, pulse_params)
 
         # Correction phase unique to the H gate
-        _H = op.Hermitian(PulseGates._H_corr, wires=wires, record=False)
+        _H = js.Hamiltonian(PulseGates._H_corr, wires=wires)
         H_corr = PulseGates._coeff_Sc * _H
-        js.evolve(H_corr, name="H")([0], 1)
+        H_corr.evolve(name="H")([0], 1)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -1468,9 +1464,9 @@ class PulseGates:
 
         PulseGates._record_pulse_event("CZ", 0.0, wires, pulse_params)
 
-        _H = op.Hermitian(PulseGates._H_CZ, wires=wires, record=False)
+        _H = js.Hamiltonian(PulseGates._H_CZ, wires=wires)
         H_eff = PulseGates._coeff_Scz * _H
-        js.evolve(H_eff, name="CZ")([pulse_params], 1)
+        H_eff.evolve(name="CZ")([pulse_params], 1)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod

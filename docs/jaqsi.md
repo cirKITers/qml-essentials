@@ -11,18 +11,44 @@ With the latter two being responsible of constructing quantum circuits and there
 Generally, all operations are registered on a `Tape` when being created in the context of a `Script` (see examples below).
 All matrix definitions (including Kraus channels for noisy simulation) are registered in the `Operations` module. 
 
-![overview](figures/yaqsi_overview_light.png#center#only-light)
-![overview](figures/yaqsi_overview_dark.png#center#only-dark)
+![overview](figures/jaqsi_overview_light.png#center#only-light)
+![overview](figures/jaqsi_overview_dark.png#center#only-dark)
 
 While the standard gate execution is quite straight-forward, the pulse simulation requires a bit more care.
 Here we split up `PulseGates` (abstracted by the `Gates` class) into `PulseParams` and `PulseEnvelope` to get more fine grained control over the underlying implementation.
 As a single source of truth for both, there is the `PulseInformation` class, providing valid combination of these two characteristics.
 
-![overview](figures/yaqsi_pulse_light.png#center#only-light)
-![overview](figures/yaqsi_pulse_dark.png#center#only-dark)
+![overview](figures/jaqsi_pulse_light.png#center#only-light)
+![overview](figures/jaqsi_pulse_dark.png#center#only-dark)
 
+## Architecture
+
+Internally, the simulator is split into a handful of modules, each with a single responsibility.
+Together they form a pipeline that turns a circuit function into a measurement result.
+
+- `operations.py` : the foundation. Defines every quantum operation: gates (`H`, `RX`, `CX`, `Rot`, ...), observables (`PauliZ`, `Hermitian`), Kraus noise channels (`DepolarizingChannel`, `AmplitudeDamping`, ...) and the (parametrized) Hamiltonians used for pulse evolution. Each `Operation` carries its matrix definition and knows how to apply itself to a statevector or density matrix via cached `einsum` contractions.
+- `tape.py` : the recording layer. Holds the thread-local `Tape` onto which operations register themselves as they are created. A `recording()` context manager collects the operations built inside a circuit function into an ordered list : nothing is executed yet.
+- `script.py` : the orchestrator. The `Script` class is the main entry point (and what `Model` builds upon). It records the circuit, infers the number of qubits, decides between pure and density-matrix simulation, dispatches measurements, and takes care of JIT caching, automatic batching (`vmap` with memory-aware chunking) and circuit drawing.
+- `simulation.py` : the compute engine. A set of pure, stateless functions that run a recorded tape: `simulate_pure` (statevector), `simulate_mixed` (density matrix) and the measurement kernels (`measure_state`, `measure_density`, `sample_shots`). Being pure JAX functions, they are fully differentiable and `jit`/`vmap`-compatible.
+- `memory.py` : memory accounting. Pure helpers that estimate the peak memory of a batched run and, when it would not fit in available RAM, split the batch into chunks that do (`estimate_peak_bytes`, `compute_chunk_size`, `execute_chunked`). `Script` calls these to drive its memory-aware `vmap` chunking.
+- `evolution.py` : Hamiltonian time-evolution. The `Evolution` class builds gates that evolve a (parametrized) Hamiltonian in time, either analytically (`exp(-i t H)` for a static `H`) or by solving the Schrödinger equation with an adaptive `diffrax` solver or a fixed-step Magnus integrator. This module backs the pulse-level simulation.
+- `jaqsi.py` : the entry-point module. Exposes `Script` for circuit building, the `Hamiltonian` factory for time-evolution sources, and a few pulse/gate-independent quantum-info helpers (`partial_trace`, `marginalize_probs`, `build_parity_observable`). Time evolution is invoked as a method on the Hamiltonian object (`hamiltonian.evolve(...)`); the `Evolution` engine is re-exported here for solver configuration (`Evolution.set_solver_defaults`).
+
+A call to `Script.execute(...)` then runs four stages:
+
+1. Record : the circuit function is executed once so that each operation registers itself on a fresh `Tape`.
+2. Prepare : the qubit count is inferred and the presence of noise channels decides between statevector and density-matrix simulation.
+3. Simulate : the operations are applied in order, each gate contracted into the state via `einsum`.
+4. Measure : the resulting state is turned into the requested output (`state`, `probs`, `expval` or `density`) and optionally sampled into shots.
+
+As the whole pipeline is built on JAX, any execution can be differentiated, JIT-compiled and vectorized.
+
+## Usage
 
 The API of our simulator is very similar to what one might be used to know from pennylane.
+
+### Gate Level
+
 For a basic circuit execution, we have to do two imports:
 
 ```python
@@ -115,6 +141,12 @@ purity = jnp.real(jnp.trace(rho @ rho))
 print(purity) # Purity should be < 1 
 ```
 
+
+### Pulse Level
+
+This section is focussing on the Pulse-level related interface of the simulator.
+If you want to work with the higher-level `Model` interface instead, head over to the [pulses](pulses.md) documentation.
+
 As [Pulse Gates](pulses.md) are built entirely upon JAQSI operations, you can also use those in the circuit to perform pulse level simulation:
 
 ```python
@@ -164,84 +196,64 @@ fig, axes = jss.draw(figure="pulse", args=(jnp.pi*0.5,))
 ![pulse-schedule](figures/pulse_schedule_light.png#center#only-light)
 ![pulse-schedule](figures/pulse_schedule_dark.png#center#only-dark)
 
-## Performance: pulse-level gradient throughput
-
-The pulse-level pipeline is compiled with JAX/XLA, but the underlying
-ODE integration is *sequential by construction*: each Adam step
-performs a `diffrax.Dopri8` solve over the gate duration, and the
-adaptive step controller cannot be parallelized across time.  That
-means a single `value_and_grad(loss)(params)` call typically saturates
-**one** CPU core — multi-threading helps only inside per-step matrix
-products (which are tiny: 8×8 for three qubits) and across batched
-restarts (`vmap`).
-
-The performance can be tuned on following different levels:
-
-1. **`PulseInformation.set_rwa(True)`** — opt-in rotating-wave
-   approximation.  Drops the fast counter-rotating terms in the
-   interaction-picture Hamiltonian.
-   Default is `False` (exact integration).
-
-2. **`Jaqsi.set_solver_defaults(solver=...)`** — opt-in commutator-free
-   Magnus integrator on a fixed `lax.scan` grid.  
-   No RWA, exact `H_I(t)`, but trades the adaptive Dopri8 step
-   controller for a fixed grid of `magnus_steps` substeps that fuses
-   into a single XLA program — eliminating per-step Python overhead
-   and host↔device sync entirely.
-
-   * `solver="dopri8"` (default): adaptive Dormand-Prince 8(7).
-   * `solver="magnus2"`: midpoint Magnus, one `expm` per step.
-     Second-order: error scales as `h^2`.
-   * `solver="magnus4"`: Blanes-Moan CFM4:2, two `expm` per step.
-     Fourth-order: error scales as `h^4` (≈16× drop per N doubling).
-     Typically the best accuracy/cost trade-off for smooth oscillatory
-     pulse drives — `magnus_steps=512` reaches ≲1e-7 error on a
-     standard `RX(\\pi/2)` Drag pulse.
-
-   Both Magnus integrators preserve unitarity to machine precision
-   regardless of step size.  Choose `magnus_steps` so that
-   `h = T/N` resolves the fastest oscillation in `H(t)`
-   (a few steps per period of `\\omega_c + \\omega_q`).
-
-   ```python
-   from qml_essentials.jaqsi import Jaqsi
-   Jaqsi.set_solver_defaults(solver="magnus4", magnus_steps=512)
-   ```
-
-3. **`PulseInformation.set_frame("drive")`** — algebraic rewrite of
-   the (non-RWA) coefficients via the product-to-sum identity
-   `cos(\\omega_c t) cos(\\omega_q t) = 1/2[cos(\\Delta t) + cos(\\Sigma t)]` with
-   `\\Delta = \\omega_c - \\omega_q`, `\\Sigma = \\omega_c + \\omega_q`.  Mathematically identical to
-   the default `"lab"` form (no information lost, no RWA applied).
-   Primary use: combined with `magnus2`/`magnus4`, the explicit
-   slow/fast decomposition is sometimes numerically better-conditioned
-   when the drive is detuned (`|\\Delta| << |\\Sigma|`).  Switching the frame does
-   not change the result of an adaptive solve.
-
-4. **XLA / OMP thread settings**.  Even on a single ODE solve, XLA
-   can parallelise some matmul-heavy reductions if you allow it to.
-   Reasonable defaults for a workstation:
-
-   ```bash
-   export XLA_FLAGS="--xla_cpu_multi_thread_eigen=true \
-                     intra_op_parallelism_threads=$(nproc)"
-   export OMP_NUM_THREADS=$(nproc)
-   ```
-
-   For `dim <= 16` (<= 4 qubits) the per-step matmuls are too small to
-   benefit much from threads; the dominant gain comes from `vmap`
-   parallelism.
-
-### Diagnostic helper
-
-`qml_essentials.qoc.profile_pulse_pipeline(gate, rwa=...)` builds a
-minimal pulse `Script` for the requested gate, JIT-compiles a
-forward + `value_and_grad` pass, and prints wall-clock timings for
-both compilation and steady-state evaluation:
+Now let's get a level deeper into the pulse interface.
+Under the hood what happens when you run a pulse gate, is that you evolve a Hermitian matrix in time.
+To demonstrate this, we build a very simple circuit:
 
 ```python
-from qml_essentials.qoc import profile_pulse_pipeline
-
-profile_pulse_pipeline("RX", rwa=False)  # exact
-profile_pulse_pipeline("RX", rwa=True)   # RWA, fast benchmark mode
+def evol_circuit(t):
+    time_evol = op.Hermitian(matrix=op.PauliZ._matrix, wires=0).evolve()
+    time_evol(t=t, wires=0)
 ```
+
+We can use this circuit directly in JAQSI by passing it to the `Script` class we've seen above:
+
+```python
+jss = js.Script(f=evol_circuit)
+res = jss.execute(type="expval", obs=[PauliX(0)], args=(0.3,))
+```
+
+Here, we let the circuit evolve for `t=0.3` and measure the qubit in the `X` basis.
+Obviously this isn't particluarly usefull, because it doesn't change the state of the qubit.
+However, we can extend this circuit a little bit to start in the `|+⟩` state instead:
+
+```python
+def evol_circuit(t):
+    H(wires=0)  # prepare |+⟩
+    time_evol = op.Hermitian(matrix=op.PauliZ._matrix, wires=0).evolve()
+    time_evol(t=t, wires=0)
+```
+
+Note, how we combine a "standard" gate here and combine it with a Hermitian evolution.
+We can then measure:
+
+```python
+t = 0.3
+jss = js.Script(f=evol_circuit)
+res = jss.execute(type="expval", obs=[PauliX(0)], args=(t,))
+```
+
+which gives us exactly `jnp.cos(2 * t)`.
+
+We've just seen an example for a static Hermitian evolution.
+Naturally we can extend this to a parameterized Hermitian as well:
+
+```python
+def coeff(p, t):
+    return p
+
+def circuit(p,t):
+    H(wires=0)  # prepare |+⟩
+    ph = coeff * Hermitian(matrix=Z, wires=0, record=False)
+    ph.evolve()([p], t)
+```
+
+Note here, that `coeff` is a callable.
+While it seems a little bit strange to first use a callable and the parameterize it directly afterwards, this mechanism allows us to pre-compile the operation.
+
+```python
+jss = js.Script(f=circuit)
+res = jss.execute(type="expval", obs=[PauliX(0)], args=(p,))
+```
+
+Naturally, we can now use this parameter in a training-scenario and leverage the performance advantage we got through the pre-compilation.

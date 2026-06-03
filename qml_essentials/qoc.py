@@ -1047,7 +1047,7 @@ class QOC:
         Robustness: candidates that produce a non-finite loss (e.g. when
         the underlying pulse drives the integrator into a NaN — typical
         for very narrow DRAG envelopes) are skipped with a warning.  For
-        the duration of the scan, :class:`qml_essentials.jaqsi.Jaqsi` is
+        the duration of the scan, :class:`qml_essentials.evolution.Evolution` is
         switched into ``throw=False`` mode so a single bad candidate
         cannot abort the loop with ``MaxStepsReached``; the previous
         defaults are restored on exit.
@@ -1140,7 +1140,7 @@ class QOC:
             # the duration of the scan so candidates that exceed the step
             # budget produce NaN unitaries (and therefore +inf losses)
             # rather than aborting the whole grid loop.
-            prev_solver_defaults = js.Jaqsi.set_solver_defaults(throw=False)
+            prev_solver_defaults = js.Evolution.set_solver_defaults(throw=False)
             n_skipped = 0
             n_raw_better = 0
             try:
@@ -1199,7 +1199,7 @@ class QOC:
                 # Always restore the previous solver defaults so other
                 # callers (including Stage 1) are unaffected.
                 if prev_solver_defaults:
-                    js.Jaqsi.set_solver_defaults(**prev_solver_defaults)
+                    js.Evolution.set_solver_defaults(**prev_solver_defaults)
 
             if n_skipped:
                 log.warning(
@@ -2373,7 +2373,7 @@ class QOC:
             f"init_loss={float(best_loss):.6e}"
         )
 
-        prev_solver_defaults = js.Jaqsi.set_solver_defaults(throw=False)
+        prev_solver_defaults = js.Evolution.set_solver_defaults(throw=False)
         try:
             seen_slices: set = set()
             for leaf_name, sl in leaf_slices.items():
@@ -2403,7 +2403,7 @@ class QOC:
                 )
         finally:
             if prev_solver_defaults:
-                js.Jaqsi.set_solver_defaults(**prev_solver_defaults)
+                js.Evolution.set_solver_defaults(**prev_solver_defaults)
 
         return current
 
