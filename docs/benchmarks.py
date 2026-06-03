@@ -66,13 +66,13 @@ def var_ghz_benchmark(mode, q) -> None:
     logger.info("Running Jaqsi benchmark")
 
     # --- Jaqsi ---
-    def yaqsi_circuit(phi):
+    def jaqsi_circuit(phi):
         for i in range(n_qubits):
             H(wires=i)
         for i in range(n_qubits):
             CRX(phi, wires=[i, (i + 1) % n_qubits])
 
-    script = Script(f=yaqsi_circuit)
+    script = Script(f=jaqsi_circuit)
 
     # do some warmup (allows pre-compilation)
     # Note that we use a phi, which will not be part of the benchmarking later

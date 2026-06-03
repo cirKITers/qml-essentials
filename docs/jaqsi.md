@@ -11,15 +11,15 @@ With the latter two being responsible of constructing quantum circuits and there
 Generally, all operations are registered on a `Tape` when being created in the context of a `Script` (see examples below).
 All matrix definitions (including Kraus channels for noisy simulation) are registered in the `Operations` module. 
 
-![overview](figures/yaqsi_overview_light.png#center#only-light)
-![overview](figures/yaqsi_overview_dark.png#center#only-dark)
+![overview](figures/jaqsi_overview_light.png#center#only-light)
+![overview](figures/jaqsi_overview_dark.png#center#only-dark)
 
 While the standard gate execution is quite straight-forward, the pulse simulation requires a bit more care.
 Here we split up `PulseGates` (abstracted by the `Gates` class) into `PulseParams` and `PulseEnvelope` to get more fine grained control over the underlying implementation.
 As a single source of truth for both, there is the `PulseInformation` class, providing valid combination of these two characteristics.
 
-![overview](figures/yaqsi_pulse_light.png#center#only-light)
-![overview](figures/yaqsi_pulse_dark.png#center#only-dark)
+![overview](figures/jaqsi_pulse_light.png#center#only-light)
+![overview](figures/jaqsi_pulse_dark.png#center#only-dark)
 
 ## Architecture
 

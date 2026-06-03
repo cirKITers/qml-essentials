@@ -495,7 +495,7 @@ class TestMeasurement:
 class TestPennylane:
     @pytest.mark.unittest
     @pytest.mark.parametrize(
-        "gate_name,yaqsi_gate,pl_gate,theta,prep_both",
+        "gate_name,jaqsi_gate,pl_gate,theta,prep_both",
         [
             ("CY", CY, qml.CY, None, False),
             ("CZ", CZ, qml.CZ, None, True),
@@ -506,18 +506,18 @@ class TestPennylane:
         ids=["CY", "CZ", "CRX", "CRY", "CRZ"],
     )
     def test_controlled_gate_matches_pennylane(
-        self, gate_name, yaqsi_gate, pl_gate, theta, prep_both
+        self, gate_name, jaqsi_gate, pl_gate, theta, prep_both
     ) -> None:
         """Controlled gate probabilities match PennyLane."""
 
-        def yaqsi_circuit():
+        def jaqsi_circuit():
             H(wires=0)
             if prep_both:
                 H(wires=1)
             if theta is not None:
-                yaqsi_gate(theta, wires=[0, 1])
+                jaqsi_gate(theta, wires=[0, 1])
             else:
-                yaqsi_gate(wires=[0, 1])
+                jaqsi_gate(wires=[0, 1])
 
         def pl_circuit():
             qml.Hadamard(wires=0)
@@ -528,7 +528,7 @@ class TestPennylane:
             else:
                 pl_gate(wires=[0, 1])
 
-        script = Script(f=yaqsi_circuit)
+        script = Script(f=jaqsi_circuit)
         probs_ours = np.array(script.execute(type="probs"))
         probs_pl = _pennylane_probs(pl_circuit)
 
@@ -541,13 +541,13 @@ class TestPennylane:
         """Rot(φ, θ, ω) = RZ(ω)·RY(θ)·RZ(φ) must match PennyLane's Rot gate."""
         phi, theta, omega = 0.4, 1.2, 2.5
 
-        def yaqsi_circuit():
+        def jaqsi_circuit():
             Rot(phi, theta, omega, wires=0)
 
         def pl_circuit():
             qml.Rot(phi, theta, omega, wires=0)
 
-        script = Script(f=yaqsi_circuit)
+        script = Script(f=jaqsi_circuit)
         probs_ours = np.array(script.execute(type="probs"))
         probs_pl = _pennylane_probs(pl_circuit, n_qubits=1)
 
@@ -588,7 +588,7 @@ class TestPennylane:
 class TestNoise:
     @pytest.mark.unittest
     @pytest.mark.parametrize(
-        "channel_name,yaqsi_channel,pl_channel,param,theta,atol",
+        "channel_name,jaqsi_channel,pl_channel,param,theta,atol",
         [
             ("BitFlip", BitFlip, qml.BitFlip, 0.15, 0.8, 1e-8),
             ("PhaseFlip", PhaseFlip, qml.PhaseFlip, 0.2, 1.1, 1e-8),
@@ -619,19 +619,19 @@ class TestNoise:
         ],
     )
     def test_noise_channel_matches_pennylane(
-        self, channel_name, yaqsi_channel, pl_channel, param, theta, atol
+        self, channel_name, jaqsi_channel, pl_channel, param, theta, atol
     ) -> None:
         """Noise channel density matrix matches PennyLane default.mixed."""
 
-        def yaqsi_circuit(t):
+        def jaqsi_circuit(t):
             RX(t, wires=0)
-            yaqsi_channel(param, wires=0)
+            jaqsi_channel(param, wires=0)
 
         def pl_circuit():
             qml.RX(theta, wires=0)
             pl_channel(param, wires=0)
 
-        script = Script(f=yaqsi_circuit)
+        script = Script(f=jaqsi_circuit)
         rho_ours = np.array(script.execute(type="density", args=(jnp.array(theta),)))
         rho_pl = _pennylane_density(pl_circuit)
 
@@ -645,7 +645,7 @@ class TestNoise:
         pe, t1, t2, tg = 0.0, 1e-4, 5e-5, 1e-6  # t2 < t1
         theta = 1.0
 
-        def yaqsi_circuit(t):
+        def jaqsi_circuit(t):
             RX(t, wires=0)
             ThermalRelaxationError(pe, t1, t2, tg, wires=0)
 
@@ -653,7 +653,7 @@ class TestNoise:
             qml.RX(theta, wires=0)
             qml.ThermalRelaxationError(pe, t1, t2, tg, wires=0)
 
-        script = Script(f=yaqsi_circuit)
+        script = Script(f=jaqsi_circuit)
         rho_ours = np.array(script.execute(type="density", args=(jnp.array(theta),)))
         rho_pl = _pennylane_density(pl_circuit)
 
@@ -1125,7 +1125,7 @@ def test_evolve_multi_term_time_dependent_unitarity() -> None:
 def test_mode_performances(benchmark, mode, speedup) -> None:
     """
     Note, this test requires codspeed to be activated. Run with
-    pytest tests/test_yaqsi.py::test_mode_performances -x -s --codspeed
+    pytest tests/test_jaqsi.py::test_mode_performances -x -s --codspeed
     """
 
     n_qubits = 6
@@ -1141,13 +1141,13 @@ def test_mode_performances(benchmark, mode, speedup) -> None:
     )
 
     # --- Jaqsi ---
-    def yaqsi_circuit(phi):
+    def jaqsi_circuit(phi):
         for i in range(n_qubits):
             H(wires=i)
         for i in range(n_qubits):
             CRX(phi, wires=[i, (i + 1) % n_qubits])
 
-    script = Script(f=yaqsi_circuit)
+    script = Script(f=jaqsi_circuit)
 
     _ = script.execute(
         type=mode,
@@ -1624,19 +1624,19 @@ class TestMemory:
     def test_memory(self) -> None:
         """
         Note, this test requires memray to be activated. Run with
-        pytest tests/test_yaqsi.py::test_memory -x -s --memray
+        pytest tests/test_jaqsi.py::test_memory -x -s --memray
         """
         n_qubits = 12
 
         # Jaqsi
-        def yaqsi_circuit():
+        def jaqsi_circuit():
             for i in range(n_qubits):
                 H(wires=i)
             for i in range(n_qubits):
                 CX(wires=[i, (i + 1) % n_qubits])
 
         for _ in range(100):
-            _ = Script(f=yaqsi_circuit).execute(type="density")
+            _ = Script(f=jaqsi_circuit).execute(type="density")
 
     @pytest.mark.unittest
     @pytest.mark.limit_memory("200 MB")
