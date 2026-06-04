@@ -143,7 +143,7 @@ fourier_tree = FourierTree(model)
 an_coeffs, an_freqs = fourier_tree.get_spectrum(force_mean=True)
 ``` 
 
-Note that while this takes significantly longer to compute, it gives us the precise coefficients, solely depending on the parameters.
+Unlike the FFT, this gives us the precise coefficients, solely depending on the parameters.
 We can verify this by comparing it to the previous results:
 
 ![Model Analytic Coefficients](figures/model_psd_an_light.png#center#only-light)
@@ -154,10 +154,49 @@ We can verify this by comparing it to the previous results:
 We use an approach developed by [Nemkov et al.](https://arxiv.org/pdf/2304.03787), which was later extended by [Wiedmann et al.](https://arxiv.org/pdf/2411.03450).
 The implementation is also inspired by the corresponding [code](https://github.com/idnm/FourierVQA) for Nemkov et al.'s paper.
 
-In Nemkov et al.'s algorithm the first step is to separate Clifford and non-Clifford gates, such that all Clifford gates can be regarded as part of the observable, and the actual circuit only consists of Pauli rotations (cf. qml_essentials.utils.PauliCircuit).
+In Nemkov et al.'s algorithm the first step is to separate Clifford and non-Clifford gates, such that all Clifford gates can be regarded as part of the observable, and the actual circuit only consists of Pauli rotations (cf. `qml_essentials.pauli.PauliCircuit`).
 The main idea is then to split each Pauli rotation into sine and cosine product terms to obtain the coefficients, which are only dependent on the parameters of the circuit.
 
-Currently, our implementation supports only one input feature, albeit more are theoretical possible.
+The Clifford commutation and Pauli bookkeeping are implemented symbolically on a stabilizer-tableau Pauli representation (`qml_essentials.operations.PauliWord`), and the parameter-dependent coefficients are evaluated with vectorized operations.
+This makes the tree fast to build and evaluate, and it supports multiple input features: in that case `get_spectrum` returns, per observable, the multi-dimensional frequency vectors (shape `(n_freqs, n_features)`) and their coefficients.
+
+## Estimating the Exact Spectrum
+
+The number of frequencies a model can represent is, by default, estimated naively from the encoding (see `model.frequencies` / `model.degree`).
+This estimate is an *upper bound*: as shown by Wiedmann et al., some coefficients are constrained to zero for all parameter values, so the true spectrum can be smaller.
+
+The `FourierTree` lets us obtain the *exact* spectrum of a model via the opt-in `Model.exact_spectrum` method:
+```python
+model = Model(
+    n_qubits=3,
+    n_layers=1,
+    circuit_type="Circuit_19",
+)
+
+exact = model.exact_spectrum()  # tuple of frequency arrays, one per input feature
+```
+The result is always a subset of `model.frequencies`.
+For example, for the model above the naive estimate is `{-3, ..., 3}` while the exact spectrum is `{-2, -1, 0, 1, 2}`.
+
+The support is derived *purely symbolically* — no parameter sampling is involved.
+This exploits a structural property of the tree: every parameter contributes at most one sine **or** cosine factor per path, so the variational leaf factors are square-free monomials over $\{1, \cos\theta_i, i\sin\theta_i\}$, which are linearly independent.
+A frequency is therefore absent if and only if all of its signature-grouped path weights sum to zero — an exact test, since all weights are dyadic rationals.
+This correctly removes frequencies whose contributions cancel identically across paths, e.g. two consecutive encodings combining into a single rotation ($\langle Z \rangle = \cos(2x)$ has spectrum $\{-2, 2\}$, not $\{-2, \dots, 2\}$).
+
+Two methods are available:
+
+- `method="tree"` (default): fully exact, but enumerates the explicit tree, whose size can grow exponentially with circuit depth.
+- `method="dp"`: merges tree nodes with identical (rotation index, observable) state — at most $n_\text{params} \cdot 4^{n_\text{qubits}}$ states — and tracks the achievable input sine/cosine counts per state.
+  This scales to deep circuits where the explicit tree is infeasible (e.g. a 10-layer `Strongly_Entangling` ansatz on 5 qubits takes seconds instead of being intractable).
+  It is exact per path, but cannot detect coefficients that cancel identically *across* paths with identical variational dependence (such as the repeated-encoding example above), where it returns a tight superset.
+  Currently it supports a single input feature.
+
+```python
+exact = model.exact_spectrum(method="dp")  # for deep circuits
+```
+
+Note that `exact_spectrum` requires a Clifford + Pauli-rotation ansatz (the same restriction as the `FourierTree`).
+Also keep in mind that a *structurally present* frequency can still have an exponentially small coefficient (the leaf weights scale with $0.5^{s+c}$), so numerically thresholding an FFT spectrum may show fewer frequencies than the exact symbolic support.
 
 
 ## Multi-Dimensional Coefficients
