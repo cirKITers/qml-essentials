@@ -1,12 +1,14 @@
 from __future__ import annotations
+import sys
 import math
+import warnings
 import itertools
 from collections import defaultdict
 import jax.numpy as jnp
 from jax import random
 import numpy as np
 from scipy.stats import rankdata
-from functools import reduce
+from functools import reduce, lru_cache
 from typing import List, Tuple, Optional, Any, Dict, Union
 
 from qml_essentials.model import Model
@@ -274,13 +276,34 @@ class FourierTree:
         # Ordered list of input feature keys (d-dimensional spectrum).
         self.features = sorted(self.input_indices.keys())
 
-        # Symbolic structure: per root (S, C, terms) leaf arrays ...
-        self._build_leaf_arrays()
-        # ... and the parameter-independent frequency/weight structure.
-        self._build_spectrum_structure()
+        # The explicit leaf structure is built lazily: for deep circuits the
+        # number of tree paths explodes combinatorially, while the canonical
+        # form above (and the merged-state support DP) remain cheap.
+        self._structure_built = False
+
+    def _ensure_structure(self) -> None:
+        """Build the explicit leaf/spectrum structure on first use."""
+        if not self._structure_built:
+            # Symbolic structure: per root (S, C, terms) leaf arrays ...
+            self._build_leaf_arrays()
+            # ... and the parameter-independent frequency/weight structure.
+            self._build_spectrum_structure()
+            self._structure_built = True
 
     def _build_canonical_tape(self, params, inputs):
         """Record the circuit and transform it to Pauli-Clifford normal form."""
+        # The tree describes a single parameter set.  Models can carry batched
+        # parameters (e.g. after FCC sampling via ``initialize_params(repeat)``);
+        # fall back to the first set in that case.
+        params = jnp.asarray(params)
+        if params.ndim > 2 and params.shape[0] > 1:
+            warnings.warn(
+                f"FourierTree supports a single parameter set; using the first "
+                f"of {params.shape[0]} batched parameter sets.",
+                UserWarning,
+            )
+            params = params[0]
+
         inputs = self.model._inputs_validation(
             list(range(1, self.model.n_input_feat + 1)) if inputs is None else inputs
         )
@@ -433,7 +456,10 @@ class FourierTree:
             if freqs.shape[1] == 1:
                 freqs = freqs[:, 0]
             self.freqs_per_root.append(freqs)
-            self.weights_per_root.append(jnp.asarray(W))
+            # Keep W in NumPy complex128: its entries are dyadic rationals
+            # (binomial weights x 0.5^k x i^m), which are exact in float64 --
+            # this allows exact symbolic zero-tests in get_exact_support.
+            self.weights_per_root.append(W)
 
     @staticmethod
     def _binomial_terms(s: int, c: int) -> List[Tuple[int, float]]:
@@ -537,6 +563,7 @@ class FourierTree:
         quantum_tape = self._build_canonical_tape(params, inputs)
         self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
 
+        self._ensure_structure()
         all_columns = np.arange(self.n_params, dtype=np.int64)
         results = []
         for S, C, terms in self.leaf_arrays:
@@ -564,14 +591,205 @@ class FourierTree:
                 - List of corresponding frequencies, one entry per root.
                 When ``force_mean`` is set, both lists have a single entry.
         """
+        self._ensure_structure()
         per_root_coeffs: List[jnp.ndarray] = []
         for (S, C, terms), W in zip(self.leaf_arrays, self.weights_per_root):
             leaf_const = jnp.asarray(terms) * self._leaf_factors(
                 S, C, self.var_positions
             )
-            per_root_coeffs.append(W @ leaf_const)
+            per_root_coeffs.append(jnp.asarray(W) @ leaf_const)
 
         return self._combine_roots(per_root_coeffs, self.freqs_per_root, force_mean)
+
+    def get_exact_support(self, method: str = "tree") -> List[np.ndarray]:
+        r"""Symbolically derive the exact frequency support (no sampling).
+
+        A frequency :math:`\omega` belongs to the exact spectrum iff its
+        coefficient :math:`c_\omega(\theta) = \sum_l W_{\omega l}\,
+        \text{term}_l\, v_l(\theta)` is not identically zero in the
+        variational parameters :math:`\theta`.
+
+        Two methods are available:
+
+        - ``"tree"`` (default, fully exact): enumerates the explicit tree
+          leaves.  Because the branch index strictly decreases along every tree
+          path, each parameter contributes **at most one** sine *or* cosine
+          factor per leaf (:math:`S_{li}, C_{li} \in \{0, 1\}`).  Every
+          variational leaf factor :math:`v_l` is therefore a *square-free*
+          monomial over :math:`\{1, \cos\theta_i, i\sin\theta_i\}`, and
+          monomials with distinct signatures are linearly independent functions
+          (no :math:`\cos^2 + \sin^2` identities can arise without squares).
+          Hence
+
+          .. math::
+              c_\omega \equiv 0 \iff \sum_{l \in g} W_{\omega l}\,\text{term}_l
+              = 0 \quad \text{for every signature group } g.
+
+          Since all involved quantities are dyadic rationals times
+          :math:`\{\pm 1, \pm i\}`, the group sums are exact in float64 and the
+          zero-test is exact.  The number of leaves can however grow
+          exponentially with circuit depth.
+
+        - ``"dp"`` (scalable): merges tree nodes with identical
+          ``(rotation index, observable)`` — at most ``n_params * 4^n_qubits``
+          states — and tracks the achievable input sine/cosine count pairs
+          ``(s, c)`` per state.  The support is the union of the (exact)
+          expansion supports of :math:`\cos^c x\, (i \sin x)^s` over all
+          achievable pairs.  This is exact per tree path (including interior
+          zero coefficients of the expansions), but unlike ``"tree"`` it cannot
+          detect coefficients that cancel identically *across* paths with
+          identical variational signatures (e.g. directly repeated encodings).
+          It therefore yields a tight superset in such corner cases.
+          Currently restricted to a single input feature.
+
+        Args:
+            method (str): ``"tree"`` (fully exact) or ``"dp"`` (scalable).
+
+        Returns:
+            List[np.ndarray]: For each observable (root), the frequency vectors
+            with not-identically-zero coefficient — shape ``(n_freq,)`` for a
+            single input feature, ``(n_freq, n_features)`` otherwise.
+        """
+        if method == "dp":
+            return self._support_dp()
+        if method != "tree":
+            raise ValueError(f"Unknown method '{method}'. Use 'tree' or 'dp'.")
+
+        self._ensure_structure()
+        supports = []
+        for (S, C, terms), W, freqs in zip(
+            self.leaf_arrays, self.weights_per_root, self.freqs_per_root
+        ):
+            freqs = np.asarray(freqs)
+            n_leaves = S.shape[0]
+            if n_leaves == 0:
+                supports.append(freqs[:0])
+                continue
+
+            # Group leaves by their variational sine/cosine signature.
+            signature = np.hstack([S[:, self.var_positions], C[:, self.var_positions]])
+            _, groups = np.unique(signature, axis=0, return_inverse=True)
+            n_groups = int(groups.max()) + 1
+
+            # Per-group sums of W[omega, l] * term_l, accumulated exactly.
+            contrib = (W * terms[None, :]).T  # (n_leaves, n_freq)
+            group_sums = np.zeros((n_groups, W.shape[0]), dtype=np.complex128)
+            np.add.at(group_sums, groups, contrib)
+
+            mask = (np.abs(group_sums) > 1e-12).any(axis=0)  # (n_freq,)
+            supports.append(freqs[mask])
+        return supports
+
+    def _support_dp(self) -> List[np.ndarray]:
+        """Merged-state dynamic program for the frequency support.
+
+        Instead of enumerating all (worst-case exponentially many) tree paths,
+        nodes are merged on ``(rotation index, bare observable)``.  Each state
+        stores the set of achievable input ``(s, c)`` count pairs as a bitmask,
+        so transitions are O(1) big-int operations.  See
+        :meth:`get_exact_support` for semantics and limitations.
+        """
+        if len(self.features) != 1:
+            raise NotImplementedError(
+                "The 'dp' support method currently supports exactly one input "
+                "feature; use method='tree' for multi-feature models."
+            )
+
+        n = self.n_qubits
+        is_input = np.zeros(self.n_params, dtype=bool)
+        is_input[self.all_input_indices] = True
+        n_inp = int(is_input.sum())
+        stride = n_inp + 1  # bit index for (s, c) is  s * stride + c
+
+        def encode(word: PauliWord) -> Tuple[int, int]:
+            x = z = 0
+            for q in range(n):
+                x |= int(word.x[q]) << q
+                z |= int(word.z[q]) << q
+            return x, z
+
+        paulis = [encode(w) for w in self.pauli_words]
+        cum_xy = []
+        running = 0
+        for xp, _ in paulis:
+            running |= xp
+            cum_xy.append(running)
+
+        def parity(v: int) -> int:
+            return bin(v).count("1") & 1
+
+        def dp(idx: int, xo: int, zo: int, memo: dict) -> int:
+            # Light-cone early stopping (cf. _early_stopping_possible).
+            if idx >= 0 and (xo & ~cum_xy[idx]):
+                return 0
+            # Skip trailing rotations that commute with the observable.
+            while idx >= 0:
+                xp, zp = paulis[idx]
+                if parity(xo & zp) ^ parity(zo & xp):
+                    break
+                idx -= 1
+            else:  # leaf: counts (s=0, c=0) iff the observable is diagonal
+                return 1 if xo == 0 else 0
+            key = (idx, xo, zo)
+            hit = memo.get(key)
+            if hit is not None:
+                return hit
+            xp, zp = paulis[idx]
+            cos_child = dp(idx - 1, xo, zo, memo)
+            sin_child = dp(idx - 1, xo ^ xp, zo ^ zp, memo)
+            if is_input[idx]:
+                # Active input gate: cosine increments c, sine increments s.
+                val = (cos_child << 1) | (sin_child << stride)
+            else:
+                val = cos_child | sin_child
+            memo[key] = val
+            return val
+
+        # Recursion depth is bounded by the number of rotations.
+        old_limit = sys.getrecursionlimit()
+        sys.setrecursionlimit(max(old_limit, self.n_params + 1000))
+        try:
+            supports = []
+            for obs in self.observable_words:
+                memo: dict = {}
+                xo, zo = encode(obs)
+                mask = dp(self.n_params - 1, xo, zo, memo)
+                freqs: set = set()
+                while mask:
+                    bit = mask & -mask
+                    i = bit.bit_length() - 1
+                    freqs |= self._expansion_support(i // stride, i % stride)
+                    mask ^= bit
+                supports.append(np.array(sorted(freqs), dtype=np.int64))
+        finally:
+            sys.setrecursionlimit(old_limit)
+        return supports
+
+    @staticmethod
+    @lru_cache(maxsize=None)
+    def _expansion_support(s: int, c: int) -> frozenset:
+        r"""Frequencies with non-zero coefficient in :math:`\cos^c x (i\sin x)^s`.
+
+        Computed exactly with integer arithmetic via the polynomial
+        :math:`(t - 1)^s (t + 1)^c` (with :math:`t = e^{2ix}` up to a shift);
+        interior coefficients can vanish, e.g. :math:`\cos x \sin x` only
+        contains :math:`\pm 2`.
+        """
+        coeffs = [1]
+        for _ in range(s):  # multiply by (t - 1)
+            new = [0] * (len(coeffs) + 1)
+            for i, a in enumerate(coeffs):
+                new[i + 1] += a
+                new[i] -= a
+            coeffs = new
+        for _ in range(c):  # multiply by (t + 1)
+            new = [0] * (len(coeffs) + 1)
+            for i, a in enumerate(coeffs):
+                new[i + 1] += a
+                new[i] += a
+            coeffs = new
+        m = s + c
+        return frozenset(2 * k - m for k, a in enumerate(coeffs) if a != 0)
 
     def _combine_roots(
         self,
