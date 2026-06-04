@@ -2101,3 +2101,298 @@ def prod(*ops: Operation) -> Operation:
     if not ops:
         raise ValueError("At least one operation must be provided to prod().")
     return ops[0].prod(*ops[1:])
+
+
+# Single-qubit (x, z) bit pattern -> Pauli label, with the convention that a
+# Pauli word is stored as  i^phase * prod_q  X_q^{x_q} Z_q^{z_q}.
+# Under this convention Y = i * X * Z, so the single-qubit Y carries x=z=1.
+_XZ_TO_LABEL = {(0, 0): "I", (1, 0): "X", (0, 1): "Z", (1, 1): "Y"}
+_LABEL_TO_XZ = {"I": (0, 0), "X": (1, 0), "Z": (0, 1), "Y": (1, 1)}
+
+
+class PauliWord:
+    r"""Symbolic n-qubit Pauli operator in the stabilizer-tableau (symplectic)
+    representation.
+
+    A Pauli word is stored as
+
+    .. math::
+        P = i^{\text{phase}} \prod_{q} X_q^{x_q} Z_q^{z_q},
+
+    with bit arrays ``x, z \in \{0, 1\}^n`` and an integer ``phase`` taken mod 4
+    (tracking the scalar ``i^{phase}``).  Single-qubit Paulis map as
+    ``I=(0,0)``, ``X=(1,0)``, ``Z=(0,1)``, ``Y=(1,1)`` (since ``Y = i X Z``).
+
+    This replaces the matrix-based Clifford conjugation
+    (:func:`evolve_pauli_with_clifford` + :func:`pauli_decompose`) with O(n)
+    symbolic updates, and is shared by both
+    :class:`~qml_essentials.pauli.PauliCircuit` and the Fourier-tree algorithm.
+
+    All operations use NumPy (integer arithmetic), not JAX — this is symbolic
+    bookkeeping, not numeric computation.
+    """
+
+    __slots__ = ("x", "z", "phase")
+
+    def __init__(self, x: np.ndarray, z: np.ndarray, phase: int = 0) -> None:
+        """Initialise a Pauli word.
+
+        Args:
+            x: Integer/boolean array of X-component bits, length ``n_qubits``.
+            z: Integer/boolean array of Z-component bits, length ``n_qubits``.
+            phase: Exponent of the global ``i^{phase}`` scalar (taken mod 4).
+        """
+        self.x = np.asarray(x, dtype=np.int8) & 1
+        self.z = np.asarray(z, dtype=np.int8) & 1
+        self.phase = int(phase) % 4
+
+    # ---- constructors ---------------------------------------------------
+    @classmethod
+    def identity(cls, n_qubits: int) -> "PauliWord":
+        """Return the identity Pauli word on *n_qubits*."""
+        z = np.zeros(n_qubits, dtype=np.int8)
+        return cls(z.copy(), z, 0)
+
+    @classmethod
+    def from_pauli_string(
+        cls, pauli_string: str, wires: List[int], n_qubits: int
+    ) -> "PauliWord":
+        """Build a Pauli word from a Pauli string and its wires.
+
+        Args:
+            pauli_string: String over ``{'I', 'X', 'Y', 'Z'}``; one character
+                per entry of *wires*.
+            wires: Qubit indices the characters act on.
+            n_qubits: Total number of qubits in the circuit.
+
+        Returns:
+            The corresponding :class:`PauliWord`.
+        """
+        x = np.zeros(n_qubits, dtype=np.int8)
+        z = np.zeros(n_qubits, dtype=np.int8)
+        n_y = 0
+        for ch, w in zip(pauli_string, wires):
+            xb, zb = _LABEL_TO_XZ[ch]
+            x[w] = xb
+            z[w] = zb
+            if ch == "Y":
+                n_y += 1
+        # Each Y contributes a factor i (Y = i X Z), accumulated into phase.
+        return cls(x, z, n_y % 4)
+
+    @classmethod
+    def from_operation(cls, op: "Operation", n_qubits: int) -> "PauliWord":
+        """Build a Pauli word from a Pauli-like operation.
+
+        Supports :class:`PauliX`/:class:`PauliY`/:class:`PauliZ`/:class:`Id`,
+        :class:`PauliRot` (via its ``pauli_word``), and any operation carrying a
+        ``_pauli_label`` (e.g. produced by :func:`pauli_decompose`) or otherwise
+        decomposable by :func:`pauli_string_from_operation`.
+
+        Args:
+            op: The operation to convert.
+            n_qubits: Total number of qubits in the circuit.
+
+        Returns:
+            The corresponding :class:`PauliWord`.
+        """
+        # Cached symbolic word (e.g. attached to a Clifford-evolved observable).
+        cached = getattr(op, "_pauli_word", None)
+        if isinstance(cached, PauliWord) and cached.n_qubits == n_qubits:
+            return cached
+        if isinstance(op, PauliRot):
+            return cls.from_pauli_string(op.pauli_word, op.wires, n_qubits)
+        # Single-qubit Pauli rotations: generator is the corresponding Pauli.
+        rot_to_label = {"RX": "X", "RY": "Y", "RZ": "Z"}
+        if op.name in rot_to_label:
+            return cls.from_pauli_string(rot_to_label[op.name], op.wires, n_qubits)
+        name_to_label = {"PauliX": "X", "PauliY": "Y", "PauliZ": "Z", "I": "I"}
+        if op.name in name_to_label:
+            return cls.from_pauli_string(name_to_label[op.name], op.wires, n_qubits)
+        pauli_str = pauli_string_from_operation(op)
+        return cls.from_pauli_string(pauli_str, op.wires, n_qubits)
+
+    @property
+    def n_qubits(self) -> int:
+        """Number of qubits this Pauli word spans."""
+        return self.x.shape[0]
+
+    @property
+    def xy_mask(self) -> np.ndarray:
+        """Boolean mask of qubits carrying an X or Y (i.e. ``x`` bits set)."""
+        return self.x.astype(bool)
+
+    @property
+    def is_diagonal(self) -> bool:
+        """Whether the word is diagonal (only I/Z, i.e. no X component)."""
+        return not bool(self.x.any())
+
+    # ---- algebra --------------------------------------------------------
+    def commutes_with(self, other: "PauliWord") -> bool:
+        """Return whether this Pauli word commutes with *other*.
+
+        Two Paulis commute iff their symplectic inner product vanishes mod 2.
+        """
+        sp = int(np.dot(self.x, other.z) + np.dot(self.z, other.x)) % 2
+        return sp == 0
+
+    def compose(self, other: "PauliWord") -> "PauliWord":
+        r"""Return the operator product ``self @ other`` as a new Pauli word.
+
+        Uses the exact symplectic product rule
+
+        .. math::
+            (X^{x_1} Z^{z_1})(X^{x_2} Z^{z_2})
+              = (-1)^{z_1 \cdot x_2}\, X^{x_1 \oplus x_2} Z^{z_1 \oplus z_2},
+
+        combined with the ``i^{phase}`` scalars (``-1 = i^2``).
+        """
+        new_x = self.x ^ other.x
+        new_z = self.z ^ other.z
+        cross = int(np.dot(self.z, other.x))
+        new_phase = (self.phase + other.phase + 2 * cross) % 4
+        return PauliWord(new_x, new_z, new_phase)
+
+    def conjugate_by_clifford(
+        self, clifford: "Operation", adjoint_left: bool = False
+    ) -> "PauliWord":
+        r"""Return the Clifford conjugation of this Pauli word.
+
+        Computes ``C P C^\dagger`` (``adjoint_left=False``) or
+        ``C^\dagger P C`` (``adjoint_left=True``) symbolically, where *C* is one
+        of the supported Clifford gates ``H, S, CX, CZ`` or a Pauli gate
+        ``PauliX/PauliY/PauliZ``.
+
+        The conjugation is realised by substituting the images of the
+        single-qubit generators ``X_q`` and ``Z_q`` and re-composing in canonical
+        order, so all phases are tracked exactly by :meth:`compose`.
+
+        Args:
+            clifford: The Clifford operation to conjugate by.
+            adjoint_left: If ``True`` compute ``C^\dagger P C``; else
+                ``C P C^\dagger``.
+
+        Returns:
+            The conjugated :class:`PauliWord`.
+
+        Raises:
+            NotImplementedError: If *clifford* is not a supported gate.
+        """
+        n = self.n_qubits
+        name = clifford.name
+
+        # Pauli gates: conjugation is just  Q P Q  (Q is Hermitian => Q^dagger=Q).
+        if name in ("PauliX", "PauliY", "PauliZ"):
+            q = PauliWord.from_operation(clifford, n)
+            return q.compose(self).compose(q)
+
+        images_x, images_z = self._clifford_generator_images(
+            name, list(clifford.wires), adjoint_left, n
+        )
+
+        result = PauliWord.identity(n)
+        result.phase = self.phase
+        for q in range(n):
+            if self.x[q]:
+                result = result.compose(images_x[q])
+            if self.z[q]:
+                result = result.compose(images_z[q])
+        return result
+
+    @staticmethod
+    def _clifford_generator_images(
+        name: str, wires: List[int], adjoint_left: bool, n: int
+    ) -> Tuple[List["PauliWord"], List["PauliWord"]]:
+        """Images of single-qubit generators ``X_q``/``Z_q`` under a Clifford.
+
+        Returns two lists (indexed by qubit) of :class:`PauliWord` giving
+        ``C X_q C^\\dagger`` and ``C Z_q C^\\dagger`` (or the adjoint direction).
+        Qubits outside the gate support map to themselves.
+        """
+
+        def single(label: str, q: int) -> "PauliWord":
+            return PauliWord.from_pauli_string(label, [q], n)
+
+        images_x = [single("X", q) for q in range(n)]
+        images_z = [single("Z", q) for q in range(n)]
+
+        if name == "H":
+            w = wires[0]
+            images_x[w] = single("Z", w)  # H X H = Z
+            images_z[w] = single("X", w)  # H Z H = X
+        elif name == "S":
+            w = wires[0]
+            if adjoint_left:  # S^dagger X S = -Y ; S^dagger Z S = Z
+                images_x[w] = PauliWord.from_pauli_string("Y", [w], n).compose(
+                    PauliWord(np.zeros(n, np.int8), np.zeros(n, np.int8), 2)
+                )
+            else:  # S X S^dagger = Y ; S Z S^dagger = Z
+                images_x[w] = single("Y", w)
+            # images_z[w] unchanged (Z)
+        elif name == "CX":
+            c, t = wires
+            images_x[c] = single("X", c).compose(single("X", t))  # X_c -> X_c X_t
+            images_z[t] = single("Z", c).compose(single("Z", t))  # Z_t -> Z_c Z_t
+            # X_t -> X_t and Z_c -> Z_c unchanged ; CX is Hermitian
+        elif name == "CZ":
+            c, t = wires
+            images_x[c] = single("X", c).compose(single("Z", t))  # X_c -> X_c Z_t
+            images_x[t] = single("Z", c).compose(single("X", t))  # X_t -> Z_c X_t
+            # Z_c, Z_t unchanged ; CZ is Hermitian
+        else:
+            raise NotImplementedError(
+                f"Clifford conjugation not implemented for gate '{name}'. "
+                "Supported: H, S, CX, CZ, PauliX, PauliY, PauliZ."
+            )
+        return images_x, images_z
+
+    # ---- expectation / conversions -------------------------------------
+    def zero_expectation(self) -> complex:
+        r"""Return ``<0|P|0>`` for the all-zero computational basis state.
+
+        Non-zero only for diagonal words (I/Z only), in which case it equals the
+        global phase ``i^{phase}``.
+        """
+        if not self.is_diagonal:
+            return 0.0 + 0.0j
+        return complex(1j**self.phase)
+
+    def to_pauli_string(self) -> str:
+        """Return the bare Pauli string (ignoring the global phase)."""
+        return "".join(
+            _XZ_TO_LABEL[(int(self.x[q]), int(self.z[q]))] for q in range(self.n_qubits)
+        )
+
+    def leading_phase(self) -> complex:
+        r"""Return the scalar ``c`` such that ``P = c * (bare Pauli string)``.
+
+        Because the bare string already contains ``i^{n_Y}`` from its Y factors,
+        ``c = i^{phase - n_Y}``.
+        """
+        n_y = int(((self.x == 1) & (self.z == 1)).sum())
+        return complex(1j ** ((self.phase - n_y) % 4))
+
+    def to_pauli_string_and_phase(self) -> Tuple[str, complex]:
+        """Return ``(bare Pauli string, leading scalar phase)``."""
+        return self.to_pauli_string(), self.leading_phase()
+
+    def to_list_repr(self) -> np.ndarray:
+        """Return the legacy int list representation (I=-1, X=0, Y=1, Z=2)."""
+        out = np.full(self.n_qubits, -1, dtype=int)
+        for q in range(self.n_qubits):
+            label = _XZ_TO_LABEL[(int(self.x[q]), int(self.z[q]))]
+            out[q] = {"I": -1, "X": 0, "Y": 1, "Z": 2}[label]
+        return out
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PauliWord):
+            return NotImplemented
+        return (
+            self.phase == other.phase
+            and np.array_equal(self.x, other.x)
+            and np.array_equal(self.z, other.z)
+        )
+
+    def __repr__(self) -> str:
+        phase_str = {0: "+", 1: "+i", 2: "-", 3: "-i"}[self.phase]
+        return f"PauliWord({phase_str}{self.to_pauli_string()})"
