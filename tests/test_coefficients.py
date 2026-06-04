@@ -444,6 +444,44 @@ class TestFourierTree:
                 "Analytic Fourier series evaluation not working"
             )
 
+    @pytest.mark.unittest
+    def test_coefficients_tree_multi_feature(self) -> None:
+        """Multi-dimensional spectrum: the analytical Fourier series and the
+        tree expectation must reproduce the circuit for a 2-feature model."""
+        import numpy as np
+
+        model = Model(
+            n_qubits=3,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            output_qubit=0,
+            encoding=["RX", "RY"],
+        )
+        assert model.n_input_feat == 2
+
+        tree = FourierTree(model)
+        coeffs, freqs = tree.get_spectrum(force_mean=True)
+        coeffs = coeffs[0]
+        freqs = np.asarray(freqs[0])
+
+        # d-dimensional frequency vectors (n_freq, d).
+        assert freqs.ndim == 2 and freqs.shape[1] == 2
+        assert jnp.isclose(jnp.sum(coeffs).imag, 0.0, atol=1.0e-5)
+
+        rng = np.random.default_rng(0)
+        for _ in range(8):
+            x = rng.uniform(-np.pi, np.pi, size=2)
+            series = jnp.sum(coeffs * jnp.exp(1j * (freqs @ x)))
+            tree_val = tree(inputs=x, force_mean=True)
+            model_val = jnp.mean(model(model.params, inputs=jnp.array([x])))
+
+            assert jnp.isclose(jnp.real(series), model_val, atol=1.0e-5), (
+                "Multi-feature analytical Fourier series does not match circuit"
+            )
+            assert jnp.isclose(tree_val, model_val, atol=1.0e-5), (
+                "Multi-feature tree evaluation does not match circuit"
+            )
+
 
 class TestFCC:
     """Tests for Fourier Coefficient Correlation (FCC) computation."""
