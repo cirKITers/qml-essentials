@@ -1215,6 +1215,84 @@ def test_pauli_circuit_model() -> None:
         )
 
 
+@pytest.mark.unittest
+def test_exact_spectrum_subset_of_naive() -> None:
+    """The exact FourierTree spectrum is a subset of the naive estimate and
+    contains every frequency the FFT finds to be non-zero."""
+    from qml_essentials.coefficients import Coefficients
+
+    model = Model(n_qubits=3, n_layers=1, circuit_type="Circuit_19", output_qubit=0)
+
+    exact = model.exact_spectrum()
+    assert len(exact) == model.n_input_feat
+
+    naive = set(int(v) for v in model.frequencies[0])
+    exact_set = set(int(v) for v in exact[0])
+    assert exact_set.issubset(naive), (
+        f"Exact spectrum {exact_set} not a subset of naive {naive}"
+    )
+
+    # The exact spectrum must match the FFT's significant frequencies.  A
+    # magnitude threshold of 1e-4 separates genuine coefficients (~1e-1) from
+    # the float32 FFT noise floor (~1e-7).
+    fft_coeffs, fft_freqs = Coefficients.get_spectrum(
+        model, force_mean=True, shift=True
+    )
+    fft_coeffs = np.asarray(fft_coeffs).ravel()
+    fft_freqs = np.asarray(fft_freqs).ravel()
+    significant = set(int(f) for f, c in zip(fft_freqs, fft_coeffs) if abs(c) > 1e-4)
+    assert exact_set == significant, (
+        f"Exact spectrum {exact_set} does not match FFT-significant "
+        f"frequencies {significant}"
+    )
+
+
+@pytest.mark.unittest
+def test_exact_spectrum_multi_feature() -> None:
+    """The exact spectrum supports multiple input features, each a subset of
+    the corresponding naive per-feature spectrum."""
+    model = Model(
+        n_qubits=3,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        output_qubit=0,
+        encoding=["RX", "RY"],
+    )
+
+    exact = model.exact_spectrum()
+    assert len(exact) == 2
+
+    for ex, naive in zip(exact, model.frequencies):
+        assert set(int(v) for v in ex).issubset(set(int(v) for v in naive))
+        assert 0 in set(int(v) for v in ex)  # DC present for this model
+
+
+@pytest.mark.unittest
+def test_exact_spectrum_symbolic_cancellation() -> None:
+    """Identically-cancelling frequencies are excluded symbolically.
+
+    The paper example (Wiedmann et al., Fig. 2): a feature encoded twice via
+    RX on the same qubit with no variational gates in between combines into a
+    single rotation of angle 2x, so <Z> = cos(2x).  The naive spectrum is
+    {-2..2}; the exact spectrum is {-2, 2} (the omega=0 contributions of the
+    cos^2 and sin^2 paths cancel identically)."""
+    model = Model(
+        n_qubits=1,
+        n_layers=2,
+        circuit_type="No_Ansatz",
+        data_reupload=True,
+        encoding="RX",
+        output_qubit=0,
+    )
+
+    assert set(int(v) for v in model.frequencies[0]) == {-2, -1, 0, 1, 2}
+
+    exact = model.exact_spectrum()
+    assert set(int(v) for v in exact[0]) == {-2, 2}, (
+        f"Expected symbolic cancellation of omega=0, got {exact[0]}"
+    )
+
+
 @pytest.mark.smoketest
 def test_gate_mode_training() -> None:
     model = Model(
