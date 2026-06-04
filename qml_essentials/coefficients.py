@@ -1031,7 +1031,8 @@ class FCC:
             random_key (Optional[random.PRNGKey]): JAX random key for parameter
                 initialization. If None, uses the model's internal random key.
             method (Optional[str], optional): Correlation method. Supported values are
-                "pearson", "complex_pearson", and "spearman". Defaults to "pearson".
+                "pearson", "complex_pearson", "spearman", and "covariance".
+                Defaults to "pearson".
             scale (Optional[bool], optional): Whether to scale the number of samples.
                 Defaults to False.
             weight (Optional[bool], optional): Whether to weight the correlation matrix.
@@ -1106,7 +1107,8 @@ class FCC:
             random_key (Optional[random.PRNGKey]): JAX random key for parameter
                 initialization. If None, uses the model's internal random key.
             method (Optional[str], optional): Correlation method. Supported values are
-                "pearson", "complex_pearson", and "spearman". Defaults to "pearson".
+                "pearson", "complex_pearson", "spearman", and "covariance".
+                Defaults to "pearson".
             scale (Optional[bool], optional): Whether to scale the number of samples.
                 Defaults to False.
             weight (Optional[bool], optional): Whether to weight the correlation matrix.
@@ -1304,7 +1306,8 @@ class FCC:
     def _correlate(cls, mat: jnp.ndarray, method: str = "pearson") -> jnp.ndarray:
         """
         Correlates two arrays using `method`.
-        Currently, `pearson`, `complex_pearson`, and `spearman` are supported.
+        Currently, `pearson`, `complex_pearson`, `spearman`, and `covariance`
+        are supported.
 
         Args:
             mat (jnp.ndarray): Array of shape (N, K)
@@ -1334,17 +1337,69 @@ class FCC:
         elif method == "spearman":
             result = cls._spearman(mat.reshape(mat.shape[0], -1))
             # result = cls._spearman(mat.reshape(mat.shape[-1], -1, order="F"))
+        elif method == "covariance":
+            result = cls._covariance(mat.reshape(mat.shape[0], -1))
         else:
             raise ValueError(
-                f"Unknown correlation method: {method}. \
-                             Must be 'pearson', 'complex_pearson' or 'spearman'."
+                f"Unknown correlation method: {method}. Must be 'pearson', \
+                             'complex_pearson', 'spearman' or 'covariance'."
             )
 
         return result
 
     @classmethod
+    def _covariance(cls, mat: jnp.ndarray, minp: Optional[int] = 1) -> jnp.ndarray:
+        """
+        Compute the Hermitian sample covariance between columns of `mat`,
+        permitting missing values (NaN or ±Inf).
+
+        For each pair (i, j) the covariance is computed over the rows that are
+        finite in both columns, as
+        sum(conj(x_i - mean_i) * (x_j - mean_j)) / (nobs - 1).
+        Real input collapses to the ordinary real sample covariance; complex
+        input yields a complex matrix whose magnitude and angle carry the
+        covariance strength and relative phase.
+
+        Args:
+            mat : array_like, shape (N, K)
+                Input data.
+            minp : int, optional
+                Minimum number of paired observations required to form a
+                covariance. If the number of valid pairs for (i, j) is < minp,
+                the result is NaN.
+
+        Returns:
+            cov : ndarray, shape (K, K)
+                Sample covariance matrix.
+        """
+        mat = jnp.asarray(mat)
+        real_dtype = jnp.asarray(mat.real).dtype
+
+        mask = jnp.isfinite(mat)
+        fmask = mask.astype(real_dtype)
+        safe = jnp.where(mask, mat, 0.0)
+
+        nobs = fmask.T @ fmask
+        nobs_safe = jnp.where(nobs > 0, nobs, 1.0)
+
+        sum_x = safe.T @ fmask
+        sum_y = fmask.T @ safe
+
+        masked = safe * fmask
+        sum_conj_xy = jnp.conj(masked).T @ masked
+
+        sxy = sum_conj_xy - (jnp.conj(sum_x) * sum_y) / nobs_safe
+
+        denom = jnp.where(nobs > 1, nobs - 1, jnp.nan)
+        result = sxy / denom
+
+        result = jnp.where(nobs < minp, jnp.nan, result)
+
+        return result
+
+    @classmethod
     def _complex_pearson(
-        cls, mat: jnp.ndarray, cov: Optional[bool] = False, minp: Optional[int] = 1
+        cls, mat: jnp.ndarray, minp: Optional[int] = 1
     ) -> jnp.ndarray:
         """
         Compute the complex Pearson correlation between columns of `mat`,
@@ -1359,9 +1414,6 @@ class FCC:
         Args:
             mat : array_like, shape (N, K)
                 Input data.
-            cov : bool, optional
-                If True, return the sample covariance matrix instead of
-                correlation. Defaults to False.
             minp : int, optional
                 Minimum number of paired observations required to form a correlation.
                 If the number of valid pairs for (i, j) is < minp, the result is NaN.
@@ -1394,29 +1446,25 @@ class FCC:
         ssy = sum_abs_y2 - jnp.abs(sum_y) ** 2 / nobs_safe
         sxy = sum_conj_xy - (jnp.conj(sum_x) * sum_y) / nobs_safe
 
-        if cov:
-            denom = jnp.where(nobs > 1, nobs - 1, jnp.nan)
-            result = sxy / denom
-        else:
-            denom = jnp.sqrt(ssx * ssy)
-            result = jnp.where(denom > 0, sxy / denom, jnp.nan)
-            magnitude = jnp.abs(result)
-            result = jnp.where(magnitude > 1.0, result / magnitude, result)
+        denom = jnp.sqrt(ssx * ssy)
+        result = jnp.where(denom > 0, sxy / denom, jnp.nan)
+        magnitude = jnp.abs(result)
+        result = jnp.where(magnitude > 1.0, result / magnitude, result)
 
         result = jnp.where(nobs < minp, jnp.nan, result)
 
         return result
 
     @classmethod
-    def _pearson(
-        cls, mat: jnp.ndarray, cov: Optional[bool] = False, minp: Optional[int] = 1
-    ) -> jnp.ndarray:
+    def _pearson(cls, mat: jnp.ndarray, minp: Optional[int] = 1) -> jnp.ndarray:
         """
-        Based on Pandas correlation method as implemented here:
-        https://github.com/pandas-dev/pandas/blob/main/pandas/_libs/algos.pyx
-
         Compute Pearson correlation between columns of `mat`,
         permitting missing values (NaN or ±Inf).
+
+        The Pearson correlation is the normalized covariance,
+        corr[i, j] = cov[i, j] / sqrt(cov[i, i] * cov[j, j]),
+        so it is obtained by normalizing `_covariance` by the per-column
+        standard deviations.
 
         If the input is complex, real and imaginary parts are stacked along
         the sample axis so that both components contribute to the correlation
@@ -1425,9 +1473,6 @@ class FCC:
         Args:
             mat : array_like, shape (N, K)
                 Input data.
-            cov : bool, optional
-                If True, return the sample covariance matrix instead of
-                correlation. Defaults to False.
             minp : int, optional
                 Minimum number of paired observations required to form a correlation.
                 If the number of valid pairs for (i, j) is < minp, the result is NaN.
@@ -1436,65 +1481,21 @@ class FCC:
             corr : ndarray, shape (K, K)
                 Pearson correlation matrix.
         """
-        # Preserve complex information by splitting into real / imag samples
+        # Preserve complex information by splitting into real / imag samples.
+        # After stacking the data is real, so the Hermitian `_covariance`
+        # reduces to the ordinary real sample covariance.
         if jnp.iscomplexobj(mat):
             mat = jnp.concatenate([mat.real, mat.imag], axis=0)
 
-        mat = jnp.asarray(mat)
+        cov = cls._covariance(mat, minp=minp)
 
-        # pre-compute finite mask  (N, K)
-        mask = jnp.isfinite(mat)
-        fmask = mask.astype(mat.dtype)
+        # corr[i, j] = cov[i, j] / (std_i * std_j) with std_i = sqrt(cov[i, i])
+        std = jnp.sqrt(jnp.diagonal(cov))
+        denom = std[:, None] * std[None, :]
+        result = jnp.where(denom > 0, cov / denom, jnp.nan)
 
-        # Replace non-finite entries with 0 so arithmetic is safe;
-        # the mask keeps track of validity.
-        safe = jnp.where(mask, mat, 0.0)
-
-        # Pairwise valid-observation counts  (K, K)
-        nobs = fmask.T @ fmask
-
-        # Pairwise sums (only over mutually valid rows)
-        # For columns i, j the "valid" rows are mask[:,i] & mask[:,j].
-        # sum_x[i,j] = sum of mat[:,i] where both i and j are valid.
-        # Using: safe[:,i] * mask[:,j] zeroes out rows invalid for j.
-        # Then summing over N gives sum_x[i,j].
-        # safe.T @ fmask  gives (K, K) where entry (i,j) = sum of safe[:,i]*mask[:,j]
-        sum_x = safe.T @ fmask  # (K, K) – row-var sums
-        sum_y = fmask.T @ safe  # (K, K) – col-var sums
-
-        # Note: explicit means (sum_x/nobs, sum_y/nobs) are not needed as
-        # separate variables — the computational formula used below
-        # (e.g. ssx = Σx² − (Σx)²/n) implicitly handles mean-centering.
-
-        # Cross products, sum-of-squares via computational formula:
-        #   ssx = Σx² − (Σx)²/n,  ssy = Σy² − (Σy)²/n,
-        #   sxy = Σxy − (Σx)(Σy)/n
-        # All sums are taken over the pairwise-valid subset for each (i,j).
-        masked = safe * fmask  # same as safe but explicit
-        sum_xy = masked.T @ masked  # (K, K)
-
-        # ssx[i,j] = sum_xx_ij - nobs * mean_x^2   (but sum_xx_ij uses pair mask)
-        # We need sum of x^2 over the *pair* mask, not just column mask.
-        # sum_x2[i,j] = sum_n  safe[n,i]^2 * mask[n,i] * mask[n,j]
-        safe_sq = safe**2
-        sum_x2 = safe_sq.T @ fmask  # (K, K)
-        sum_y2 = fmask.T @ safe_sq  # (K, K)
-
-        ssx = sum_x2 - sum_x**2 / jnp.where(nobs > 0, nobs, 1.0)
-        ssy = sum_y2 - sum_y**2 / jnp.where(nobs > 0, nobs, 1.0)
-        sxy = sum_xy - (sum_x * sum_y) / jnp.where(nobs > 0, nobs, 1.0)
-
-        if cov:
-            denom = jnp.where(nobs > 1, nobs - 1, jnp.nan)
-            result = sxy / denom
-        else:
-            denom = jnp.sqrt(ssx * ssy)
-            result = jnp.where(denom > 0, sxy / denom, jnp.nan)
-            # clip numerical drift to [-1, 1]
-            result = jnp.clip(result, -1.0, 1.0)
-
-        # Enforce minp: set entries with too few observations to NaN
-        result = jnp.where(nobs < minp, jnp.nan, result)
+        # clip numerical drift to [-1, 1]
+        result = jnp.clip(jnp.real(result), -1.0, 1.0)
 
         return result
 
