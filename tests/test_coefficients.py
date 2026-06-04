@@ -482,6 +482,105 @@ class TestFourierTree:
                 "Multi-feature tree evaluation does not match circuit"
             )
 
+    @pytest.mark.unittest
+    def test_fourier_tree_batched_params(self) -> None:
+        """Models can carry batched parameters (e.g. after FCC sampling with
+        ``initialize_params(repeat=...)``); the tree must fall back to the
+        first parameter set instead of feeding batched angles into the gates."""
+        import numpy as np
+
+        model = Model(n_qubits=2, n_layers=1, circuit_type="Circuit_19", output_qubit=0)
+        model.initialize_params(model.random_key, repeat=4)
+        assert model.params.ndim == 3 and model.params.shape[0] == 4
+        first_params = model.params[0]
+
+        with pytest.warns(UserWarning, match="batched"):
+            tree = FourierTree(model)
+
+        coeffs, freqs = tree.get_spectrum()
+        assert set(np.asarray(freqs[0]).tolist()).issubset(
+            set(int(v) for v in model.frequencies[0])
+        )
+
+        # Evaluation must match the circuit run with the first parameter set.
+        with pytest.warns(UserWarning, match="batched"):
+            val_tree = tree(inputs=0.5)
+        val_model = model(first_params, inputs=jnp.array([[0.5]]))
+        assert jnp.isclose(val_tree, val_model, atol=1.0e-5).all()
+
+    @pytest.mark.unittest
+    def test_exact_support_dp_matches_tree(self) -> None:
+        """The merged-state DP support equals the fully exact tree support
+        on circuits without cross-path cancellations."""
+        import numpy as np
+
+        for circuit_type in ["Circuit_19", "Hardware_Efficient"]:
+            model = Model(
+                n_qubits=3, n_layers=1, circuit_type=circuit_type, output_qubit=0
+            )
+            tree = FourierTree(model)
+            sup_tree = tree.get_exact_support(method="tree")
+            sup_dp = tree.get_exact_support(method="dp")
+            for st, sd in zip(sup_tree, sup_dp):
+                assert set(np.asarray(st).tolist()) == set(np.asarray(sd).tolist()), (
+                    f"DP and tree supports differ for {circuit_type}"
+                )
+
+    @pytest.mark.unittest
+    def test_exact_support_dp_upper_bound(self) -> None:
+        """On directly repeated encodings the tree detects the cross-path
+        cancellation at omega=0 while the DP yields the structural superset."""
+        import numpy as np
+
+        model = Model(
+            n_qubits=1,
+            n_layers=2,
+            circuit_type="No_Ansatz",
+            data_reupload=True,
+            encoding="RX",
+            output_qubit=0,
+        )
+        tree = FourierTree(model)
+        sup_tree = set(np.asarray(tree.get_exact_support("tree")[0]).tolist())
+        sup_dp = set(np.asarray(tree.get_exact_support("dp")[0]).tolist())
+
+        assert sup_tree == {-2, 2}
+        assert sup_dp == {-2, 0, 2}
+        assert sup_tree.issubset(sup_dp)
+
+    @pytest.mark.unittest
+    def test_exact_support_dp_deep_circuit(self) -> None:
+        """For deep entangling circuits the explicit tree is combinatorially
+        infeasible; the DP support stays cheap and must contain every
+        FFT-significant frequency while being a subset of the naive grid."""
+        import numpy as np
+
+        model = Model(
+            n_qubits=4,
+            n_layers=4,
+            circuit_type="Strongly_Entangling",
+            output_qubit=0,
+        )
+        tree = FourierTree(model)
+        union = set()
+        for sup in tree.get_exact_support(method="dp"):
+            union |= set(np.asarray(sup).tolist())
+
+        naive = set(int(v) for v in model.frequencies[0])
+        assert union.issubset(naive)
+
+        fft_coeffs, fft_freqs = Coefficients.get_spectrum(
+            model, shift=True, force_mean=True
+        )
+        significant = {
+            int(f)
+            for f, c in zip(
+                np.asarray(fft_freqs).ravel(), np.asarray(fft_coeffs).ravel()
+            )
+            if abs(c) > 1e-4
+        }
+        assert significant.issubset(union)
+
 
 class TestFCC:
     """Tests for Fourier Coefficient Correlation (FCC) computation."""
