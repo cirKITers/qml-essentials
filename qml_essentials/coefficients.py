@@ -1,7 +1,7 @@
 from __future__ import annotations
 import math
+import itertools
 from collections import defaultdict
-from dataclasses import dataclass
 import jax.numpy as jnp
 from jax import random
 import numpy as np
@@ -10,13 +10,8 @@ from functools import reduce
 from typing import List, Tuple, Optional, Any, Dict, Union
 
 from qml_essentials.model import Model
-from qml_essentials.utils import PauliCircuit
-from qml_essentials.operations import (
-    Operation,
-    PauliX,
-    PauliY,
-    PauliZ,
-)
+from qml_essentials.pauli import PauliCircuit
+from qml_essentials.operations import PauliWord
 
 import logging
 
@@ -213,416 +208,285 @@ class Coefficients:
 class FourierTree:
     """
     Sine-cosine tree representation for the algorithm by Nemkov et al.
-    This tree can be used to obtain analytical Fourier coefficients for a given
-    Pauli-Clifford circuit.
+
+    Computes the analytical Fourier coefficients/frequencies of a Pauli-Clifford
+    circuit.  The symbolic structure of the tree (which Pauli rotations
+    contribute sine/cosine factors to which leaf, and the leaf observables) is
+    built once in NumPy; the parameter-dependent coefficients are then obtained
+    with a small number of vectorised JAX operations, so the result remains
+    jittable / differentiable with respect to the model parameters.
+
+    Multiple input features are supported: the resulting spectrum is the
+    d-dimensional set of frequency vectors.
+
+    **Usage**:
+    ```
+    model = Model(...)
+    tree = FourierTree(model)
+    exp = tree()                          # expectation value
+    coeff_list, freq_list = tree.get_spectrum()
+    ```
     """
-
-    class CoefficientsTreeNode:
-        """
-        Representation of a node in the coefficients tree for the algorithm by
-        Nemkov et al.
-        """
-
-        def __init__(
-            self,
-            parameter_idx: Optional[int],
-            observable: FourierTree.PauliOperator,
-            is_sine_factor: bool,
-            is_cosine_factor: bool,
-            left: Optional[FourierTree.CoefficientsTreeNode] = None,
-            right: Optional[FourierTree.CoefficientsTreeNode] = None,
-        ):
-            """
-            Coefficient tree node initialisation. Each node has information about
-            its creation context and it's children, i.e.:
-
-            Args:
-                parameter_idx (Optional[int]): Index of the corresp. param. index i.
-                observable (FourierTree.PauliOperator): The nodes observable to
-                    obtain the expectation value that contributes to the constant
-                    term.
-                is_sine_factor (bool): If this node belongs to a sine coefficient.
-                is_cosine_factor (bool): If this node belongs to a cosine coefficient.
-                left (Optional[CoefficientsTreeNode]): left child (if any).
-                right (Optional[CoefficientsTreeNode]): right child (if any).
-            """
-            self.parameter_idx = parameter_idx
-
-            assert not (is_sine_factor and is_cosine_factor), (
-                "Cannot be sine and cosine at the same time"
-            )
-            self.is_sine_factor = is_sine_factor
-            self.is_cosine_factor = is_cosine_factor
-
-            # If the observable does not constist of only Z and I, the
-            # expectation (and therefore the constant node term) is zero
-            if jnp.logical_or(
-                observable.list_repr == 0, observable.list_repr == 1
-            ).any():
-                self.term = 0.0
-            else:
-                self.term = observable.phase
-
-            self.left = left
-            self.right = right
-
-        def evaluate(self, parameters: list[float]) -> float:
-            """
-            Recursive function to evaluate the expectation of the coefficient tree,
-            starting from the current node.
-
-            Args:
-                parameters (list[float]): The parameters, by which the circuit (and
-                    therefore the tree) is parametrised.
-
-            Returns:
-                float: The expectation for the current node and it's children.
-            """
-            factor = (
-                parameters[self.parameter_idx]
-                if self.parameter_idx is not None
-                else 1.0
-            )
-            if self.is_sine_factor:
-                factor = 1j * jnp.sin(factor)
-            elif self.is_cosine_factor:
-                factor = jnp.cos(factor)
-            if not (self.left or self.right):  # leaf
-                return factor * self.term
-
-            sum_children = 0.0
-            if self.left:
-                left = self.left.evaluate(parameters)
-                sum_children = sum_children + left
-            if self.right:
-                right = self.right.evaluate(parameters)
-                sum_children = sum_children + right
-
-            return factor * sum_children
-
-        def get_leafs(
-            self,
-            sin_list: List[int],
-            cos_list: List[int],
-            existing_leafs: List[FourierTree.TreeLeaf] = [],
-        ) -> List[FourierTree.TreeLeaf]:
-            """
-            Traverse the tree starting from the current node, to obtain the tree
-            leafs only.
-            The leafs correspond to the terms in the sine-cosine tree
-            representation that eventually are used to obtain coefficients and
-            frequencies.
-            Sine and cosine lists are recursively passed to the children until a
-            leaf is reached (top to bottom).
-            Leafs are then passed bottom to top to the caller.
-
-            Args:
-                sin_list (List[int]): Current number of sine contributions for each
-                    parameter. Has the same length as the parameters, as each
-                    position corresponds to one parameter.
-                cos_list (List[int]): Current number of cosine contributions for
-                    each parameter. Has the same length as the parameters, as each
-                    position corresponds to one parameter.
-                existing_leafs (List[TreeLeaf]): Current list of leaf nodes from
-                    parents.
-
-            Returns:
-                List[TreeLeaf]: Updated list of leaf nodes.
-            """
-
-            if self.is_sine_factor:
-                sin_list = sin_list.at[self.parameter_idx].set(
-                    sin_list[self.parameter_idx] + 1
-                )
-            if self.is_cosine_factor:
-                cos_list = cos_list.at[self.parameter_idx].set(
-                    cos_list[self.parameter_idx] + 1
-                )
-
-            if not (self.left or self.right):  # leaf
-                if self.term != 0.0:
-                    return [FourierTree.TreeLeaf(sin_list, cos_list, self.term)]
-                else:
-                    return []
-
-            if self.left:
-                leafs_left = self.left.get_leafs(
-                    sin_list.copy(), cos_list.copy(), existing_leafs.copy()
-                )
-            else:
-                leafs_left = []
-
-            if self.right:
-                leafs_right = self.right.get_leafs(
-                    sin_list.copy(), cos_list.copy(), existing_leafs.copy()
-                )
-            else:
-                leafs_right = []
-
-            existing_leafs.extend(leafs_left)
-            existing_leafs.extend(leafs_right)
-            return existing_leafs
-
-    @dataclass
-    class TreeLeaf:
-        """
-        Coefficient tree leafs according to the algorithm by Nemkov et al., which
-        correspond to the terms in the sine-cosine tree representation that
-        eventually are used to obtain coefficients and frequencies.
-
-        Args:
-            sin_indices (List[int]): Current number of sine contributions for each
-                parameter. Has the same length as the parameters, as each
-                position corresponds to one parameter.
-            cos_indices (List[int]): Current number of cosine contributions for
-                each parameter. Has the same length as the parameters, as each
-                position corresponds to one parameter.
-            term (jnp.complex): Constant factor of the leaf, depending on the
-                expectation value of the observable, and a phase.
-        """
-
-        sin_indices: List[int]
-        cos_indices: List[int]
-        term: complex
-
-    class PauliOperator:
-        """
-        Utility class for storing Pauli Rotations, the corresponding indices
-        in the XY-Space (whether there is a gate with X or Y generator at a
-        certain qubit) and the phase.
-
-        Args:
-            pauli (Union[Operator, jnp.ndarray[int]]): Pauli Rotation Operation
-                or list representation
-            n_qubits (int): Number of qubits in the circuit
-            prev_xy_indices (Optional[jnp.ndarray[bool]]): X/Y indices of the
-                previous Pauli sequence. Defaults to None.
-            is_observable (bool): If the operator is an observable. Defaults to
-                False.
-            is_init (bool): If this Pauli operator is initialised the first
-                time. Defaults to True.
-            phase (float): Phase of the operator. Defaults to 1.0
-        """
-
-        def __init__(
-            self,
-            pauli: Union[Operation, jnp.ndarray[int]],
-            n_qubits: int,
-            prev_xy_indices: Optional[jnp.ndarray[bool]] = None,
-            is_observable: bool = False,
-            is_init: bool = True,
-            phase: float = 1.0,
-        ):
-            self.is_observable = is_observable
-            self.phase = phase
-
-            if is_init:
-                if not is_observable:
-                    pauli = pauli.generator()
-                self.list_repr = self._create_list_representation(pauli, n_qubits)
-            else:
-                assert isinstance(pauli, jnp.ndarray)
-                self.list_repr = pauli
-
-            if prev_xy_indices is None:
-                prev_xy_indices = jnp.zeros(n_qubits, dtype=bool)
-            self.xy_indices = jnp.logical_or(
-                prev_xy_indices,
-                self._compute_xy_indices(self.list_repr, rev=is_observable),
-            )
-
-        @staticmethod
-        def _compute_xy_indices(
-            op: jnp.ndarray[int], rev: bool = False
-        ) -> jnp.ndarray[bool]:
-            """
-            Computes the positions of X or Y gates to an one-hot encoded boolen
-            array.
-
-            Args:
-                op (jnp.ndarray[int]): Pauli-Operation list representation.
-                rev (bool): Whether to negate the array.
-
-            Returns:
-                jnp.ndarray[bool]: One hot encoded boolean array.
-            """
-            xy_indices = (op == 0) + (op == 1)
-            if rev:
-                xy_indices = ~xy_indices
-            return xy_indices
-
-        @staticmethod
-        def _create_list_representation(
-            op: Operation, n_qubits: int
-        ) -> jnp.ndarray[int]:
-            """
-            Create list representation of an Operation.
-            Generally, the list representation is a list of length n_qubits,
-            where at each position a Pauli Operator is encoded as such:
-                I: -1
-                X: 0
-                Y: 1
-                Z: 2
-
-            Args:
-                op (Operation): Gate operation (PauliX, PauliY, PauliZ, or
-                    Hermitian wrapping a multi-qubit Pauli tensor product).
-                n_qubits (int): number of qubits in the circuit
-
-            Returns:
-                jnp.ndarray[int]: List representation
-            """
-            pauli_repr = -jnp.ones(n_qubits, dtype=int)
-
-            _NAME_TO_IDX = {"PauliX": 0, "PauliY": 1, "PauliZ": 2}
-
-            if op.name in _NAME_TO_IDX:
-                pauli_repr = pauli_repr.at[op.wires[0]].set(_NAME_TO_IDX[op.name])
-            elif isinstance(op, PauliX):
-                pauli_repr = pauli_repr.at[op.wires[0]].set(0)
-            elif isinstance(op, PauliY):
-                pauli_repr = pauli_repr.at[op.wires[0]].set(1)
-            elif isinstance(op, PauliZ):
-                pauli_repr = pauli_repr.at[op.wires[0]].set(2)
-            else:
-                # Multi-qubit case: decompose via pauli_string_from_operation
-                from qml_essentials.operations import pauli_string_from_operation
-
-                pauli_str = pauli_string_from_operation(op)
-                char_to_idx = {"X": 0, "Y": 1, "Z": 2, "I": -1}
-                for i, (wire, ch) in enumerate(zip(op.wires, pauli_str)):
-                    idx = char_to_idx.get(ch, -1)
-                    if idx >= 0:
-                        pauli_repr = pauli_repr.at[wire].set(idx)
-
-            return pauli_repr
-
-        def is_commuting(self, pauli: jnp.ndarray[int]) -> bool:
-            """
-            Computes if this Pauli commutes with another Pauli operator.
-            This computation is based on the fact that The commutator is zero
-            if and only if the number of anticommuting single-qubit Paulis is
-            even.
-
-            Args:
-                pauli (jnp.ndarray[int]): List representation of another Pauli
-
-            Returns:
-                bool: If the current and other Pauli are commuting.
-            """
-            anticommutator = jnp.where(
-                pauli < 0,
-                False,
-                jnp.where(
-                    self.list_repr < 0,
-                    False,
-                    jnp.where(self.list_repr == pauli, False, True),
-                ),
-            )
-            return not (jnp.sum(anticommutator) % 2)
-
-        def tensor(self, pauli: jnp.ndarray[int]) -> FourierTree.PauliOperator:
-            """
-            Compute tensor product between the current Pauli and a given list
-            representation of another Pauli operator.
-
-            Args:
-                pauli (jnp.ndarray[int]): List representation of Pauli
-
-            Returns:
-                FourierTree.PauliOperator: New Pauli operator object, which
-                contains the tensor product
-            """
-            diff = (pauli - self.list_repr + 3) % 3
-            phase = jnp.where(
-                self.list_repr < 0,
-                1.0,
-                jnp.where(
-                    pauli < 0,
-                    1.0,
-                    jnp.where(
-                        diff == 2,
-                        1.0j,
-                        jnp.where(diff == 1, -1.0j, 1.0),
-                    ),
-                ),
-            )
-
-            obs = jnp.where(
-                self.list_repr < 0,
-                pauli,
-                jnp.where(
-                    pauli < 0,
-                    self.list_repr,
-                    jnp.where(
-                        diff == 2,
-                        (self.list_repr + 1) % 3,
-                        jnp.where(diff == 1, (self.list_repr + 2) % 3, -1),
-                    ),
-                ),
-            )
-            phase = self.phase * jnp.prod(phase)
-            return FourierTree.PauliOperator(
-                obs, phase=phase, n_qubits=obs.size, is_init=False, is_observable=True
-            )
 
     def __init__(self, model: Model):
         """
-        Tree initialisation, based on the Pauli-Clifford representation of a model.
-        Currently, only one input feature is supported.
-
-        **Usage**:
-        ```
-        # initialise a model
-        model = Model(...)
-
-        # initialise and build FourierTree
-        tree = FourierTree(model)
-
-        # get expectaion value
-        exp = tree()
-
-        # Get spectrum (for each observable, we have one list element)
-        coeff_list, freq_list = tree.spectrum()
-        ```
+        Tree initialisation, based on the Pauli-Clifford representation of a
+        model.
 
         Args:
-            model (Model): The Model, for which to build the tree
+            model (Model): The Model, for which to build the tree.
         """
         self.model = model
-        self.tree_roots = None
+        self.n_qubits = model.n_qubits
 
-        inputs = self.model._inputs_validation([1.0])
-
-        # Record the circuit tape using jaqsi's tape recording
-        raw_tape = self.model.script._record(params=model.params, inputs=inputs)
-
-        # Build observables from the model's output_qubit configuration
-        _, obs_list = self.model._build_obs()
-
-        quantum_tape = PauliCircuit.from_parameterised_circuit(
-            raw_tape, observables=obs_list
-        )
+        quantum_tape = self._build_canonical_tape(model.params, None)
 
         self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
-
+        self.n_params = len(self.parameters)
         self.input_indices, self.all_input_indices = quantum_tape.get_input_indices()
 
-        self.observables = self._encode_observables(quantum_tape.observables)
+        # Pauli generators of the (canonical) rotations, as symbolic words.
+        self.pauli_words: List[PauliWord] = [
+            PauliWord.from_operation(op, self.n_qubits)
+            for op in quantum_tape.operations
+        ]
 
-        pauli_rot = FourierTree.PauliOperator(
-            quantum_tape.operations[0],
-            self.model.n_qubits,
+        # Cumulative X/Y support of the rotations[0..k] (for light-cone early
+        # stopping).  cumulative_xy[k] is True on every qubit touched by an X/Y
+        # generator in any rotation up to index k.
+        self.cumulative_xy: List[np.ndarray] = []
+        running = np.zeros(self.n_qubits, dtype=bool)
+        for pw in self.pauli_words:
+            running = np.logical_or(running, pw.xy_mask)
+            self.cumulative_xy.append(running.copy())
+
+        # Observable Pauli words (one tree root each).
+        self.observable_words: List[PauliWord] = [
+            PauliWord.from_operation(obs, self.n_qubits)
+            for obs in quantum_tape.observables
+        ]
+
+        # Variational parameter columns (everything that is not an input).
+        input_set = set(self.all_input_indices)
+        self.var_positions = np.array(
+            [i for i in range(self.n_params) if i not in input_set], dtype=np.int64
         )
-        self.pauli_rotations = [pauli_rot]
-        for op in quantum_tape.operations[1:]:
-            pauli_rot = FourierTree.PauliOperator(
-                op, self.model.n_qubits, pauli_rot.xy_indices
-            )
-            self.pauli_rotations.append(pauli_rot)
+        # Ordered list of input feature keys (d-dimensional spectrum).
+        self.features = sorted(self.input_indices.keys())
 
-        self.tree_roots = self.build()
-        self.leafs: List[List[FourierTree.TreeLeaf]] = self._get_tree_leafs()
+        # Symbolic structure: per root (S, C, terms) leaf arrays ...
+        self._build_leaf_arrays()
+        # ... and the parameter-independent frequency/weight structure.
+        self._build_spectrum_structure()
+
+    def _build_canonical_tape(self, params, inputs):
+        """Record the circuit and transform it to Pauli-Clifford normal form."""
+        inputs = self.model._inputs_validation(
+            list(range(1, self.model.n_input_feat + 1)) if inputs is None else inputs
+        )
+        raw_tape = self.model.script._record(params=params, inputs=inputs)
+        _, obs_list = self.model._build_obs()
+        return PauliCircuit.from_parameterised_circuit(
+            raw_tape, observables=obs_list, n_qubits=self.n_qubits
+        )
+
+    # ------------------------------------------------------------------
+    # Symbolic tree construction (NumPy)
+    # ------------------------------------------------------------------
+    def _build_leaf_arrays(self) -> None:
+        """Collect the tree leaves for every root into integer count matrices.
+
+        For each root (observable) this produces:
+            - ``S``: (n_leaves, n_params) sine-factor counts per parameter,
+            - ``C``: (n_leaves, n_params) cosine-factor counts per parameter,
+            - ``terms``: (n_leaves,) complex leaf constants ``<0|O_leaf|0>``.
+        """
+        self.leaf_arrays: List[Tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+        for obs_word in self.observable_words:
+            leaves: List[Tuple[np.ndarray, np.ndarray, complex]] = []
+            zeros = np.zeros(self.n_params, dtype=np.int64)
+            self._collect_leaves(
+                obs_word, self.n_params - 1, zeros.copy(), zeros.copy(), leaves
+            )
+            if leaves:
+                S = np.stack([leaf[0] for leaf in leaves])
+                C = np.stack([leaf[1] for leaf in leaves])
+                terms = np.array([leaf[2] for leaf in leaves], dtype=np.complex128)
+            else:
+                S = np.zeros((0, self.n_params), dtype=np.int64)
+                C = np.zeros((0, self.n_params), dtype=np.int64)
+                terms = np.zeros(0, dtype=np.complex128)
+            self.leaf_arrays.append((S, C, terms))
+
+    def _collect_leaves(
+        self,
+        observable: PauliWord,
+        pauli_idx: int,
+        sin_counts: np.ndarray,
+        cos_counts: np.ndarray,
+        leaves: List[Tuple[np.ndarray, np.ndarray, complex]],
+    ) -> None:
+        """Recursively enumerate the leaves of the coefficient tree.
+
+        The incoming sine/cosine factor (from the parent edge) is already
+        accumulated into ``sin_counts``/``cos_counts``.  This fuses the tree
+        construction and leaf traversal of the original implementation into a
+        single NumPy pass (no per-node JAX scatter updates).
+        """
+        if self._early_stopping_possible(pauli_idx, observable):
+            return
+
+        # Skip trailing Pauli rotations that commute with the observable.
+        while pauli_idx >= 0:
+            last = self.pauli_words[pauli_idx]
+            if not observable.commutes_with(last):
+                break
+            pauli_idx -= 1
+        else:  # leaf reached
+            term = observable.zero_expectation()
+            if term != 0:
+                leaves.append((sin_counts, cos_counts, term))
+            return
+
+        last = self.pauli_words[pauli_idx]
+
+        # Left child: cosine factor for this parameter, same observable.
+        cos_left = cos_counts.copy()
+        cos_left[pauli_idx] += 1
+        self._collect_leaves(
+            observable, pauli_idx - 1, sin_counts.copy(), cos_left, leaves
+        )
+
+        # Right child: sine factor, observable becomes  P . O.
+        sin_right = sin_counts.copy()
+        sin_right[pauli_idx] += 1
+        self._collect_leaves(
+            last.compose(observable),
+            pauli_idx - 1,
+            sin_right,
+            cos_counts.copy(),
+            leaves,
+        )
+
+    def _early_stopping_possible(self, pauli_idx: int, observable: PauliWord) -> bool:
+        """Whether a node can be discarded (all reachable expectations vanish).
+
+        Mirrors the criterion of Nemkov et al. (light cone): a qubit on which
+        the observable carries an X/Y must be covered by an X/Y generator of
+        some remaining rotation (rotations[0..pauli_idx]); otherwise that X/Y can
+        never be rotated into a diagonal term and the whole node contributes
+        zero.  Equivalently, the node survives iff every qubit is either I/Z in
+        the observable or covered by the cumulative rotation X/Y support.
+        """
+        obs_iz = np.logical_not(observable.xy_mask)
+        combined = np.logical_or(obs_iz, self.cumulative_xy[pauli_idx]).all()
+        return not bool(combined)
+
+    # ------------------------------------------------------------------
+    # Frequency / weight structure (NumPy, parameter independent)
+    # ------------------------------------------------------------------
+    def _build_spectrum_structure(self) -> None:
+        """Build, per root, the frequency vectors and the (n_freq, n_leaves)
+        weight matrix ``W`` such that ``coeffs = W @ (terms * variational)``.
+        """
+        self.freqs_per_root: List[np.ndarray] = []
+        self.weights_per_root: List[np.ndarray] = []
+        d = len(self.features)
+
+        for S, C, _ in self.leaf_arrays:
+            n_leaves = S.shape[0]
+            freq_to_col: Dict[tuple, np.ndarray] = defaultdict(
+                lambda: np.zeros(n_leaves, dtype=np.complex128)
+            )
+            for leaf in range(n_leaves):
+                # Per-feature sine/cosine counts and their binomial expansion.
+                per_feature_terms = []
+                half_exp = 0
+                for feat in self.features:
+                    cols = self.input_indices[feat]
+                    s = int(S[leaf, cols].sum())
+                    c = int(C[leaf, cols].sum())
+                    half_exp += s + c
+                    per_feature_terms.append(self._binomial_terms(s, c))
+                half = 0.5**half_exp
+
+                if d == 0:
+                    freq_to_col[(0,)][leaf] += half
+                    continue
+
+                for combo in itertools.product(*per_feature_terms):
+                    omega = tuple(int(o) for o, _ in combo)
+                    weight = half
+                    for _, w in combo:
+                        weight *= w
+                    freq_to_col[omega][leaf] += weight
+
+            if freq_to_col:
+                omegas = sorted(freq_to_col.keys())
+                W = np.stack([freq_to_col[o] for o in omegas])  # (n_freq, n_leaves)
+                freqs = np.array(omegas, dtype=np.int64)  # (n_freq, d)
+            else:
+                freqs = np.zeros((1, max(d, 1)), dtype=np.int64)
+                W = np.zeros((1, n_leaves), dtype=np.complex128)
+
+            # Collapse to 1-D frequency array for the single-feature case.
+            if freqs.shape[1] == 1:
+                freqs = freqs[:, 0]
+            self.freqs_per_root.append(freqs)
+            self.weights_per_root.append(jnp.asarray(W))
+
+    @staticmethod
+    def _binomial_terms(s: int, c: int) -> List[Tuple[int, float]]:
+        """Expand ``cos^c (i sin)^s`` in ``e^{i omega x}`` (without the 0.5 factor).
+
+        Returns a list of ``(omega, weight)`` with
+        ``omega = 2a + 2b - s - c`` and ``weight = C(s,a) C(c,b) (-1)^{s-a}``.
+        """
+        terms = []
+        for a in range(s + 1):
+            for b in range(c + 1):
+                weight = math.comb(s, a) * math.comb(c, b) * (-1) ** (s - a)
+                terms.append((2 * a + 2 * b - s - c, float(weight)))
+        return terms
+
+    # ------------------------------------------------------------------
+    # Vectorised numeric evaluation (JAX)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _safe_pow(base: jnp.ndarray, exp: jnp.ndarray) -> jnp.ndarray:
+        """Elementwise ``base ** exp`` for real base and non-negative integer
+        exponents, correct for negative bases (avoids ``log`` of negatives).
+
+        Args:
+            base: real array of shape ``(n,)``.
+            exp: integer array of shape ``(n_leaves, n)``.
+        """
+        mag = jnp.abs(base)[None, :] ** exp
+        sign = jnp.where(exp % 2 == 0, 1.0, jnp.sign(base)[None, :])
+        return sign * mag
+
+    _I_POW = None  # set lazily to jnp.array([1, 1j, -1, -1j])
+
+    def _leaf_factors(
+        self, S: np.ndarray, C: np.ndarray, columns: np.ndarray
+    ) -> jnp.ndarray:
+        """Per-leaf product ``prod_i cos(theta_i)^{C} (i sin(theta_i))^{S}`` over
+        the given parameter ``columns`` (vectorised over leaves).
+        """
+        if FourierTree._I_POW is None:
+            FourierTree._I_POW = jnp.array([1, 1j, -1, -1j])
+
+        if S.shape[0] == 0:
+            return jnp.zeros(0, dtype=jnp.complex64)
+
+        theta = jnp.stack([self.parameters[i] for i in columns])
+        S_sub = jnp.asarray(S[:, columns])
+        C_sub = jnp.asarray(C[:, columns])
+
+        cos_part = self._safe_pow(jnp.cos(theta), C_sub)
+        sin_mag = self._safe_pow(jnp.sin(theta), S_sub)
+        i_part = FourierTree._I_POW[S_sub % 4]
+        return jnp.prod(cos_part * sin_mag * i_part, axis=1)
 
     def __call__(
         self,
@@ -631,24 +495,21 @@ class FourierTree:
         **kwargs,
     ) -> jnp.ndarray:
         """
-        Evaluates the Fourier tree via sine-cosine terms sum. This is
-        equivalent to computing the expectation value of the observables with
-        respect to the corresponding circuit.
+        Evaluate the expectation value(s) of the model's observables via the
+        sine-cosine tree (equivalent to the circuit expectation).
 
         Args:
-            params (Optional[jnp.ndarray], optional): Parameters of the model.
-                Defaults to None.
-            inputs (Optional[jnp.ndarray], optional): Inputs to the circuit.
-                Defaults to None.
+            params (Optional[jnp.ndarray]): Model parameters. Defaults to the
+                model's parameters.
+            inputs (Optional[jnp.ndarray]): Inputs to the circuit. Defaults to 1.
 
         Returns:
-            jnp.ndarray: Expectation value of the tree.
+            jnp.ndarray: Expectation value per observable (or their mean if
+                ``force_mean`` is set).
 
         Raises:
-            NotImplementedError: When using other "execution_type" as expval.
-            NotImplementedError: When using "noise_params"
-
-
+            NotImplementedError: For execution types other than "expval" or when
+                noise is requested.
         """
         params = (
             self.model._params_validation(params)
@@ -671,333 +532,77 @@ class FourierTree:
                 "Currently, noise is not supported when building FourierTree."
             )
 
-        # Record the circuit tape using jaqsi's tape recording
-        raw_tape = self.model.script._record(params=self.model.params, inputs=inputs)
-
-        # Build observables from the model's output_qubit configuration
-        _, obs_list = self.model._build_obs()
-
-        quantum_tape = PauliCircuit.from_parameterised_circuit(
-            raw_tape, observables=obs_list
-        )
-
+        # Re-derive the (canonical) parameter values for the requested inputs;
+        # the tree structure (leaf arrays) is unchanged.
+        quantum_tape = self._build_canonical_tape(params, inputs)
         self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
 
-        results = jnp.zeros(len(self.tree_roots))
-        for i, root in enumerate(self.tree_roots):
-            results = results.at[i].set(jnp.real(root.evaluate(self.parameters)))
+        all_columns = np.arange(self.n_params, dtype=np.int64)
+        results = []
+        for S, C, terms in self.leaf_arrays:
+            factors = self._leaf_factors(S, C, all_columns)
+            results.append(jnp.real(jnp.sum(jnp.asarray(terms) * factors)))
+        results = jnp.array(results)
 
         if kwargs.get("force_mean", False):
             return jnp.mean(results)
-        else:
-            return results
-
-    def build(self) -> List[CoefficientsTreeNode]:
-        """
-        Creates the coefficient tree, i.e. it creates and initialises the tree
-        nodes.
-        Leafs can be obtained separately in _get_tree_leafs, once the tree is
-        set up.
-
-        Returns:
-            List[CoefficientsTreeNode]: The list of root nodes (one root for
-                each observable).
-        """
-        tree_roots = []
-        pauli_rotation_idx = len(self.pauli_rotations) - 1
-        for obs in self.observables:
-            root = self._create_tree_node(obs, pauli_rotation_idx)
-            tree_roots.append(root)
-        return tree_roots
-
-    def _encode_observables(
-        self, tape_obs: List[Operation]
-    ) -> List[FourierTree.PauliOperator]:
-        """
-        Encodes observables from tape as FourierTree.PauliOperator
-        utility objects.
-
-        Args:
-            tape_obs (List[Operation]): Observable operations
-
-        Returns:
-            List[FourierTree.PauliOperator]: List of Pauli operators
-        """
-        observables = []
-        for obs in tape_obs:
-            observables.append(
-                FourierTree.PauliOperator(obs, self.model.n_qubits, is_observable=True)
-            )
-        return observables
-
-    def _get_tree_leafs(self) -> List[List[TreeLeaf]]:
-        """
-        Obtain all Leaf Nodes with its sine- and cosine terms.
-
-        Returns:
-            List[List[TreeLeaf]]: For each observable (root), the list of leaf
-                nodes.
-        """
-        leafs = []
-        for root in self.tree_roots:
-            sin_list = jnp.zeros(len(self.parameters), dtype=jnp.int32)
-            cos_list = jnp.zeros(len(self.parameters), dtype=jnp.int32)
-            leafs.append(root.get_leafs(sin_list, cos_list, []))
-        return leafs
+        return results
 
     def get_spectrum(
         self, force_mean: bool = False
     ) -> Tuple[List[jnp.ndarray], List[jnp.ndarray]]:
         """
-        Computes the Fourier spectrum for the tree, consisting of the
-        frequencies and its corresponding coefficinets.
-        If the frag force_mean was set in the constructor, the mean coefficient
-        over all observables (roots) are computed.
+        Compute the Fourier spectrum (coefficients and frequencies) of the tree.
 
         Args:
-            force_mean (bool, optional): Whether to average over multiple
-                observables. Defaults to False.
+            force_mean (bool, optional): Average the coefficients over all
+                observables (roots). Defaults to False.
 
         Returns:
             Tuple[List[jnp.ndarray], List[jnp.ndarray]]:
-                - List of frequencies, one list for each observable (root).
-                - List of corresponding coefficents, one list for each
-                  observable (root).
+                - List of coefficients, one entry per observable (root).
+                - List of corresponding frequencies, one entry per root.
+                When ``force_mean`` is set, both lists have a single entry.
         """
-        parameter_indices = [
-            i for i in range(len(self.parameters)) if i not in self.all_input_indices
-        ]
+        per_root_coeffs: List[jnp.ndarray] = []
+        for (S, C, terms), W in zip(self.leaf_arrays, self.weights_per_root):
+            leaf_const = jnp.asarray(terms) * self._leaf_factors(
+                S, C, self.var_positions
+            )
+            per_root_coeffs.append(W @ leaf_const)
 
-        coeffs = []
-        for leafs in self.leafs:
-            freq_terms = defaultdict(np.complex128)
-            for input_idx in self.input_indices:
-                for leaf in leafs:
-                    leaf_factor, s, c = self._compute_leaf_factors(
-                        leaf, parameter_indices, input_idx
-                    )
+        return self._combine_roots(per_root_coeffs, self.freqs_per_root, force_mean)
 
-                    for a in range(s + 1):
-                        for b in range(c + 1):
-                            comb = math.comb(s, a) * math.comb(c, b) * (-1) ** (s - a)
-                            freq_terms[2 * a + 2 * b - s - c] += comb * leaf_factor
-
-                coeffs.append(freq_terms)
-
-        frequencies, coefficients = self._freq_terms_to_coeffs(coeffs, force_mean)
-        return coefficients, frequencies
-
-    def _freq_terms_to_coeffs(
-        self, coeffs: List[Dict[int, jnp.ndarray]], force_mean: bool
+    def _combine_roots(
+        self,
+        per_root_coeffs: List[jnp.ndarray],
+        per_root_freqs: List[np.ndarray],
+        force_mean: bool,
     ) -> Tuple[List[jnp.ndarray], List[jnp.ndarray]]:
-        """
-        Given a list of dictionaries of the form:
-        [
-            {
-                freq_obs1_1: coeff1,
-                freq_obs1_2: coeff2,
-                ...
-             },
-            {
-                freq_obs2_1: coeff3,
-                freq_obs2_2: coeff4,
-                ...
-             }
-            ...
-        ],
-        Compute two separate lists of frequencies and coefficients.
-        such that:
-        freqs: [
-                [freq_obs1_1, freq_obs1_1, ...],
-                [freq_obs2_1, freq_obs2_1, ...],
-                ...
-        ]
-        coeffs: [
-                [coeff1, coeff2, ...],
-                [coeff3, coeff4, ...],
-                ...
-        ]
+        """Assemble the per-root spectra, optionally averaging over roots."""
+        if not force_mean:
+            coefficients = [jnp.asarray(c) for c in per_root_coeffs]
+            frequencies = [jnp.asarray(f) for f in per_root_freqs]
+            return coefficients, frequencies
 
-        If force_mean is set length of the resulting frequency and coefficent
-        list is 1.
-
-        Args:
-            coeffs (List[Dict[int, jnp.ndarray]]): Frequency->Coefficients
-                dictionary list, one dict for each observable (root).
-            force_mean (bool): Whether to average coefficients over multiple
-                observables.
-
-        Returns:
-            Tuple[List[jnp.ndarray], List[jnp.ndarray]]:
-                - List of frequencies, one list for each observable (root).
-                - List of corresponding coefficents, one list for each
-                  observable (root).
-        """
-        frequencies = []
-        coefficients = []
-        if force_mean:
-            all_freqs = sorted(set([f for c in coeffs for f in c.keys()]))
-            coefficients.append(
-                jnp.array(
-                    [
-                        jnp.mean(jnp.array([c.get(f, 0.0) for c in coeffs]))
-                        for f in all_freqs
-                    ]
+        # Average over roots on the union of all frequency vectors.
+        accum: Dict[tuple, complex] = defaultdict(complex)
+        for coeffs, freqs in zip(per_root_coeffs, per_root_freqs):
+            freqs_np = np.asarray(freqs)
+            for k in range(freqs_np.shape[0]):
+                key = (
+                    (int(freqs_np[k]),)
+                    if freqs_np.ndim == 1
+                    else tuple(int(v) for v in freqs_np[k])
                 )
-            )
-            frequencies.append(jnp.array(all_freqs))
-        else:
-            for freq_terms in coeffs:
-                freq_terms = dict(sorted(freq_terms.items()))
-                frequencies.append(jnp.array(list(freq_terms.keys())))
-                coefficients.append(jnp.array(list(freq_terms.values())))
-        return frequencies, coefficients
-
-    def _compute_leaf_factors(
-        self,
-        leaf: TreeLeaf,
-        parameter_indices: List[int],
-        input_idx: int,
-    ) -> Tuple[float, int, int]:
-        """
-        Computes the constant coefficient factor for each leaf.
-        Additionally sine and cosine contributions of the input parameters for
-        this leaf are returned, which are required to obtain the corresponding
-        frequencies.
-
-        Args:
-            leaf (TreeLeaf): The leaf for which to compute the factor.
-            parameter_indices (List[int]): Variational parameter indices.
-
-        Returns:
-            Tuple[float, int, int]:
-                - float: the constant factor for the leaf
-                - int: number of sine contributions of the input
-                - int: number of cosine contributions of the input
-        """
-        leaf_factor = 1.0
-        for i in parameter_indices:
-            interm_factor = (
-                jnp.cos(self.parameters[i]) ** leaf.cos_indices[i]
-                * (1j * jnp.sin(self.parameters[i])) ** leaf.sin_indices[i]
-            )
-            leaf_factor = leaf_factor * interm_factor
-
-        # Get number of sine and cosine factors to which the input contributes
-        c = jnp.sum(
-            jnp.array([leaf.cos_indices[k] for k in self.input_indices[input_idx]])
-        )
-        s = jnp.sum(
-            jnp.array([leaf.sin_indices[k] for k in self.input_indices[input_idx]])
-        )
-
-        leaf_factor = leaf.term * leaf_factor * 0.5 ** (s + c)
-
-        return leaf_factor, int(s), int(c)
-
-    def _early_stopping_possible(
-        self, pauli_rotation_idx: int, observable: FourierTree.PauliOperator
-    ):
-        """
-        Checks if a node for an observable can be discarded as all expecation
-        values that can result through further branching are zero.
-        The method is mentioned in the paper by Nemkov et al.: If the one-hot
-        encoded indices for X/Y operations in the Pauli-rotation generators are
-        a basis for that of the observable, the node must be processed further.
-        If not, it can be discarded.
-
-        Args:
-            pauli_rotation_idx (int): Index of remaining Pauli rotation gates.
-                Gates itself are attributes of the class.
-            observable (FourierTree.PauliOperator): Current observable
-        """
-        xy_indices_obs = jnp.logical_or(
-            observable.xy_indices, self.pauli_rotations[pauli_rotation_idx].xy_indices
-        ).all()
-
-        return not xy_indices_obs
-
-    def _create_tree_node(
-        self,
-        observable: FourierTree.PauliOperator,
-        pauli_rotation_idx: int,
-        parameter_idx: Optional[int] = None,
-        is_sine: bool = False,
-        is_cosine: bool = False,
-    ) -> Optional[CoefficientsTreeNode]:
-        """
-        Builds the Fourier-Tree according to the algorithm by Nemkov et al.
-
-        Args:
-            observable (FourierTree.PauliOperator): Current observable
-            pauli_rotation_idx (int): Index of remaining Pauli rotation gates.
-                Gates itself are attributes of the class.
-            parameter_idx (Optional[int]): Index of the current parameter.
-                Parameters itself are attributes of the class.
-            is_sine (bool): If the current node is a sine (left) node.
-            is_cosine (bool): If the current node is a cosine (right) node.
-
-        Returns:
-            Optional[CoefficientsTreeNode]: The resulting node. Children are set
-            recursively. The top level receives the tree root.
-        """
-        if self._early_stopping_possible(pauli_rotation_idx, observable):
-            return None
-
-        # remove commuting paulis
-        while pauli_rotation_idx >= 0:
-            last_pauli = self.pauli_rotations[pauli_rotation_idx]
-            if not observable.is_commuting(last_pauli.list_repr):
-                break
-            pauli_rotation_idx -= 1
-        else:  # leaf
-            return FourierTree.CoefficientsTreeNode(
-                parameter_idx, observable, is_sine, is_cosine
-            )
-
-        last_pauli = self.pauli_rotations[pauli_rotation_idx]
-
-        left = self._create_tree_node(
-            observable,
-            pauli_rotation_idx - 1,
-            pauli_rotation_idx,
-            is_cosine=True,
-        )
-
-        next_observable = self._create_new_observable(last_pauli.list_repr, observable)
-        right = self._create_tree_node(
-            next_observable,
-            pauli_rotation_idx - 1,
-            pauli_rotation_idx,
-            is_sine=True,
-        )
-
-        return FourierTree.CoefficientsTreeNode(
-            parameter_idx,
-            observable,
-            is_sine,
-            is_cosine,
-            left,
-            right,
-        )
-
-    def _create_new_observable(
-        self, pauli: jnp.ndarray[int], observable: FourierTree.PauliOperator
-    ) -> FourierTree.PauliOperator:
-        """
-        Utility function to obtain the new observable for a tree node, if the
-        last Pauli and the observable do not commute.
-
-        Args:
-            pauli (jnp.ndarray[int]): The int array representation of the last
-                Pauli rotation in the operation sequence.
-            observable (FourierTree.PauliOperator): The current observable.
-
-        Returns:
-            FourierTree.PauliOperator: The new observable.
-        """
-        observable = observable.tensor(pauli)
-        return observable
+                accum[key] += complex(coeffs[k])
+        n_roots = max(len(per_root_coeffs), 1)
+        keys = sorted(accum.keys())
+        mean_coeffs = jnp.array([accum[k] / n_roots for k in keys])
+        freq_arr = np.array(keys, dtype=np.int64)
+        if freq_arr.shape[1] == 1:
+            freq_arr = freq_arr[:, 0]
+        return [mean_coeffs], [jnp.asarray(freq_arr)]
 
 
 class FCC:
