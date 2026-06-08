@@ -218,8 +218,8 @@ class FourierTree:
     with a small number of vectorised JAX operations, so the result remains
     jittable / differentiable with respect to the model parameters.
 
-    Multiple input features are supported: the resulting spectrum is the
-    d-dimensional set of frequency vectors.
+    The resulting spectrum is the d-dimensional set of frequency vectors,
+    where $d$ is the input dimensionality.
 
     **Usage**:
     ```
