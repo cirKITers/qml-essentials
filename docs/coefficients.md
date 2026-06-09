@@ -160,6 +160,12 @@ The main idea is then to split each Pauli rotation into sine and cosine product 
 The Clifford commutation and Pauli bookkeeping are implemented symbolically on a stabilizer-tableau Pauli representation (`qml_essentials.operations.PauliWord`), and the parameter-dependent coefficients are evaluated with vectorized operations.
 This makes the tree fast to build and evaluate, and it supports multiple input features: in that case `get_spectrum` returns, per observable, the multi-dimensional frequency vectors (shape `(n_freqs, n_features)`) and their coefficients.
 
+The symbolic core is gate-set agnostic and lives in `qml_essentials.operations`:
+
+- `PauliWord` — an n-qubit Pauli in the symplectic $i^{\text{phase}}\,X^x Z^z$ representation, with `compose`, `commutes_with`, `conjugate_by_clifford` (Clifford tableau evolution), and a `to_matrix`/`from_matrix` bridge to dense operators.
+- `Operation.is_clifford` — a class flag marking the standard Clifford gates ($I, X, Y, Z, H, S, \text{CX}, \text{CY}, \text{CZ}, \text{SWAP}$); `conjugate_by_clifford` uses fast symbolic rules for the common ones and an exact matrix fallback for the rest.
+- `Operation.decompose()` — expresses composite gates (`Rot`, `CRX`/`CRY`/`CRZ`, `CZ`) in terms of Clifford + Pauli-rotation primitives.
+
 ## Estimating the Exact Spectrum
 
 The number of frequencies a model can represent is, by default, estimated naively from the encoding (see `model.frequencies` / `model.degree`).
