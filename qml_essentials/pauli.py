@@ -14,7 +14,6 @@ replacing the previous matrix-based path
 
 from __future__ import annotations
 
-from functools import reduce
 from typing import List, Optional, Tuple
 from collections import defaultdict
 
@@ -25,13 +24,6 @@ from qml_essentials.operations import (
     Operation,
     PauliWord,
     Hermitian,
-    PauliX,
-    PauliY,
-    PauliZ,
-    H,
-    S,
-    CX,
-    CZ,
     RX,
     RY,
     RZ,
@@ -82,15 +74,6 @@ class PauliCircuit:
     A Pauli Circuit only consists of parameterised Pauli-rotations and Clifford
     gates, which is the default for the most common VQCs.
     """
-
-    CLIFFORD_GATES = (
-        PauliX,
-        PauliY,
-        PauliZ,
-        H,
-        S,
-        CX,
-    )
 
     PAULI_ROTATION_GATES = (
         RX,
@@ -208,8 +191,6 @@ class PauliCircuit:
             List[Operation]: A list of operations consisting only of clifford
                 and Pauli-rotation gates.
         """
-        from qml_essentials.operations import Rot, CRX, CRY, CRZ
-
         operations = []
         for operation in tape:
             if PauliCircuit._is_clifford(operation) or PauliCircuit._is_pauli_rotation(
@@ -218,47 +199,18 @@ class PauliCircuit:
                 operations.append(operation)
             elif PauliCircuit._is_skippable(operation):
                 continue
-            elif isinstance(operation, Rot):
-                w = operation.wires[0]
-                operations.append(RZ(operation.phi, wires=w))
-                operations.append(RY(operation.theta, wires=w))
-                operations.append(RZ(operation.omega, wires=w))
-            elif isinstance(operation, CRZ):
-                c, t = operation.wires
-                theta = operation.theta
-                operations.append(RZ(theta / 2, wires=t))
-                operations.append(CX(wires=[c, t]))
-                operations.append(RZ(-theta / 2, wires=t))
-                operations.append(CX(wires=[c, t]))
-            elif isinstance(operation, CRX):
-                c, t = operation.wires
-                theta = operation.theta
-                operations.append(H(wires=t))
-                operations.append(RZ(theta / 2, wires=t))
-                operations.append(CX(wires=[c, t]))
-                operations.append(RZ(-theta / 2, wires=t))
-                operations.append(CX(wires=[c, t]))
-                operations.append(H(wires=t))
-            elif isinstance(operation, CRY):
-                c, t = operation.wires
-                theta = operation.theta
-                operations.append(RX(-jnp.pi / 2, wires=t))
-                operations.append(RZ(theta / 2, wires=t))
-                operations.append(CX(wires=[c, t]))
-                operations.append(RZ(-theta / 2, wires=t))
-                operations.append(RX(jnp.pi / 2, wires=t))
-            elif isinstance(operation, CZ):
-                c, t = operation.wires
-                operations.append(H(wires=c))
-                operations.append(CX(wires=[c, t]))
-                operations.append(H(wires=c))
             else:
-                raise NotImplementedError(
-                    f"Gate {operation.name} cannot be decomposed into "
-                    "Pauli rotations and Clifford gates. Consider using a "
-                    "circuit ansatz that only uses RX, RY, RZ, PauliRot, "
-                    "Rot, and standard Clifford gates."
-                )
+                # Composite gates (Rot, CRX/CRY/CRZ, ...) expose their own
+                # Clifford + Pauli-rotation decomposition.
+                try:
+                    operations.extend(operation.decompose())
+                except NotImplementedError:
+                    raise NotImplementedError(
+                        f"Gate {operation.name} cannot be decomposed into "
+                        "Pauli rotations and Clifford gates. Consider using a "
+                        "circuit ansatz that only uses RX, RY, RZ, PauliRot, "
+                        "Rot, and standard Clifford gates."
+                    )
 
         return operations
 
@@ -269,8 +221,12 @@ class PauliCircuit:
 
     @staticmethod
     def _is_clifford(operation: Operation) -> bool:
-        """Whether an operation is a Clifford gate."""
-        return isinstance(operation, PauliCircuit.CLIFFORD_GATES)
+        """Whether an operation is a Clifford gate (reads ``Operation.is_clifford``).
+
+        Clifford gates are commuted to the end via symbolic conjugation
+        (:meth:`PauliWord.conjugate_by_clifford`); see ``Operation.is_clifford``.
+        """
+        return getattr(operation, "is_clifford", False)
 
     @staticmethod
     def _is_pauli_rotation(operation: Operation) -> bool:
@@ -397,9 +353,16 @@ class PauliCircuit:
             )
             obs._pauli_label = "I"
         else:
-            mats = [PauliRot._PAULI_MAP[c] for c in reduced_str]
-            mat = reduce(jnp.kron, mats) * phase
-            obs = Hermitian(matrix=mat, wires=reduced_wires, record=False)
+            # Reuse the canonical Pauli matrix construction (bare string, then
+            # multiply by the leading +-1/+-i phase).
+            reduced_word = PauliWord.from_pauli_string(
+                reduced_str, list(range(len(reduced_str))), len(reduced_str)
+            )
+            obs = Hermitian(
+                matrix=phase * reduced_word.to_matrix(),
+                wires=reduced_wires,
+                record=False,
+            )
             obs._pauli_label = reduced_str
 
         obs._pauli_word = word
