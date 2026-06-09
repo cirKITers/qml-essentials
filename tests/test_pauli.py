@@ -16,13 +16,18 @@ from qml_essentials.operations import (
     H,
     S,
     CX,
+    CY,
     CZ,
+    SWAP,
+    RX,
+    RY,
     PauliX,
     PauliY,
     PauliZ,
     PauliRot,
     _embed_matrix,
 )
+from qml_essentials import simulation
 
 # Single-qubit Pauli matrices in the X^x Z^z convention.
 _I = np.eye(2, dtype=complex)
@@ -144,6 +149,9 @@ class TestCliffordConjugation:
             lambda: CX(wires=[0, 1]),
             lambda: CX(wires=[1, 0]),
             lambda: CZ(wires=[0, 1]),
+            lambda: SWAP(wires=[0, 1]),  # symbolic rule
+            lambda: CY(wires=[0, 1]),  # matrix fallback
+            lambda: CY(wires=[1, 0]),
             lambda: H(wires=1),
             lambda: S(wires=1),
         ],
@@ -181,3 +189,22 @@ class TestPauliCircuit:
         assert isinstance(word, PauliWord)
         # H X H on the measured qubit would differ; CX leaves Z_0 invariant.
         assert word.to_pauli_string() == "ZI"
+
+    @pytest.mark.unittest
+    def test_cz_is_clifford_and_commuted(self):
+        """A bare CZ is now classified Clifford and commuted (not decomposed),
+        and the canonical form reproduces the original circuit's expectation."""
+        from qml_essentials.pauli import PauliCircuit
+
+        ops = [RX(0.3, wires=0), CZ(wires=[0, 1]), RY(0.5, wires=1)]
+        obs = [PauliZ(0)]
+
+        ref = simulation.simulate_and_measure(ops, 2, "expval", obs, False)
+        tape = PauliCircuit.from_parameterised_circuit(ops, obs, n_qubits=2)
+
+        # CZ commuted to the end, not split into H/CX/H -> only Pauli rotations.
+        assert all(PauliCircuit._is_pauli_rotation(o) for o in tape.operations)
+        got = simulation.simulate_and_measure(
+            tape.operations, 2, "expval", tape.observables, False
+        )
+        assert np.allclose(np.asarray(ref), np.asarray(got), atol=1e-6)
