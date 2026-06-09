@@ -240,5 +240,8 @@ This is implicitly done in `FCC.get_fourier_fingerprint` (and controlled using t
 - removing symmetries inside the correlation matrix (the Fourier fingerprint), e.g. $c_{0,1} = c_{1,0}$
 Note that `get_fcc` also (by default) trims down the fingerprint before calculating the actual FCC. 
 
+When `trim_redundant` is enabled, the frequencies returned alongside the fingerprint are a `(row_freqs, col_freqs)` tuple that labels the two (trimmed) matrix axes one-to-one, so they always match the shape of the returned correlation matrix.
+The optional `numerical_cap` argument (passed through to `get_spectrum`) prunes negligible Fourier modes: coefficients below the cap are zeroed and, for a single input feature, the corresponding frequencies are dropped from the spectrum. This keeps the returned coefficients, frequencies, and fingerprint axes consistent.
+
 Both `get_fcc` and `get_fourier_fingerprint` support a `weight` parameter, which can be used to weight the correlation matrix, such that high-frequency components receive a lower weight.
 Intuitively this adresses the issue, that low frequency components have a higher impact on the mean-squared error (c.f. App. D in our paper). 
