@@ -1355,10 +1355,12 @@ class FCC:
 
         For each pair (i, j) the covariance is computed over the rows that are
         finite in both columns, as
-        sum(conj(x_i - mean_i) * (x_j - mean_j)) / (nobs - 1).
+        sum(conj(x_i - mean_i) * (x_j - mean_j)) / (nobs - 1),
+        so it computes `X.conj().T @ X`.
         Real input collapses to the ordinary real sample covariance; complex
         input yields a complex matrix whose magnitude and angle carry the
         covariance strength and relative phase.
+
 
         Args:
             mat : array_like, shape (N, K)
