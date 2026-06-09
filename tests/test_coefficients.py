@@ -317,6 +317,58 @@ class TestCoefficients:
         coeffs, _ = Coefficients.get_spectrum(model, shift=True)
         _ = Coefficients.get_psd(coeffs)
 
+    @pytest.mark.unittest
+    def test_numerical_cap_trims_spectrum(self) -> None:
+        """
+        With `numerical_cap > 0`, frequencies whose coefficients vanish
+        entirely after capping must be removed from both `coeffs` and
+        `freqs`, so the returned spectrum stays self-consistent.
+        """
+        model = Model(
+            n_qubits=3,
+            n_layers=3,
+            circuit_type="Strongly_Entangling",
+            encoding=Encoding("hamming", "RZ"),
+            output_qubit=-1,
+        )
+        model.initialize_params(jax.random.key(1000), repeat=20)
+
+        coeffs_full, freqs_full = Coefficients.get_spectrum(
+            model, shift=True, trim=True, numerical_cap=-1
+        )
+
+        # per-frequency maximum magnitude over the sample axis; a frequency
+        # is dropped iff this maximum is below the cap
+        sample_axes = tuple(range(1, coeffs_full.ndim))
+        per_freq_max = jnp.max(jnp.abs(coeffs_full), axis=sample_axes)
+        cap = float(jnp.median(per_freq_max))
+
+        coeffs_cap, freqs_cap = Coefficients.get_spectrum(
+            model, shift=True, trim=True, numerical_cap=cap
+        )
+
+        # coeffs and freqs stay consistent
+        assert coeffs_cap.shape[0] == freqs_cap.shape[0], (
+            "Capped coeffs and freqs must have matching length."
+        )
+        # strictly fewer frequencies survive
+        assert freqs_cap.shape[0] < freqs_full.shape[0], (
+            "Cap must remove at least one frequency."
+        )
+        # surviving frequencies are exactly those above the cap
+        expected = freqs_full[per_freq_max >= cap]
+        assert jnp.array_equal(jnp.sort(freqs_cap), jnp.sort(expected)), (
+            "Surviving frequencies must match the above-cap selection."
+        )
+        # no surviving coefficient vector is all-zero
+        assert jnp.all(
+            jnp.any(coeffs_cap != 0, axis=tuple(range(1, coeffs_cap.ndim)))
+        ), "Surviving coefficients must contain a non-zero entry."
+        # the spectrum stays symmetric around zero
+        assert jnp.array_equal(jnp.sort(freqs_cap), jnp.sort(-freqs_cap)), (
+            "Surviving frequencies must remain symmetric around zero."
+        )
+
 
 class TestFourierTree:
     """Tests for analytical Fourier tree coefficient computation."""
@@ -768,6 +820,42 @@ class TestFCC:
         )
         assert jnp.isclose(fcc, 0.016, atol=2.0e-3), (
             f"Wrong FCC for Circuit_19. Got {fcc}, expected 0.020."
+        )
+
+    @pytest.mark.unittest
+    @pytest.mark.parametrize("weight", [False, True], ids=["fast", "weighted"])
+    def test_fingerprint_freqs_match_matrix(self, weight) -> None:
+        """
+        With `numerical_cap`, the frequencies returned by
+        `get_fourier_fingerprint` must label the trimmed matrix axes 1:1,
+        i.e. a `(row_freqs, col_freqs)` tuple matching the matrix shape.
+        """
+        model = Model(
+            n_qubits=3,
+            n_layers=3,
+            circuit_type="Strongly_Entangling",
+            encoding=Encoding("hamming", "RZ"),
+            output_qubit=-1,
+        )
+        matrix, freqs = FCC.get_fourier_fingerprint(
+            model=model,
+            n_samples=50,
+            random_key=jax.random.key(1000),
+            weight=weight,
+            numerical_cap=1e-10,
+        )
+
+        assert isinstance(freqs, tuple) and len(freqs) == 2, (
+            "Trimmed fingerprint must return a (row_freqs, col_freqs) tuple."
+        )
+        row_freqs, col_freqs = freqs
+        assert row_freqs.shape[0] == matrix.shape[0], (
+            f"Row freqs ({row_freqs.shape[0]}) must match matrix rows "
+            f"({matrix.shape[0]})."
+        )
+        assert col_freqs.shape[0] == matrix.shape[1], (
+            f"Col freqs ({col_freqs.shape[0]}) must match matrix cols "
+            f"({matrix.shape[1]})."
         )
 
     @pytest.mark.unittest
