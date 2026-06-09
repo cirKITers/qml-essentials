@@ -276,6 +276,10 @@ class FourierTree:
         # Ordered list of input feature keys (d-dimensional spectrum).
         self.features = sorted(self.input_indices.keys())
 
+        # Per-parameter integer input frequency scaling (recovered once from
+        # the canonical tape); non-input columns keep a scaling of 1.
+        self.input_scaling = self._compute_input_scaling()
+
         # The explicit leaf structure is built lazily: for deep circuits the
         # number of tree paths explodes combinatorially, while the canonical
         # form above (and the merged-state support DP) remain cheap.
@@ -311,6 +315,41 @@ class FourierTree:
         return PauliCircuit.from_parameterised_circuit(
             raw_tape, observables=obs_list, n_qubits=self.n_qubits
         )
+
+    def _compute_input_scaling(self) -> np.ndarray:
+        r"""Recover the integer frequency scaling of each input rotation.
+
+        An input-encoding rotation contributes an angle :math:`\omega_k\,x_f`
+        that is linear in its feature :math:`x_f`.  In the canonical tape the
+        feature with key ``f`` takes the value ``f + 1`` (see
+        :meth:`_build_canonical_tape`), so the scaling is recovered as
+        :math:`\omega_k = |\text{angle}| / x_f` and rounded to the nearest
+        integer (the spectrum is integer-valued).  Using the magnitude keeps
+        the all-positive frequency convention of the unscaled tree.
+
+        Non-input columns keep a scaling of 1 (unused).  A heterogeneous
+        scaling such as ``(1, 3, 9)`` is what lets the tree assign the correct
+        frequency labels instead of treating every encoding as a unit count.
+
+        Returns:
+            np.ndarray: Integer scaling per parameter column, shape
+            ``(n_params,)``.
+        """
+        scaling = np.ones(self.n_params, dtype=np.int64)
+        for feat, cols in self.input_indices.items():
+            x_f = feat + 1  # canonical input value for this feature
+            for k in cols:
+                mag = abs(float(self.parameters[k])) / x_f
+                w = int(round(mag))
+                if abs(mag - w) > 1e-6:
+                    warnings.warn(
+                        f"Non-integer input scaling {mag:.4f} on parameter {k} "
+                        f"(feature {feat}); rounding to {w}. The Fourier tree "
+                        "supports integer frequency scalings only.",
+                        UserWarning,
+                    )
+                scaling[k] = w
+        return scaling
 
     # Symbolic tree construction (NumPy)
     def _build_leaf_arrays(self) -> None:
@@ -417,27 +456,46 @@ class FourierTree:
                 lambda: np.zeros(n_leaves, dtype=np.complex128)
             )
             for leaf in range(n_leaves):
-                # Per-feature sine/cosine counts and their binomial expansion.
-                per_feature_terms = []
+                # One expansion factor per *active* input column, each carrying
+                # its feature axis and integer frequency scaling.  Per leaf a
+                # column contributes at most one sin/cos factor (square-free),
+                # but different columns of the same feature may carry different
+                # scalings, so they are expanded individually and convolved
+                # rather than aggregating counts (which would assume a common
+                # unit scaling).
+                col_factors: List[List[Tuple[int, int, float]]] = []
                 half_exp = 0
-                for feat in self.features:
-                    cols = self.input_indices[feat]
-                    s = int(S[leaf, cols].sum())
-                    c = int(C[leaf, cols].sum())
-                    half_exp += s + c
-                    per_feature_terms.append(self._binomial_terms(s, c))
+                for axis, feat in enumerate(self.features):
+                    for k in self.input_indices[feat]:
+                        s = int(S[leaf, k])
+                        c = int(C[leaf, k])
+                        if s == 0 and c == 0:
+                            continue
+                        half_exp += s + c
+                        w_k = int(self.input_scaling[k])
+                        col_factors.append(
+                            [
+                                (axis, int(o) * w_k, wt)
+                                for o, wt in self._binomial_terms(s, c)
+                            ]
+                        )
                 half = 0.5**half_exp
 
                 if d == 0:
                     freq_to_col[(0,)][leaf] += half
                     continue
 
-                for combo in itertools.product(*per_feature_terms):
-                    omega = tuple(int(o) for o, _ in combo)
+                if not col_factors:
+                    freq_to_col[(0,) * d][leaf] += half
+                    continue
+
+                for combo in itertools.product(*col_factors):
+                    omega = [0] * d
                     weight = half
-                    for _, w in combo:
-                        weight *= w
-                    freq_to_col[omega][leaf] += weight
+                    for axis, o, wt in combo:
+                        omega[axis] += o
+                        weight *= wt
+                    freq_to_col[tuple(omega)][leaf] += weight
 
             if freq_to_col:
                 omegas = sorted(freq_to_col.keys())
@@ -686,6 +744,15 @@ class FourierTree:
             raise NotImplementedError(
                 "The 'dp' support method currently supports exactly one input "
                 "feature; use method='tree' for multi-feature models."
+            )
+
+        if self.all_input_indices and np.any(
+            self.input_scaling[self.all_input_indices] != 1
+        ):
+            raise NotImplementedError(
+                "The 'dp' support method does not support non-unit input "
+                "frequency scaling (it aggregates sin/cos counts and cannot "
+                "represent per-gate scalings); use method='tree'."
             )
 
         n = self.n_qubits
