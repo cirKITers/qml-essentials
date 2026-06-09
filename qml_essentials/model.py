@@ -948,8 +948,6 @@ class Model:
                 random_key=sub_key,
             )
 
-            # visual barrier (no-op in jaqsi, purely cosmetic in PennyLane)
-
         # final ansatz layer
         if self.has_dru:  # same check as in init
             random_key, sub_key = safe_random_split(random_key)
