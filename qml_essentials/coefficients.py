@@ -1289,20 +1289,21 @@ class FCC:
 
         Args:
             freqs (jnp.ndarray): Either a 1-D vector (single input feature)
-                or a list of per-axis frequency vectors (multi-dim input).
+                or a ``(n_input_feat, K)`` stack / list of per-axis frequency
+                vectors (multi-dim input).
 
         Returns:
             jnp.ndarray: 1-D frequency vector (single input feature) or a
                 ``(N, n_input_feat)`` array of per-coefficient frequency
                 tuples (multi-dim input).
         """
-        if isinstance(freqs, list):
-            fa = jnp.asarray(freqs)  # (n_input_feat, K)
-            grids = jnp.meshgrid(
-                *[fa[i] for i in range(fa.shape[0])], indexing="ij"
-            )
-            return jnp.stack(grids, axis=-1).reshape(-1, fa.shape[0])
-        return jnp.asarray(freqs)
+        fa = jnp.asarray(freqs)
+        if fa.ndim == 1:
+            return fa
+        # Multi-dim: per-axis vectors -> flat grid of frequency tuples in the
+        # same C-order used by `_calculate_mask` and the coefficient reshape.
+        grids = jnp.meshgrid(*[fa[i] for i in range(fa.shape[0])], indexing="ij")
+        return jnp.stack(grids, axis=-1).reshape(-1, fa.shape[0])
 
     @classmethod
     def _calculate_coefficients(

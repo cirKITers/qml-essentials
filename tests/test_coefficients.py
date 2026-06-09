@@ -859,6 +859,34 @@ class TestFCC:
         )
 
     @pytest.mark.unittest
+    def test_fingerprint_freqs_match_matrix_2d(self) -> None:
+        """
+        The matrix-axis frequency alignment also holds for multi-dimensional
+        input, where each axis label is a per-coefficient frequency tuple.
+        """
+        model = Model(
+            n_qubits=3,
+            n_layers=2,
+            circuit_type="Strongly_Entangling",
+            encoding=["RX", "RY"],
+            output_qubit=-1,
+        )
+        matrix, freqs = FCC.get_fourier_fingerprint(
+            model=model,
+            n_samples=50,
+            random_key=jax.random.key(1000),
+            numerical_cap=1e-10,
+        )
+
+        assert isinstance(freqs, tuple) and len(freqs) == 2
+        row_freqs, col_freqs = freqs
+        assert row_freqs.shape[0] == matrix.shape[0]
+        assert col_freqs.shape[0] == matrix.shape[1]
+        # each axis label is a (f_x, f_y) frequency tuple
+        assert row_freqs.shape[1] == model.n_input_feat
+        assert col_freqs.shape[1] == model.n_input_feat
+
+    @pytest.mark.unittest
     def test_weighting(self) -> None:
         """
         This test replicates the results obtained for the FCC
