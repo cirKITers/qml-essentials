@@ -293,8 +293,7 @@ class FourierTree:
     def _build_canonical_tape(self, params, inputs):
         """Record the circuit and transform it to Pauli-Clifford normal form."""
         # The tree describes a single parameter set.  Models can carry batched
-        # parameters (e.g. after FCC sampling via ``initialize_params(repeat)``);
-        # fall back to the first set in that case.
+        # parameters; fall back to the first set in that case.
         params = jnp.asarray(params)
         if params.ndim > 2 and params.shape[0] > 1:
             warnings.warn(
@@ -313,9 +312,7 @@ class FourierTree:
             raw_tape, observables=obs_list, n_qubits=self.n_qubits
         )
 
-    # ------------------------------------------------------------------
     # Symbolic tree construction (NumPy)
-    # ------------------------------------------------------------------
     def _build_leaf_arrays(self) -> None:
         """Collect the tree leaves for every root into integer count matrices.
 
@@ -405,9 +402,7 @@ class FourierTree:
         combined = np.logical_or(obs_iz, self.cumulative_xy[pauli_idx]).all()
         return not bool(combined)
 
-    # ------------------------------------------------------------------
     # Frequency / weight structure (NumPy, parameter independent)
-    # ------------------------------------------------------------------
     def _build_spectrum_structure(self) -> None:
         """Build, per root, the frequency vectors and the (n_freq, n_leaves)
         weight matrix ``W`` such that ``coeffs = W @ (terms * variational)``.
@@ -475,9 +470,7 @@ class FourierTree:
                 terms.append((2 * a + 2 * b - s - c, float(weight)))
         return terms
 
-    # ------------------------------------------------------------------
     # Vectorised numeric evaluation (JAX)
-    # ------------------------------------------------------------------
     @staticmethod
     def _safe_pow(base: jnp.ndarray, exp: jnp.ndarray) -> jnp.ndarray:
         """Elementwise ``base ** exp`` for real base and non-negative integer
