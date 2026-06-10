@@ -114,7 +114,6 @@ class Operation:
         wires: Union[int, List[int]] = 0,
         matrix: Optional[jnp.ndarray] = None,
         record: bool = True,
-        input_idx: int = -1,
         name: Optional[str] = None,
     ) -> None:
         """Initialise the operation and optionally register it on the active tape.
@@ -128,9 +127,6 @@ class Operation:
                 auxiliary objects that should not appear in the circuit
                 (e.g. Hamiltonians used only to build time-dependent
                 evolutions).
-            input_idx: Marks the operation as input with the corresponding
-                input index, which is useful for the analytical Fourier
-                coefficients computation, but has no effect otherwise.
             name: Optional explicit name for this operation.  When ``None``
                 (default), the class name is used (e.g. ``"RX"``).
 
@@ -140,7 +136,6 @@ class Operation:
         """
         self.name = name or self.__class__.__name__
         self.wires = list(wires) if isinstance(wires, (list, tuple)) else [wires]
-        self.input_idx = input_idx
 
         if self._num_wires is not None and len(self.wires) != self._num_wires:
             raise ValueError(
@@ -246,24 +241,6 @@ class Operation:
             self._wires = list(wires)
         else:
             self._wires = [wires]
-
-    @property
-    def input_idx(self) -> int:
-        """The index of an input
-
-        Returns:
-            input_idx: Index of the input
-        """
-        return self._input_idx
-
-    @input_idx.setter
-    def input_idx(self, input_idx: int) -> None:
-        """Setter for the input_idx flag
-
-        Args:
-            input_idx: Index of the input
-        """
-        self._input_idx = input_idx
 
     def _update_tape_operation(self, op: "Operation") -> None:
         """

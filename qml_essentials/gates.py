@@ -82,7 +82,6 @@ class Gates(metaclass=GatesMeta):
             "phi",
             "theta",
             "omega",
-            "input_idx",
             "noise_params",
             "random_key",
         ]

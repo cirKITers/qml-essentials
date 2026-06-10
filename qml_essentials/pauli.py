@@ -15,7 +15,6 @@ replacing the previous matrix-based path
 from __future__ import annotations
 
 from typing import List, Optional, Tuple
-from collections import defaultdict
 
 import numpy as np
 import jax.numpy as jnp
@@ -53,16 +52,6 @@ class PauliTape:
         for op in self.operations:
             params.extend(op.parameters)
         return params
-
-    def get_input_indices(self) -> list:
-        indices = defaultdict(list)
-        all_indices = []
-        ops_w_params = [o for o in self.operations if len(o.parameters) > 0]
-        for i, op in enumerate(ops_w_params):
-            if op.input_idx >= 0:
-                indices[op.input_idx].append(i)
-                all_indices.append(i)
-        return indices, all_indices
 
 
 class PauliCircuit:
@@ -272,9 +261,6 @@ class PauliCircuit:
             bare, list(range(n_qubits))
         )
         new_pauli = PauliRot(param * param_factor, pauli_str, qubits)
-
-        if pauli.input_idx >= 0:
-            new_pauli.input_idx = pauli.input_idx
 
         return new_pauli, clifford
 
