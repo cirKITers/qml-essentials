@@ -248,15 +248,16 @@ class FourierTree:
         # input.  The base value is irrelevant to the structure (it only sets
         # the rotation angles, not which Pauli words appear).
         base_inputs = np.ones(model.n_input_feat)
-        quantum_tape = self._build_canonical_tape(self._params, base_inputs)
+        operations, observables = self._build_canonical_tape(self._params, base_inputs)
 
-        self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
+        self.parameters = [
+            jnp.squeeze(p) for p in PauliCircuit.get_parameters(operations)
+        ]
         self.n_params = len(self.parameters)
 
         # Pauli generators of the (canonical) rotations, as symbolic words.
         self.pauli_words: List[PauliWord] = [
-            PauliWord.from_operation(op, self.n_qubits)
-            for op in quantum_tape.operations
+            PauliWord.from_operation(op, self.n_qubits) for op in operations
         ]
 
         # Cumulative X/Y support of the rotations[0..k] (for light-cone early
@@ -270,8 +271,7 @@ class FourierTree:
 
         # Observable Pauli words (one tree root each).
         self.observable_words: List[PauliWord] = [
-            PauliWord.from_operation(obs, self.n_qubits)
-            for obs in quantum_tape.observables
+            PauliWord.from_operation(obs, self.n_qubits) for obs in observables
         ]
 
         # Identify the input-encoding columns, their feature, and integer
@@ -311,7 +311,11 @@ class FourierTree:
         return params
 
     def _build_canonical_tape(self, params, inputs):
-        """Record the circuit and transform it to Pauli-Clifford normal form."""
+        """Record the circuit and transform it to Pauli-Clifford normal form.
+
+        Returns the ``(operations, observables)`` of the canonical circuit
+        (see :meth:`PauliCircuit.from_parameterised_circuit`).
+        """
         params = self._single_param_set(params)
         inputs = self.model._inputs_validation(inputs)
         raw_tape = self.model.script._record(params=params, inputs=inputs)
@@ -322,8 +326,10 @@ class FourierTree:
 
     def _canonical_parameters(self, inputs) -> np.ndarray:
         """Recorded canonical rotation angles (1-D float array) for ``inputs``."""
-        tape = self._build_canonical_tape(self._params, inputs)
-        return np.array([float(jnp.squeeze(p)) for p in tape.get_parameters()])
+        operations, _ = self._build_canonical_tape(self._params, inputs)
+        return np.array(
+            [float(jnp.squeeze(p)) for p in PauliCircuit.get_parameters(operations)]
+        )
 
     def _detect_inputs(self, base_inputs: np.ndarray) -> None:
         r"""Infer the input-encoding columns directly from the tape (tag-free).
@@ -653,8 +659,10 @@ class FourierTree:
 
         # Re-derive the (canonical) parameter values for the requested inputs;
         # the tree structure (leaf arrays) is unchanged.
-        quantum_tape = self._build_canonical_tape(params, inputs)
-        self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
+        operations, _ = self._build_canonical_tape(params, inputs)
+        self.parameters = [
+            jnp.squeeze(p) for p in PauliCircuit.get_parameters(operations)
+        ]
 
         self._ensure_structure()
         all_columns = np.arange(self.n_params, dtype=np.int64)

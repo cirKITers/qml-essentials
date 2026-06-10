@@ -3,7 +3,7 @@ import jax
 # Re-exported for backwards compatibility: the Pauli-Clifford circuit transform
 # now lives in :mod:`qml_essentials.pauli` (integrated with the symbolic
 # :class:`~qml_essentials.operations.PauliWord` core).
-from qml_essentials.pauli import PauliCircuit, PauliTape  # noqa: F401
+from qml_essentials.pauli import PauliCircuit  # noqa: F401
 
 
 def safe_random_split(random_key: jax.random.PRNGKey, *args, **kwargs):

@@ -200,11 +200,13 @@ class TestPauliCircuit:
         obs = [PauliZ(0)]
 
         ref = simulation.simulate_and_measure(ops, 2, "expval", obs, False)
-        tape = PauliCircuit.from_parameterised_circuit(ops, obs, n_qubits=2)
+        operations, observables = PauliCircuit.from_parameterised_circuit(
+            ops, obs, n_qubits=2
+        )
 
         # CZ commuted to the end, not split into H/CX/H -> only Pauli rotations.
-        assert all(PauliCircuit._is_pauli_rotation(o) for o in tape.operations)
+        assert all(PauliCircuit._is_pauli_rotation(o) for o in operations)
         got = simulation.simulate_and_measure(
-            tape.operations, 2, "expval", tape.observables, False
+            operations, 2, "expval", observables, False
         )
         assert np.allclose(np.asarray(ref), np.asarray(got), atol=1e-6)

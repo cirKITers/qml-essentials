@@ -1190,7 +1190,7 @@ def test_pauli_circuit_model() -> None:
         # Build observables from the model
         _, obs = model._build_obs()
 
-        pauli_tape = PauliCircuit.from_parameterised_circuit(model_tape, obs)
+        pauli_ops, pauli_obs = PauliCircuit.from_parameterised_circuit(model_tape, obs)
 
         result_circuit = model(
             model.params,
@@ -1199,10 +1199,10 @@ def test_pauli_circuit_model() -> None:
 
         # Execute the Pauli tape via jaqsi's statevector simulator
         result_pauli_circuit = simulation.simulate_and_measure(
-            pauli_tape.operations,
+            pauli_ops,
             model.n_qubits,
             "expval",
-            pauli_tape.observables,
+            pauli_obs,
             False,
         )
 

@@ -1,9 +1,12 @@
 """Pauli-Clifford circuit transform for the Fourier-tree algorithm.
 
-This module hosts :class:`PauliCircuit` (and the lightweight :class:`PauliTape`),
-which transpile a circuit into the *canonical Pauli-Clifford normal form* used by
-the Nemkov et al. algorithm: all Clifford gates are commuted to the end and
-absorbed into the observable, leaving a sequence of Pauli rotations.
+This module hosts :class:`PauliCircuit`, which transpiles a circuit into the
+*canonical Pauli-Clifford normal form* used by the Nemkov et al. algorithm: all
+Clifford gates are commuted to the end and absorbed into the observable, leaving
+a sequence of Pauli rotations.  A circuit is represented throughout as a plain
+``List[Operation]`` tape (the same type produced by
+:func:`qml_essentials.tape.recording`); the transform returns the rotated
+operations together with the Clifford-evolved observables.
 
 The Clifford conjugation that drives this transform is done **symbolically** via
 :class:`~qml_essentials.operations.PauliWord` (stabilizer-tableau updates, O(n)),
@@ -32,28 +35,6 @@ from qml_essentials.operations import (
 )
 
 
-class PauliTape:
-    """Simple tape wrapper with ``operations``, ``observables``, and
-    ``get_parameters`` — replacing PennyLane's ``Script`` for the
-    Fourier-tree algorithm.
-    """
-
-    def __init__(
-        self,
-        operations: List[Operation],
-        observables: List[Operation],
-    ) -> None:
-        self.operations = operations
-        self.observables = observables
-
-    def get_parameters(self) -> list:
-        """Return the list of all parameter values from the operations."""
-        params = []
-        for op in self.operations:
-            params.extend(op.parameters)
-        return params
-
-
 class PauliCircuit:
     """
     Wrapper for Pauli-Clifford Circuits described by Nemkov et al.
@@ -78,7 +59,7 @@ class PauliCircuit:
         tape: List[Operation],
         observables: Optional[List[Operation]] = None,
         n_qubits: Optional[int] = None,
-    ) -> PauliTape:
+    ) -> Tuple[List[Operation], List[Operation]]:
         """
         Transforms a list of operations into a Pauli-Clifford circuit.
 
@@ -90,9 +71,9 @@ class PauliCircuit:
                 index if ``None``.
 
         Returns:
-            PauliTape:
-                A new tape containing the operations of the Pauli-Clifford
-                circuit and the (possibly Clifford-evolved) observables.
+            Tuple[List[Operation], List[Operation]]:
+                The Pauli rotations of the canonical circuit and the
+                (Clifford-evolved) observables.
         """
         if observables is None:
             observables = []
@@ -110,7 +91,12 @@ class PauliCircuit:
             final_cliffords, observables, n_qubits
         )
 
-        return PauliTape(operations=pauli_gates, observables=observables)
+        return pauli_gates, observables
+
+    @staticmethod
+    def get_parameters(operations: List[Operation]) -> list:
+        """Flatten the parameter values of a tape (list of operations)."""
+        return [p for op in operations for p in op.parameters]
 
     @staticmethod
     def _infer_n_qubits(
