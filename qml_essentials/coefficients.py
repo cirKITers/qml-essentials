@@ -241,11 +241,17 @@ class FourierTree:
         self.model = model
         self.n_qubits = model.n_qubits
 
-        quantum_tape = self._build_canonical_tape(model.params, None)
+        # A single (de-batched) parameter set drives the whole tree.
+        self._params = self._single_param_set(model.params)
+
+        # Canonical Pauli-Clifford structure, recorded once at a fixed base
+        # input.  The base value is irrelevant to the structure (it only sets
+        # the rotation angles, not which Pauli words appear).
+        base_inputs = np.ones(model.n_input_feat)
+        quantum_tape = self._build_canonical_tape(self._params, base_inputs)
 
         self.parameters = [jnp.squeeze(p) for p in quantum_tape.get_parameters()]
         self.n_params = len(self.parameters)
-        self.input_indices, self.all_input_indices = quantum_tape.get_input_indices()
 
         # Pauli generators of the (canonical) rotations, as symbolic words.
         self.pauli_words: List[PauliWord] = [
@@ -268,17 +274,11 @@ class FourierTree:
             for obs in quantum_tape.observables
         ]
 
-        # Variational parameter columns (everything that is not an input).
-        input_set = set(self.all_input_indices)
-        self.var_positions = np.array(
-            [i for i in range(self.n_params) if i not in input_set], dtype=np.int64
-        )
-        # Ordered list of input feature keys (d-dimensional spectrum).
-        self.features = sorted(self.input_indices.keys())
-
-        # Per-parameter integer input frequency scaling (recovered once from
-        # the canonical tape); non-input columns keep a scaling of 1.
-        self.input_scaling = self._compute_input_scaling()
+        # Identify the input-encoding columns, their feature, and integer
+        # frequency scaling directly from the tape (no per-gate tagging).  Sets
+        # ``input_indices``, ``all_input_indices``, ``input_scaling``,
+        # ``var_positions`` and ``features``.
+        self._detect_inputs(base_inputs)
 
         # The explicit leaf structure is built lazily: for deep circuits the
         # number of tree paths explodes combinatorially, while the canonical
@@ -294,10 +294,12 @@ class FourierTree:
             self._build_spectrum_structure()
             self._structure_built = True
 
-    def _build_canonical_tape(self, params, inputs):
-        """Record the circuit and transform it to Pauli-Clifford normal form."""
-        # The tree describes a single parameter set.  Models can carry batched
-        # parameters; fall back to the first set in that case.
+    def _single_param_set(self, params) -> jnp.ndarray:
+        """De-batch the model parameters to the single set the tree describes.
+
+        Models can carry batched parameters (e.g. after FCC sampling); the tree
+        is defined for one set, so fall back to the first and warn.
+        """
         params = jnp.asarray(params)
         if params.ndim > 2 and params.shape[0] > 1:
             warnings.warn(
@@ -306,50 +308,90 @@ class FourierTree:
                 UserWarning,
             )
             params = params[0]
+        return params
 
-        inputs = self.model._inputs_validation(
-            list(range(1, self.model.n_input_feat + 1)) if inputs is None else inputs
-        )
+    def _build_canonical_tape(self, params, inputs):
+        """Record the circuit and transform it to Pauli-Clifford normal form."""
+        params = self._single_param_set(params)
+        inputs = self.model._inputs_validation(inputs)
         raw_tape = self.model.script._record(params=params, inputs=inputs)
         _, obs_list = self.model._build_obs()
         return PauliCircuit.from_parameterised_circuit(
             raw_tape, observables=obs_list, n_qubits=self.n_qubits
         )
 
-    def _compute_input_scaling(self) -> np.ndarray:
-        r"""Recover the integer frequency scaling of each input rotation.
+    def _canonical_parameters(self, inputs) -> np.ndarray:
+        """Recorded canonical rotation angles (1-D float array) for ``inputs``."""
+        tape = self._build_canonical_tape(self._params, inputs)
+        return np.array([float(jnp.squeeze(p)) for p in tape.get_parameters()])
 
-        An input-encoding rotation contributes an angle :math:`\omega_k\,x_f`
-        that is linear in its feature :math:`x_f`.  In the canonical tape the
-        feature with key ``f`` takes the value ``f + 1`` (see
-        :meth:`_build_canonical_tape`), so the scaling is recovered as
-        :math:`\omega_k = |\text{angle}| / x_f` and rounded to the nearest
-        integer (the spectrum is integer-valued).  Using the magnitude keeps
-        the all-positive frequency convention of the unscaled tree.
+    def _detect_inputs(self, base_inputs: np.ndarray) -> None:
+        r"""Infer the input-encoding columns directly from the tape (tag-free).
 
-        Non-input columns keep a scaling of 1 (unused).  A heterogeneous
-        scaling such as ``(1, 3, 9)`` is what lets the tree assign the correct
-        frequency labels instead of treating every encoding as a unit count.
+        Each encoding rotation applies an angle :math:`\omega_k\,x_f` that is
+        linear in a single input feature :math:`x_f`, and Clifford commutation
+        only multiplies a rotation generator by :math:`\pm 1`.  Every canonical
+        rotation angle is therefore an affine function of the inputs, so
+        perturbing one feature at a time and differencing the recorded angles
+        isolates exactly the columns that depend on it, together with the
+        signed integer scaling :math:`\omega_k`.
 
-        Returns:
-            np.ndarray: Integer scaling per parameter column, shape
-            ``(n_params,)``.
+        Sets :attr:`input_indices` (``{feature: [columns]}``),
+        :attr:`all_input_indices`, :attr:`input_scaling` (per column, ``1`` for
+        variational columns), :attr:`var_positions`, and :attr:`features`.
+
+        Raises:
+            NotImplementedError: If a rotation depends on more than one feature
+                (the tree requires single-feature encodings).
         """
+        tol = 1e-6
+        d = self.model.n_input_feat
+        base = np.asarray(base_inputs, dtype=float)
+        p_base = np.array([float(p) for p in self.parameters])
+
+        # response[f, k] = d(angle_k) / d(x_f), the linear response of column k.
+        response = np.zeros((d, self.n_params))
+        for f in range(d):
+            step = base.copy()
+            step[f] += 1.0
+            response[f] = self._canonical_parameters(step) - p_base
+
+        input_indices: Dict[int, list] = defaultdict(list)
+        all_input_indices: List[int] = []
         scaling = np.ones(self.n_params, dtype=np.int64)
-        for feat, cols in self.input_indices.items():
-            x_f = feat + 1  # canonical input value for this feature
-            for k in cols:
-                mag = abs(float(self.parameters[k])) / x_f
-                w = int(round(mag))
-                if abs(mag - w) > 1e-6:
-                    warnings.warn(
-                        f"Non-integer input scaling {mag:.4f} on parameter {k} "
-                        f"(feature {feat}); rounding to {w}. The Fourier tree "
-                        "supports integer frequency scalings only.",
-                        UserWarning,
-                    )
-                scaling[k] = w
-        return scaling
+        for k in range(self.n_params):
+            feats = np.flatnonzero(np.abs(response[:, k]) > tol)
+            if feats.size == 0:
+                continue  # variational column
+            if feats.size > 1:
+                raise NotImplementedError(
+                    f"Rotation {k} depends on multiple input features "
+                    f"{feats.tolist()}; the Fourier tree requires each encoding "
+                    "rotation to be linear in a single feature."
+                )
+            f = int(feats[0])
+            omega = float(response[f, k])
+            w = int(round(omega))
+            if abs(omega - w) > tol:
+                warnings.warn(
+                    f"Non-integer input scaling {omega:.4f} on rotation {k} "
+                    f"(feature {f}); rounding to {w}. The Fourier tree supports "
+                    "integer frequency scalings only.",
+                    UserWarning,
+                )
+            input_indices[f].append(k)
+            all_input_indices.append(k)
+            scaling[k] = w
+
+        self.input_indices = input_indices
+        self.all_input_indices = all_input_indices
+        self.input_scaling = scaling
+        input_set = set(all_input_indices)
+        self.var_positions = np.array(
+            [i for i in range(self.n_params) if i not in input_set], dtype=np.int64
+        )
+        # Ordered list of input feature keys (d-dimensional spectrum).
+        self.features = sorted(input_indices.keys())
 
     # Symbolic tree construction (NumPy)
     def _build_leaf_arrays(self) -> None:
