@@ -797,7 +797,6 @@ class Model:
                     wires=all_wires,
                     noise_params=noise_params,
                     random_key=sub_key,
-                    input_idx=idx,
                 )
             return
 
@@ -814,7 +813,6 @@ class Model:
                         wires=q,
                         noise_params=noise_params,
                         random_key=sub_key,
-                        input_idx=idx,
                     )
 
     def _variational(
