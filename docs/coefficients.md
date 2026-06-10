@@ -166,6 +166,39 @@ The symbolic core is gate-set agnostic and lives in `qml_essentials.operations`:
 - `Operation.is_clifford` — a class flag marking the standard Clifford gates ($I, X, Y, Z, H, S, \text{CX}, \text{CY}, \text{CZ}, \text{SWAP}$); `conjugate_by_clifford` uses fast symbolic rules for the common ones and an exact matrix fallback for the rest.
 - `Operation.decompose()` — expresses composite gates (`Rot`, `CRX`/`CRY`/`CRZ`, `CZ`) in terms of Clifford + Pauli-rotation primitives.
 
+### Custom Circuits and Input Scaling
+
+The `FourierTree` operates on whatever circuit the model's `script` records, so a custom variational circuit can be analysed by replacing `model.script`:
+
+```python
+import qml_essentials.jaqsi as js
+from qml_essentials.gates import Gates as g
+
+def variational(params, inputs, *args, **kwargs):
+    params = params.squeeze()
+    g.PauliRot(1 * inputs, "Y", wires=[0])
+    g.PauliRot(params[0], "XZX", wires=[0, 1, 2])
+    g.PauliRot(3 * inputs, "XZ", wires=[0, 1])
+    g.PauliRot(params[1], "YY", wires=[0, 1])
+    g.PauliRot(9 * inputs, "XY", wires=[0, 1])
+
+model = Model(n_qubits=3, n_layers=1, output_qubit=0)
+model._params_shape = (2, 1)
+model.initialize_params()       # reallocate params for the custom shape
+model.script = js.Script(f=variational, n_qubits=3)
+
+coeffs, freqs = FourierTree(model).get_spectrum()
+```
+
+The tree distinguishes encoding from variational rotations **automatically**. 
+Because every canonical rotation angle is an affine function of the inputs (encodings apply $\omega_k\,x_f$; Clifford commutation only flips a generator's sign), the tree perturbs each input feature in turn and reads off, from the change in the recorded angles, which rotations depend on which feature and with what signed integer scaling $\omega_k$.
+
+The only requirement is that each encoding rotation be **linear in a single feature**, $\omega_k\,x_f$. Heterogeneous scalings such as $(1, 3, 9)$ are then resolved to the correctly scaled frequencies (here $\{-13, -11, -7, -5, 5, 7, 11, 13\}$) instead of unit counts. 
+Non-integer scalings are rounded with a warning; a rotation depending on more than one feature raises `NotImplementedError`; and the `method="dp"` exact-support path does not support non-unit scaling.
+
+For the numerical FFT (`Coefficients.get_spectrum`) a custom circuit additionally requires `model.degree` to be set high enough to resolve the largest frequency.
+The sampling grid is built from `model.degree` (the number of frequencies, i.e. $2\,\omega_\text{max} + 1$), not `model.frequencies`.
+
 ## Estimating the Exact Spectrum
 
 The number of frequencies a model can represent is, by default, estimated naively from the encoding (see `model.frequencies` / `model.degree`).
