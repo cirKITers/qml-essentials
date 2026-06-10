@@ -483,6 +483,86 @@ class TestFourierTree:
             )
 
     @pytest.mark.unittest
+    def test_coefficients_tree_input_scaling(self) -> None:
+        """A custom Pauli circuit whose encoding rotations carry heterogeneous
+        per-gate data scalings (1, 3, 9) must produce the correctly *scaled*
+        Fourier frequencies (not unit counts), match the FFT spectrum, and
+        reproduce the circuit output.  The encodings carry no tags: feature and
+        scaling are auto-detected from the tape."""
+        from qml_essentials.gates import Gates as g
+        import qml_essentials.jaqsi as js
+
+        def variational(params, inputs, *args, **kwargs):
+            params = params.squeeze()
+            g.PauliRot(1 * inputs, "Y", wires=[0])
+            g.PauliRot(params[0], "XZX", wires=[0, 1, 2])
+            g.PauliRot(3 * inputs, "XZ", wires=[0, 1])
+            g.PauliRot(params[1], "YY", wires=[0, 1])
+            g.PauliRot(9 * inputs, "XY", wires=[0, 1])
+
+        def prep():
+            model = Model(n_qubits=3, n_layers=1, output_qubit=0)
+            model._params_shape = (2, 1)
+            model.initialize_params()
+            model.degree = (27,)  # 2 * max_freq + 1: the FFT sampling grid
+            model.script = js.Script(f=variational, n_qubits=3)
+            return model
+
+        model = prep()
+        expected = {-13, -11, -7, -5, 5, 7, 11, 13}
+
+        # Per-gate scaling recovered from the canonical tape: cols 0/2/4 -> 1/3/9.
+        tree = FourierTree(model)
+        assert tree.input_scaling[tree.all_input_indices].tolist() == [1, 3, 9]
+
+        coeffs, freqs = tree.get_spectrum()
+        coeffs, freqs = np.asarray(coeffs[0]), np.asarray(freqs[0])
+        nz = np.abs(coeffs) > 1e-8
+        assert set(freqs[nz].astype(int).tolist()) == expected
+        assert jnp.isclose(jnp.sum(coeffs).imag, 0.0, atol=1.0e-5)
+
+        # The exact symbolic support agrees.
+        assert set(np.asarray(model.exact_spectrum()[0]).tolist()) == expected
+
+        # ... and so does the numerical FFT spectrum.
+        fft_coeffs, fft_freqs = Coefficients.get_spectrum(prep(), shift=True)
+        fft_nz = np.abs(np.asarray(fft_coeffs)) > 1e-8
+        assert set(np.asarray(fft_freqs)[fft_nz].astype(int).tolist()) == expected
+
+        # The 'dp' support method cannot represent per-gate scaling.
+        with pytest.raises(NotImplementedError, match="scaling"):
+            tree.get_exact_support(method="dp")
+
+        # The analytical Fourier series reproduces the circuit output.
+        rng = np.random.default_rng(0)
+        for _ in range(6):
+            x = float(rng.uniform(-np.pi, np.pi))
+            series = np.real(np.sum(coeffs * np.exp(1j * freqs * x)))
+            circ = np.asarray(model(model.params, inputs=jnp.array([[x]])))
+            assert np.isclose(series, circ.reshape(-1)[0], atol=1.0e-5)
+
+    @pytest.mark.unittest
+    def test_coefficients_tree_multi_feature_per_gate_rejected(self) -> None:
+        """Auto-detection requires each encoding rotation to be linear in a
+        single feature; a rotation mixing two features is rejected."""
+        from qml_essentials.gates import Gates as g
+        import qml_essentials.jaqsi as js
+
+        def variational(params, inputs, *args, **kwargs):
+            params = params.squeeze()
+            g.PauliRot(inputs[..., 0] + inputs[..., 1], "X", wires=[0])
+            g.PauliRot(params[0], "Z", wires=[0])
+            g.PauliRot(params[1], "Z", wires=[1])
+
+        model = Model(n_qubits=2, n_layers=1, output_qubit=0, encoding=["RX", "RY"])
+        model._params_shape = (2, 1)
+        model.initialize_params()
+        model.script = js.Script(f=variational, n_qubits=2)
+
+        with pytest.raises(NotImplementedError, match="single feature"):
+            FourierTree(model)
+
+    @pytest.mark.unittest
     def test_fourier_tree_batched_params(self) -> None:
         """Models can carry batched parameters (e.g. after FCC sampling with
         ``initialize_params(repeat=...)``); the tree must fall back to the
