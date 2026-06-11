@@ -64,7 +64,7 @@ class Coefficients:
 
         coeffs, freqs = cls._fourier_transform(model, mfs=mfs, mts=mts, **kwargs)
 
-        if not jnp.isclose(jnp.sum(coeffs).imag, 0.0, rtol=1.0e-5):
+        if not jnp.isclose(jnp.sum(coeffs).imag, 0.0, rtol=1.0e-6):
             raise ValueError(
                 f"Spectrum is not real. Imaginary part of coefficients is:\
                 {jnp.sum(coeffs).imag}"
@@ -96,9 +96,7 @@ class Coefficients:
                 if coeffs.ndim == 1:
                     surviving = coeffs != 0
                 else:
-                    surviving = jnp.any(
-                        coeffs != 0, axis=tuple(range(1, coeffs.ndim))
-                    )
+                    surviving = jnp.any(coeffs != 0, axis=tuple(range(1, coeffs.ndim)))
                 coeffs = coeffs[surviving]
                 freqs = [freqs[0][surviving]]
 
