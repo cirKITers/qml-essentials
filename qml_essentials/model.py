@@ -529,6 +529,67 @@ class Model:
     def frequencies(self, value: Tuple):
         self._frequencies = value
 
+    def exact_spectrum(self, method: str = "tree") -> Tuple[np.ndarray, ...]:
+        """Compute the exact per-feature Fourier spectrum via the FourierTree.
+
+        Unlike :attr:`frequencies` -- a naive per-feature estimate derived purely
+        from the encoding, which can *overestimate* the spectrum (some
+        coefficients are constrained to zero for all parameters) -- this builds
+        the analytical Fourier tree (Nemkov et al.) and returns, for each input
+        feature, the integer frequencies whose Fourier coefficient is not
+        identically zero.  The result is always a subset of :attr:`frequencies`.
+
+        The support is derived purely symbolically (no parameter sampling): see
+        :meth:`~qml_essentials.coefficients.FourierTree.get_exact_support`.
+        With ``method="tree"`` (default), frequencies whose contributions cancel
+        identically across tree paths (e.g. two consecutive encodings combining
+        into a single rotation) are excluded exactly; this enumerates the
+        explicit tree, which can be infeasible for deep entangling circuits.
+        With ``method="dp"``, a merged-state dynamic program derives the support
+        without enumerating paths, which scales to deep circuits (single input
+        feature only) at the cost of not detecting identical cross-path
+        cancellations.
+
+        Requires a Clifford + Pauli-rotation ansatz (see
+        :class:`~qml_essentials.pauli.PauliCircuit`); other gate sets raise
+        ``NotImplementedError`` during tree construction.
+
+        Args:
+            method (str): ``"tree"`` (fully exact) or ``"dp"`` (scalable).
+
+        Returns:
+            Tuple[np.ndarray, ...]: One sorted integer frequency array per input
+            feature (same layout as :attr:`frequencies`).
+        """
+        from qml_essentials.coefficients import FourierTree  # avoid circular imp.
+
+        tree = FourierTree(self)
+
+        # Position of each model feature within the tree's frequency vectors.
+        feature_pos = {feat: i for i, feat in enumerate(tree.features)}
+
+        # Union of the symbolic supports over all observables (roots).
+        support = set()
+        for freqs in tree.get_exact_support(method=method):
+            farr = np.asarray(freqs)
+            for k in range(farr.shape[0]):
+                key = (
+                    (int(farr[k]),)
+                    if farr.ndim == 1
+                    else tuple(int(v) for v in farr[k])
+                )
+                support.add(key)
+
+        spectrum = []
+        for feat in range(self.n_input_feat):
+            if support and feat in feature_pos:
+                pos = feature_pos[feat]
+                vals = sorted({k[pos] for k in support})
+            else:
+                vals = [0]
+            spectrum.append(np.array(vals, dtype=int))
+        return tuple(spectrum)
+
     @property
     def has_dru(self) -> bool:
         """Check if the model has data reupload."""
@@ -736,7 +797,6 @@ class Model:
                     wires=all_wires,
                     noise_params=noise_params,
                     random_key=sub_key,
-                    input_idx=idx,
                 )
             return
 
@@ -753,7 +813,6 @@ class Model:
                         wires=q,
                         noise_params=noise_params,
                         random_key=sub_key,
-                        input_idx=idx,
                     )
 
     def _variational(
@@ -886,8 +945,6 @@ class Model:
                 noise_params=noise_params,
                 random_key=sub_key,
             )
-
-            # visual barrier (no-op in jaqsi, purely cosmetic in PennyLane)
 
         # final ansatz layer
         if self.has_dru:  # same check as in init

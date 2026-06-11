@@ -160,4 +160,8 @@ def build_parity_observable(
     """
     Z = PauliZ._matrix
     mat = reduce(jnp.kron, [Z] * len(qubit_group))
-    return Hermitian(matrix=mat, wires=qubit_group, record=False)
+    obs = Hermitian(matrix=mat, wires=qubit_group, record=False)
+    # Tag the Pauli string so symbolic consumers (PauliWord / FourierTree) can
+    # read it without an O(4^n) matrix decomposition.
+    obs._pauli_label = "Z" * len(qubit_group)
+    return obs

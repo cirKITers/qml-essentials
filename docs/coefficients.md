@@ -143,7 +143,7 @@ fourier_tree = FourierTree(model)
 an_coeffs, an_freqs = fourier_tree.get_spectrum(force_mean=True)
 ``` 
 
-Note that while this takes significantly longer to compute, it gives us the precise coefficients, solely depending on the parameters.
+Unlike the FFT, this gives us the precise coefficients, solely depending on the parameters.
 We can verify this by comparing it to the previous results:
 
 ![Model Analytic Coefficients](figures/model_psd_an_light.png#center#only-light)
@@ -154,10 +154,88 @@ We can verify this by comparing it to the previous results:
 We use an approach developed by [Nemkov et al.](https://arxiv.org/pdf/2304.03787), which was later extended by [Wiedmann et al.](https://arxiv.org/pdf/2411.03450).
 The implementation is also inspired by the corresponding [code](https://github.com/idnm/FourierVQA) for Nemkov et al.'s paper.
 
-In Nemkov et al.'s algorithm the first step is to separate Clifford and non-Clifford gates, such that all Clifford gates can be regarded as part of the observable, and the actual circuit only consists of Pauli rotations (cf. qml_essentials.utils.PauliCircuit).
+In Nemkov et al.'s algorithm the first step is to separate Clifford and non-Clifford gates, such that all Clifford gates can be regarded as part of the observable, and the actual circuit only consists of Pauli rotations (cf. `qml_essentials.pauli.PauliCircuit`).
 The main idea is then to split each Pauli rotation into sine and cosine product terms to obtain the coefficients, which are only dependent on the parameters of the circuit.
 
-Currently, our implementation supports only one input feature, albeit more are theoretical possible.
+The Clifford commutation and Pauli bookkeeping are implemented symbolically on a stabilizer-tableau Pauli representation (`qml_essentials.operations.PauliWord`), and the parameter-dependent coefficients are evaluated with vectorized operations.
+This makes the tree fast to build and evaluate, and it supports multiple input features: in that case `get_spectrum` returns, per observable, the multi-dimensional frequency vectors (shape `(n_freqs, n_features)`) and their coefficients.
+
+The symbolic core is gate-set agnostic and lives in `qml_essentials.operations`:
+
+- `PauliWord` — an n-qubit Pauli in the symplectic $i^{\text{phase}}\,X^x Z^z$ representation, with `compose`, `commutes_with`, `conjugate_by_clifford` (Clifford tableau evolution), and a `to_matrix`/`from_matrix` bridge to dense operators.
+- `Operation.is_clifford` — a class flag marking the standard Clifford gates ($I, X, Y, Z, H, S, \text{CX}, \text{CY}, \text{CZ}, \text{SWAP}$); `conjugate_by_clifford` uses fast symbolic rules for the common ones and an exact matrix fallback for the rest.
+- `Operation.decompose()` — expresses composite gates (`Rot`, `CRX`/`CRY`/`CRZ`, `CZ`) in terms of Clifford + Pauli-rotation primitives.
+
+### Custom Circuits and Input Scaling
+
+The `FourierTree` operates on whatever circuit the model's `script` records, so a custom variational circuit can be analysed by replacing `model.script`:
+
+```python
+import qml_essentials.jaqsi as js
+from qml_essentials.gates import Gates as g
+
+def variational(params, inputs, *args, **kwargs):
+    params = params.squeeze()
+    g.PauliRot(1 * inputs, "Y", wires=[0])
+    g.PauliRot(params[0], "XZX", wires=[0, 1, 2])
+    g.PauliRot(3 * inputs, "XZ", wires=[0, 1])
+    g.PauliRot(params[1], "YY", wires=[0, 1])
+    g.PauliRot(9 * inputs, "XY", wires=[0, 1])
+
+model = Model(n_qubits=3, n_layers=1, output_qubit=0)
+model._params_shape = (2, 1)
+model.initialize_params()       # reallocate params for the custom shape
+model.script = js.Script(f=variational, n_qubits=3)
+
+coeffs, freqs = FourierTree(model).get_spectrum()
+```
+
+The tree distinguishes encoding from variational rotations **automatically**. 
+Because every canonical rotation angle is an affine function of the inputs (encodings apply $\omega_k\,x_f$; Clifford commutation only flips a generator's sign), the tree perturbs each input feature in turn and reads off, from the change in the recorded angles, which rotations depend on which feature and with what signed integer scaling $\omega_k$.
+
+The only requirement is that each encoding rotation be **linear in a single feature**, $\omega_k\,x_f$. Heterogeneous scalings such as $(1, 3, 9)$ are then resolved to the correctly scaled frequencies (here $\{-13, -11, -7, -5, 5, 7, 11, 13\}$) instead of unit counts. 
+Non-integer scalings are rounded with a warning; a rotation depending on more than one feature raises `NotImplementedError`; and the `method="dp"` exact-support path does not support non-unit scaling.
+
+For the numerical FFT (`Coefficients.get_spectrum`) a custom circuit additionally requires `model.degree` to be set high enough to resolve the largest frequency.
+The sampling grid is built from `model.degree` (the number of frequencies, i.e. $2\,\omega_\text{max} + 1$), not `model.frequencies`.
+
+## Estimating the Exact Spectrum
+
+The number of frequencies a model can represent is, by default, estimated naively from the encoding (see `model.frequencies` / `model.degree`).
+This estimate is an *upper bound*: as shown by Wiedmann et al., some coefficients are constrained to zero for all parameter values, so the true spectrum can be smaller.
+
+The `FourierTree` lets us obtain the *exact* spectrum of a model via the opt-in `Model.exact_spectrum` method:
+```python
+model = Model(
+    n_qubits=3,
+    n_layers=1,
+    circuit_type="Circuit_19",
+)
+
+exact = model.exact_spectrum()  # tuple of frequency arrays, one per input feature
+```
+The result is always a subset of `model.frequencies`.
+For example, for the model above the naive estimate is `{-3, ..., 3}` while the exact spectrum is `{-2, -1, 0, 1, 2}`.
+
+The support is derived *purely symbolically* — no parameter sampling is involved.
+This exploits a structural property of the tree: every parameter contributes at most one sine **or** cosine factor per path, so the variational leaf factors are square-free monomials over $\{1, \cos\theta_i, i\sin\theta_i\}$, which are linearly independent.
+A frequency is therefore absent if and only if all of its signature-grouped path weights sum to zero — an exact test, since all weights are dyadic rationals.
+This correctly removes frequencies whose contributions cancel identically across paths, e.g. two consecutive encodings combining into a single rotation ($\langle Z \rangle = \cos(2x)$ has spectrum $\{-2, 2\}$, not $\{-2, \dots, 2\}$).
+
+Two methods are available:
+
+- `method="tree"` (default): fully exact, but enumerates the explicit tree, whose size can grow exponentially with circuit depth.
+- `method="dp"`: merges tree nodes with identical (rotation index, observable) state — at most $n_\text{params} \cdot 4^{n_\text{qubits}}$ states — and tracks the achievable input sine/cosine counts per state.
+  This scales to deep circuits where the explicit tree is infeasible (e.g. a 10-layer `Strongly_Entangling` ansatz on 5 qubits takes seconds instead of being intractable).
+  It is exact per path, but cannot detect coefficients that cancel identically *across* paths with identical variational dependence (such as the repeated-encoding example above), where it returns a tight superset.
+  Currently it supports a single input feature.
+
+```python
+exact = model.exact_spectrum(method="dp")  # for deep circuits
+```
+
+Note that `exact_spectrum` requires a Clifford + Pauli-rotation ansatz (the same restriction as the `FourierTree`).
+Also keep in mind that a *structurally present* frequency can still have an exponentially small coefficient (the leaf weights scale with $0.5^{s+c}$), so numerically thresholding an FFT spectrum may show fewer frequencies than the exact symbolic support.
 
 
 ## Multi-Dimensional Coefficients
@@ -215,9 +293,10 @@ fcc = FCC.get_fcc(
 ```
 Returns `0.1442` as already in Fig. 3a of aforementioned paper.
 
-Optionally, you can choose a different correlation `method` (currently "pearson", "complex_pearson", and "spearman" are supported).
+Optionally, you can choose a different correlation `method` (currently "pearson", "complex_pearson", "spearman", and "covariance" are supported).
 The default "pearson" method preserves the existing behavior for complex coefficients by correlating stacked real and imaginary parts.
 The "complex_pearson" method computes a complex-valued Pearson coefficient via Hermitian normalized covariance, so the magnitude describes correlation strength and the angle describes the relative phase between coefficient vectors.
+The "covariance" method returns the (Hermitian, for complex coefficients) sample covariance instead of a normalized correlation; unlike the correlation methods its entries are not bounded to $[0, 1]$.
 When calculating the scalar FCC, `calculate_fcc` uses the magnitude of the fingerprint entries.
 Similar, other methods which require specifying `n_samples` (c.f. calculation of [expressibility](expressibility.md) and [entangling capability](entanglement.md)), methods in the `FCC` class take an optional parameter `scale` (defaults to `False`), which scales the number of samples depending on the number of qubits and the number of input features as $n_\text{samples} \cdot n_\text{params} \cdot 2^{n_\text{qubits}} \cdot n_\text{features}$.
 

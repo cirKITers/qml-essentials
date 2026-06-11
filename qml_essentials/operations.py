@@ -100,8 +100,12 @@ class Operation:
     """
 
     # Subclasses should set this to the gate's unitary / matrix
-    _matrix: jnp.ndarray = None
+    # Whether this is a controlled operation
     is_controlled = False
+    # Whether this gate is a Clifford gate (normalises the Pauli group
+    is_clifford = False
+
+    _matrix: jnp.ndarray = None
     _num_wires: Optional[int] = None
     _param_names: Tuple[str, ...] = ()
 
@@ -110,7 +114,6 @@ class Operation:
         wires: Union[int, List[int]] = 0,
         matrix: Optional[jnp.ndarray] = None,
         record: bool = True,
-        input_idx: int = -1,
         name: Optional[str] = None,
     ) -> None:
         """Initialise the operation and optionally register it on the active tape.
@@ -124,9 +127,6 @@ class Operation:
                 auxiliary objects that should not appear in the circuit
                 (e.g. Hamiltonians used only to build time-dependent
                 evolutions).
-            input_idx: Marks the operation as input with the corresponding
-                input index, which is useful for the analytical Fourier
-                coefficients computation, but has no effect otherwise.
             name: Optional explicit name for this operation.  When ``None``
                 (default), the class name is used (e.g. ``"RX"``).
 
@@ -136,7 +136,6 @@ class Operation:
         """
         self.name = name or self.__class__.__name__
         self.wires = list(wires) if isinstance(wires, (list, tuple)) else [wires]
-        self.input_idx = input_idx
 
         if self._num_wires is not None and len(self.wires) != self._num_wires:
             raise ValueError(
@@ -203,6 +202,25 @@ class Operation:
             )
         return self._matrix
 
+    def decompose(self) -> List["Operation"]:
+        """Decompose this operation into a list of more primitive operations.
+
+        The returned operations are created with ``record=False`` so the caller
+        controls where they are placed.  Reused e.g. by
+        :meth:`~qml_essentials.pauli.PauliCircuit.get_clifford_pauli_gates` to
+        express composite gates in terms of Clifford + Pauli-rotation primitives.
+
+        Returns:
+            List of :class:`Operation` instances equivalent to this gate.
+
+        Raises:
+            NotImplementedError: If the gate has no decomposition (it is itself
+                primitive).
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not define a decomposition."
+        )
+
     @property
     def wires(self) -> List[int]:
         """Qubit indices this operation acts on.
@@ -223,24 +241,6 @@ class Operation:
             self._wires = list(wires)
         else:
             self._wires = [wires]
-
-    @property
-    def input_idx(self) -> int:
-        """The index of an input
-
-        Returns:
-            input_idx: Index of the input
-        """
-        return self._input_idx
-
-    @input_idx.setter
-    def input_idx(self, input_idx: int) -> None:
-        """Setter for the input_idx flag
-
-        Args:
-            input_idx: Index of the input
-        """
-        self._input_idx = input_idx
 
     def _update_tape_operation(self, op: "Operation") -> None:
         """
@@ -726,6 +726,7 @@ class Id(Operation):
 
     _matrix = jnp.eye(2, dtype=_cdtype())
     _num_wires = None  # accept any number of wires
+    is_clifford = True
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise an identity gate.
@@ -747,6 +748,7 @@ class PauliX(Operation):
 
     _matrix = jnp.array([[0, 1], [1, 0]], dtype=_cdtype())
     _num_wires = 1
+    is_clifford = True
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise a Pauli-X gate.
@@ -762,6 +764,7 @@ class PauliY(Operation):
 
     _matrix = jnp.array([[0, -1j], [1j, 0]], dtype=_cdtype())
     _num_wires = 1
+    is_clifford = True
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise a Pauli-Y gate.
@@ -777,6 +780,7 @@ class PauliZ(Operation):
 
     _matrix = jnp.array([[1, 0], [0, -1]], dtype=_cdtype())
     _num_wires = 1
+    is_clifford = True
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise a Pauli-Z gate.
@@ -792,6 +796,7 @@ class H(Operation):
 
     _matrix = jnp.array([[1, 1], [1, -1]], dtype=_cdtype()) / jnp.sqrt(2)
     _num_wires = 1
+    is_clifford = True
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise a Hadamard gate.
@@ -811,6 +816,7 @@ class S(Operation):
 
     _matrix = jnp.array([[1, 0], [0, 1j]], dtype=_cdtype())
     _num_wires = 1
+    is_clifford = True
 
     def __init__(self, wires: Union[int, List[int]] = 0) -> None:
         """Initialise an S gate.
@@ -828,6 +834,7 @@ class SWAP(Operation):
         [[1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 1]], dtype=_cdtype()
     )
     _num_wires = 2
+    is_clifford = True
 
     def __init__(self, wires: Union[int, List[int]] = 0, **kwargs) -> None:
         """Initialise a SWAP gate.
@@ -984,6 +991,14 @@ class Barrier(Operation):
         return rho
 
 
+_PAULI_LABELS = ["I", "X", "Y", "Z"]
+_PAULI_CLASSES = [Id, PauliX, PauliY, PauliZ]
+_PAULI_MATRICES = {
+    label: cls._matrix for label, cls in zip(_PAULI_LABELS, _PAULI_CLASSES)
+}
+_PAULI_MATS = [_PAULI_MATRICES[label] for label in _PAULI_LABELS]
+
+
 def _make_rotation_gate(pauli_class: type, name: str) -> type:
     """Factory for single-qubit rotation gates RX, RY, RZ.
 
@@ -1059,9 +1074,21 @@ def _make_controlled_gate(target_class: type, name: str) -> type:
         _matrix = jnp.kron(_P0, Id._matrix) + jnp.kron(_P1, target_mat)
         _num_wires = 2
         is_controlled = True
+        is_clifford = True  # CX, CY, CZ are all Clifford gates
 
         def __init__(self, wires: List[int] = [0, 1], **kwargs) -> None:
             super().__init__(wires=wires, **kwargs)
+
+        def decompose(self) -> List["Operation"]:
+            # CZ = (H on target) CX (H on target).  CX/CY are primitive.
+            if name != "CZ":
+                return super().decompose()
+            c, t = self.wires
+            return [
+                H(wires=t, record=False),
+                CX(wires=[c, t], record=False),
+                H(wires=t, record=False),
+            ]
 
     _ControlledGate.__name__ = name
     _ControlledGate.__qualname__ = name
@@ -1215,6 +1242,15 @@ class Rot(Operation):
         mat = rz_omega @ ry_theta @ rz_phi
         super().__init__(wires=wires, matrix=mat, **kwargs)
 
+    def decompose(self) -> List["Operation"]:
+        """Decompose into ``RZ(phi) RY(theta) RZ(omega)`` (same wire)."""
+        w = self.wires[0]
+        return [
+            RZ(self.phi, wires=w, record=False),
+            RY(self.theta, wires=w, record=False),
+            RZ(self.omega, wires=w, record=False),
+        ]
+
 
 class PauliRot(Operation):
     """Multi-qubit Pauli rotation: exp(-i \\theta/2 P) for a Pauli word P.
@@ -1231,13 +1267,8 @@ class PauliRot(Operation):
 
     _param_names = ("theta",)
 
-    # Map from character to 2x2 matrix
-    _PAULI_MAP = {
-        "I": Id._matrix,
-        "X": PauliX._matrix,
-        "Y": PauliY._matrix,
-        "Z": PauliZ._matrix,
-    }
+    # Map from character to 2x2 matrix (canonical single source of truth)
+    _PAULI_MAP = _PAULI_MATRICES
 
     def __init__(
         self, theta: float, pauli_word: str, wires: Union[int, List[int]] = 0, **kwargs
@@ -1416,6 +1447,35 @@ def _make_controlled_rotation_subclass(name: str, axis: str) -> type:
 
         def __init__(self, theta: float, wires: List[int] = [0, 1], **kwargs) -> None:
             super().__init__(theta, axis, wires=wires, n_controls=1, **kwargs)
+
+        def decompose(self) -> List["Operation"]:
+            """Decompose into Clifford + single-qubit Pauli rotations."""
+            c, t = self.wires
+            theta = self.theta
+            if axis == "Z":
+                return [
+                    RZ(theta / 2, wires=t, record=False),
+                    CX(wires=[c, t], record=False),
+                    RZ(-theta / 2, wires=t, record=False),
+                    CX(wires=[c, t], record=False),
+                ]
+            if axis == "X":
+                return [
+                    H(wires=t, record=False),
+                    RZ(theta / 2, wires=t, record=False),
+                    CX(wires=[c, t], record=False),
+                    RZ(-theta / 2, wires=t, record=False),
+                    CX(wires=[c, t], record=False),
+                    H(wires=t, record=False),
+                ]
+            # axis == "Y"
+            return [
+                RX(-jnp.pi / 2, wires=t, record=False),
+                RZ(theta / 2, wires=t, record=False),
+                CX(wires=[c, t], record=False),
+                RZ(-theta / 2, wires=t, record=False),
+                RX(jnp.pi / 2, wires=t, record=False),
+            ]
 
     _CRotation.__name__ = name
     _CRotation.__qualname__ = name
@@ -1869,12 +1929,6 @@ class QubitChannel(KrausChannel):
         return self._kraus_ops
 
 
-# Single-qubit Pauli matrices (plain arrays, no Operation overhead)
-_PAULI_MATS = [Id._matrix, PauliX._matrix, PauliY._matrix, PauliZ._matrix]
-_PAULI_LABELS = ["I", "X", "Y", "Z"]
-_PAULI_CLASSES = [Id, PauliX, PauliY, PauliZ]
-
-
 def evolve_pauli_with_clifford(
     clifford: Operation,
     pauli: Operation,
@@ -1979,6 +2033,37 @@ def _permute_matrix(mat: jnp.ndarray, perm: list, n_qubits: int) -> jnp.ndarray:
     return tensor.reshape(dim, dim)
 
 
+def _dominant_pauli_label(matrix: jnp.ndarray) -> Tuple[complex, str]:
+    r"""Return the dominant Pauli term ``(coeff, label)`` of a matrix.
+
+    Finds the Pauli tensor product :math:`P` (over ``I, X, Y, Z``) with the
+    largest :math:`|c_P|`, where :math:`c_P = \mathrm{Tr}(P M) / 2^n`.  Shared
+    by :func:`pauli_decompose` and :meth:`PauliWord.from_matrix` so the
+    brute-force search lives in one place.
+
+    Args:
+        matrix: A ``(2**n, 2**n)`` matrix.
+
+    Returns:
+        ``(coeff, label)`` with *label* a string over ``{I, X, Y, Z}``.
+    """
+    from itertools import product as _product
+    from functools import reduce as _reduce
+
+    dim = matrix.shape[0]
+    n_qubits = int(jnp.round(jnp.log2(dim)))
+
+    best_label = "I" * n_qubits
+    best_coeff = 0.0
+    for indices in _product(range(4), repeat=n_qubits):
+        P = _reduce(jnp.kron, [_PAULI_MATS[i] for i in indices])
+        coeff = jnp.trace(P @ matrix) / dim
+        if jnp.abs(coeff) > jnp.abs(best_coeff):
+            best_coeff = coeff
+            best_label = "".join(_PAULI_LABELS[i] for i in indices)
+    return best_coeff, best_label
+
+
 def pauli_decompose(matrix: jnp.ndarray, wire_order: Optional[List[int]] = None):
     r"""Decompose a Hermitian matrix into a sum of Pauli tensor products.
 
@@ -2001,7 +2086,6 @@ def pauli_decompose(matrix: jnp.ndarray, wire_order: Optional[List[int]] = None)
         *op* is the Pauli :class:`Operation` (PauliX, PauliY, PauliZ, I, or
         a :class:`Hermitian` for multi-qubit tensor products).
     """
-    from itertools import product as _product
     from functools import reduce as _reduce
 
     dim = matrix.shape[0]
@@ -2010,48 +2094,25 @@ def pauli_decompose(matrix: jnp.ndarray, wire_order: Optional[List[int]] = None)
     if wire_order is None:
         wire_order = list(range(n_qubits))
 
-    # For single qubit, fast path
-    if n_qubits == 1:
-        best_idx, best_coeff = 0, 0.0
-        for idx, P in enumerate(_PAULI_MATS):
-            coeff = jnp.trace(P @ matrix) / 2.0
-            if jnp.abs(coeff) > jnp.abs(best_coeff):
-                best_idx = idx
-                best_coeff = coeff
-        op_cls = _PAULI_CLASSES[best_idx]
-        result_op = op_cls(wires=wire_order[0], record=False)
-        result_op._pauli_label = _PAULI_LABELS[best_idx]
-        return best_coeff, result_op
-
-    # Multi-qubit: iterate over all Pauli tensor products
-    best_label = None
-    best_coeff = 0.0
-    for indices in _product(range(4), repeat=n_qubits):
-        P = _reduce(jnp.kron, [_PAULI_MATS[i] for i in indices])
-        coeff = jnp.trace(P @ matrix) / dim
-        if jnp.abs(coeff) > jnp.abs(best_coeff):
-            best_coeff = coeff
-            best_label = indices
-
-    # Build the Pauli string label
-    pauli_label = "".join(_PAULI_LABELS[i] for i in best_label)
+    best_coeff, pauli_label = _dominant_pauli_label(matrix)
+    label_to_idx = {label: i for i, label in enumerate(_PAULI_LABELS)}
 
     # Build the operation for the dominant term
-    if sum(1 for i in best_label if i != 0) <= 1:
-        # Single-qubit Pauli on one wire
-        for q, idx in enumerate(best_label):
-            if idx != 0:
-                op_cls = _PAULI_CLASSES[idx]
-                result_op = op_cls(wires=wire_order[q], record=False)
-                result_op._pauli_label = _PAULI_LABELS[idx]
+    if sum(1 for ch in pauli_label if ch != "I") <= 1:
+        # Single-qubit Pauli on one wire (or all-identity)
+        for q, ch in enumerate(pauli_label):
+            if ch != "I":
+                result_op = _PAULI_CLASSES[label_to_idx[ch]](
+                    wires=wire_order[q], record=False
+                )
+                result_op._pauli_label = ch
                 return best_coeff, result_op
-        # All identity
         result_op = Id(wires=wire_order[0], record=False)
         result_op._pauli_label = "I" * n_qubits
         return best_coeff, result_op
     else:
         # Multi-qubit tensor product -> Hermitian with pauli label attached
-        P = _reduce(jnp.kron, [_PAULI_MATS[i] for i in best_label])
+        P = _reduce(jnp.kron, [_PAULI_MATRICES[ch] for ch in pauli_label])
         result_op = Hermitian(matrix=P, wires=wire_order, record=False)
         result_op._pauli_label = pauli_label
         return best_coeff, result_op
@@ -2101,3 +2162,360 @@ def prod(*ops: Operation) -> Operation:
     if not ops:
         raise ValueError("At least one operation must be provided to prod().")
     return ops[0].prod(*ops[1:])
+
+
+# Single-qubit (x, z) bit pattern -> Pauli label, with the convention that a
+# Pauli word is stored as  i^phase * prod_q  X_q^{x_q} Z_q^{z_q}.
+# Under this convention Y = i * X * Z, so the single-qubit Y carries x=z=1.
+_XZ_TO_LABEL = {(0, 0): "I", (1, 0): "X", (0, 1): "Z", (1, 1): "Y"}
+_LABEL_TO_XZ = {"I": (0, 0), "X": (1, 0), "Z": (0, 1), "Y": (1, 1)}
+
+
+class PauliWord:
+    r"""Symbolic n-qubit Pauli operator in the stabilizer-tableau (symplectic)
+    representation.
+
+    A Pauli word is stored as
+
+    .. math::
+        P = i^{\text{phase}} \prod_{q} X_q^{x_q} Z_q^{z_q},
+
+    with bit arrays ``x, z \in \{0, 1\}^n`` and an integer ``phase`` taken mod 4
+    (tracking the scalar ``i^{phase}``).  Single-qubit Paulis map as
+    ``I=(0,0)``, ``X=(1,0)``, ``Z=(0,1)``, ``Y=(1,1)`` (since ``Y = i X Z``).
+
+    This replaces the matrix-based Clifford conjugation
+    (:func:`evolve_pauli_with_clifford` + :func:`pauli_decompose`) with O(n)
+    symbolic updates, and is shared by both
+    :class:`~qml_essentials.pauli.PauliCircuit` and the Fourier-tree algorithm.
+
+    All operations use NumPy (integer arithmetic), not JAX — this is symbolic
+    bookkeeping, not numeric computation.
+    """
+
+    __slots__ = ("x", "z", "phase")
+
+    def __init__(self, x: np.ndarray, z: np.ndarray, phase: int = 0) -> None:
+        """Initialise a Pauli word.
+
+        Args:
+            x: Integer/boolean array of X-component bits, length ``n_qubits``.
+            z: Integer/boolean array of Z-component bits, length ``n_qubits``.
+            phase: Exponent of the global ``i^{phase}`` scalar (taken mod 4).
+        """
+        self.x = np.asarray(x, dtype=np.int8) & 1
+        self.z = np.asarray(z, dtype=np.int8) & 1
+        self.phase = int(phase) % 4
+
+    # ---- constructors ---------------------------------------------------
+    @classmethod
+    def identity(cls, n_qubits: int) -> "PauliWord":
+        """Return the identity Pauli word on *n_qubits*."""
+        z = np.zeros(n_qubits, dtype=np.int8)
+        return cls(z.copy(), z, 0)
+
+    @classmethod
+    def from_pauli_string(
+        cls, pauli_string: str, wires: List[int], n_qubits: int
+    ) -> "PauliWord":
+        """Build a Pauli word from a Pauli string and its wires.
+
+        Args:
+            pauli_string: String over ``{'I', 'X', 'Y', 'Z'}``; one character
+                per entry of *wires*.
+            wires: Qubit indices the characters act on.
+            n_qubits: Total number of qubits in the circuit.
+
+        Returns:
+            The corresponding :class:`PauliWord`.
+        """
+        x = np.zeros(n_qubits, dtype=np.int8)
+        z = np.zeros(n_qubits, dtype=np.int8)
+        n_y = 0
+        for ch, w in zip(pauli_string, wires):
+            xb, zb = _LABEL_TO_XZ[ch]
+            x[w] = xb
+            z[w] = zb
+            if ch == "Y":
+                n_y += 1
+        # Each Y contributes a factor i (Y = i X Z), accumulated into phase.
+        return cls(x, z, n_y % 4)
+
+    @classmethod
+    def from_operation(cls, op: "Operation", n_qubits: int) -> "PauliWord":
+        """Build a Pauli word from a Pauli-like operation.
+
+        Supports :class:`PauliX`/:class:`PauliY`/:class:`PauliZ`/:class:`Id`,
+        :class:`PauliRot` (via its ``pauli_word``), and any operation carrying a
+        ``_pauli_label`` (e.g. produced by :func:`pauli_decompose`) or otherwise
+        decomposable by :func:`pauli_string_from_operation`.
+
+        Args:
+            op: The operation to convert.
+            n_qubits: Total number of qubits in the circuit.
+
+        Returns:
+            The corresponding :class:`PauliWord`.
+        """
+        # Cached symbolic word (e.g. attached to a Clifford-evolved observable).
+        cached = getattr(op, "_pauli_word", None)
+        if isinstance(cached, PauliWord) and cached.n_qubits == n_qubits:
+            return cached
+        if isinstance(op, PauliRot):
+            return cls.from_pauli_string(op.pauli_word, op.wires, n_qubits)
+        # Single-qubit Pauli rotations: generator is the corresponding Pauli.
+        rot_to_label = {"RX": "X", "RY": "Y", "RZ": "Z"}
+        if op.name in rot_to_label:
+            return cls.from_pauli_string(rot_to_label[op.name], op.wires, n_qubits)
+        name_to_label = {"PauliX": "X", "PauliY": "Y", "PauliZ": "Z", "I": "I"}
+        if op.name in name_to_label:
+            return cls.from_pauli_string(name_to_label[op.name], op.wires, n_qubits)
+        pauli_str = pauli_string_from_operation(op)
+        return cls.from_pauli_string(pauli_str, op.wires, n_qubits)
+
+    @property
+    def n_qubits(self) -> int:
+        """Number of qubits this Pauli word spans."""
+        return self.x.shape[0]
+
+    @property
+    def xy_mask(self) -> np.ndarray:
+        """Boolean mask of qubits carrying an X or Y (i.e. ``x`` bits set)."""
+        return self.x.astype(bool)
+
+    @property
+    def is_diagonal(self) -> bool:
+        """Whether the word is diagonal (only I/Z, i.e. no X component)."""
+        return not bool(self.x.any())
+
+    # ---- algebra --------------------------------------------------------
+    def commutes_with(self, other: "PauliWord") -> bool:
+        """Return whether this Pauli word commutes with *other*.
+
+        Two Paulis commute iff their symplectic inner product vanishes mod 2.
+        """
+        sp = int(np.dot(self.x, other.z) + np.dot(self.z, other.x)) % 2
+        return sp == 0
+
+    def compose(self, other: "PauliWord") -> "PauliWord":
+        r"""Return the operator product ``self @ other`` as a new Pauli word.
+
+        Uses the exact symplectic product rule
+
+        .. math::
+            (X^{x_1} Z^{z_1})(X^{x_2} Z^{z_2})
+              = (-1)^{z_1 \cdot x_2}\, X^{x_1 \oplus x_2} Z^{z_1 \oplus z_2},
+
+        combined with the ``i^{phase}`` scalars (``-1 = i^2``).
+        """
+        new_x = self.x ^ other.x
+        new_z = self.z ^ other.z
+        cross = int(np.dot(self.z, other.x))
+        new_phase = (self.phase + other.phase + 2 * cross) % 4
+        return PauliWord(new_x, new_z, new_phase)
+
+    def conjugate_by_clifford(
+        self, clifford: "Operation", adjoint_left: bool = False
+    ) -> "PauliWord":
+        r"""Return the Clifford conjugation of this Pauli word.
+
+        Computes ``C P C^\dagger`` (``adjoint_left=False``) or
+        ``C^\dagger P C`` (``adjoint_left=True``) symbolically, where *C* is one
+        of the supported Clifford gates ``H, S, CX, CZ`` or a Pauli gate
+        ``PauliX/PauliY/PauliZ``.
+
+        The conjugation is realised by substituting the images of the
+        single-qubit generators ``X_q`` and ``Z_q`` and re-composing in canonical
+        order, so all phases are tracked exactly by :meth:`compose`.
+
+        Args:
+            clifford: The Clifford operation to conjugate by.
+            adjoint_left: If ``True`` compute ``C^\dagger P C``; else
+                ``C P C^\dagger``.
+
+        Returns:
+            The conjugated :class:`PauliWord`.
+
+        Raises:
+            NotImplementedError: If *clifford* is not a supported gate.
+        """
+        n = self.n_qubits
+        name = clifford.name
+
+        # Pauli gates: conjugation is just  Q P Q  (Q is Hermitian => Q^dagger=Q).
+        if name in ("PauliX", "PauliY", "PauliZ"):
+            q = PauliWord.from_operation(clifford, n)
+            return q.compose(self).compose(q)
+
+        try:
+            images_x, images_z = self._clifford_generator_images(
+                name, list(clifford.wires), adjoint_left, n
+            )
+        except NotImplementedError:
+            # Any other Clifford (e.g. CY): fall back to the (exact) matrix
+            # conjugation, which works for arbitrary Cliffords at O(2^n) cost.
+            return self._conjugate_via_matrix(clifford, adjoint_left)
+
+        result = PauliWord.identity(n)
+        result.phase = self.phase
+        for q in range(n):
+            if self.x[q]:
+                result = result.compose(images_x[q])
+            if self.z[q]:
+                result = result.compose(images_z[q])
+        return result
+
+    def _conjugate_via_matrix(
+        self, clifford: "Operation", adjoint_left: bool
+    ) -> "PauliWord":
+        """Matrix-based Clifford conjugation fallback (exact, any Clifford).
+
+        Used by :meth:`conjugate_by_clifford` for Cliffords without a symbolic
+        tableau rule.  Reuses :meth:`to_matrix` / :meth:`from_matrix` and the
+        gate's dense matrix.
+        """
+        n = self.n_qubits
+        C = _embed_matrix(clifford.matrix, clifford.wires, list(range(n)), n)
+        Cd = jnp.conj(C).T
+        mat = self.to_matrix()
+        result = (Cd @ mat @ C) if adjoint_left else (C @ mat @ Cd)
+        return PauliWord.from_matrix(result)
+
+    @staticmethod
+    def _clifford_generator_images(
+        name: str, wires: List[int], adjoint_left: bool, n: int
+    ) -> Tuple[List["PauliWord"], List["PauliWord"]]:
+        """Images of single-qubit generators ``X_q``/``Z_q`` under a Clifford.
+
+        Returns two lists (indexed by qubit) of :class:`PauliWord` giving
+        ``C X_q C^\\dagger`` and ``C Z_q C^\\dagger`` (or the adjoint direction).
+        Qubits outside the gate support map to themselves.
+        """
+
+        def single(label: str, q: int) -> "PauliWord":
+            return PauliWord.from_pauli_string(label, [q], n)
+
+        images_x = [single("X", q) for q in range(n)]
+        images_z = [single("Z", q) for q in range(n)]
+
+        if name == "H":
+            w = wires[0]
+            images_x[w] = single("Z", w)  # H X H = Z
+            images_z[w] = single("X", w)  # H Z H = X
+        elif name == "S":
+            w = wires[0]
+            if adjoint_left:  # S^dagger X S = -Y ; S^dagger Z S = Z
+                images_x[w] = PauliWord.from_pauli_string("Y", [w], n).compose(
+                    PauliWord(np.zeros(n, np.int8), np.zeros(n, np.int8), 2)
+                )
+            else:  # S X S^dagger = Y ; S Z S^dagger = Z
+                images_x[w] = single("Y", w)
+            # images_z[w] unchanged (Z)
+        elif name == "CX":
+            c, t = wires
+            images_x[c] = single("X", c).compose(single("X", t))  # X_c -> X_c X_t
+            images_z[t] = single("Z", c).compose(single("Z", t))  # Z_t -> Z_c Z_t
+            # X_t -> X_t and Z_c -> Z_c unchanged ; CX is Hermitian
+        elif name == "CZ":
+            c, t = wires
+            images_x[c] = single("X", c).compose(single("Z", t))  # X_c -> X_c Z_t
+            images_x[t] = single("Z", c).compose(single("X", t))  # X_t -> Z_c X_t
+            # Z_c, Z_t unchanged ; CZ is Hermitian
+        elif name == "SWAP":
+            a, b = wires
+            images_x[a], images_x[b] = single("X", b), single("X", a)  # swap supports
+            images_z[a], images_z[b] = single("Z", b), single("Z", a)
+        else:
+            raise NotImplementedError(f"No symbolic Clifford rule for gate '{name}'.")
+        return images_x, images_z
+
+    # ---- expectation / conversions -------------------------------------
+    def zero_expectation(self) -> complex:
+        r"""Return ``<0|P|0>`` for the all-zero computational basis state.
+
+        Non-zero only for diagonal words (I/Z only), in which case it equals the
+        global phase ``i^{phase}``.
+        """
+        if not self.is_diagonal:
+            return 0.0 + 0.0j
+        return complex(1j**self.phase)
+
+    def to_pauli_string(self) -> str:
+        """Return the bare Pauli string (ignoring the global phase)."""
+        return "".join(
+            _XZ_TO_LABEL[(int(self.x[q]), int(self.z[q]))] for q in range(self.n_qubits)
+        )
+
+    def leading_phase(self) -> complex:
+        r"""Return the scalar ``c`` such that ``P = c * (bare Pauli string)``.
+
+        Because the bare string already contains ``i^{n_Y}`` from its Y factors,
+        ``c = i^{phase - n_Y}``.
+        """
+        n_y = int(((self.x == 1) & (self.z == 1)).sum())
+        return complex(1j ** ((self.phase - n_y) % 4))
+
+    def to_pauli_string_and_phase(self) -> Tuple[str, complex]:
+        """Return ``(bare Pauli string, leading scalar phase)``."""
+        return self.to_pauli_string(), self.leading_phase()
+
+    def to_matrix(self) -> jnp.ndarray:
+        r"""Return the dense operator matrix ``i^{phase} \bigotimes_q X^{x_q} Z^{z_q}``.
+
+        The per-qubit factor is the symplectic product ``X^{x} Z^{z}`` (so the
+        ``(1, 1)`` factor is ``XZ = -iY``; the ``Y``-vs-``XZ`` phase is carried by
+        ``i^{phase}``).  Inverse of :meth:`from_matrix`.
+        """
+        ident = _PAULI_MATRICES["I"]
+        xmat = _PAULI_MATRICES["X"]
+        zmat = _PAULI_MATRICES["Z"]
+        mat = jnp.array([[1.0 + 0.0j]], dtype=_cdtype())
+        for q in range(self.n_qubits):
+            factor = (xmat if self.x[q] else ident) @ (zmat if self.z[q] else ident)
+            mat = jnp.kron(mat, factor)
+        return (1j**self.phase) * mat
+
+    @classmethod
+    def from_matrix(cls, matrix: jnp.ndarray) -> "PauliWord":
+        r"""Build a Pauli word from a matrix that is a single (signed) Pauli.
+
+        Recovers the dominant Pauli string and folds its (unit) coefficient
+        ``c = i^k`` into the word's phase.  Intended for matrices that are
+        exactly a Pauli up to a ``{\pm 1, \pm i}`` scalar (e.g. the result of
+        Clifford conjugation of a Pauli); the dominant term is returned for
+        general inputs.
+
+        Args:
+            matrix: A ``(2**n, 2**n)`` matrix proportional to a Pauli string.
+
+        Returns:
+            The corresponding :class:`PauliWord` on ``n`` qubits.
+        """
+        coeff, label = _dominant_pauli_label(matrix)
+        n = len(label)
+        word = cls.from_pauli_string(label, list(range(n)), n)
+        # Fold the unit coefficient  c = i^k  into the phase.
+        k = int(round(np.angle(complex(coeff)) / (np.pi / 2))) % 4
+        word.phase = (word.phase + k) % 4
+        return word
+
+    def to_list_repr(self) -> np.ndarray:
+        """Return the legacy int list representation (I=-1, X=0, Y=1, Z=2)."""
+        out = np.full(self.n_qubits, -1, dtype=int)
+        for q in range(self.n_qubits):
+            label = _XZ_TO_LABEL[(int(self.x[q]), int(self.z[q]))]
+            out[q] = {"I": -1, "X": 0, "Y": 1, "Z": 2}[label]
+        return out
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PauliWord):
+            return NotImplemented
+        return (
+            self.phase == other.phase
+            and np.array_equal(self.x, other.x)
+            and np.array_equal(self.z, other.z)
+        )
+
+    def __repr__(self) -> str:
+        phase_str = {0: "+", 1: "+i", 2: "-", 3: "-i"}[self.phase]
+        return f"PauliWord({phase_str}{self.to_pauli_string()})"
