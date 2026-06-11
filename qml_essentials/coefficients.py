@@ -64,7 +64,7 @@ class Coefficients:
 
         coeffs, freqs = cls._fourier_transform(model, mfs=mfs, mts=mts, **kwargs)
 
-        if not jnp.isclose(jnp.sum(coeffs).imag, 0.0, rtol=1.0e-6):
+        if not jnp.isclose(jnp.sum(coeffs).imag, 0.0, atol=1.0e-6):
             raise ValueError(
                 f"Spectrum is not real. Imaginary part of coefficients is:\
                 {jnp.sum(coeffs).imag}"
