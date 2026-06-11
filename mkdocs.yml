@@ -7,11 +7,11 @@ nav:
   - coefficients.md
   - entanglement.md
   - expressibility.md
-  - random_sampling.md
   - training.md
   - jaqsi.md
   - pulses.md
   - noise.md
+  - random_sampling.md
   - references.md
 theme:
   name: material
