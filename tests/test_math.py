@@ -5,6 +5,8 @@ import pennylane as qml
 import pytest
 
 from qml_essentials.model import Model
+from qml_essentials.script import Script
+from qml_essentials.operations import RX, RY, CX
 from qml_essentials.math import (
     quantum_fisher_information,
     fubini_study_metric,
@@ -142,6 +144,27 @@ def test_qfi_model_density():
     assert F.shape == (P, P)
     assert jnp.allclose(F, F.T, atol=1e-7)
     assert jnp.min(jnp.linalg.eigvalsh(F)) >= -1e-6
+
+
+def test_qfi_jaqsi_circuit():
+    """QFI and Fubini-Study metric for a circuit built directly with JAQSI."""
+
+    def state_fn(theta):
+        def circuit(t):
+            RX(t[0], wires=0)
+            RY(t[1], wires=1)
+            CX(wires=[0, 1])
+
+        return Script(circuit, n_qubits=2).execute(type="state", args=(theta,))
+
+    theta = jnp.array([0.7, 1.3])
+    F = quantum_fisher_information(state_fn, theta)
+    g = fubini_study_metric(state_fn, theta)
+
+    # RX and RY each contribute a QFI of 1 on independent qubits; the trailing
+    # parameter-independent CX leaves the QFI invariant.
+    assert jnp.allclose(F, jnp.eye(2), atol=1e-10)
+    assert jnp.allclose(F, 4.0 * g, atol=1e-10)
 
 
 def _hermitian_pd_2x2():

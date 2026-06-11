@@ -39,6 +39,27 @@ The state returned by the callable is assumed to be normalised, which the underl
 Note that `model.params` is passed in its native (batched) shape; the callable closes over any
 data `inputs`, e.g. `lambda p: model(params=p, inputs=x)`.
 
+The callable does not have to come from a `Model`; any function mapping parameters to a state
+vector works, including a circuit built directly with the JAQSI `Script`:
+
+```python
+import jax.numpy as jnp
+from qml_essentials.script import Script
+from qml_essentials.operations import RX, RY, CX
+from qml_essentials.math import quantum_fisher_information, fubini_study_metric
+
+def state_fn(theta):
+    def circuit(t):
+        RX(t[0], wires=0)
+        RY(t[1], wires=1)
+        CX(wires=[0, 1])
+    return Script(circuit, n_qubits=2).execute(type="state", args=(theta,))
+
+theta = jnp.array([0.7, 1.3])
+qfi = quantum_fisher_information(state_fn, theta)
+metric = fubini_study_metric(state_fn, theta)
+```
+
 ## Fubini-Study Metric
 
 The Fubini-Study metric is the real part of the quantum geometric tensor on the manifold of
