@@ -253,7 +253,6 @@ class UnitaryGates:
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
-        input_idx: int = -1,
     ) -> None:
         """
         Apply general rotation gate with optional noise.
@@ -269,7 +268,6 @@ class UnitaryGates:
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
                 Supports BitFlip, PhaseFlip, Depolarizing, and GateError.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
-            input_idx (int): Flag for the tape to track inputs
 
         Returns:
             None: Gate and noise are applied in-place to the circuit.
@@ -278,7 +276,7 @@ class UnitaryGates:
             phi, random_key = UnitaryGates.GateError(phi, noise_params, random_key)
             theta, random_key = UnitaryGates.GateError(theta, noise_params, random_key)
             omega, random_key = UnitaryGates.GateError(omega, noise_params, random_key)
-        op.Rot(phi, theta, omega, wires=wires, input_idx=False)
+        op.Rot(phi, theta, omega, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -288,7 +286,6 @@ class UnitaryGates:
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
-        input_idx: int = -1,
     ) -> None:
         """
         Apply general rotation gate with optional noise.
@@ -303,14 +300,13 @@ class UnitaryGates:
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
                 Supports BitFlip, PhaseFlip, Depolarizing, and GateError.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
-            input_idx (int): Flag for the tape to track inputs
 
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
         if noise_params is not None and "GateError" in noise_params:
             theta, random_key = UnitaryGates.GateError(theta, noise_params, random_key)
-        op.PauliRot(theta, pauli, wires=wires, input_idx=input_idx)
+        op.PauliRot(theta, pauli, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -319,7 +315,6 @@ class UnitaryGates:
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
-        input_idx: int = -1,
     ) -> None:
         """
         Apply X-axis rotation with optional noise.
@@ -329,13 +324,12 @@ class UnitaryGates:
             wires (Union[int, List[int]]): Qubit index or indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
-            input_idx (int): Flag for the tape to track inputs
 
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        op.RX(w, wires=wires, input_idx=input_idx)
+        op.RX(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -344,7 +338,6 @@ class UnitaryGates:
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
-        input_idx: int = -1,
     ) -> None:
         """
         Apply Y-axis rotation with optional noise.
@@ -354,13 +347,12 @@ class UnitaryGates:
             wires (Union[int, List[int]]): Qubit index or indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
-            input_idx (int): Flag for the tape to track inputs
 
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        op.RY(w, wires=wires, input_idx=input_idx)
+        op.RY(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -369,7 +361,6 @@ class UnitaryGates:
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
-        input_idx: int = -1,
     ) -> None:
         """
         Apply Z-axis rotation with optional noise.
@@ -379,13 +370,12 @@ class UnitaryGates:
             wires (Union[int, List[int]]): Qubit index or indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
-            input_idx (int): Flag for the tape to track inputs
 
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        op.RZ(w, wires=wires, input_idx=input_idx)
+        op.RZ(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -394,7 +384,6 @@ class UnitaryGates:
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
-        input_idx: int = -1,
     ) -> None:
         """
         Apply controlled X-rotation with optional noise.
@@ -404,13 +393,12 @@ class UnitaryGates:
             wires (Union[int, List[int]]): Control and target qubit indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
-            input_idx (int): Flag for the tape to track inputs
 
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        op.CRX(w, wires=wires, input_idx=input_idx)
+        op.CRX(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -419,7 +407,6 @@ class UnitaryGates:
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
-        input_idx: int = -1,
     ) -> None:
         """
         Apply controlled Y-rotation with optional noise.
@@ -429,13 +416,12 @@ class UnitaryGates:
             wires (Union[int, List[int]]): Control and target qubit indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
-            input_idx (int): Flag for the tape to track inputs
 
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        op.CRY(w, wires=wires, input_idx=input_idx)
+        op.CRY(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -444,7 +430,6 @@ class UnitaryGates:
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
-        input_idx: int = -1,
     ) -> None:
         """
         Apply controlled Z-rotation with optional noise.
@@ -454,13 +439,12 @@ class UnitaryGates:
             wires (Union[int, List[int]]): Control and target qubit indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
-            input_idx (int): Flag for the tape to track inputs
 
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        op.CRZ(w, wires=wires, input_idx=input_idx)
+        op.CRZ(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -469,7 +453,6 @@ class UnitaryGates:
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
-        input_idx: int = -1,
     ) -> None:
         """
         Apply two-qubit XX rotation with optional noise.
@@ -481,13 +464,12 @@ class UnitaryGates:
             wires (Union[int, List[int]]): Two qubit indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
-            input_idx (int): Flag for the tape to track inputs.
 
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        op.RXX(w, wires=wires, input_idx=input_idx)
+        op.RXX(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -496,7 +478,6 @@ class UnitaryGates:
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
-        input_idx: int = -1,
     ) -> None:
         """
         Apply two-qubit YY rotation with optional noise.
@@ -508,13 +489,12 @@ class UnitaryGates:
             wires (Union[int, List[int]]): Two qubit indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
-            input_idx (int): Flag for the tape to track inputs.
 
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        op.RYY(w, wires=wires, input_idx=input_idx)
+        op.RYY(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -523,7 +503,6 @@ class UnitaryGates:
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
-        input_idx: int = -1,
     ) -> None:
         """
         Apply two-qubit ZZ rotation with optional noise.
@@ -535,13 +514,12 @@ class UnitaryGates:
             wires (Union[int, List[int]]): Two qubit indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
-            input_idx (int): Flag for the tape to track inputs.
 
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        op.RZZ(w, wires=wires, input_idx=input_idx)
+        op.RZZ(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -550,7 +528,6 @@ class UnitaryGates:
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
-        input_idx: int = -1,
     ) -> None:
         """
         Apply two-qubit ZX rotation with optional noise.
@@ -563,13 +540,12 @@ class UnitaryGates:
             wires (Union[int, List[int]]): Two qubit indices ``[zwire, xwire]``.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
-            input_idx (int): Flag for the tape to track inputs.
 
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        op.RZX(w, wires=wires, input_idx=input_idx)
+        op.RZX(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -578,7 +554,6 @@ class UnitaryGates:
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
-        input_idx: int = -1,
     ) -> None:
         """
         Apply controlled phase shift gate with optional noise.
@@ -591,13 +566,12 @@ class UnitaryGates:
             wires (Union[int, List[int]]): Control and target qubit indices.
             noise_params (Optional[Dict[str, float]]): Noise parameters dictionary.
             random_key (Optional[jax.random.PRNGKey]): JAX random key for noise.
-            input_idx (int): Flag for the tape to track inputs
 
         Returns:
             None: Gate and noise are applied in-place to the circuit.
         """
         w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
-        op.ControlledPhaseShift(w, wires=wires, input_idx=input_idx)
+        op.ControlledPhaseShift(w, wires=wires)
         UnitaryGates.Noise(wires, noise_params)
 
     @staticmethod
@@ -690,7 +664,6 @@ class UnitaryGates:
         wires: Union[int, List[int]],
         noise_params: Optional[Dict[str, float]] = None,
         random_key: Optional[jax.random.PRNGKey] = None,
-        input_idx: int = -1,
     ) -> None:
         """Apply Golomb encoding as a diagonal unitary on all given wires.
 
@@ -710,7 +683,6 @@ class UnitaryGates:
                 gate.
             noise_params: Optional noise parameters dictionary.
             random_key: JAX random key for stochastic noise.
-            input_idx: Flag for the tape to track inputs.
 
         Returns:
             None: Gate and noise are applied in-place to the circuit.
@@ -725,5 +697,5 @@ class UnitaryGates:
         # Build diagonal: exp(-i * mark_j * x)
         diag = jnp.exp(-1j * marks * w)
 
-        op.DiagonalQubitUnitary(diag, wires=wires_list, input_idx=input_idx)
+        op.DiagonalQubitUnitary(diag, wires=wires_list)
         UnitaryGates.Noise(wires_list, noise_params)

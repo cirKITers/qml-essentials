@@ -157,6 +157,32 @@ class TestCoefficients:
             "Fourier series does not match model expectation"
         )
 
+    @pytest.mark.unittest
+    def test_evaluate_fourier_series_accepts_grid_and_flat_spectra(self) -> None:
+        model = Model(
+            3,
+            1,
+            "Hardware_Efficient",
+            encoding=["RX", "RY"],
+            output_qubit=0,
+        )
+        inputs = np.ones(2)
+        exp_model = model(inputs=inputs)
+
+        tree = FourierTree(model)
+        tree_coeffs, tree_freqs = tree.get_spectrum(force_mean=False)
+        exp_tree = Coefficients.evaluate_Fourier_series(
+            coefficients=tree_coeffs[0], frequencies=tree_freqs[0], inputs=inputs
+        )
+
+        fft_coeffs, fft_freqs = Coefficients.get_spectrum(model, shift=True)
+        exp_fft = Coefficients.evaluate_Fourier_series(
+            coefficients=fft_coeffs, frequencies=fft_freqs, inputs=inputs
+        )
+
+        assert jnp.isclose(exp_tree, exp_model, atol=1.0e-5)
+        assert jnp.isclose(exp_fft, exp_model, atol=1.0e-5)
+
     @pytest.mark.smoketest
     def test_batch(self) -> None:
         n_samples = 3
@@ -496,6 +522,223 @@ class TestFourierTree:
                 "Analytic Fourier series evaluation not working"
             )
 
+    @pytest.mark.unittest
+    def test_coefficients_tree_multi_feature(self) -> None:
+        """Multi-dimensional spectrum: the analytical Fourier series and the
+        tree expectation must reproduce the circuit for a 2-feature model."""
+        import numpy as np
+
+        model = Model(
+            n_qubits=3,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            output_qubit=0,
+            encoding=["RX", "RY"],
+        )
+        assert model.n_input_feat == 2
+
+        tree = FourierTree(model)
+        coeffs, freqs = tree.get_spectrum(force_mean=True)
+        coeffs = coeffs[0]
+        freqs = np.asarray(freqs[0])
+
+        # d-dimensional frequency vectors (n_freq, d).
+        assert freqs.ndim == 2 and freqs.shape[1] == 2
+        assert jnp.isclose(jnp.sum(coeffs).imag, 0.0, atol=1.0e-5)
+
+        rng = np.random.default_rng(0)
+        for _ in range(8):
+            x = rng.uniform(-np.pi, np.pi, size=2)
+            series = jnp.sum(coeffs * jnp.exp(1j * (freqs @ x)))
+            tree_val = tree(inputs=x, force_mean=True)
+            model_val = jnp.mean(model(model.params, inputs=jnp.array([x])))
+
+            assert jnp.isclose(jnp.real(series), model_val, atol=1.0e-5), (
+                "Multi-feature analytical Fourier series does not match circuit"
+            )
+            assert jnp.isclose(tree_val, model_val, atol=1.0e-5), (
+                "Multi-feature tree evaluation does not match circuit"
+            )
+
+    @pytest.mark.unittest
+    def test_coefficients_tree_input_scaling(self) -> None:
+        """A custom Pauli circuit whose encoding rotations carry heterogeneous
+        per-gate data scalings (1, 3, 9) must produce the correctly *scaled*
+        Fourier frequencies (not unit counts), match the FFT spectrum, and
+        reproduce the circuit output.  The encodings carry no tags: feature and
+        scaling are auto-detected from the tape."""
+        from qml_essentials.gates import Gates as g
+        import qml_essentials.jaqsi as js
+
+        def variational(params, inputs, *args, **kwargs):
+            params = params.squeeze()
+            g.PauliRot(1 * inputs, "Y", wires=[0])
+            g.PauliRot(params[0], "XZX", wires=[0, 1, 2])
+            g.PauliRot(3 * inputs, "XZ", wires=[0, 1])
+            g.PauliRot(params[1], "YY", wires=[0, 1])
+            g.PauliRot(9 * inputs, "XY", wires=[0, 1])
+
+        def prep():
+            model = Model(n_qubits=3, n_layers=1, output_qubit=0)
+            model._params_shape = (2, 1)
+            model.initialize_params()
+            model.degree = (27,)  # 2 * max_freq + 1: the FFT sampling grid
+            model.script = js.Script(f=variational, n_qubits=3)
+            return model
+
+        model = prep()
+        expected = {-13, -11, -7, -5, 5, 7, 11, 13}
+
+        # Per-gate scaling recovered from the canonical tape: cols 0/2/4 -> 1/3/9.
+        tree = FourierTree(model)
+        assert tree.input_scaling[tree.all_input_indices].tolist() == [1, 3, 9]
+
+        coeffs, freqs = tree.get_spectrum()
+        coeffs, freqs = np.asarray(coeffs[0]), np.asarray(freqs[0])
+        nz = np.abs(coeffs) > 1e-8
+        assert set(freqs[nz].astype(int).tolist()) == expected
+        assert jnp.isclose(jnp.sum(coeffs).imag, 0.0, atol=1.0e-5)
+
+        # The exact symbolic support agrees.
+        assert set(np.asarray(model.exact_spectrum()[0]).tolist()) == expected
+
+        # ... and so does the numerical FFT spectrum.
+        fft_coeffs, fft_freqs = Coefficients.get_spectrum(prep(), shift=True)
+        fft_nz = np.abs(np.asarray(fft_coeffs)) > 1e-8
+        assert set(np.asarray(fft_freqs)[fft_nz].astype(int).tolist()) == expected
+
+        # The 'dp' support method cannot represent per-gate scaling.
+        with pytest.raises(NotImplementedError, match="scaling"):
+            tree.get_exact_support(method="dp")
+
+        # The analytical Fourier series reproduces the circuit output.
+        rng = np.random.default_rng(0)
+        for _ in range(6):
+            x = float(rng.uniform(-np.pi, np.pi))
+            series = np.real(np.sum(coeffs * np.exp(1j * freqs * x)))
+            circ = np.asarray(model(model.params, inputs=jnp.array([[x]])))
+            assert np.isclose(series, circ.reshape(-1)[0], atol=1.0e-5)
+
+    @pytest.mark.unittest
+    def test_coefficients_tree_multi_feature_per_gate_rejected(self) -> None:
+        """Auto-detection requires each encoding rotation to be linear in a
+        single feature; a rotation mixing two features is rejected."""
+        from qml_essentials.gates import Gates as g
+        import qml_essentials.jaqsi as js
+
+        def variational(params, inputs, *args, **kwargs):
+            params = params.squeeze()
+            g.PauliRot(inputs[..., 0] + inputs[..., 1], "X", wires=[0])
+            g.PauliRot(params[0], "Z", wires=[0])
+            g.PauliRot(params[1], "Z", wires=[1])
+
+        model = Model(n_qubits=2, n_layers=1, output_qubit=0, encoding=["RX", "RY"])
+        model._params_shape = (2, 1)
+        model.initialize_params()
+        model.script = js.Script(f=variational, n_qubits=2)
+
+        with pytest.raises(NotImplementedError, match="single feature"):
+            FourierTree(model)
+
+    @pytest.mark.unittest
+    def test_fourier_tree_batched_params(self) -> None:
+        """Models can carry batched parameters (e.g. after FCC sampling with
+        ``initialize_params(repeat=...)``); the tree must fall back to the
+        first parameter set instead of feeding batched angles into the gates."""
+        import numpy as np
+
+        model = Model(n_qubits=2, n_layers=1, circuit_type="Circuit_19", output_qubit=0)
+        model.initialize_params(model.random_key, repeat=4)
+        assert model.params.ndim == 3 and model.params.shape[0] == 4
+        first_params = model.params[0]
+
+        with pytest.warns(UserWarning, match="batched"):
+            tree = FourierTree(model)
+
+        coeffs, freqs = tree.get_spectrum()
+        assert set(np.asarray(freqs[0]).tolist()).issubset(
+            set(int(v) for v in model.frequencies[0])
+        )
+
+        # Evaluation must match the circuit run with the first parameter set.
+        with pytest.warns(UserWarning, match="batched"):
+            val_tree = tree(inputs=0.5)
+        val_model = model(first_params, inputs=jnp.array([[0.5]]))
+        assert jnp.isclose(val_tree, val_model, atol=1.0e-5).all()
+
+    @pytest.mark.unittest
+    def test_exact_support_dp_matches_tree(self) -> None:
+        """The merged-state DP support equals the fully exact tree support
+        on circuits without cross-path cancellations."""
+        import numpy as np
+
+        for circuit_type in ["Circuit_19", "Hardware_Efficient"]:
+            model = Model(
+                n_qubits=3, n_layers=1, circuit_type=circuit_type, output_qubit=0
+            )
+            tree = FourierTree(model)
+            sup_tree = tree.get_exact_support(method="tree")
+            sup_dp = tree.get_exact_support(method="dp")
+            for st, sd in zip(sup_tree, sup_dp):
+                assert set(np.asarray(st).tolist()) == set(np.asarray(sd).tolist()), (
+                    f"DP and tree supports differ for {circuit_type}"
+                )
+
+    @pytest.mark.unittest
+    def test_exact_support_dp_upper_bound(self) -> None:
+        """On directly repeated encodings the tree detects the cross-path
+        cancellation at omega=0 while the DP yields the structural superset."""
+        import numpy as np
+
+        model = Model(
+            n_qubits=1,
+            n_layers=2,
+            circuit_type="No_Ansatz",
+            data_reupload=True,
+            encoding="RX",
+            output_qubit=0,
+        )
+        tree = FourierTree(model)
+        sup_tree = set(np.asarray(tree.get_exact_support("tree")[0]).tolist())
+        sup_dp = set(np.asarray(tree.get_exact_support("dp")[0]).tolist())
+
+        assert sup_tree == {-2, 2}
+        assert sup_dp == {-2, 0, 2}
+        assert sup_tree.issubset(sup_dp)
+
+    @pytest.mark.unittest
+    def test_exact_support_dp_deep_circuit(self) -> None:
+        """For deep entangling circuits the explicit tree is combinatorially
+        infeasible; the DP support stays cheap and must contain every
+        FFT-significant frequency while being a subset of the naive grid."""
+        import numpy as np
+
+        model = Model(
+            n_qubits=4,
+            n_layers=4,
+            circuit_type="Strongly_Entangling",
+            output_qubit=0,
+        )
+        tree = FourierTree(model)
+        union = set()
+        for sup in tree.get_exact_support(method="dp"):
+            union |= set(np.asarray(sup).tolist())
+
+        naive = set(int(v) for v in model.frequencies[0])
+        assert union.issubset(naive)
+
+        fft_coeffs, fft_freqs = Coefficients.get_spectrum(
+            model, shift=True, force_mean=True
+        )
+        significant = {
+            int(f)
+            for f, c in zip(
+                np.asarray(fft_freqs).ravel(), np.asarray(fft_coeffs).ravel()
+            )
+            if abs(c) > 1e-4
+        }
+        assert significant.issubset(union)
+
 
 class TestFCC:
     """Tests for Fourier Coefficient Correlation (FCC) computation."""
@@ -613,6 +856,40 @@ class TestFCC:
         assert jnp.isclose(jnp.abs(corr[0, 1]), 1.0, atol=1.0e-10)
         assert jnp.isclose(jnp.angle(corr[0, 1]), phase, atol=1.0e-10)
         assert jnp.isclose(jnp.angle(corr[1, 0]), -phase, atol=1.0e-10)
+
+    @pytest.mark.unittest
+    def test_covariance_correlation(self) -> None:
+        """Covariance should match the Hermitian pairwise sample covariance and
+        be reachable via `method="covariance"`."""
+        N = 1000
+        K = 5
+        seed = 314
+        rng = np.random.default_rng(seed)
+
+        coeffs = rng.normal(size=(N, K)) + 1j * rng.normal(size=(N, K))
+        coeffs[0, 1] = np.nan + 0.0j
+        coeffs[1, 2] = np.inf + 0.0j
+
+        covariance = FCC._covariance(jnp.array(coeffs))
+        cov_from_method = FCC._correlate(jnp.array(coeffs), method="covariance")
+
+        assert jnp.allclose(
+            covariance, cov_from_method, atol=1.0e-10, equal_nan=True
+        ), "method='covariance' must dispatch to _covariance."
+
+        for i in range(K):
+            for j in range(K):
+                valid = np.isfinite(coeffs[:, i]) & np.isfinite(coeffs[:, j])
+                x = coeffs[valid, i]
+                y = coeffs[valid, j]
+                x_centered = x - np.mean(x)
+                y_centered = y - np.mean(y)
+                reference = np.sum(np.conj(x_centered) * y_centered) / (len(x) - 1)
+
+                assert jnp.isclose(covariance[i, j], reference, atol=1.0e-5), (
+                    f"Covariance mismatch at ({i},{j}): "
+                    f"got {covariance[i, j]}, expected {reference}"
+                )
 
     @pytest.mark.unittest
     def test_spearman_correlation_complex(self) -> None:
