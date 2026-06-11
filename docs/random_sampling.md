@@ -30,6 +30,8 @@ $$
 \rho = \frac{G G^\dagger}{\mathrm{Tr}(G G^\dagger)}.
 $$
 
+The (complex) Ginibre matrix is a random matrix whose entries are independent Gaussian random variables, s.t. $\mathbb{E}\left[\left|G_{i j}\right|^{2}\right]=1$.
+
 ```python
 rhos = DensityMatrix.hilbert_schmidt(
     n_qubits=2, n_samples=1000, random_key=jax.random.key(1000)
@@ -54,7 +56,7 @@ rhos = DensityMatrix.induced(
 )
 ```
 
-This measure is described in [Zyczkowski & Sommers (2000) - Induced measures in the space of mixed quantum states](https://doi.org/10.1088/0305-4470/34/35/335) and [Sommers & Zyczkowski (2003) - Bures volume of the set of mixed quantum states](https://doi.org/10.1088/0305-4470/36/39/308).
+This measure is described in [Zyczkowski & Sommers (2000) - Induced measures in the space of mixed quantum states](https://doi.org/10.1088/0305-4470/34/35/335).
 
 ## Bures
 
@@ -66,15 +68,13 @@ $$
             {\mathrm{Tr}\!\left[(\mathbb{1} + U)\, G G^\dagger\, (\mathbb{1} + U)^\dagger\right]}.
 $$
 
-The (complex) Ginibre matrix is a random matrix whose entries are independent Gaussian random variables, s.t. $\mathbb{E}\left[\left|G_{i j}\right|^{2}\right]=1$.
-
 ```python
 rhos = DensityMatrix.bures(
     n_qubits=2, n_samples=1000, random_key=jax.random.key(1000)
 )
 ```
 
-The construction and its mean purity $\mathbb{E}[\mathrm{Tr}\,\rho^2] = (5d^2 + 1)/(2d(d^2 + 2))$ are given in [Osipov, Sommers & Zyczkowski, *Random Bures mixed states and the distribution of their purity*](https://arxiv.org/abs/1004.1655).
+The construction and its mean purity $\mathbb{E}[\mathrm{Tr}\,\rho^2] = (5d^2 + 1)/(2d(d^2 + 2))$ are given in [Osipov, Sommers & Zyczkowski  (2009) - Random Bures mixed states and the distribution of their purity](https://doi.org/10.1088/1751-8113/43/5/055302) and [Sommers & Zyczkowski (2003) - Bures volume of the set of mixed quantum states](https://doi.org/10.1088/0305-4470/36/39/308).
 
 ## Eigenvalue Sampling
 
