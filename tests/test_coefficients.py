@@ -858,6 +858,40 @@ class TestFCC:
         assert jnp.isclose(jnp.angle(corr[1, 0]), -phase, atol=1.0e-10)
 
     @pytest.mark.unittest
+    def test_covariance_correlation(self) -> None:
+        """Covariance should match the Hermitian pairwise sample covariance and
+        be reachable via `method="covariance"`."""
+        N = 1000
+        K = 5
+        seed = 314
+        rng = np.random.default_rng(seed)
+
+        coeffs = rng.normal(size=(N, K)) + 1j * rng.normal(size=(N, K))
+        coeffs[0, 1] = np.nan + 0.0j
+        coeffs[1, 2] = np.inf + 0.0j
+
+        covariance = FCC._covariance(jnp.array(coeffs))
+        cov_from_method = FCC._correlate(jnp.array(coeffs), method="covariance")
+
+        assert jnp.allclose(
+            covariance, cov_from_method, atol=1.0e-10, equal_nan=True
+        ), "method='covariance' must dispatch to _covariance."
+
+        for i in range(K):
+            for j in range(K):
+                valid = np.isfinite(coeffs[:, i]) & np.isfinite(coeffs[:, j])
+                x = coeffs[valid, i]
+                y = coeffs[valid, j]
+                x_centered = x - np.mean(x)
+                y_centered = y - np.mean(y)
+                reference = np.sum(np.conj(x_centered) * y_centered) / (len(x) - 1)
+
+                assert jnp.isclose(covariance[i, j], reference, atol=1.0e-5), (
+                    f"Covariance mismatch at ({i},{j}): "
+                    f"got {covariance[i, j]}, expected {reference}"
+                )
+
+    @pytest.mark.unittest
     def test_spearman_correlation_complex(self) -> None:
         """Spearman on complex input should match scipy on stacked real/imag."""
         N = 1000
