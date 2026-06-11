@@ -185,39 +185,54 @@ class Coefficients:
         Returns:
             float: The function value at the input point.
         """
-        if isinstance(frequencies, list):
-            if len(coefficients.shape) <= len(frequencies):
-                coefficients = coefficients[..., jnp.newaxis]
-        else:
-            if len(coefficients.shape) == 1:
-                coefficients = coefficients[..., jnp.newaxis]
+        coefficients = jnp.asarray(coefficients)
 
-        if isinstance(inputs, list):
-            inputs = jnp.array(inputs)
-        if len(inputs.shape) < 1:
-            inputs = inputs[jnp.newaxis, ...]
-
-        if isinstance(frequencies, list):
-            input_dim = len(frequencies)
-            frequencies = jnp.stack(jnp.meshgrid(*frequencies))
-            if input_dim != len(inputs):
-                frequencies = jnp.repeat(
-                    frequencies[jnp.newaxis, ...], inputs.shape[0], axis=0
-                )
-                freq_inputs = jnp.einsum("bi...,b->b...", frequencies, inputs)
-                exponents = jnp.exp(1j * freq_inputs).T
-                exp = jnp.einsum("jl...k,jl...b->b...k", coefficients, exponents)
-            else:
-                freq_inputs = jnp.einsum("i...,i->...", frequencies, inputs)
-                exponents = jnp.exp(1j * freq_inputs).T
-                exp = jnp.einsum("jl...k,jl...->k...", coefficients, exponents)
-        else:
-            frequencies = jnp.repeat(
-                frequencies[jnp.newaxis, ...], inputs.shape[0], axis=0
+        def flatten_grid(freq_axes):
+            freq_axes = [jnp.asarray(freq) for freq in freq_axes]
+            freq_grid = jnp.stack(jnp.meshgrid(*freq_axes, indexing="ij"), axis=-1)
+            flat_frequencies = freq_grid.reshape(-1, len(freq_axes))
+            flat_coefficients = coefficients.reshape(
+                flat_frequencies.shape[0], *coefficients.shape[len(freq_axes) :]
             )
-            freq_inputs = jnp.einsum("i...,i->i...", frequencies, inputs)
-            exponents = jnp.exp(1j * freq_inputs)
-            exp = jnp.einsum("j...k,ij...->ik...", coefficients, exponents)
+            return flat_coefficients, flat_frequencies
+
+        if isinstance(frequencies, list):
+            flat_coefficients, flat_frequencies = flatten_grid(frequencies)
+        else:
+            frequencies = jnp.asarray(frequencies)
+            if frequencies.ndim == 1:
+                flat_frequencies = frequencies[:, jnp.newaxis]
+                flat_coefficients = coefficients.reshape(
+                    flat_frequencies.shape[0], *coefficients.shape[1:]
+                )
+            else:
+                n_features, n_axis_freqs = frequencies.shape
+                is_axis_frequencies = (
+                    coefficients.shape[:n_features] == (n_axis_freqs,) * n_features
+                )
+
+                if is_axis_frequencies:
+                    flat_coefficients, flat_frequencies = flatten_grid(frequencies)
+                else:
+                    flat_frequencies = frequencies
+                    flat_coefficients = coefficients.reshape(
+                        flat_frequencies.shape[0], *coefficients.shape[1:]
+                    )
+
+        inputs = jnp.asarray(inputs)
+        if inputs.ndim == 0:
+            inputs = inputs.reshape(1, 1)
+        elif inputs.ndim == 1:
+            if flat_frequencies.shape[1] == 1:
+                inputs = inputs[:, jnp.newaxis]
+            elif inputs.shape[0] == flat_frequencies.shape[1]:
+                inputs = inputs[jnp.newaxis, :]
+            else:
+                inputs = jnp.repeat(
+                    inputs[:, jnp.newaxis], flat_frequencies.shape[1], axis=1
+                )
+        exponents = jnp.exp(1j * (inputs @ flat_frequencies.T))
+        exp = jnp.tensordot(exponents, flat_coefficients, axes=([1], [0]))
 
         return jnp.squeeze(jnp.real(exp))
 

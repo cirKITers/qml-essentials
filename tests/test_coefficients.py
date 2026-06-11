@@ -157,6 +157,32 @@ class TestCoefficients:
             "Fourier series does not match model expectation"
         )
 
+    @pytest.mark.unittest
+    def test_evaluate_fourier_series_accepts_grid_and_flat_spectra(self) -> None:
+        model = Model(
+            3,
+            1,
+            "Hardware_Efficient",
+            encoding=["RX", "RY"],
+            output_qubit=0,
+        )
+        inputs = np.ones(2)
+        exp_model = model(inputs=inputs)
+
+        tree = FourierTree(model)
+        tree_coeffs, tree_freqs = tree.get_spectrum(force_mean=False)
+        exp_tree = Coefficients.evaluate_Fourier_series(
+            coefficients=tree_coeffs[0], frequencies=tree_freqs[0], inputs=inputs
+        )
+
+        fft_coeffs, fft_freqs = Coefficients.get_spectrum(model, shift=True)
+        exp_fft = Coefficients.evaluate_Fourier_series(
+            coefficients=fft_coeffs, frequencies=fft_freqs, inputs=inputs
+        )
+
+        assert jnp.isclose(exp_tree, exp_model, atol=1.0e-5)
+        assert jnp.isclose(exp_fft, exp_model, atol=1.0e-5)
+
     @pytest.mark.smoketest
     def test_batch(self) -> None:
         n_samples = 3
