@@ -1,10 +1,6 @@
 # Math Utils
 
-The `math` module collects model-agnostic helpers that operate directly on the quantum
-states produced by a `Model` — either state vectors of shape $(2^N,)$ or density matrices
-of shape $(2^N, 2^N)$.
-They are plain functions on (potentially batched) arrays and do not depend on the `Model`
-class itself.
+A collection of model-agnostic math tools, operating on density matrices or states directly.
 
 ```python
 from qml_essentials.math import quantum_fisher_information, fubini_study_metric, fidelity, trace_distance, phase_difference
@@ -12,27 +8,20 @@ from qml_essentials.math import quantum_fisher_information, fubini_study_metric,
 
 ## Quantum Fisher Information
 
-The *Quantum Fisher Information* (QFI) is the metric tensor of the state manifold evaluated
-at a specific parameter point $\theta$.
-Because it depends on the *derivatives* of the state with respect to the parameters, it is
-computed from the state as a **function** of the parameters rather than from a single state.
-The Jacobian is obtained via forward-mode automatic differentiation, which yields the complex
-Jacobian directly for the real-valued circuit parameters.
+The Quantum Fisher Information (QFI) is the metric tensor of the state manifold evaluated at a specific parameter point $\theta$.
+Because it depends on the derivatives of the state with respect to the parameters, it is computed from the state as a **function** of the parameters rather than from a single state.
+The Jacobian is obtained via forward-mode automatic differentiation, which yields the complex Jacobian directly for the real-valued circuit parameters.
 
-For a pure, normalised state $\ket{\psi(\theta)}$ the QFI is the Fubini-Study metric (scaled
-by four):
+For a pure, normalised state $\ket{\psi(\theta)}$ the QFI is the Fubini-Study metric (scaled by four):
 
 \[F_{ij} = 4\,\mathrm{Re}\left[\braket{\partial_i\psi | \partial_j\psi} - \braket{\partial_i\psi | \psi}\braket{\psi | \partial_j\psi}\right]\]
 
-For a mixed state $\rho(\theta) = \sum_k p_k \ket{k}\bra{k}$ the QFI is given through the
-symmetric logarithmic derivative:
+For a mixed state $\rho(\theta) = \sum_k p_k \ket{k}\bra{k}$ the QFI is given through the symmetric logarithmic derivative:
 
 \[F_{ij} = 2 \sum_{k, l\,:\,p_k + p_l > 0} \frac{\mathrm{Re}\left(\braket{k | \partial_i\rho | l}\braket{l | \partial_j\rho | k}\right)}{p_k + p_l}\]
 
-Both cases are handled by the same function, which dispatches on the kind of state returned
-by the provided callable.
-Set the model's `execution_type` to `"state"` to obtain the pure-state QFI, or to `"density"`
-(e.g. for noisy circuits) to obtain the mixed-state QFI:
+Both cases are handled by the same function, which dispatches on the kind of state returned by the provided callable.
+Set the model's `execution_type` to `"state"` to obtain the pure-state QFI, or to `"density"` (e.g. for noisy circuits) to obtain the mixed-state QFI:
 
 ```python
 from qml_essentials.model import Model
@@ -44,17 +33,15 @@ model.execution_type = "state"
 qfi = quantum_fisher_information(lambda p: model(params=p), model.params)
 ```
 
-The result is a real, symmetric $(P, P)$ matrix, where $P$ is the total number of parameters
-(the parameter axes are flattened).
-The state returned by the callable is assumed to be normalised, which the underlying simulator
-guarantees.
+The result is a real, symmetric $(P, P)$ matrix, where $P$ is the total number of parameters (the parameter axes are flattened).
+The state returned by the callable is assumed to be normalised, which the underlying simulator guarantees.
 
 Note that `model.params` is passed in its native (batched) shape; the callable closes over any
 data `inputs`, e.g. `lambda p: model(params=p, inputs=x)`.
 
 ## Fubini-Study Metric
 
-The *Fubini-Study metric* is the real part of the quantum geometric tensor on the manifold of
+The Fubini-Study metric is the real part of the quantum geometric tensor on the manifold of
 pure states.
 It is the underlying geometric object of the pure-state QFI and is related to it by a factor of
 four, $F_{ij} = 4\,g_{ij}$:
