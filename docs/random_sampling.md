@@ -19,7 +19,16 @@ rhos = DensityMatrix.hilbert_schmidt(
 
 Here, `n_samples` is the number of density matrices to draw and `random_key` is an optional JAX random key. If not provided, it defaults to `jax.random.key(1000)`.
 
-The module is structured so that it can later be extended with `StateVector`, `Hermitian`, and `Unitary` samplers, reusing the same low-level primitives.
+An overview of the methods and their properties is given in the following table:
+
+| Method | Distribution / measure | Typical properties | Parameters | Notes / caveats |
+|---|---|---|---|---|
+| **Hilbert–Schmidt** | Uniform with respect to Hilbert–Schmidt / Frobenius volume | Full-rank almost surely; moderately mixed; “Euclidean-uniform” in state space | None beyond dimension \(d\) | Often the default choice if one wants “uniform” density matrices |
+| **Bures** | Bures measure, induced by Bures distance / quantum fidelity | Full-rank almost surely; tends to sample states closer to the boundary than Hilbert–Schmidt; more weight on purer states | None beyond \(d\) | Often considered more physically meaningful because Bures distance is related to state distinguishability |
+| **Induced measure** | Induced ensemble with environment dimension \(k\) | Rank \(\leq \min(d,k)\); for \(k<d\), rank-deficient; for \(k\gg d\), concentrated near maximally mixed state | Ancilla/environment dimension \(k\) | Hilbert–Schmidt is the special case \(k=d\). Pure states correspond to \(k=1\) |
+| **Eigenvalue + eigenvector method** | Depends entirely on chosen eigenvalue distribution | Highly flexible; lets you control purity, rank, spectrum | Eigenvalue distribution, e.g. Dirichlet distribution | Sampling eigenvalues uniformly from the simplex does **not** give Hilbert–Schmidt measure; missing eigenvalue-repulsion factors |
+
+Mathematical details and the usage of these methods is detailled in the sections below.
 
 ## Hilbert-Schmidt
 
@@ -64,8 +73,7 @@ The Bures measure is induced by the Bures (statistical-distance) metric and is a
 A sample combines a Ginibre matrix $G$ with an independently drawn Haar-random unitary $U$:
 
 $$
-\rho = \frac{(\mathbb{1} + U)\, G G^\dagger\, (\mathbb{1} + U)^\dagger}
-            {\mathrm{Tr}\!\left[(\mathbb{1} + U)\, G G^\dagger\, (\mathbb{1} + U)^\dagger\right]}.
+\rho = \frac{(\mathbb{1} + U)\, G G^\dagger\, (\mathbb{1} + U)^\dagger}{\mathrm{Tr}\!\left[(\mathbb{1} + U)\, G G^\dagger\, (\mathbb{1} + U)^\dagger\right]}.
 $$
 
 ```python
