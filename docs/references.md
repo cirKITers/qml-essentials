@@ -226,8 +226,16 @@ from qml_essentials.operations import KrausChannel
 ## Math
 
 ```python
-from qml_essentials.math import fidelity, trace_distance, phase_difference
+from qml_essentials.math import quantum_fisher_information, fubini_study_metric, fidelity, trace_distance, phase_difference
 ```
+
+::: qml_essentials.math.quantum_fisher_information
+    options:
+      heading_level: 3
+
+::: qml_essentials.math.fubini_study_metric
+    options:
+      heading_level: 3
 
 ::: qml_essentials.math.fidelity
     options:
