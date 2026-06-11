@@ -58,11 +58,7 @@ from qml_essentials.math import fubini_study_metric
 g = fubini_study_metric(lambda p: model(params=p), model.params)
 ```
 
-## State comparison utilities
-
-The remaining helpers compare two given quantum states.
-
-### Fidelity
+## Fidelity
 
 `fidelity(state0, state1)` computes the fidelity between two states, accepting either state
 vectors or density matrices.
@@ -71,7 +67,7 @@ while for density matrices it uses the Uhlmann fidelity
 $F(\rho, \sigma) = \left(\mathrm{Tr}\sqrt{\sqrt{\rho}\,\sigma\,\sqrt{\rho}}\right)^2$.
 Both single states and batches of shape $(B, \dots)$ are supported.
 
-### Trace distance
+## Trace distance
 
 `trace_distance(state0, state1)` returns the trace distance between two density matrices,
 
@@ -79,13 +75,13 @@ Both single states and batches of shape $(B, \dots)$ are supported.
 
 where $\lambda_i$ are the eigenvalues of $\rho - \sigma$.
 
-### Phase difference
+## Phase difference
 
 `phase_difference(state0, state1)` returns the phase $\arg\braket{\psi | \phi}$ between two
 state vectors.
 A value of zero indicates the two states differ by at most a real global factor.
 
-### Matrix logarithm
+## Matrix logarithm
 
 `logm_v(A)` computes the matrix logarithm of a single matrix of shape $(d, d)$ or of each
 matrix in a batch of shape $(B, d, d)$, as used internally by the entropy-based measures.
