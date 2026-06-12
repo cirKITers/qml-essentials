@@ -12,17 +12,17 @@ In this graph, the edge weights represent the number child gates required to imp
 The gates at the bottom represent the fundamental gates.
 
 Generally, the gates are available through the same interface as the regular unitary gates.
-Pulse simulation can easily be enabled by adding the `mode="pulse"` keyword argument, e.g.:
+Pulse simulation can easily be enabled by adding the `gate_mode="pulse"` keyword argument, e.g.:
 
 ```python
 from qml_essentials.gates import Gates
 
-Gates.CY(wires=[0, 1], mode="pulse")
+Gates.CY(wires=[0, 1], gate_mode="pulse")
 ```
 
 ## Pulse Parameters per Gate
 
-You can use the `PulseInformation` class in `qml_essentials.ansaetze` to access both the number and optimized values of the pulse parameters for each gate.
+You can use the `PulseInformation` class in `qml_essentials.gates` to access both the number and optimized values of the pulse parameters for each gate.
 Consider the following code snippet:
 
 ```python
@@ -84,6 +84,29 @@ Similar to the input and standard parameters, we also support batching for the `
 ```python
 model(pulse_params=np.repeat(model.pulse_params, 2, axis=-1), gate_mode="pulse")
 ``` 
+
+## Pulse Envelopes and Solver
+
+Each pulse is shaped by an envelope. The available envelopes can be queried with `PulseEnvelope.available()`:
+
+```python
+from qml_essentials.gates import PulseEnvelope
+
+print(PulseEnvelope.available())
+# ['gaussian', 'square', 'cosine', 'drag', 'sech', 'general']
+```
+
+The default is `gaussian`. The envelope is selected globally via the `pulse_shape` argument of the `Model`, e.g. `Model(..., pulse_shape="drag")`.
+
+Under the hood, pulse gates are simulated by integrating their time-dependent Hamiltonian. The ODE solver can be configured via `Evolution.set_solver_defaults`, where `solver` is one of `"dopri8"` (default), `"dopri5"`, `"magnus2"` or `"magnus4"`:
+
+```python
+from qml_essentials.jaqsi import Evolution
+
+Evolution.set_solver_defaults(solver="magnus4", magnus_steps=128)
+```
+
+The `magnus_steps` argument sets the number of fixed substeps for the Magnus integrators and is ignored for the adaptive Dormand-Prince solvers (`dopri8`, `dopri5`).
 
 ## Quantum Optimal Control (QOC)
 
