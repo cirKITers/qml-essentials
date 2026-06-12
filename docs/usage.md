@@ -125,6 +125,10 @@ To make things a little bit easier, we implement following encoding strategies a
 | Hamming           | $\{-n_{q},-(n_{q}-1),\ldots,n_{q}\}$                                                                               | $2 n_{q}+1$        |
 | Binary            | $\{-2^{n_{q}}+1,\ldots,2^{n_{q}}-1\}$                                                                              | $2^{n_{q}+1}- 1$   |
 | Ternary           | $\left\{-\left\lfloor\frac{3^{n_{q}}}{2}\right\rfloor,\ldots,\left\lfloor\frac{3^{n_{q}}}{2}\right\rfloor\right\}$ | $3^{n_{q}}$        |
+| Golomb            | $\{m_{i}-m_{j} : m_{i}, m_{j} \in G\}$ for a Golomb ruler $G$ with $2^{n_{q}}$ marks                              | $2^{n_{q}}(2^{n_{q}}-1)+1$ |
+
+Unlike the per-qubit strategies above, the Golomb strategy encodes the input on a multi-qubit diagonal Hamiltonian whose eigenvalues form a Golomb ruler, so that all pairwise differences (the resulting frequencies) are distinct.
+This yields the maximum number of distinct frequencies with minimal degeneracy for a given number of qubits.
 
 You can use these templates by instantiating an `Encoding` class with the encoding strategy you like and passing it to the model upon initialization:
 
@@ -218,6 +222,7 @@ In the pulse representation, each gate is decomposed into Gaussian-shaped pulses
 - $t$: pulse duration
 
 By default, the framework provides optimized pulse parameters based on typical superconducting qubit frequencies ($\omega_q = 10\pi$, $\omega_c = 10\pi$).  
+The Gaussian envelope is the default; other shapes can be selected via the `pulse_shape` argument on model instantiation (see [*Pulses*](pulses.md#pulse_envelopes_and_solver) for the available envelopes).
 
 Switching between unitary-level and pulse-level execution is seamless and controlled via the `gate_mode` argument:
 
