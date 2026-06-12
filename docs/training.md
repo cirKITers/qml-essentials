@@ -245,20 +245,21 @@ model.transform_input = lambda inputs, qubit, idx, enc_params: np.arccos(inputs[
 
 Previous examples considered a very simplified version of a training dataset.
 Extending this to multi-dimensional inputs and different encoding schemes of the model can be quite a tedious work to implement.
-For this purpose, we provide a ready-to-use Fourier series dataset in the `qml_essentials.datasets` module.
+For this purpose, we provide a ready-to-use Fourier series dataset via the `Datasets` class in the `qml_essentials.coefficients` module.
 This dataset uses the model properties to generate a Fourier series that matches what the model can learn, meaning that the frequencies are inferred from `model.frequencies`.
-Furthermore, it is possible to control the magnitude of the coefficients, sampled from a complex unit circle, by setting `coefficients_min` and `coefficients_max`.
+Furthermore, it is possible to control the magnitude of the coefficients, sampled from a complex unit circle, by setting `coefficients_min` and `coefficients_max`, and to drop the constant offset by setting `zero_centered=True`.
 Calling `generate_fourier_series` will return the domain samples, Fourier series samples and the coefficients of the Fourier series.
 
 The code snippet below provides a minimal example on how to use this dataset:
 
 ```python
+import jax
 from qml_essentials.coefficients import Datasets
 
 # generate a Fourier series dataset
 domain_samples, fourier_samples, coefficients = (
                     Datasets.generate_fourier_series(
-                        rng=np.random.default_rng(1000),
+                        random_key=jax.random.key(1000),
                         model=model,
                     )
                 )
