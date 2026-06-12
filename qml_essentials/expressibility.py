@@ -234,7 +234,9 @@ class Expressibility:
 
         return kl_divergence
 
+    @classmethod
     def kl_divergence_to_haar(
+        cls,
         model: Model,
         n_samples: int,
         n_bins: int,
