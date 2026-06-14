@@ -164,7 +164,7 @@ The symbolic core is gate-set agnostic and lives in `qml_essentials.operations`:
 
 - `PauliWord` — an n-qubit Pauli in the symplectic $i^{\text{phase}}\,X^x Z^z$ representation, with `compose`, `commutes_with`, `conjugate_by_clifford` (Clifford tableau evolution), and a `to_matrix`/`from_matrix` bridge to dense operators.
 - `Operation.is_clifford` — a class flag marking the standard Clifford gates ($I, X, Y, Z, H, S, \text{CX}, \text{CY}, \text{CZ}, \text{SWAP}$); `conjugate_by_clifford` uses fast symbolic rules for the common ones and an exact matrix fallback for the rest.
-- `Operation.decompose()` — expresses composite gates (`Rot`, `CRX`/`CRY`/`CRZ`, `CZ`) in terms of Clifford + Pauli-rotation primitives.
+- `Operation.decompose()` — expresses composite gates (`Rot`, `CRX`/`CRY`/`CRZ`, `CZ`) in terms of Clifford + Pauli-rotation primitives. Diagonal-Hamiltonian encodings (`DiagonalQubitUnitary`, e.g. the Golomb strategy) are expanded into commuting Pauli-$Z$ rotations via the Walsh-Hadamard transform of their real generator.
 
 ### Custom Circuits and Input Scaling
 
@@ -194,7 +194,8 @@ The tree distinguishes encoding from variational rotations **automatically**.
 Because every canonical rotation angle is an affine function of the inputs (encodings apply $\omega_k\,x_f$; Clifford commutation only flips a generator's sign), the tree perturbs each input feature in turn and reads off, from the change in the recorded angles, which rotations depend on which feature and with what signed integer scaling $\omega_k$.
 
 The only requirement is that each encoding rotation be **linear in a single feature**, $\omega_k\,x_f$. Heterogeneous scalings such as $(1, 3, 9)$ are then resolved to the correctly scaled frequencies (here $\{-13, -11, -7, -5, 5, 7, 11, 13\}$) instead of unit counts. 
-Non-integer scalings are rounded with a warning; a rotation depending on more than one feature raises `NotImplementedError`; and the `method="dp"` exact-support path does not support non-unit scaling.
+Scalings may be rational rather than integer for some encodings: a diagonal-Hamiltonian encoding $\exp(-i x\,\mathrm{diag}(h))$ (such as the Golomb strategy) decomposes into commuting Pauli-$Z$ rotations whose scalings are dyadic rationals, while the resulting model frequencies stay integer (the pairwise differences of the Hamiltonian eigenvalues). 
+A rotation depending on more than one feature raises `NotImplementedError`; and the `method="dp"` exact-support path does not support non-unit scaling (it raises for Golomb encodings — use `method="tree"`).
 
 For the numerical FFT (`Coefficients.get_spectrum`) a custom circuit additionally requires `model.degree` to be set high enough to resolve the largest frequency.
 The sampling grid is built from `model.degree` (the number of frequencies, i.e. $2\,\omega_\text{max} + 1$), not `model.frequencies`.
@@ -225,14 +226,24 @@ This correctly removes frequencies whose contributions cancel identically across
 Two methods are available:
 
 - `method="tree"` (default): fully exact, but enumerates the explicit tree, whose size can grow exponentially with circuit depth.
-- `method="dp"`: merges tree nodes with identical (rotation index, observable) state — at most $n_\text{params} \cdot 4^{n_\text{qubits}}$ states — and tracks the achievable input sine/cosine counts per state.
+- `method="dp"`: merges tree nodes with identical (rotation index, observable) state — at most $n_\text{params} \cdot 4^{n_\text{qubits}}$ states — and tracks the achievable per-feature sine/cosine counts per state as a mixed-radix bitmask.
   This scales to deep circuits where the explicit tree is infeasible (e.g. a 10-layer `Strongly_Entangling` ansatz on 5 qubits takes seconds instead of being intractable).
   It is exact per path, but cannot detect coefficients that cancel identically *across* paths with identical variational dependence (such as the repeated-encoding example above), where it returns a tight superset.
-  Currently it supports a single input feature.
+  It supports any number of input features, returning the same per-feature frequency layout as `method="tree"`, but requires unit-magnitude input scaling: per-gate non-unit scalings such as Golomb encodings are rejected (use `method="tree"`).
 
 ```python
 exact = model.exact_spectrum(method="dp")  # for deep circuits
 ```
+
+Both `method="dp"` limitations follow from its merged-state design, which keeps only the achievable sine/cosine counts per node and discards the per-path variational signature for two reasons:
+
+1. Cross-path cancellations are invisible. 
+The tree method groups leaves by their variational signature and tests whether each group's weights sum to zero; the DP never stores those signatures, so it can confirm that a frequency is structurally reachable but not whether contributions from distinct paths cancel. 
+It therefore returns a tight superset (e.g. it keeps $\omega = 0$ for the repeated-encoding $\langle Z \rangle = \cos(2x)$ that the tree removes).
+2. Only unit-magnitude input scaling is allowed. 
+Within a feature the DP aggregates the total sine/cosine counts $(s_f, c_f)$ over all of that feature's rotations, which is exact only when those rotations share a single angle $x_f$. 
+A sign flip ($\omega = -1$, arising from Clifford commutation) is harmless because $\cos$ is even and $\sin$ odd, so it changes only the coefficient sign and not the support; a genuine per-gate scaling ($|\omega| \neq 1$, e.g. Golomb encodings) changes the angle and would require expanding and convolving each rotation individually.
+This is exactly the per-gate work the count-merging avoids, thus such models fall back to `method="tree"`.
 
 Note that `exact_spectrum` requires a Clifford + Pauli-rotation ansatz (the same restriction as the `FourierTree`).
 Also keep in mind that a *structurally present* frequency can still have an exponentially small coefficient (the leaf weights scale with $0.5^{s+c}$), so numerically thresholding an FFT spectrum may show fewer frequencies than the exact symbolic support.
