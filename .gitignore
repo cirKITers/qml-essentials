@@ -4,7 +4,9 @@ benchmarks-*.csv
 logs/
 tests_external/
 *.md
+!docs/*.md
 !README.md
+!CONTRIBUTING.md
 
 # General files
 *.bkp
