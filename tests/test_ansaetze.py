@@ -601,3 +601,64 @@ def test_cphase_pulse_gate(w):
     assert np.isclose(fidelity, 1.0, atol=1e-2), (
         f"Fidelity too low for w={w}: {fidelity}"
     )
+
+
+def _swap_perm(n, a, b):
+    """Permutation matrix swapping qubits a and b (qubit 0 leftmost)."""
+    P = np.zeros((2**n, 2**n))
+    for x in range(2**n):
+        bits = [(x >> (n - 1 - q)) & 1 for q in range(n)]
+        bits[a], bits[b] = bits[b], bits[a]
+        y = sum(b_ << (n - 1 - q) for q, b_ in enumerate(bits))
+        P[y, x] = 1.0
+    return P
+
+
+@pytest.mark.unittest
+def test_sn_equivariant_metadata():
+    ansatz = Ansaetze.Permutation_Equivariant
+    assert ansatz.n_params_per_layer(4) == 3
+    assert ansatz.get_control_indices(4) is None
+
+    model = Model(
+        n_qubits=4,
+        n_layers=2,
+        circuit_type="Permutation_Equivariant",
+        data_reupload=False,
+    )
+    assert model.params.shape[-1] == 3
+    assert model.pqc.get_control_angles(model.params[0], model.n_qubits).size == 0
+
+
+@pytest.mark.smoketest
+def test_sn_equivariant_runs():
+    model = Model(
+        n_qubits=4,
+        n_layers=2,
+        circuit_type="Permutation_Equivariant",
+        data_reupload=False,
+        output_qubit=-1,
+    )
+    out = model(model.params, inputs=None, execution_type="expval")
+    assert np.asarray(out).shape[-1] == 4
+
+
+@pytest.mark.unittest
+def test_sn_equivariant_permutation_invariant():
+    n = 4
+    w = np.array([0.7, 1.1, 0.5])
+
+    def circ():
+        Ansaetze.Permutation_Equivariant.build(w, n)
+
+    script = js.Script(circ, n_qubits=n)
+    zs = np.asarray(
+        script.execute(type="expval", obs=[op.PauliZ(wires=q) for q in range(n)])
+    )
+    # |0...0> is S_n-symmetric and the layer is equivariant -> equal per-qubit <Z>.
+    assert np.allclose(zs, zs[0])
+
+    # The output state is invariant under any qubit permutation.
+    psi = np.asarray(script.execute(type="state"))
+    P = _swap_perm(n, 0, 1)
+    assert np.allclose(P @ psi, psi)

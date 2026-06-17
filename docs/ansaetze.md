@@ -107,6 +107,8 @@ class MyHardwareEfficient(Circuit):
 The `**kwargs` allow both [noise simulation](noise.md) and [pulse simulation](pulses.md).
 A custom `Circuit` should define `n_pulse_params_per_layer` if it will use pulse simulation at some point, but may be omitted otherwise.
 
+The built-in `Permutation_Equivariant` ansatz follows this from-scratch pattern: it is an $S_n$-equivariant layer with shared-angle RX and RY on every qubit and a shared-angle RZZ on every qubit pair, so it has three tied parameters per layer regardless of the qubit count.
+
 Check out page [*Usage*](usage.md) on how to proceed from here.
 
 ## Custom Encoding

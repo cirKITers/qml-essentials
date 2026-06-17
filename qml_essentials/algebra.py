@@ -20,6 +20,11 @@ The matchgate algebra :math:`\mathfrak{so}(2n)` is also provided explicitly by
 The g-purity of a state with respect to a DLA basis is given by
 :func:`g_purity_from_basis` (Pauli-word basis) and :func:`g_purity_matrix`
 (Hilbert-Schmidt-orthonormal matrix basis).
+
+Permutation-symmetric operators are built by :func:`symmetric_pauli_sum`, with
+:func:`sn_equivariant_generators` and :func:`sn_equivariant_observable` giving the
+generators and observable of the :math:`S_n`-equivariant ansatz; the generators
+feed the matrix DLA via :func:`lie_closure_matrices`.
 """
 
 from itertools import combinations
@@ -228,3 +233,90 @@ def g_purity_matrix(
     """
     psi = np.asarray(state, dtype=complex)
     return float(sum(abs(np.vdot(psi, B @ psi)) ** 2 for B in basis_mats))
+
+
+def symmetric_pauli_sum(pauli: str, n: int, locality: int = 1) -> np.ndarray:
+    r"""Return the symmetric sum of a Pauli over all ``locality``-qubit subsets.
+
+    The permutation-symmetric operator
+    :math:`\sum_{S} \prod_{q \in S} P_q` where :math:`P` is the single-qubit
+    Pauli *pauli* and :math:`S` ranges over all size-``locality`` subsets of the
+    :math:`n` qubits.  For example ``locality=1`` gives :math:`\sum_k P_k` and
+    ``locality=2`` gives :math:`\sum_{j<k} P_j P_k`.  The result is Hermitian.
+
+    Args:
+        pauli: Single-qubit Pauli, one of ``{'I', 'X', 'Y', 'Z'}``.
+        n: Number of qubits.
+        locality: Subset size, with :math:`1 \leq \text{locality} \leq n`.
+
+    Returns:
+        The dense Hermitian operator of shape :math:`(2^n, 2^n)`.
+
+    Raises:
+        ValueError: If ``pauli`` is not a Pauli label or ``locality`` is outside
+            ``[1, n]``.
+    """
+    if pauli not in {"I", "X", "Y", "Z"}:
+        raise ValueError(f"pauli must be one of I, X, Y, Z, got {pauli!r}")
+    if not 1 <= locality <= n:
+        raise ValueError(
+            f"locality must satisfy 1 <= locality <= n, "
+            f"got locality={locality} for n={n}"
+        )
+    dim = 2**n
+    acc = np.zeros((dim, dim), dtype=complex)
+    for subset in combinations(range(n), locality):
+        s = ["I"] * n
+        for q in subset:
+            s[q] = pauli
+        acc += np.asarray(
+            PauliWord.from_pauli_string("".join(s), list(range(n)), n).to_matrix()
+        )
+    return acc
+
+
+def sn_equivariant_generators(n: int) -> List[np.ndarray]:
+    r"""Return the :math:`S_n`-equivariant generators
+    :math:`\{\sum_k X_k, \sum_k Y_k, \sum_{j<k} Z_j Z_k\}`.
+
+    The three Hermitian generators of the permutation-equivariant ansatz of
+    Schatzki et al. (arXiv:2210.09974).  They are unnormalised (the scaling is
+    irrelevant for the Lie closure) and feed :func:`lie_closure_matrices`.
+
+    Args:
+        n: Number of qubits, with :math:`n \geq 2` (the pair term needs two).
+
+    Returns:
+        The list of three generator matrices, each of shape :math:`(2^n, 2^n)`.
+
+    Raises:
+        ValueError: If ``n < 2``.
+    """
+    if n < 2:
+        raise ValueError(f"n must be at least 2, got {n}")
+    return [
+        symmetric_pauli_sum("X", n, 1),
+        symmetric_pauli_sum("Y", n, 1),
+        symmetric_pauli_sum("Z", n, 2),
+    ]
+
+
+def sn_equivariant_observable(n: int) -> np.ndarray:
+    r"""Return the :math:`S_n`-equivariant observable
+    :math:`O = \frac{2}{n(n-1)} \sum_{j<k} X_j X_k`.
+
+    The permutation-symmetric observable of Schatzki et al. (arXiv:2210.09974),
+    normalised by the number of pairs.
+
+    Args:
+        n: Number of qubits, with :math:`n \geq 2`.
+
+    Returns:
+        The dense Hermitian observable of shape :math:`(2^n, 2^n)`.
+
+    Raises:
+        ValueError: If ``n < 2``.
+    """
+    if n < 2:
+        raise ValueError(f"n must be at least 2, got {n}")
+    return (2.0 / (n * (n - 1))) * symmetric_pauli_sum("X", n, 2)

@@ -396,6 +396,7 @@ class Ansaetze:
             Ansaetze.No_Entangling,
             Ansaetze.Strongly_Entangling,
             Ansaetze.Hardware_Efficient,
+            Ansaetze.Permutation_Equivariant,
         ]
 
         # extend by the non-parameterized ones
@@ -754,6 +755,45 @@ class Ansaetze:
                     mirror=False,
                 ),
             )
+
+    class Permutation_Equivariant(Circuit):
+        r"""$S_n$ permutation-equivariant layer (Schatzki et al., arXiv:2210.09974).
+
+        Shared-angle RX and RY on every qubit followed by a shared-angle RZZ on
+        every qubit pair, realising $\exp(-i a \sum_k X_k) \exp(-i b \sum_k Y_k)
+        \exp(-i c \sum_{j<k} Z_j Z_k)$.  The three parameters are tied (shared
+        across all gates), so the layer width is 3 independent of the qubit count.
+
+        Gradients assume JAX autodiff; a parameter-shift differentiator would need
+        special handling for the shared parameters.
+        """
+
+        @staticmethod
+        def n_params_per_layer(n_qubits: int) -> int:
+            return 3
+
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            n_pairs = n_qubits * (n_qubits - 1) // 2
+            return (
+                n_qubits * PulseInformation.num_params("RX")
+                + n_qubits * PulseInformation.num_params("RY")
+                + n_pairs * PulseInformation.num_params("RZZ")
+            )
+
+        @staticmethod
+        def get_control_indices(n_qubits: int) -> Optional[List[int]]:
+            return None
+
+        @staticmethod
+        def build(w: np.ndarray, n_qubits: int, **kwargs: Any) -> None:
+            for q in range(n_qubits):
+                Gates.RX(w[0], wires=q, **kwargs)
+            for q in range(n_qubits):
+                Gates.RY(w[1], wires=q, **kwargs)
+            for j in range(n_qubits):
+                for k in range(j + 1, n_qubits):
+                    Gates.RZZ(w[2], wires=[j, k], **kwargs)
 
 
 class Encoding:
