@@ -14,13 +14,20 @@ brackets.  Two representations are provided:
 
 In both cases the length of the returned basis equals
 :math:`\dim \mathfrak{g}`.
+
+The matchgate algebra :math:`\mathfrak{so}(2n)` is also provided explicitly by
+:func:`matchgate_generators`, :func:`matchgate_basis`, and :func:`dim_so2n`.
+The g-purity of a state with respect to a DLA basis is given by
+:func:`g_purity_from_basis` (Pauli-word basis) and :func:`g_purity_matrix`
+(Hilbert-Schmidt-orthonormal matrix basis).
 """
 
+from itertools import combinations
 from typing import List, Union
 
 import numpy as np
 
-from qml_essentials.operations import PauliWord
+from qml_essentials.operations import PauliWord, state_expectation
 
 
 def lie_closure_paulis(
@@ -116,3 +123,108 @@ def lie_closure_matrices(gens: List[np.ndarray], tol: float = 1e-9) -> List[np.n
                     new.append(m)
         frontier = new
     return basis_mats
+
+
+def matchgate_generators(n: int) -> List[str]:
+    r"""Return the matchgate DLA generators :math:`\{Z_k\} \cup \{X_k X_{k+1}\}`.
+
+    These Hermitian Pauli strings generate the matchgate algebra
+    :math:`\mathfrak{so}(2n)` under :func:`lie_closure_paulis`.
+
+    Args:
+        n: Number of qubits.
+
+    Returns:
+        The generator Pauli strings (qubit 0 leftmost).
+    """
+    gens: List[str] = []
+    for k in range(n):
+        s = ["I"] * n
+        s[k] = "Z"
+        gens.append("".join(s))
+    for k in range(n - 1):
+        s = ["I"] * n
+        s[k] = "X"
+        s[k + 1] = "X"
+        gens.append("".join(s))
+    return gens
+
+
+def matchgate_basis(n: int) -> List[str]:
+    r"""Return the explicit Pauli-string basis of :math:`\mathfrak{so}(2n)`.
+
+    The basis is the :math:`n` on-site :math:`Z_k`, and for each pair
+    :math:`j < k` the four strings
+    :math:`\sigma_j \left( \prod_{j < l < k} Z_l \right) \sigma'_k` with
+    :math:`\sigma, \sigma' \in \{X, Y\}`.  Its length is
+    :math:`n + 4\binom{n}{2} = n(2n-1) = \dim \mathfrak{so}(2n)`.
+
+    Args:
+        n: Number of qubits.
+
+    Returns:
+        The basis Pauli strings (qubit 0 leftmost).
+    """
+    basis: List[str] = []
+    for k in range(n):
+        s = ["I"] * n
+        s[k] = "Z"
+        basis.append("".join(s))
+    for j, k in combinations(range(n), 2):
+        for sj in ("X", "Y"):
+            for sk in ("X", "Y"):
+                s = ["I"] * n
+                s[j] = sj
+                s[k] = sk
+                for ell in range(j + 1, k):
+                    s[ell] = "Z"
+                basis.append("".join(s))
+    return basis
+
+
+def dim_so2n(n: int) -> int:
+    r"""Return :math:`\dim \mathfrak{so}(2n) = n(2n-1)`."""
+    return n * (2 * n - 1)
+
+
+def g_purity_from_basis(
+    state: np.ndarray,
+    basis: List[Union[str, PauliWord]],
+) -> float:
+    r"""Return the g-purity :math:`P_g = \sum_B \langle\psi|B|\psi\rangle^2`.
+
+    Each basis element :math:`B` is a Hermitian Pauli word, so its expectation
+    is real and :math:`P_g` is the squared 2-norm of the expectation vector in
+    the DLA basis.  The basis is typically :func:`matchgate_basis` or the output
+    of :func:`lie_closure_paulis`.
+
+    Args:
+        state: Statevector of shape ``(2**n,)`` (qubit 0 leftmost).
+        basis: Hermitian Pauli words, each a :class:`PauliWord` or a bare Pauli
+            string over ``{'I', 'X', 'Y', 'Z'}``.
+
+    Returns:
+        The g-purity :math:`P_g`.
+    """
+    return float(sum(state_expectation(B, state).real ** 2 for B in basis))
+
+
+def g_purity_matrix(
+    state: np.ndarray,
+    basis_mats: List[np.ndarray],
+) -> float:
+    r"""Return the g-purity against an HS-orthonormal Hermitian matrix basis.
+
+    Computes :math:`P_g^{\mathrm{HS}} = \sum_\mu |\langle\psi|B_\mu|\psi\rangle|^2`
+    for a Hilbert-Schmidt-orthonormal Hermitian basis :math:`\{B_\mu\}` of
+    :math:`i\mathfrak{g}`, for example the output of :func:`lie_closure_matrices`.
+
+    Args:
+        state: Statevector of shape ``(2**n,)``.
+        basis_mats: HS-orthonormal Hermitian basis matrices.
+
+    Returns:
+        The g-purity :math:`P_g^{\mathrm{HS}}`.
+    """
+    psi = np.asarray(state, dtype=complex)
+    return float(sum(abs(np.vdot(psi, B @ psi)) ** 2 for B in basis_mats))

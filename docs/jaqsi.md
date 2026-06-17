@@ -33,6 +33,7 @@ Together they form a pipeline that turns a circuit function into a measurement r
 - `memory.py` : memory accounting. Pure helpers that estimate the peak memory of a batched run and, when it would not fit in available RAM, split the batch into chunks that do (`estimate_peak_bytes`, `compute_chunk_size`, `execute_chunked`). `Script` calls these to drive its memory-aware `vmap` chunking.
 - `evolution.py` : Hamiltonian time-evolution. The `Evolution` class builds gates that evolve a (parametrized) Hamiltonian in time, either analytically (`exp(-i t H)` for a static `H`) or by solving the Schrödinger equation with an adaptive `diffrax` solver or a fixed-step Magnus integrator. This module backs the pulse-level simulation.
 - `jaqsi.py` : the entry-point module. Exposes `Script` for circuit building, the `Hamiltonian` factory for time-evolution sources, and a few pulse/gate-independent quantum-info helpers (`partial_trace`, `marginalize_probs`, `build_parity_observable`). Time evolution is invoked as a method on the Hamiltonian object (`hamiltonian.evolve(...)`); the `Evolution` engine is re-exported here for solver configuration (`Evolution.set_solver_defaults`).
+- `algebra.py` : a companion module for dynamical Lie algebra (DLA) and trainability analysis, layered on `operations.py` rather than part of the simulate-measure pipeline. It builds DLAs from generators (`lie_closure_paulis`, `lie_closure_matrices`), constructs the matchgate algebra $\mathfrak{so}(2n)$ (`matchgate_generators`, `matchgate_basis`, `dim_so2n`), and computes the g-purity of a state against a DLA basis (`g_purity_from_basis`, `g_purity_matrix`).
 
 A call to `Script.execute(...)` then runs four stages:
 
@@ -156,6 +157,41 @@ res = jss.execute(type="expval", obs=[op.PauliZ(0)], initial_state=plus)
 
 Without `in_axes` the state must be a single statevector of shape `(2**n,)`. 
 When batching with `in_axes`, `initial_state` may be a single 1D state broadcast across the batch, or a 2D array of shape `(B, 2**n)` that provides one state per sample.
+
+
+### DLA and g-purity
+
+Beyond circuit execution, the `algebra` module provides dynamical Lie algebra (DLA) helpers used for trainability and barren-plateau analysis.
+The matchgate algebra $\mathfrak{so}(2n)$ is available both as a generating set and as an explicit Pauli-string basis, and the latter must match the Lie closure of the former:
+
+```python
+from qml_essentials.algebra import (
+    matchgate_generators,
+    matchgate_basis,
+    dim_so2n,
+    lie_closure_paulis,
+    g_purity_from_basis,
+)
+
+n = 3
+gens = matchgate_generators(n)         # {Z_k} u {X_k X_{k+1}}
+basis = matchgate_basis(n)             # the n(2n-1) Pauli strings of so(2n)
+assert len(basis) == dim_so2n(n)
+assert {pw.to_pauli_string() for pw in lie_closure_paulis(gens)} == set(basis)
+```
+
+The g-purity $P_g = \sum_B \langle\psi\lvert B\rvert\psi\rangle^2$ of a statevector with respect to a DLA basis measures how much of the state lies in the algebra:
+
+```python
+import numpy as np
+
+psi = np.zeros(2**n, dtype=complex)
+psi[0] = 1.0                           # |0...0>
+print(g_purity_from_basis(psi, basis)) # 3.0 (only the on-site Z_k contribute)
+```
+
+`g_purity_from_basis` takes a Pauli-word basis (strings or `PauliWord` objects).
+For a Hilbert-Schmidt-orthonormal Hermitian matrix basis, for example the output of `lie_closure_matrices`, use `g_purity_matrix` instead.
 
 
 ### Pulse Level
