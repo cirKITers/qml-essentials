@@ -2170,6 +2170,13 @@ def prod(*ops: Operation) -> Operation:
 _XZ_TO_LABEL = {(0, 0): "I", (1, 0): "X", (0, 1): "Z", (1, 1): "Y"}
 _LABEL_TO_XZ = {"I": (0, 0), "X": (1, 0), "Z": (0, 1), "Y": (1, 1)}
 
+# Single-qubit Hermitian Pauli matrices (NumPy) for arbitrary-state expectation.
+_SQ_NP = {
+    "X": np.array([[0, 1], [1, 0]], dtype=complex),
+    "Y": np.array([[0, -1j], [1j, 0]], dtype=complex),
+    "Z": np.array([[1, 0], [0, -1]], dtype=complex),
+}
+
 
 class PauliWord:
     r"""Symbolic n-qubit Pauli operator in the stabilizer-tableau (symplectic)
@@ -2440,6 +2447,30 @@ class PauliWord:
             return 0.0 + 0.0j
         return complex(1j**self.phase)
 
+    def expectation(self, state: np.ndarray) -> complex:
+        r"""Return ``\langle\psi|P|\psi\rangle`` for an arbitrary statevector.
+
+        Applies the single-qubit Pauli factors to the reshaped state via tensor
+        contraction (``O(n 2^n)``) instead of forming the dense
+        ``2^n \times 2^n`` operator.  The real part is exact for a Hermitian
+        Pauli word.
+
+        Args:
+            state: Statevector of length ``2**n_qubits`` (qubit 0 leftmost).
+
+        Returns:
+            The expectation value ``\langle\psi|P|\psi\rangle``.
+        """
+        n = self.n_qubits
+        psi = np.asarray(state, dtype=complex).reshape((2,) * n)
+        out = psi
+        for q, ch in enumerate(self.to_pauli_string()):
+            if ch == "I":
+                continue
+            out = np.moveaxis(np.tensordot(_SQ_NP[ch], out, axes=(1, q)), 0, q)
+        val = np.vdot(psi.reshape(-1), out.reshape(-1))
+        return self.leading_phase() * complex(val)
+
     def to_pauli_string(self) -> str:
         """Return the bare Pauli string (ignoring the global phase)."""
         return "".join(
@@ -2519,3 +2550,19 @@ class PauliWord:
     def __repr__(self) -> str:
         phase_str = {0: "+", 1: "+i", 2: "-", 3: "-i"}[self.phase]
         return f"PauliWord({phase_str}{self.to_pauli_string()})"
+
+
+def state_expectation(obs: Union[str, PauliWord], state: np.ndarray) -> complex:
+    r"""Return ``\langle\psi|O|\psi\rangle`` for a Pauli observable and statevector.
+
+    Args:
+        obs: The observable, either a :class:`PauliWord` or a bare Pauli string
+            over ``{'I', 'X', 'Y', 'Z'}`` (qubit 0 leftmost).
+        state: Statevector of length ``2**n_qubits``.
+
+    Returns:
+        The expectation value ``\langle\psi|O|\psi\rangle``.
+    """
+    if isinstance(obs, str):
+        obs = PauliWord.from_pauli_string(obs, list(range(len(obs))), len(obs))
+    return obs.expectation(state)
