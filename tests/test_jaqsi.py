@@ -822,6 +822,39 @@ class TestBatch:
         assert jnp.allclose(results[:, 0], expected, atol=1e-6)
 
     @pytest.mark.unittest
+    def test_batched_static_python_scalar_arg(self) -> None:
+        """A non-array (Python float) broadcast arg must not break cache-key
+        construction.
+
+        Regression: the measurement-type parameter ``type`` shadowed the
+        builtin, so the ``arg_shapes`` fallback ``type(a)`` for a non-array
+        argument raised ``TypeError: 'str' object is not callable``.
+        """
+
+        def scaled_circuit(theta, scale):
+            RX(theta * scale, wires=0)
+
+        script = Script(f=scaled_circuit)
+        thetas = jnp.linspace(0.0, 1.0, 5)  # batched — axis 0
+        scale = 2.0  # Python float (no .shape), broadcast — None
+
+        results = script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(thetas, scale),
+            in_axes=(0, None),
+        )
+
+        expected = jnp.array(
+            [
+                script.execute(type="expval", obs=[PauliZ(0)], args=(t, scale))[0]
+                for t in thetas
+            ]
+        )
+        assert results.shape == (5, 1)
+        assert jnp.allclose(results[:, 0], expected, atol=1e-6)
+
+    @pytest.mark.unittest
     def test_batched_in_axes_mismatch_raises(self) -> None:
         """in_axes length != args length must raise a clear ValueError."""
         script = Script(f=parametrized_circuit)
@@ -3056,3 +3089,168 @@ class TestPulse:
             assert events[2].wires == [0, 1]
         finally:
             PulseInformation.set_envelope(original)
+
+
+def _rx_circuit(theta):
+    RX(theta, wires=0)
+
+
+def _h_then_rx(theta):
+    H(wires=0)
+    RX(theta, wires=0)
+
+
+def _id_circuit(*args, **kwargs):
+    Id(wires=0)
+
+
+class TestInitialState:
+    """Arbitrary initial statevector in Script.execute (Tier 1 #3)."""
+
+    @pytest.mark.unittest
+    def test_default_unchanged_with_zero_state(self):
+        # Passing |00> explicitly matches the default |00> origin.
+        e0 = jnp.zeros(4, dtype=complex).at[0].set(1.0)
+        script = Script(bell_circuit)
+        default = script.execute(type="probs")
+        explicit = script.execute(type="probs", initial_state=e0)
+        assert jnp.allclose(default, explicit, atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_non_batched_basis_state(self):
+        # |1> through an identity circuit stays |1>; <Z> = -1.
+        one = jnp.array([0.0, 1.0], dtype=complex)
+        script = Script(_id_circuit)
+        state = script.execute(type="state", initial_state=one)
+        assert jnp.allclose(state, one, atol=1e-10)
+        z = script.execute(type="expval", obs=[PauliZ(0)], initial_state=one)
+        assert jnp.allclose(z, jnp.array([-1.0]), atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_non_batched_state_prep_equivalence(self):
+        # Starting from H|0> equals prepending H to a |0>-initialised circuit.
+        plus = jnp.array([1.0, 1.0], dtype=complex) / jnp.sqrt(2.0)
+        from_state = Script(_rx_circuit).execute(
+            type="expval", obs=[PauliZ(0)], args=(0.3,), initial_state=plus
+        )
+        from_prep = Script(_h_then_rx).execute(
+            type="expval", obs=[PauliZ(0)], args=(0.3,)
+        )
+        assert jnp.allclose(from_state, from_prep, atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_broadcast_initial_state_batched_params(self):
+        # One 1D state broadcast across a batch of params.
+        plus = jnp.array([1.0, 1.0], dtype=complex) / jnp.sqrt(2.0)
+        thetas = jnp.linspace(0.0, 1.5, 5)
+        script = Script(_rx_circuit)
+        batched = script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(thetas,),
+            in_axes=(0,),
+            initial_state=plus,
+        )
+        seq = jnp.stack(
+            [
+                script.execute(
+                    type="expval", obs=[PauliZ(0)], args=(t,), initial_state=plus
+                )
+                for t in thetas
+            ]
+        )
+        assert batched.shape == seq.shape
+        assert jnp.allclose(batched, seq, atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_per_sample_states_broadcast_params(self):
+        # 2D batch of states with a broadcast param: batch comes from the states.
+        states = jnp.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], dtype=complex)
+        states = states / jnp.linalg.norm(states, axis=1, keepdims=True)
+        script = Script(_rx_circuit)
+        theta = jnp.array(0.4)
+        batched = script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(theta,),
+            in_axes=(None,),
+            initial_state=states,
+        )
+        seq = jnp.stack(
+            [
+                script.execute(
+                    type="expval", obs=[PauliZ(0)], args=(theta,), initial_state=s
+                )
+                for s in states
+            ]
+        )
+        assert batched.shape == seq.shape
+        assert jnp.allclose(batched, seq, atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_per_sample_states_batched_params(self):
+        # 2D states and batched params, both over axis 0.
+        states = jnp.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], dtype=complex)
+        states = states / jnp.linalg.norm(states, axis=1, keepdims=True)
+        thetas = jnp.array([0.2, 0.5, 1.1])
+        script = Script(_rx_circuit)
+        batched = script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(thetas,),
+            in_axes=(0,),
+            initial_state=states,
+        )
+        seq = jnp.stack(
+            [
+                script.execute(
+                    type="expval", obs=[PauliZ(0)], args=(t,), initial_state=s
+                )
+                for t, s in zip(thetas, states)
+            ]
+        )
+        assert jnp.allclose(batched, seq, atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_shots_with_initial_state(self):
+        # Shot sampling converges to the exact expval with a custom initial state.
+        plus = jnp.array([1.0, 1.0], dtype=complex) / jnp.sqrt(2.0)
+        thetas = jnp.array([0.3, 0.7])
+        script = Script(_rx_circuit)
+        exact = script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(thetas,),
+            in_axes=(0,),
+            initial_state=plus,
+        )
+        sampled = script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(thetas,),
+            in_axes=(0,),
+            initial_state=plus,
+            shots=20000,
+            key=jax.random.PRNGKey(0),
+        )
+        assert sampled.shape == exact.shape
+        assert jnp.allclose(sampled, exact, atol=0.05)
+
+    @pytest.mark.unittest
+    def test_invalid_initial_state_ndim_raises(self):
+        script = Script(_rx_circuit)
+        with pytest.raises(ValueError):
+            script.execute(
+                type="expval",
+                obs=[PauliZ(0)],
+                args=(0.3,),
+                initial_state=jnp.zeros((2, 2), dtype=complex),
+            )
+        with pytest.raises(ValueError):
+            script.execute(
+                type="expval",
+                obs=[PauliZ(0)],
+                args=(jnp.array([0.3, 0.4]),),
+                in_axes=(0,),
+                initial_state=jnp.zeros((2, 2, 2), dtype=complex),
+            )

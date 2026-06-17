@@ -141,6 +141,22 @@ purity = jnp.real(jnp.trace(rho @ rho))
 print(purity) # Purity should be < 1 
 ```
 
+By default the simulation starts from the all-zero state $\lvert 0\dots0\rangle$.
+To start from an arbitrary statevector instead, pass it via the `initial_state`
+argument of `execute`:
+
+```python
+def circuit():
+    op.RX(0.3, wires=0)
+
+jss = js.Script(circuit)
+plus = jnp.array([1.0, 1.0], dtype=complex) / jnp.sqrt(2.0)  # |+⟩
+res = jss.execute(type="expval", obs=[op.PauliZ(0)], initial_state=plus)
+```
+
+Without `in_axes` the state must be a single statevector of shape `(2**n,)`. 
+When batching with `in_axes`, `initial_state` may be a single 1D state broadcast across the batch, or a 2D array of shape `(B, 2**n)` that provides one state per sample.
+
 
 ### Pulse Level
 
