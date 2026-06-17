@@ -6,7 +6,7 @@ Our package estimates the magic of a given model through the stabilizer Renyi en
 
 ## Stabilizer Renyi Entropy
 
-The default measure is the second-order stabilizer Renyi entropy $M_2$, introduced by [Leone, Oliviero and Hamma](https://doi.org/10.1103/PhysRevLett.128.050402).
+The default measure is the second-order stabilizer Renyi entropy $M_2$, introduced by [Leone, Oliviero and Hamma](https://doi.org/10.1103/PhysRevLett.128.050402) and extended in [Leone, Bittel](https://doi.org/10.1103/PhysRevA.110.L040403).
 For a pure state it is defined as
 
 $$
@@ -54,8 +54,3 @@ count = Magic.non_clifford_count(model)
 This decomposes the circuit into Clifford and Pauli-rotation gates and counts the Pauli rotations.
 It is only a coarse resource bound, not a faithful magic measure: it ignores the rotation angles and is therefore roughly constant across parameters, so two circuits with the same count can have very different magic.
 Prefer `stabilizer_renyi_entropy` for an actual magic value.
-
-## References
-
-- Leone, Oliviero, Hamma, [Stabilizer Renyi Entropy](https://doi.org/10.1103/PhysRevLett.128.050402), Phys. Rev. Lett. 128, 050402 (2022).
-- Leone, Bittel, [Stabilizer entropies are monotones for magic-state resource theory](https://doi.org/10.1103/PhysRevA.110.L040403), Phys. Rev. A 110, L040403 (2024), establishing monotonicity for Renyi index $\alpha \geq 2$.
