@@ -33,7 +33,8 @@ Together they form a pipeline that turns a circuit function into a measurement r
 - `memory.py` : memory accounting. Pure helpers that estimate the peak memory of a batched run and, when it would not fit in available RAM, split the batch into chunks that do (`estimate_peak_bytes`, `compute_chunk_size`, `execute_chunked`). `Script` calls these to drive its memory-aware `vmap` chunking.
 - `evolution.py` : Hamiltonian time-evolution. The `Evolution` class builds gates that evolve a (parametrized) Hamiltonian in time, either analytically (`exp(-i t H)` for a static `H`) or by solving the Schrödinger equation with an adaptive `diffrax` solver or a fixed-step Magnus integrator. This module backs the pulse-level simulation.
 - `jaqsi.py` : the entry-point module. Exposes `Script` for circuit building, the `Hamiltonian` factory for time-evolution sources, and a few pulse/gate-independent quantum-info helpers (`partial_trace`, `marginalize_probs`, `build_parity_observable`). Time evolution is invoked as a method on the Hamiltonian object (`hamiltonian.evolve(...)`); the `Evolution` engine is re-exported here for solver configuration (`Evolution.set_solver_defaults`).
-- `algebra.py` : a companion module for dynamical Lie algebra (DLA) and trainability analysis, layered on `operations.py` rather than part of the simulate-measure pipeline. It builds DLAs from generators (`lie_closure_paulis`, `lie_closure_matrices`), constructs the matchgate algebra $\mathfrak{so}(2n)$ (`matchgate_generators`, `matchgate_basis`, `dim_so2n`), and computes the g-purity of a state against a DLA basis (`g_purity_from_basis`, `g_purity_matrix`).
+- `algebra.py` : a companion module for dynamical Lie algebra (DLA) and trainability analysis, layered on `operations.py` rather than part of the simulate-measure pipeline. It builds DLAs from generators (`lie_closure_paulis`, `lie_closure_matrices`), constructs the matchgate algebra $\mathfrak{so}(2n)$ (`matchgate_generators`, `matchgate_basis`, `dim_so2n`), computes the g-purity of a state against a DLA basis (`g_purity_from_basis`, `g_purity_matrix`), and provides the permutation-symmetric operators `symmetric_pauli_sum`, `sn_equivariant_generators` and `sn_equivariant_observable`.
+- `states.py` : state-preparation utilities returning dense statevectors of shape $(2^n,)$ (qubit 0 leftmost): the Dicke state (`dicke_state`), Haar-random states (`haar_state`) and graph states (`graph_state_vector` with the edge-set constructors `matching_edges`, `path_edges`, `complete_edges`). The arrays feed `Script.execute(initial_state=...)` and the `g_purity_*` helpers directly.
 
 A call to `Script.execute(...)` then runs four stages:
 
@@ -192,6 +193,42 @@ print(g_purity_from_basis(psi, basis)) # 3.0 (only the on-site Z_k contribute)
 
 `g_purity_from_basis` takes a Pauli-word basis (strings or `PauliWord` objects).
 For a Hilbert-Schmidt-orthonormal Hermitian matrix basis, for example the output of `lie_closure_matrices`, use `g_purity_matrix` instead.
+
+
+### Permutation-symmetric operators and input states
+
+The `symmetric_pauli_sum` constructor sums a Pauli over all subsets of a given size, e.g. $\sum_k X_k$ (`locality=1`) or $\sum_{j<k} X_j X_k$ (`locality=2`).
+The $S_n$-equivariant generators $\{\sum_k X_k, \sum_k Y_k, \sum_{j<k} Z_j Z_k\}$ and observable $O = \tfrac{2}{n(n-1)} \sum_{j<k} X_j X_k$ build on it, and the generators feed the matrix DLA:
+
+```python
+import numpy as np
+from qml_essentials.algebra import (
+    sn_equivariant_generators,
+    lie_closure_matrices,
+    g_purity_matrix,
+)
+from qml_essentials.states import dicke_state, haar_state, graph_state_vector, path_edges
+
+n = 4
+basis = lie_closure_matrices(sn_equivariant_generators(n))   # HS-orthonormal DLA basis
+
+for psi in (dicke_state(n, 2), haar_state(n, seed=0), graph_state_vector(n, path_edges(n))):
+    print(g_purity_matrix(psi, basis))
+```
+
+The same statevectors can be evolved through a circuit by passing them as the initial state:
+
+```python
+from qml_essentials.jaqsi import Script
+from qml_essentials.ansaetze import Ansaetze
+from qml_essentials.operations import PauliZ
+
+def circ():
+    Ansaetze.Permutation_Equivariant.build(np.array([0.7, 1.1, 0.5]), n)
+
+script = Script(circ, n_qubits=n)
+zs = script.execute(type="expval", obs=[PauliZ(q) for q in range(n)], initial_state=dicke_state(n, 2))
+```
 
 
 ### Pulse Level
