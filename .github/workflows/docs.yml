@@ -14,7 +14,7 @@ jobs:
     runs-on: self-hosted
     if: ${{ github.ref != 'refs/heads/main' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y gcc graphviz libgraphviz-dev pkg-config
       - name: Set up Python 3.13
@@ -38,7 +38,7 @@ jobs:
     runs-on: self-hosted
     if: ${{ github.ref == 'refs/heads/main' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Configure Git Credentials
         run: |
           git config user.name github-actions[bot]
