@@ -95,3 +95,13 @@ ent_cap = Entanglement.concentratable_entanglement(
     model, n_samples=1000, random_key=jax.random.key(1000)
 )
 ```
+
+The same quantity can also be obtained from a Bell-basis measurement instead of the ancilla-based SWAP test, via `concentratable_entanglement_estimation`:
+
+```python
+ent_cap = Entanglement.concentratable_entanglement_estimation(
+    model, n_samples=1000, random_key=jax.random.key(1000)
+)
+```
+
+Here the concentratable entanglement is read off from the expectation value of a Bell-basis observable rather than from the overlap measured on an ancilla register.
