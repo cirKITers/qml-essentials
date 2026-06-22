@@ -8,6 +8,7 @@ import jax.numpy as jnp
 from qml_essentials import operations as op
 from qml_essentials.model import Model
 from qml_essentials.pauli import PauliCircuit
+from qml_essentials.simulation import simulate_pure
 from qml_essentials.tape import recording
 
 log = logging.getLogger(__name__)
@@ -183,3 +184,48 @@ class Magic:
 
         ops = PauliCircuit.get_clifford_pauli_gates(tape)
         return sum(isinstance(o, PauliCircuit.PAULI_ROTATION_GATES) for o in ops)
+
+    @classmethod
+    def sre_trajectory(
+        cls, model: Model, inputs: Optional[jnp.ndarray] = None
+    ) -> jnp.ndarray:
+        r"""Stabilizer Renyi entropy $M_2$ after each gate of the circuit.
+
+        Returns the per-gate magic profile of arXiv:2507.16543: element 0 is the
+        initial state $\lvert0\dots0\rangle$ ($M_2=0$) and each subsequent entry
+        is $M_2$ after one more gate.  The per-gate magic change is
+        ``jnp.abs(jnp.diff(traj))``.  Pure-state only; noise is ignored.
+
+        Args:
+            model (Model): The quantum circuit model.
+            inputs (Optional[jnp.ndarray]): Inputs used to build the circuit.
+                If None, default zero inputs are used.
+
+        Returns:
+            jnp.ndarray: $M_2$ values, length (number of non-barrier gates + 1).
+        """
+        inputs = model._inputs_validation(inputs)
+
+        # Record the unitary tape only; the trajectory is defined on pure states.
+        saved_noise = model._noise_params
+        model._noise_params = None
+        try:
+            with recording() as tape:
+                model._variational(
+                    model.params[0] if model.params.ndim == 3 else model.params,
+                    inputs[0] if inputs.ndim == 2 else inputs,
+                    noise_params=None,
+                )
+        finally:
+            model._noise_params = saved_noise
+
+        n_qubits = model.n_qubits
+        state = simulate_pure([], n_qubits)  # |0...0>
+        traj = [cls._compute_m2(state, n_qubits)]
+        for gate in tape:
+            if isinstance(gate, op.Barrier):
+                continue
+            state = simulate_pure([gate], n_qubits, initial_state=state)
+            traj.append(cls._compute_m2(state, n_qubits))
+
+        return jnp.stack(traj)

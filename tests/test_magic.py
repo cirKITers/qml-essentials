@@ -110,3 +110,23 @@ def test_m2_is_differentiable():
 
     grad = jax.grad(m2_of_theta)(0.5)
     assert jnp.isfinite(grad)
+
+
+@pytest.mark.unittest
+def test_sre_trajectory_clifford_is_zero():
+    model = Model(n_qubits=2, n_layers=1, circuit_type="No_Ansatz", data_reupload=False)
+    traj = Magic.sre_trajectory(model)
+    assert float(jnp.max(jnp.abs(traj))) < 1e-10
+
+
+@pytest.mark.unittest
+def test_sre_trajectory_endpoint_and_shape():
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Circuit_1", data_reupload=False)
+    traj = Magic.sre_trajectory(model)
+    direct = float(Magic.stabilizer_renyi_entropy(model, n_samples=None))
+
+    assert float(traj[0]) < 1e-10  # initial |0..0> carries no magic
+    assert abs(float(traj[-1]) - direct) < 1e-9
+    assert float(jnp.min(traj)) >= -1e-9
+    # Circuit_1 = RX + RZ blocks: 2 gates per qubit per layer, plus initial.
+    assert traj.shape[0] == 2 * model.n_qubits * model.n_layers + 1

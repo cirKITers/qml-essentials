@@ -54,3 +54,16 @@ count = Magic.non_clifford_count(model)
 This decomposes the circuit into Clifford and Pauli-rotation gates and counts the Pauli rotations.
 It is only a coarse resource bound, not a faithful magic measure: it ignores the rotation angles and is therefore roughly constant across parameters, so two circuits with the same count can have very different magic.
 Prefer `stabilizer_renyi_entropy` for an actual magic value.
+
+## Per-step trajectory
+
+To see how magic accumulates gate by gate, as studied in [Krueger and Mauerer](https://arxiv.org/abs/2507.16543), `sre_trajectory` returns $M_2$ after each gate of the circuit:
+
+```python
+traj = Magic.sre_trajectory(model)
+per_gate_magic = jnp.abs(jnp.diff(traj))
+```
+
+The first entry is the initial state $\lvert0\dots0\rangle$, which has zero magic, and each subsequent entry is $M_2$ after one more gate, so `jnp.diff` gives the magic added or removed by each gate.
+This works on pure states only; noise is ignored.
+
