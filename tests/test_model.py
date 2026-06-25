@@ -392,9 +392,9 @@ def test_golomb_encoding() -> None:
     d = 2**model.n_qubits
     marks = golomb_ruler(d)
     max_mark = max(marks)
-    # With DRU on all qubits for 1 layer, n_encoding_gates = n_qubits
-    n_enc = int(np.count_nonzero(model.data_reupload[..., 0]))
-    expected_n_freqs = 2 * n_enc * max_mark + 1
+    # Golomb applies one multi-qubit diagonal gate per active layer
+    n_app = int(np.count_nonzero(np.asarray(model.data_reupload[..., 0]).any(axis=1)))
+    expected_n_freqs = 2 * n_app * max_mark + 1
     assert model.degree[0] == expected_n_freqs, (
         f"Expected degree {expected_n_freqs}, got {model.degree[0]}"
     )

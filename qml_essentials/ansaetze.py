@@ -812,83 +812,74 @@ class Encoding:
     def __getitem__(self, idx):
         return self.callable[idx]
 
-    def get_n_freqs(self, omegas):
+    def get_n_freqs(self, data_reupload):
         """
-        Returns the number of frequencies required for the encoding strategy.
-        This includes positive and negative side.
-
-        Parameters
-        ----------
-        omegas : int
-            The number of frequencies to encode.
-
-        Returns
-        -------
-        int
-            The number of frequencies required for the encoding strategy.
+        Number of reachable frequencies (positive + negative + DC) for the
+        encoding strategy, given the ``(n_layers, n_qubits)`` data-reupload mask.
         """
-        if self._strategy == "hamming":
-            return int(2 * omegas + 1)
-        elif self._strategy == "binary":
-            return int(2 ** (omegas + 1) - 1)
-        elif self._strategy == "ternary":
-            return int(3 ** (omegas))
-        elif self._strategy == "golomb":
-            from qml_essentials.unitary import golomb_ruler
+        return int(self.get_spectrum(data_reupload).size)
 
-            n_qubits = getattr(self, "_n_qubits", None)
-            if n_qubits is None:
-                raise ValueError("Golomb encoding requires n_qubits to be set")
-
-            d = 2**n_qubits
-            marks = golomb_ruler(d)
-            max_mark = max(marks)
-            return int(2 * omegas * max_mark + 1)
-        else:
-            raise NotImplementedError
-
-    def get_spectrum(self, omegas):
+    def get_spectrum(self, data_reupload):
         """
-        Spectrum for one of the following encoding strategies:
+        Reachable Fourier frequency comb for the encoding strategy.
 
-        Hamming: {-n_q -(n_q-1), ..., n_q}
-        Binary: {-2^{n_q}+1, ..., 2^{n_q}-1}
-        Ternary: {-floor(3^{n_q}/2), ..., floor(3^(n_q)/2)}
-        Golomb: all pairwise differences of Golomb ruler marks,
-                scaled by the number of encoding applications
+        Computed exactly from the ``(n_layers, n_qubits)`` data-reupload mask as
+        the Minkowski sum of the per-gate generator frequencies:
+
+        - hamming: every encoding gate contributes +/-1, so the comb is
+          ``{-k, ..., k}`` with ``k`` the total number of encoding gates.
+        - binary / ternary: qubit ``q`` is scaled by ``base**q`` (base 2 / 3),
+          applied once per active layer, so the comb is the Minkowski sum over
+          qubits of ``{k * base**q : |k| <= count_q}`` with ``count_q`` the
+          number of layers that re-upload on qubit ``q``.
+        - golomb: a single multi-qubit diagonal gate per *active layer* (see
+          ``Model._iec``), each spanning ``[-max_mark, max_mark]``; ``k`` active
+          layers give ``{-k*max_mark, ..., k*max_mark}``. The contiguous range
+          is returned (not the sparse mark-difference set) because the FFT in
+          ``Coefficients._fourier_transform`` samples at ``model.degree``
+          resolution and must cover the max frequency; residual sparse gaps
+          carry ~0 coefficients.
 
         See https://doi.org/10.22331/q-2023-12-20-1210 for more details.
 
         Parameters
         ----------
-        omegas : int
-            The number of frequencies to encode.
+        data_reupload : np.ndarray
+            Boolean mask of shape ``(n_layers, n_qubits)`` (or ``(n_qubits,)``
+            for a single layer) marking where the encoding re-uploads.
 
         Returns
         -------
         np.ndarray
-            The spectrum of the encoding strategy.
+            The sorted reachable spectrum of the encoding strategy.
         """
-        if self._strategy == "hamming":
-            return np.arange(-omegas, omegas + 1)
-        elif self._strategy == "binary":
-            return np.arange(-(2**omegas) + 1, 2**omegas)
-        elif self._strategy == "ternary":
-            limit = int(np.floor(3**omegas / 2))
-            return np.arange(-limit, limit + 1)
-        elif self._strategy == "golomb":
+        mask = np.asarray(data_reupload, dtype=bool)
+        if mask.ndim == 1:  # (n_qubits,) -> treat as a single layer
+            mask = mask[None, :]
+
+        if self._strategy not in ("hamming", "binary", "ternary"):
+            raise NotImplementedError
+        if self._strategy == "golomb":
             from qml_essentials.unitary import golomb_ruler
 
             n_qubits = getattr(self, "_n_qubits", None)
             if n_qubits is None:
                 raise ValueError("Golomb encoding requires n_qubits to be set")
-            d = 2**n_qubits
-            marks = golomb_ruler(d)
-            max_mark = max(marks)
-            limit = omegas * max_mark
+            apps = int(np.count_nonzero(mask.any(axis=1)))  # one gate per active layer
+            limit = apps * max(golomb_ruler(2**n_qubits))
             return np.arange(-limit, limit + 1)
-        else:
-            raise NotImplementedError
+
+        base = {"hamming": 1, "binary": 2, "ternary": 3}[self._strategy]
+        counts = mask.sum(axis=0)  # per-qubit re-upload count (index == wire)
+        reach = {0}
+        for q, c in enumerate(counts):
+            scale = base**q
+            reach = {
+                a + k
+                for a in reach
+                for k in range(-int(c) * scale, int(c) * scale + 1, scale)
+            }
+        return np.array(sorted(reach))
 
     def hamming(self, enc):
         """
