@@ -397,6 +397,8 @@ class Ansaetze:
             Ansaetze.Strongly_Entangling,
             Ansaetze.Hardware_Efficient,
             Ansaetze.Permutation_Equivariant,
+            Ansaetze.Matchgate,
+            Ansaetze.XY_Brickwork,
         ]
 
         # extend by the non-parameterized ones
@@ -794,6 +796,77 @@ class Ansaetze:
             for j in range(n_qubits):
                 for k in range(j + 1, n_qubits):
                     Gates.RZZ(w[2], wires=[j, k], **kwargs)
+
+    class Matchgate(Circuit):
+        r"""Matchgate LASA layer: RZ on every qubit + nearest-neighbour RXX.
+
+        Generators $\{Z_k\} \cup \{X_k X_{k+1}\}$; the Lie closure is the
+        matchgate algebra $\mathfrak{so}(2n)$ with $\dim = n(2n-1)$ (Kokcu et
+        al., arXiv:2104.00728).  RXX is applied on the even nearest-neighbour
+        bonds and then the odd bonds of the open chain, so the layer width is
+        $n + (n-1)$.  Gradients assume JAX autodiff.
+        """
+
+        @staticmethod
+        def n_params_per_layer(n_qubits: int) -> int:
+            return n_qubits + (n_qubits - 1)
+
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return n_qubits * PulseInformation.num_params("RZ") + (
+                n_qubits - 1
+            ) * PulseInformation.num_params("RXX")
+
+        @staticmethod
+        def get_control_indices(n_qubits: int) -> Optional[List[int]]:
+            return None
+
+        @staticmethod
+        def build(w: np.ndarray, n_qubits: int, **kwargs: Any) -> None:
+            for q in range(n_qubits):
+                Gates.RZ(w[q], wires=q, **kwargs)
+            idx = n_qubits
+            for q in range(0, n_qubits - 1, 2):  # even bonds
+                Gates.RXX(w[idx], wires=[q, q + 1], **kwargs)
+                idx += 1
+            for q in range(1, n_qubits - 1, 2):  # odd bonds
+                Gates.RXX(w[idx], wires=[q, q + 1], **kwargs)
+                idx += 1
+
+    class XY_Brickwork(Circuit):
+        r"""Off-diagonal XY brickwork: nearest-neighbour RXX then RYY.
+
+        Generators $\{X_k X_{k+1}, Y_k Y_{k+1}\}$; the Lie closure is the
+        off-diagonal algebra $\mathfrak{so}(n) \oplus \mathfrak{so}(n)$ with no
+        single-qubit $Z$, hence no deterministic $\mathfrak{g}$-purity floor.
+        RXX on the even then odd bonds, followed by RYY on the even then odd
+        bonds, so the layer width is $2(n-1)$.  Gradients assume JAX autodiff.
+        """
+
+        @staticmethod
+        def n_params_per_layer(n_qubits: int) -> int:
+            return 2 * (n_qubits - 1)
+
+        @staticmethod
+        def n_pulse_params_per_layer(n_qubits: int) -> int:
+            return (n_qubits - 1) * (
+                PulseInformation.num_params("RXX") + PulseInformation.num_params("RYY")
+            )
+
+        @staticmethod
+        def get_control_indices(n_qubits: int) -> Optional[List[int]]:
+            return None
+
+        @staticmethod
+        def build(w: np.ndarray, n_qubits: int, **kwargs: Any) -> None:
+            idx = 0
+            for gate in (Gates.RXX, Gates.RYY):
+                for q in range(0, n_qubits - 1, 2):  # even bonds
+                    gate(w[idx], wires=[q, q + 1], **kwargs)
+                    idx += 1
+                for q in range(1, n_qubits - 1, 2):  # odd bonds
+                    gate(w[idx], wires=[q, q + 1], **kwargs)
+                    idx += 1
 
 
 class Encoding:
