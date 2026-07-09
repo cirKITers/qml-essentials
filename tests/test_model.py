@@ -325,6 +325,36 @@ def test_encoding() -> None:
 
 
 @pytest.mark.unittest
+def test_encoding_weights() -> None:
+    """Encoding.get_weights returns the per-qubit weight vector w (phi_q = w_q x),
+    consistent with the strategy scaling and with get_n_freqs."""
+    from itertools import product
+
+    for n in range(1, 6):
+        cases = {
+            "hamming": np.ones(n),
+            "binary": 2.0 ** np.arange(n),
+            "ternary": 3.0 ** np.arange(n),
+        }
+        for strategy, expected in cases.items():
+            enc = Encoding(strategy, ["RX"])
+            w = np.asarray(enc.get_weights(n))
+            np.testing.assert_allclose(w, expected)
+            # spectrum {sum_k s_k w_k : s_k in {-1,0,1}} has |Omega| = get_n_freqs(n)
+            spectrum = {
+                sum(s * wk for s, wk in zip(signs, w))
+                for signs in product((-1, 0, 1), repeat=n)
+            }
+            assert len(spectrum) == enc.get_n_freqs(n), (
+                f"{strategy}: |Omega|={len(spectrum)} != \
+                get_n_freqs={enc.get_n_freqs(n)}"
+            )
+
+    with pytest.raises(ValueError):
+        Encoding("golomb", None).get_weights(2)
+
+
+@pytest.mark.unittest
 def test_golomb_encoding() -> None:
     """Test the Golomb encoding strategy end-to-end.
 
@@ -392,9 +422,9 @@ def test_golomb_encoding() -> None:
     d = 2**model.n_qubits
     marks = golomb_ruler(d)
     max_mark = max(marks)
-    # With DRU on all qubits for 1 layer, n_encoding_gates = n_qubits
-    n_enc = int(np.count_nonzero(model.data_reupload[..., 0]))
-    expected_n_freqs = 2 * n_enc * max_mark + 1
+    # Golomb applies one multi-qubit diagonal gate per active layer
+    n_app = int(np.count_nonzero(np.asarray(model.data_reupload[..., 0]).any(axis=1)))
+    expected_n_freqs = 2 * n_app * max_mark + 1
     assert model.degree[0] == expected_n_freqs, (
         f"Expected degree {expected_n_freqs}, got {model.degree[0]}"
     )

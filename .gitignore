@@ -1,10 +1,6 @@
-benchmarks-*.png
-benchmarks-*.csv
 .vscode
 logs/
 tests_external/
-*.md
-!README.md
 
 # General files
 *.bkp
