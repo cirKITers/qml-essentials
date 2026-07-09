@@ -881,6 +881,42 @@ class Encoding:
             }
         return np.array(sorted(reach))
 
+    def get_weights(self, n_qubits):
+        """
+        Per-qubit weight vector w for the separable weighted encodings.
+
+        The encoding loads the scaled input phi_q = w_q * x on qubit q, so the
+        returned weights match the per-qubit scaling of the strategy callables
+        (see :meth:`binary` and :meth:`ternary`).
+
+        Parameters
+        ----------
+        n_qubits : int
+            The number of qubits carrying the encoding.
+
+        Returns
+        -------
+        np.ndarray
+            The weight vector of shape ``(n_qubits,)``.
+
+        Raises
+        ------
+        ValueError
+            If the strategy is non-separable (golomb) and has no per-qubit weights.
+        """
+        if self._strategy == "hamming":
+            return np.ones(n_qubits)
+        elif self._strategy == "binary":
+            return 2.0 ** np.arange(n_qubits)
+        elif self._strategy == "ternary":
+            return 3.0 ** np.arange(n_qubits)
+        elif self._strategy == "golomb":
+            raise ValueError(
+                "Golomb encoding is non-separable and has no per-qubit weights."
+            )
+        else:
+            raise NotImplementedError
+
     def hamming(self, enc):
         """
         Hamming encoding strategy.
@@ -932,7 +968,7 @@ class Encoding:
 
         Returns an encoding function that scales the input by a factor of 3^wires.
 
-        Ternary encoding uses 3^(omegas + 1) - 1 frequencies for the encoding.
+        Ternary encoding uses 3^omegas frequencies for the encoding.
         See https://doi.org/10.22331/q-2023-12-20-1210 for more details.
 
         Parameters
