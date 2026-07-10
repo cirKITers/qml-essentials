@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional, Tuple, Callable, Union, List
 import warnings
 import jax.numpy as jnp
 import numpy as np
+import jax
 from jax import random
 
 from qml_essentials import jaqsi as js
@@ -37,6 +38,7 @@ class Model:
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * jnp.pi],
         output_qubit: Union[List[int], int] = -1,
+        observables: Optional[List[op.Operation]] = None,
         shots: Optional[int] = None,
         random_seed: int = 1000,
         remove_zero_encoding: bool = True,
@@ -81,6 +83,11 @@ class Model:
                 qubit (or qubits). When set to -1 all qubits are measured, or a
                 global measurement is conducted, depending on the execution
                 type.
+            observables (Optional[List[op.Operation]], optional): Custom
+                measurement observables for ``execution_type="expval"``. When
+                given, ``__call__`` returns one expectation value per observable
+                and the per-``output_qubit`` PauliZ default is bypassed.
+                Defaults to None.
             shots (Optional[int], optional): The number of shots to use for
                 the quantum device. Defaults to None.
             random_seed (int, optional): seed for the random number generator
@@ -103,6 +110,7 @@ class Model:
         # Initialize default parameters needed for circuit evaluation
         self.n_qubits: int = n_qubits
         self.output_qubit: Union[List[int], int] = output_qubit
+        self._observables: Optional[List[op.Operation]] = observables
         self.n_layers: int = n_layers
         self.noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None
         self.shots = shots
@@ -328,6 +336,21 @@ class Model:
         self._output_qubit = value
 
     @property
+    def observables(self) -> Optional[List[op.Operation]]:
+        """Custom measurement observables, or ``None`` for the default PauliZ readout.
+
+        When set, ``__call__`` with ``execution_type="expval"`` returns one
+        expectation value per observable instead of one ``PauliZ`` per output qubit.
+        """
+        return self._observables
+
+    @observables.setter
+    def observables(self, value: Optional[List[op.Operation]]) -> None:
+        self._observables = value
+        # recompute the result shape for the (possibly new) observable count
+        self.execution_type = self.execution_type
+
+    @property
     def execution_type(self) -> str:
         """
         Gets the execution type of the model.
@@ -345,11 +368,10 @@ class Model:
                 2 ** len(self.output_qubit),
             )
         elif value == "expval":
-            # check if all qubits are used
-            if len(self.output_qubit) == self.n_qubits:
-                self._result_shape = (len(self.output_qubit),)
-            # if not -> parity measurement with only 1D output per pair
-            # or n_local measurement
+            # custom observables (if provided) fix the number of expectation
+            # values; otherwise one PauliZ (or Z-parity) per output qubit.
+            if getattr(self, "_observables", None) is not None:
+                self._result_shape = (len(self._observables),)
             else:
                 self._result_shape = (len(self.output_qubit),)
         elif value == "probs":
@@ -981,6 +1003,8 @@ class Model:
             return "state", []
 
         if self.execution_type == "expval":
+            if self._observables is not None:
+                return "expval", list(self._observables)
             obs: List[op.Operation] = []
             for qubit_spec in self.output_qubit:
                 if isinstance(qubit_spec, int):
@@ -1239,7 +1263,9 @@ class Model:
         # append batch axis if not provided
         if params is not None:
             if len(params.shape) == 2:
-                params = np.expand_dims(params, axis=0)
+                # jnp (not np) so params stays a JAX array under autodiff /
+                # jit; mirrors the pulse_params handling below.
+                params = jnp.expand_dims(params, axis=0)
 
             # Avoid stashing JAX tracers on ``self``: under an outer
             # transform (e.g. ``jacrev``) the tracer becomes invalid once
@@ -1361,7 +1387,14 @@ class Model:
         elif inputs is None:
             inputs = jnp.array([[0] * self.n_input_feat])
 
-        if not inputs.any():
+        # The all-zero-input optimisation needs a concrete boolean; under JAX
+        # tracing (jit / grad) ``inputs.any()`` has no concrete value, so skip
+        # it there (inputs are non-zero in the traced training/inference paths).
+        try:
+            all_zero = not bool(inputs.any())
+        except jax.errors.TracerBoolConversionError:
+            all_zero = False
+        if all_zero:
             self._zero_inputs = True
 
         if len(inputs.shape) <= 1:
@@ -1651,8 +1684,13 @@ class Model:
             pulse_params,
         )
 
-        # split to generate a sub_key, required for actual execution
-        self.random_key, sub_key = safe_random_split(self.random_key)
+        # split to generate a sub_key, required for actual execution.
+        # Under JAX tracing (jit / grad) the split result is a tracer; stashing it
+        # on ``self`` leaks the tracer across calls (UnexpectedTracerError), so only
+        # advance the key eagerly
+        new_key, sub_key = safe_random_split(self.random_key)
+        if not isinstance(new_key, jax.core.Tracer):
+            self.random_key = new_key
 
         # Build measurement type & observables from execution_type / output_qubit
         meas_type, obs = self._build_obs()
