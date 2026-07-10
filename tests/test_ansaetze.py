@@ -662,3 +662,114 @@ def test_sn_equivariant_permutation_invariant():
     psi = np.asarray(script.execute(type="state"))
     P = _swap_perm(n, 0, 1)
     assert np.allclose(P @ psi, psi)
+
+
+# --- Declarative-migration equivalence pins ---------------------------------
+# Reference builders and counts are frozen copies of the pre-migration manual
+# implementations of Matchgate, XY_Brickwork, Permutation_Equivariant and GHZ.
+# After converting those ansaetze to DeclarativeCircuit the built statevector,
+# layer width, pulse-param count and control indices must stay identical.
+
+
+def _ref_matchgate_build(w, n_qubits, **kwargs):
+    for q in range(n_qubits):
+        Gates.RZ(w[q], wires=q, **kwargs)
+    idx = n_qubits
+    for q in range(0, n_qubits - 1, 2):  # even bonds
+        Gates.RXX(w[idx], wires=[q, q + 1], **kwargs)
+        idx += 1
+    for q in range(1, n_qubits - 1, 2):  # odd bonds
+        Gates.RXX(w[idx], wires=[q, q + 1], **kwargs)
+        idx += 1
+
+
+def _ref_xy_brickwork_build(w, n_qubits, **kwargs):
+    idx = 0
+    for gate in (Gates.RXX, Gates.RYY):
+        for q in range(0, n_qubits - 1, 2):  # even bonds
+            gate(w[idx], wires=[q, q + 1], **kwargs)
+            idx += 1
+        for q in range(1, n_qubits - 1, 2):  # odd bonds
+            gate(w[idx], wires=[q, q + 1], **kwargs)
+            idx += 1
+
+
+def _ref_perm_equiv_build(w, n_qubits, **kwargs):
+    for q in range(n_qubits):
+        Gates.RX(w[0], wires=q, **kwargs)
+    for q in range(n_qubits):
+        Gates.RY(w[1], wires=q, **kwargs)
+    for j in range(n_qubits):
+        for k in range(j + 1, n_qubits):
+            Gates.RZZ(w[2], wires=[j, k], **kwargs)
+
+
+def _ref_ghz_build(w, n_qubits, **kwargs):
+    Gates.H(wires=0, **kwargs)
+    for q in range(n_qubits - 1):
+        Gates.CX(wires=[q, q + 1], **kwargs)
+
+
+def _ref_matchgate_pulse(n):
+    return n * pinfo.num_params("RZ") + (n - 1) * pinfo.num_params("RXX")
+
+
+def _ref_xy_brickwork_pulse(n):
+    return (n - 1) * (pinfo.num_params("RXX") + pinfo.num_params("RYY"))
+
+
+def _ref_perm_equiv_pulse(n):
+    n_pairs = n * (n - 1) // 2
+    return (
+        n * pinfo.num_params("RX")
+        + n * pinfo.num_params("RY")
+        + n_pairs * pinfo.num_params("RZZ")
+    )
+
+
+def _ref_ghz_pulse(n):
+    return pinfo.num_params("H") + (n - 1) * pinfo.num_params("CX")
+
+
+_MIGRATED = {
+    "Matchgate": (_ref_matchgate_build, lambda n: n + (n - 1), _ref_matchgate_pulse),
+    "XY_Brickwork": (
+        _ref_xy_brickwork_build,
+        lambda n: 2 * (n - 1),
+        _ref_xy_brickwork_pulse,
+    ),
+    "Permutation_Equivariant": (
+        _ref_perm_equiv_build,
+        lambda n: 3,
+        _ref_perm_equiv_pulse,
+    ),
+    "GHZ": (_ref_ghz_build, lambda n: 0, _ref_ghz_pulse),
+}
+
+
+@pytest.mark.unittest
+@pytest.mark.parametrize("name", list(_MIGRATED))
+def test_declarative_migration_counts(name):
+    ref_build, ref_nparams, ref_pulse = _MIGRATED[name]
+    ansatz = getattr(Ansaetze, name)
+    for n in range(2, 6):
+        assert ansatz.n_params_per_layer(n) == ref_nparams(n), (name, n)
+        assert ansatz.n_pulse_params_per_layer(n) == ref_pulse(n), (name, n)
+        assert ansatz.get_control_indices(n) is None, (name, n)
+
+
+@pytest.mark.unittest
+@pytest.mark.parametrize("name", list(_MIGRATED))
+def test_declarative_migration_statevector(name):
+    ref_build, ref_nparams, _ = _MIGRATED[name]
+    ansatz = getattr(Ansaetze, name)
+    rng = np.random.default_rng(0)
+    for n in range(2, 6):
+        w = jnp.asarray(rng.uniform(0, 2 * np.pi, max(ref_nparams(n), 1)))
+        psi_new = np.asarray(
+            js.Script(lambda: ansatz.build(w, n), n_qubits=n).execute(type="state")
+        )
+        psi_ref = np.asarray(
+            js.Script(lambda: ref_build(w, n), n_qubits=n).execute(type="state")
+        )
+        assert np.allclose(psi_new, psi_ref), (name, n)
