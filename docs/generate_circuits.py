@@ -13,7 +13,7 @@ def plot_circuit(q, ansatz):
         n_qubits=q,
         n_layers=1,
         circuit_type=ansatz.__name__,
-        output_qubit=-1,
+        observables=None,
         remove_zero_encoding=True,
         data_reupload=False,
     )
