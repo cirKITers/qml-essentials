@@ -37,8 +37,10 @@ class Model:
         trainable_frequencies: bool = False,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * jnp.pi],
-        output_qubit: Union[List[int], int] = -1,
-        observables: Optional[List[op.Operation]] = None,
+        output_qubit: Union[List[int], int, None] = None,
+        observables: Union[
+            int, List[Union[int, List[int]]], List[op.Operation], None
+        ] = None,
         shots: Optional[int] = None,
         random_seed: int = 1000,
         remove_zero_encoding: bool = True,
@@ -324,7 +326,7 @@ class Model:
             DeprecationWarning,
             stacklevel=2,
         )
-        return self._output_qubit
+        return self._measured_wires
 
     @output_qubit.setter
     def output_qubit(self, value: Union[int, List[int]]) -> None:
@@ -336,19 +338,60 @@ class Model:
         self.observables = value
 
     @property
-    def observables(self) -> Optional[List[op.Operation]]:
-        """Custom measurement observables, or ``None`` for the default PauliZ readout.
+    def observables(self) -> List:
+        """The custom :class:`~qml_essentials.operations.Operation` observables,
+        or the list of measured wires when using the default PauliZ readout.
 
-        When set, ``__call__`` with ``execution_type="expval"`` returns one
-        expectation value per observable instead of one ``PauliZ`` per output qubit.
+        With a list of observables, ``__call__`` and ``execution_type="expval"``
+        returns one expectation value per observable instead of one ``PauliZ``
+        per measured qubit.
         """
-        return self._observables
+        return (
+            self._observables if self._observables is not None else self._measured_wires
+        )
 
     @observables.setter
-    def observables(self, value: Optional[List[op.Operation]]) -> None:
-        self._observables = value
+    def observables(self, value: Union[int, List, None]) -> None:
+        if value is None:
+            self._observables = None
+            self._measured_wires = list(range(self.n_qubits))
+        elif (
+            isinstance(value, list)
+            and value
+            and all(isinstance(o, op.Operation) for o in value)
+        ):
+            self._observables = list(value)
+            self._measured_wires = list(range(self.n_qubits))
+        elif isinstance(value, list) and any(
+            isinstance(o, op.Operation) for o in value
+        ):
+            raise ValueError(
+                "observables list must contain either qubit indices or "
+                "Operation objects, not a mix."
+            )
+        else:
+            # qubit specification: normalize into the measured wire list
+            self._observables = None
+            if isinstance(value, list):
+                assert len(value) <= self.n_qubits, (
+                    f"Size of observables {len(value)} cannot be larger than "
+                    f"number of qubits {self.n_qubits}."
+                )
+                self._measured_wires = value
+            elif isinstance(value, int):
+                if value == -1:
+                    self._measured_wires = list(range(self.n_qubits))
+                else:
+                    assert value < self.n_qubits, (
+                        f"Output qubit {value} cannot be larger than {self.n_qubits}."
+                    )
+                    self._measured_wires = [value]
+            else:
+                self._measured_wires = value
+
         # recompute the result shape for the (possibly new) observable count
-        self.execution_type = self.execution_type
+        if hasattr(self, "_execution_type"):
+            self.execution_type = self.execution_type
 
     @property
     def execution_type(self) -> str:
@@ -364,34 +407,40 @@ class Model:
     def execution_type(self, value: str) -> None:
         if value == "density":
             self._result_shape = (
-                2 ** len(self.output_qubit),
-                2 ** len(self.output_qubit),
+                2 ** len(self._measured_wires),
+                2 ** len(self._measured_wires),
             )
         elif value == "expval":
             # custom observables (if provided) fix the number of expectation
-            # values; otherwise one PauliZ (or Z-parity) per output qubit.
+            # values; otherwise one PauliZ (or Z-parity) per measured qubit.
             if getattr(self, "_observables", None) is not None:
                 self._result_shape = (len(self._observables),)
             else:
-                self._result_shape = (len(self.output_qubit),)
+                self._result_shape = (len(self._measured_wires),)
         elif value == "probs":
             # in case this is a list of parities,
             # each pair has 2^len(qubits) probabilities
             n_parity = (
-                (2,) * len(self.output_qubit)
-                if isinstance(self.output_qubit, (Tuple, List))
+                (2,) * len(self._measured_wires)
+                if isinstance(self._measured_wires, (Tuple, List))
                 else (2,)
             )
             self._result_shape = n_parity
         elif value == "state":
-            self._result_shape = (2 ** len(self.output_qubit),)
+            self._result_shape = (2 ** len(self._measured_wires),)
         else:
             raise ValueError(f"Invalid execution type: {value}.")
 
         if value == "state" and not self.all_qubit_measurement:
             warnings.warn(
-                f"{value} measurement does ignore output_qubit, which is "
-                f"{self.output_qubit}.",
+                f"{value} measurement ignores the measured subsystem, which is "
+                f"{self._measured_wires}.",
+                UserWarning,
+            )
+
+        if value != "expval" and getattr(self, "_observables", None) is not None:
+            warnings.warn(
+                f"Custom observables are ignored for execution_type={value!r}.",
                 UserWarning,
             )
 
@@ -620,7 +669,7 @@ class Model:
     @property
     def all_qubit_measurement(self) -> bool:
         """Check if measurement is performed on all qubits."""
-        return self.output_qubit == list(range(self.n_qubits))
+        return self._measured_wires == list(range(self.n_qubits))
 
     @property
     def batch_shape(self) -> Tuple[int, ...]:
@@ -987,7 +1036,7 @@ class Model:
     def _build_obs(self) -> Tuple[str, List[op.Operation]]:
         """Build the jaqsi measurement type and observable list.
 
-        Translates the model's ``execution_type`` and ``output_qubit``
+        Translates the model's ``execution_type`` and ``observables``
         settings into parameters suitable for
         :meth:`~qml_essentials.jaqsi.Script.execute`.
 
@@ -1006,7 +1055,7 @@ class Model:
             if self._observables is not None:
                 return "expval", list(self._observables)
             obs: List[op.Operation] = []
-            for qubit_spec in self.output_qubit:
+            for qubit_spec in self._measured_wires:
                 if isinstance(qubit_spec, int):
                     obs.append(op.PauliZ(wires=qubit_spec))
                 else:
@@ -1584,7 +1633,7 @@ class Model:
 
         Returns:
             jnp.ndarray: Circuit output with shape depending on execution_type:
-                - "expval": (n_output_qubits,) or scalar
+                - "expval": (n_measured_wiress,) or scalar
                 - "density": (2^n_output, 2^n_output)
                 - "probs": (2^n_output,) or (n_pairs, 2^pair_size)
                 - "state": (2^n_qubits,)
@@ -1646,7 +1695,7 @@ class Model:
 
         Returns:
             jnp.ndarray: Circuit output with shape depending on execution_type:
-                - "expval": (n_output_qubits,) or scalar
+                - "expval": (n_measured_wiress,) or scalar
                 - "density": (2^n_output, 2^n_output)
                 - "probs": (2^n_output,) or (n_pairs, 2^pair_size)
                 - "state": (2^n_qubits,)
@@ -1747,19 +1796,21 @@ class Model:
 
         # --- Post-processing for partial-qubit measurements ---------------
         if self.execution_type == "density" and not self.all_qubit_measurement:
-            result = js.partial_trace(result, self.n_qubits, self.output_qubit)
+            result = js.partial_trace(result, self.n_qubits, self._measured_wires)
 
         if self.execution_type == "probs" and not self.all_qubit_measurement:
-            if isinstance(self.output_qubit[0], (list, tuple)):
+            if isinstance(self._measured_wires[0], (list, tuple)):
                 # list of qubit groups - marginalize each independently
                 result = jnp.stack(
                     [
                         js.marginalize_probs(result, self.n_qubits, list(group))
-                        for group in self.output_qubit
+                        for group in self._measured_wires
                     ]
                 )
             else:
-                result = js.marginalize_probs(result, self.n_qubits, self.output_qubit)
+                result = js.marginalize_probs(
+                    result, self.n_qubits, self._measured_wires
+                )
 
         result = jnp.asarray(result)
         result = result.reshape((*self.eff_batch_shape, *self._result_shape)).squeeze()
