@@ -79,15 +79,17 @@ class Model:
             initialization (str, optional): The strategy to initialize the parameters.
                 Can be "random", "zeros", "zero-controlled", "pi", or "pi-controlled".
                 Defaults to "random".
-            output_qubit (List[int], int, optional): The index of the output
-                qubit (or qubits). When set to -1 all qubits are measured, or a
-                global measurement is conducted, depending on the execution
-                type.
-            observables (Optional[List[op.Operation]], optional): Custom
-                measurement observables for ``execution_type="expval"``. When
-                given, ``__call__`` returns one expectation value per observable
-                and the per-``output_qubit`` PauliZ default is bypassed.
-                Defaults to None.
+            output_qubit (List[int], int, optional): Deprecated alias for
+                ``observables``. Forwards to ``observables`` and will be removed
+                in a future release. Defaults to None.
+            observables (int, List[int], List[List[int]], List[op.Operation],
+                optional): Measurement specification. A qubit index, a list of
+                indices, or a list of qubit groups (for $Z$-parity) selects the
+                measured subsystem with the default PauliZ readout.
+                Alternatively, a list of
+                :class:`~qml_essentials.operations.Operation` observables makes
+                ``execution_type="expval"`` return one expectation value per
+                observable. When None all qubits are measured. Defaults to None.
             shots (Optional[int], optional): The number of shots to use for
                 the quantum device. Defaults to None.
             random_seed (int, optional): seed for the random number generator
@@ -109,8 +111,16 @@ class Model:
         """
         # Initialize default parameters needed for circuit evaluation
         self.n_qubits: int = n_qubits
-        self.output_qubit: Union[List[int], int] = output_qubit
-        self._observables: Optional[List[op.Operation]] = observables
+        if output_qubit is not None:
+            if observables is not None:
+                raise ValueError("Pass either output_qubit or observables, not both.")
+            warnings.warn(
+                "output_qubit is deprecated, use observables instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            observables = output_qubit
+        self.observables = observables
         self.n_layers: int = n_layers
         self.noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None
         self.shots = shots
