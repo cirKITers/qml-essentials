@@ -20,7 +20,7 @@ To get an overview of all the available Ansaetze, checkout the [references](http
 ## Custom Ansatz
 
 For building the different Ansatzes, we use topology patterns defined in `qml_essentials.topologies`.
-Three patterns are available: `Topology.stairs` (a configurable chain of entangling gates), `Topology.bricks` (a brick-wall pattern) and `Topology.all_to_all` (all qubit pairs).
+Four patterns are available: `Topology.stairs` (a configurable chain of entangling gates), `Topology.bricks` (a brick-wall pattern), `Topology.all_to_all` (every ordered qubit pair) and `Topology.all_pairs` (every unordered qubit pair).
 Several built-in circuits rely on them, e.g. Circuit_5 uses `all_to_all` and Circuit_7 uses `bricks`.
 You can find a list of all the available topologies in the [references](https://cirkiters.github.io/qml-essentials/references/) as well.
 
@@ -107,7 +107,17 @@ class MyHardwareEfficient(Circuit):
 The `**kwargs` allow both [noise simulation](noise.md) and [pulse simulation](pulses.md).
 A custom `Circuit` should define `n_pulse_params_per_layer` if it will use pulse simulation at some point, but may be omitted otherwise.
 
-The built-in `Permutation_Equivariant` ansatz follows this from-scratch pattern: it is an $S_n$-equivariant layer with shared-angle RX and RY on every qubit and a shared-angle RZZ on every qubit pair, so it has three tied parameters per layer regardless of the qubit count.
+If instead all gates of a block should share a single parameter, pass `shared=True` to the `Block`. The built-in `Permutation_Equivariant` ansatz uses this: it is an $S_n$-equivariant layer with a shared-angle RX and RY on every qubit and a shared-angle RZZ on every qubit pair, so it has three tied parameters per layer regardless of the qubit count.
+```python
+class Permutation_Equivariant(DeclarativeCircuit):
+    @classmethod
+    def structure(cls):
+        return (
+            Block(gate=Gates.RX, shared=True),
+            Block(gate=Gates.RY, shared=True),
+            Block(gate=Gates.RZZ, topology=Topology.all_pairs, shared=True),
+        )
+```
 
 Check out page [*Usage*](usage.md) on how to proceed from here.
 
