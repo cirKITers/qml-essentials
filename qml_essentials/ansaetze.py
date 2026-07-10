@@ -226,6 +226,8 @@ class Block:
         self,
         gate: str,
         topology: Any = None,
+        shared: bool = False,
+        wires: Optional[List[int]] = None,
         **kwargs,
     ):
         """
@@ -234,6 +236,12 @@ class Block:
         Args:
             gate (str): Name of the Gate class to use.
             topology (Any, optional): Topology of the gate for entangling gates.
+                Defaults to None.
+            shared (bool, optional): Tie all gates of the block to a single
+                parameter (per-gate width), instead of one parameter per gate.
+                Defaults to False.
+            wires (Optional[List[int]], optional): Fixed wires for a
+                non-entangling block. If None, the block spans all qubits.
                 Defaults to None.
             kwargs (Any): Additional keyword arguments passed to the topology function.
         """
@@ -248,6 +256,8 @@ class Block:
             )
 
         self.topology = topology
+        self.shared = shared
+        self.wires = wires
         self.kwargs = kwargs
 
     def __repr__(self):
@@ -269,7 +279,7 @@ class Block:
 
     @property
     def is_controlled_rotation(self):
-        return self.is_entangling and self.is_rotational
+        return Gates.is_controlled(self.gate) and self.is_rotational
 
     def enough_qubits(self, n_qubits):
         if self.is_entangling:
@@ -286,21 +296,24 @@ class Block:
     def n_params(self, n_qubits: int) -> int:
         assert n_qubits > 0, "Number of qubits must be positive"
 
-        if self.is_rotational:
-            if self.is_entangling:
-                if not self.enough_qubits(n_qubits):
-                    warnings.warn(
-                        f"Skipping {self.topology.__name__} with n_qubits={n_qubits} "
-                        f"as there are not enough qubits"
-                        f"for this topology."
-                    )
-                    return 0
-                else:
-                    return len(self.topology(n_qubits=n_qubits, **self.kwargs))
-            else:
-                return n_qubits if self.gate.__name__ != "Rot" else 3 * n_qubits
+        if not self.is_rotational:
+            return 0
 
-        return 0
+        per_gate = 3 if self.gate.__name__ == "Rot" else 1
+
+        if self.is_entangling:
+            if not self.enough_qubits(n_qubits):
+                warnings.warn(
+                    f"Skipping {self.topology.__name__} with n_qubits={n_qubits} "
+                    f"as there are not enough qubits"
+                    f"for this topology."
+                )
+                return 0
+            n_gates = len(self.topology(n_qubits=n_qubits, **self.kwargs))
+        else:
+            n_gates = len(self.wires) if self.wires is not None else n_qubits
+
+        return per_gate if self.shared else per_gate * n_gates
 
     def n_pulse_params(self, n_qubits: int) -> int:
         assert n_qubits > 0, "Number of qubits must be positive"
@@ -318,7 +331,8 @@ class Block:
                 return n_pulse_params * len(
                     self.topology(n_qubits=n_qubits, **self.kwargs)
                 )
-        return n_pulse_params * n_qubits
+        n_gates = len(self.wires) if self.wires is not None else n_qubits
+        return n_pulse_params * n_gates
 
     def apply(
         self, n_qubits: int, w: np.ndarray = None, w_idx: int = None, **kwargs
@@ -339,11 +353,14 @@ class Block:
         """
         assert n_qubits > 0, "Number of qubits must be positive"
 
-        iterator = (
-            self.topology(n_qubits=n_qubits, **self.kwargs)
-            if self.is_entangling
-            else range(n_qubits)
-        )
+        if self.is_entangling:
+            iterator = self.topology(n_qubits=n_qubits, **self.kwargs)
+        else:
+            iterator = self.wires if self.wires is not None else range(n_qubits)
+
+        per_gate = 3 if self.gate.__name__ == "Rot" else 1
+        base = w_idx  # start index, reused for every gate when shared
+        applied = False
 
         for wires in iterator:
             if self.is_entangling and not self.enough_qubits(n_qubits):
@@ -358,16 +375,19 @@ class Block:
                 assert w is not None, "w must be provided for rotational gates"
                 assert w_idx is not None, "w_idx must be provided for rotational gates"
 
-                if self.gate.__name__ == "Rot":
-                    self.gate(
-                        w[w_idx], w[w_idx + 1], w[w_idx + 2], wires=wires, **kwargs
-                    )
-                    w_idx += 3
+                i = base if self.shared else w_idx
+                if per_gate == 3:
+                    self.gate(w[i], w[i + 1], w[i + 2], wires=wires, **kwargs)
                 else:
-                    self.gate(w[w_idx], wires=wires, **kwargs)
-                    w_idx += 1
+                    self.gate(w[i], wires=wires, **kwargs)
+                if not self.shared:
+                    w_idx += per_gate
+                applied = True
             else:
                 self.gate(wires=wires, **kwargs)
+
+        if self.is_rotational and self.shared and applied:
+            w_idx = base + per_gate
         return w_idx
 
 
@@ -419,21 +439,14 @@ class Ansaetze:
         @classmethod
         def structure(cls):
             return (
-                Block(gate=Gates.H),
-                Block(gate=Gates.CX, topology=Topology.stairs, reverse=True),
+                Block(gate=Gates.H, wires=[0]),
+                Block(
+                    gate=Gates.CX,
+                    topology=Topology.stairs,
+                    reverse=False,
+                    mirror=False,
+                ),
             )
-
-        @classmethod
-        def build(cls, w: np.ndarray, n_qubits: int, **kwargs):
-            Gates.H(wires=0, **kwargs)
-            for q in range(n_qubits - 1):
-                Gates.CX(wires=[q, q + 1], **kwargs)
-
-        @classmethod
-        def n_pulse_params_per_layer(cls, n_qubits: int) -> int:
-            n_params = PulseInformation.num_params("H")  # only 1 H
-            n_params += (n_qubits - 1) * PulseInformation.num_params(Gates.CX)
-            return n_params
 
     class Circuit_1(DeclarativeCircuit):
         @classmethod
@@ -758,7 +771,7 @@ class Ansaetze:
                 ),
             )
 
-    class Permutation_Equivariant(Circuit):
+    class Permutation_Equivariant(DeclarativeCircuit):
         r"""$S_n$ permutation-equivariant layer (Schatzki et al., arXiv:2210.09974).
 
         Shared-angle RX and RY on every qubit followed by a shared-angle RZZ on
@@ -770,34 +783,15 @@ class Ansaetze:
         special handling for the shared parameters.
         """
 
-        @staticmethod
-        def n_params_per_layer(n_qubits: int) -> int:
-            return 3
-
-        @staticmethod
-        def n_pulse_params_per_layer(n_qubits: int) -> int:
-            n_pairs = n_qubits * (n_qubits - 1) // 2
+        @classmethod
+        def structure(cls):
             return (
-                n_qubits * PulseInformation.num_params("RX")
-                + n_qubits * PulseInformation.num_params("RY")
-                + n_pairs * PulseInformation.num_params("RZZ")
+                Block(gate=Gates.RX, shared=True),
+                Block(gate=Gates.RY, shared=True),
+                Block(gate=Gates.RZZ, topology=Topology.all_pairs, shared=True),
             )
 
-        @staticmethod
-        def get_control_indices(n_qubits: int) -> Optional[List[int]]:
-            return None
-
-        @staticmethod
-        def build(w: np.ndarray, n_qubits: int, **kwargs: Any) -> None:
-            for q in range(n_qubits):
-                Gates.RX(w[0], wires=q, **kwargs)
-            for q in range(n_qubits):
-                Gates.RY(w[1], wires=q, **kwargs)
-            for j in range(n_qubits):
-                for k in range(j + 1, n_qubits):
-                    Gates.RZZ(w[2], wires=[j, k], **kwargs)
-
-    class Matchgate(Circuit):
+    class Matchgate(DeclarativeCircuit):
         r"""Matchgate LASA layer: RZ on every qubit + nearest-neighbour RXX.
 
         Generators $\{Z_k\} \cup \{X_k X_{k+1}\}$; the Lie closure is the
@@ -807,33 +801,27 @@ class Ansaetze:
         $n + (n-1)$.  Gradients assume JAX autodiff.
         """
 
-        @staticmethod
-        def n_params_per_layer(n_qubits: int) -> int:
-            return n_qubits + (n_qubits - 1)
+        @classmethod
+        def structure(cls):
+            return (
+                Block(gate=Gates.RZ),
+                Block(
+                    gate=Gates.RXX,
+                    topology=Topology.bricks,
+                    offset=0,
+                    reverse=False,
+                    mirror=False,
+                ),
+                Block(
+                    gate=Gates.RXX,
+                    topology=Topology.bricks,
+                    offset=1,
+                    reverse=False,
+                    mirror=False,
+                ),
+            )
 
-        @staticmethod
-        def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return n_qubits * PulseInformation.num_params("RZ") + (
-                n_qubits - 1
-            ) * PulseInformation.num_params("RXX")
-
-        @staticmethod
-        def get_control_indices(n_qubits: int) -> Optional[List[int]]:
-            return None
-
-        @staticmethod
-        def build(w: np.ndarray, n_qubits: int, **kwargs: Any) -> None:
-            for q in range(n_qubits):
-                Gates.RZ(w[q], wires=q, **kwargs)
-            idx = n_qubits
-            for q in range(0, n_qubits - 1, 2):  # even bonds
-                Gates.RXX(w[idx], wires=[q, q + 1], **kwargs)
-                idx += 1
-            for q in range(1, n_qubits - 1, 2):  # odd bonds
-                Gates.RXX(w[idx], wires=[q, q + 1], **kwargs)
-                idx += 1
-
-    class XY_Brickwork(Circuit):
+    class XY_Brickwork(DeclarativeCircuit):
         r"""Off-diagonal XY brickwork: nearest-neighbour RXX then RYY.
 
         Generators $\{X_k X_{k+1}, Y_k Y_{k+1}\}$; the Lie closure is the
@@ -843,30 +831,38 @@ class Ansaetze:
         bonds, so the layer width is $2(n-1)$.  Gradients assume JAX autodiff.
         """
 
-        @staticmethod
-        def n_params_per_layer(n_qubits: int) -> int:
-            return 2 * (n_qubits - 1)
-
-        @staticmethod
-        def n_pulse_params_per_layer(n_qubits: int) -> int:
-            return (n_qubits - 1) * (
-                PulseInformation.num_params("RXX") + PulseInformation.num_params("RYY")
+        @classmethod
+        def structure(cls):
+            return (
+                Block(
+                    gate=Gates.RXX,
+                    topology=Topology.bricks,
+                    offset=0,
+                    reverse=False,
+                    mirror=False,
+                ),
+                Block(
+                    gate=Gates.RXX,
+                    topology=Topology.bricks,
+                    offset=1,
+                    reverse=False,
+                    mirror=False,
+                ),
+                Block(
+                    gate=Gates.RYY,
+                    topology=Topology.bricks,
+                    offset=0,
+                    reverse=False,
+                    mirror=False,
+                ),
+                Block(
+                    gate=Gates.RYY,
+                    topology=Topology.bricks,
+                    offset=1,
+                    reverse=False,
+                    mirror=False,
+                ),
             )
-
-        @staticmethod
-        def get_control_indices(n_qubits: int) -> Optional[List[int]]:
-            return None
-
-        @staticmethod
-        def build(w: np.ndarray, n_qubits: int, **kwargs: Any) -> None:
-            idx = 0
-            for gate in (Gates.RXX, Gates.RYY):
-                for q in range(0, n_qubits - 1, 2):  # even bonds
-                    gate(w[idx], wires=[q, q + 1], **kwargs)
-                    idx += 1
-                for q in range(1, n_qubits - 1, 2):  # odd bonds
-                    gate(w[idx], wires=[q, q + 1], **kwargs)
-                    idx += 1
 
 
 class Encoding:
