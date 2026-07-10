@@ -1,4 +1,5 @@
 from typing import List, Callable, Union
+from itertools import combinations
 import logging
 
 log = logging.getLogger(__name__)
@@ -104,6 +105,11 @@ class Topology:
         kwargs.setdefault("stride", 2)
         kwargs.setdefault("modulo", False)
         return cls.stairs(n_qubits=n_qubits, **kwargs)
+
+    @classmethod
+    def all_pairs(cls, n_qubits: int) -> List[List[int]]:
+        """Every unordered pair ``[j, k]`` with ``j < k``."""
+        return [[j, k] for j, k in combinations(range(n_qubits), 2)]
 
     @classmethod
     def all_to_all(cls, n_qubits: int) -> List[List[int]]:
