@@ -318,32 +318,22 @@ class Model:
 
     @property
     def output_qubit(self) -> List[int]:
-        """Get the output qubit indices for measurement."""
+        """Deprecated alias for :attr:`observables`; returns the measured wires."""
+        warnings.warn(
+            "output_qubit is deprecated, use observables instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self._output_qubit
 
     @output_qubit.setter
     def output_qubit(self, value: Union[int, List[int]]) -> None:
-        """
-        Set the output qubit(s) for measurement.
-
-        Args:
-            value: Qubit index or list of indices. Use -1 for all qubits.
-        """
-        if isinstance(value, list):
-            assert len(value) <= self.n_qubits, (
-                f"Size of output_qubit {len(value)} cannot be\
-            larger than number of qubits {self.n_qubits}."
-            )
-        elif isinstance(value, int):
-            if value == -1:
-                value = list(range(self.n_qubits))
-            else:
-                assert value < self.n_qubits, (
-                    f"Output qubit {value} cannot be larger than {self.n_qubits}."
-                )
-                value = [value]
-
-        self._output_qubit = value
+        warnings.warn(
+            "output_qubit is deprecated, use observables instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.observables = value
 
     @property
     def observables(self) -> Optional[List[op.Operation]]:
