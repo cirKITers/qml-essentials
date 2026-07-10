@@ -25,7 +25,7 @@ class TestCoefficients:
 
     @pytest.mark.unittest
     @pytest.mark.parametrize(
-        "circuit_type, n_qubits, n_layers, output_qubit",
+        "circuit_type, n_qubits, n_layers, observables",
         [
             ("Circuit_1", 3, 1, [0, 1]),
             ("Circuit_9", 4, 1, 0),
@@ -33,14 +33,14 @@ class TestCoefficients:
         ],
         ids=["Circuit_1-3q", "Circuit_9-4q", "Circuit_19-5q"],
     )
-    def test_coefficients(self, circuit_type, n_qubits, n_layers, output_qubit) -> None:
+    def test_coefficients(self, circuit_type, n_qubits, n_layers, observables) -> None:
         reference_inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
 
         model = Model(
             n_qubits=n_qubits,
             n_layers=n_layers,
             circuit_type=circuit_type,
-            output_qubit=output_qubit,
+            observables=observables,
         )
 
         coeffs, freqs = Coefficients.get_spectrum(model)
@@ -120,7 +120,7 @@ class TestCoefficients:
 
     @pytest.mark.unittest
     @pytest.mark.parametrize(
-        "output_qubit, output_size, force_mean",
+        "observables, output_size, force_mean",
         [
             (-1, 1, True),
             ([0, 1], 1, True),
@@ -129,12 +129,12 @@ class TestCoefficients:
         ],
         ids=["all-mean", "subset-mean", "all-no_mean", "subset-no_mean"],
     )
-    def test_multi_dim_input(self, output_qubit, output_size, force_mean) -> None:
+    def test_multi_dim_input(self, observables, output_size, force_mean) -> None:
         model = Model(
             n_qubits=3,
             n_layers=1,
             circuit_type="Hardware_Efficient",
-            output_qubit=output_qubit,
+            observables=observables,
             encoding=["RX", "RY"],
             data_reupload=[[[1, 0], [1, 0], [1, 1]]],
         )
@@ -165,7 +165,7 @@ class TestCoefficients:
             1,
             "Hardware_Efficient",
             encoding=["RX", "RY"],
-            output_qubit=0,
+            observables=0,
         )
         inputs = np.ones(2)
         exp_model = model(inputs=inputs)
@@ -192,7 +192,7 @@ class TestCoefficients:
             n_qubits=2,
             n_layers=1,
             circuit_type="Circuit_15",
-            output_qubit=-1,
+            observables=-1,
         )
 
         random_key = jax.random.key(1000)
@@ -216,7 +216,7 @@ class TestCoefficients:
             n_qubits=2,
             n_layers=1,
             circuit_type="Circuit_19",
-            output_qubit=-1,
+            observables=-1,
             encoding=["RX", "RY"],
         )
 
@@ -275,7 +275,7 @@ class TestCoefficients:
             n_qubits=3,
             n_layers=1,
             circuit_type="Hardware_Efficient",
-            output_qubit=-1,
+            observables=-1,
         )
 
         coeffs, freqs = Coefficients.get_spectrum(model, mts=2, trim=False)
@@ -356,7 +356,7 @@ class TestCoefficients:
             n_layers=3,
             circuit_type="Strongly_Entangling",
             encoding=Encoding("hamming", "RZ"),
-            output_qubit=-1,
+            observables=-1,
         )
         model.initialize_params(jax.random.key(1000), repeat=20)
 
@@ -402,7 +402,7 @@ class TestFourierTree:
 
     @pytest.mark.unittest
     @pytest.mark.parametrize(
-        "circuit_type, n_qubits, n_layers, output_qubit",
+        "circuit_type, n_qubits, n_layers, observables",
         [
             ("Circuit_1", 3, 1, [0, 1]),
             ("Circuit_9", 4, 1, 0),
@@ -411,7 +411,7 @@ class TestFourierTree:
         ids=["Circuit_1-3q", "Circuit_9-4q", "Circuit_19-3q"],
     )
     def test_coefficients_tree(
-        self, circuit_type, n_qubits, n_layers, output_qubit
+        self, circuit_type, n_qubits, n_layers, observables
     ) -> None:
         reference_inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
 
@@ -419,7 +419,7 @@ class TestFourierTree:
             n_qubits=n_qubits,
             n_layers=n_layers,
             circuit_type=circuit_type,
-            output_qubit=output_qubit,
+            observables=observables,
         )
 
         fft_coeffs, fft_freqs = Coefficients.get_spectrum(
@@ -476,7 +476,7 @@ class TestFourierTree:
             n_qubits=3,
             n_layers=1,
             circuit_type="Hardware_Efficient",
-            output_qubit=-1,
+            observables=-1,
         )
 
         fft_coeffs, fft_freqs = Coefficients.get_spectrum(model, shift=True)
@@ -533,7 +533,7 @@ class TestFourierTree:
             n_qubits=3,
             n_layers=1,
             circuit_type="Circuit_19",
-            output_qubit=0,
+            observables=0,
             encoding=["RX", "RY"],
         )
         assert model.n_input_feat == 2
@@ -580,7 +580,7 @@ class TestFourierTree:
             g.PauliRot(9 * inputs, "XY", wires=[0, 1])
 
         def prep():
-            model = Model(n_qubits=3, n_layers=1, output_qubit=0)
+            model = Model(n_qubits=3, n_layers=1, observables=0)
             model._params_shape = (2, 1)
             model.initialize_params()
             model.degree = (27,)  # 2 * max_freq + 1: the FFT sampling grid
@@ -633,7 +633,7 @@ class TestFourierTree:
             g.PauliRot(params[0], "Z", wires=[0])
             g.PauliRot(params[1], "Z", wires=[1])
 
-        model = Model(n_qubits=2, n_layers=1, output_qubit=0, encoding=["RX", "RY"])
+        model = Model(n_qubits=2, n_layers=1, observables=0, encoding=["RX", "RY"])
         model._params_shape = (2, 1)
         model.initialize_params()
         model.script = js.Script(f=variational, n_qubits=2)
@@ -648,7 +648,7 @@ class TestFourierTree:
         first parameter set instead of feeding batched angles into the gates."""
         import numpy as np
 
-        model = Model(n_qubits=2, n_layers=1, circuit_type="Circuit_19", output_qubit=0)
+        model = Model(n_qubits=2, n_layers=1, circuit_type="Circuit_19", observables=0)
         model.initialize_params(model.random_key, repeat=4)
         assert model.params.ndim == 3 and model.params.shape[0] == 4
         first_params = model.params[0]
@@ -675,7 +675,7 @@ class TestFourierTree:
 
         for circuit_type in ["Circuit_19", "Hardware_Efficient"]:
             model = Model(
-                n_qubits=3, n_layers=1, circuit_type=circuit_type, output_qubit=0
+                n_qubits=3, n_layers=1, circuit_type=circuit_type, observables=0
             )
             tree = FourierTree(model)
             sup_tree = tree.get_exact_support(method="tree")
@@ -697,7 +697,7 @@ class TestFourierTree:
             circuit_type="No_Ansatz",
             data_reupload=True,
             encoding="RX",
-            output_qubit=0,
+            observables=0,
         )
         tree = FourierTree(model)
         sup_tree = set(np.asarray(tree.get_exact_support("tree")[0]).tolist())
@@ -718,7 +718,7 @@ class TestFourierTree:
             n_qubits=4,
             n_layers=4,
             circuit_type="Strongly_Entangling",
-            output_qubit=0,
+            observables=0,
         )
         tree = FourierTree(model)
         union = set()
@@ -974,7 +974,7 @@ class TestFCC:
             n_qubits=6,
             n_layers=1,
             circuit_type=circuit_type,
-            output_qubit=-1,
+            observables=-1,
             encoding=["RY"],
         )
         fcc = FCC.get_fcc(model=model, n_samples=500, scale=True)
@@ -1005,7 +1005,7 @@ class TestFCC:
             n_layers=n_layers,
             circuit_type=circuit_type,
             encoding=enc,
-            output_qubit=-1,
+            observables=-1,
         )
 
         # Verify spectrum computation succeeds
@@ -1063,7 +1063,7 @@ class TestFCC:
             n_qubits=4,
             n_layers=1,
             circuit_type=circuit_type,
-            output_qubit=-1,
+            observables=-1,
             encoding=["RY"],
         )
         _ = FCC.get_fourier_fingerprint(
@@ -1088,7 +1088,7 @@ class TestFCC:
             n_qubits=4,
             n_layers=1,
             circuit_type="Circuit_19",
-            output_qubit=-1,
+            observables=-1,
             encoding=["RX", "RY"],
         )
         fcc = FCC.get_fcc(
@@ -1113,7 +1113,7 @@ class TestFCC:
             n_layers=3,
             circuit_type="Strongly_Entangling",
             encoding=Encoding("hamming", "RZ"),
-            output_qubit=-1,
+            observables=-1,
         )
         matrix, freqs, coeffs = FCC.get_fourier_fingerprint(
             model=model,
@@ -1160,7 +1160,7 @@ class TestFCC:
             n_layers=2,
             circuit_type="Strongly_Entangling",
             encoding=["RX", "RY"],
-            output_qubit=-1,
+            observables=-1,
         )
         matrix, freqs, coeffs = FCC.get_fourier_fingerprint(
             model=model,
@@ -1198,7 +1198,7 @@ class TestFCC:
             n_qubits=3,
             n_layers=1,
             circuit_type="Circuit_19",
-            output_qubit=-1,
+            observables=-1,
             encoding=["RY"],
         )
         fcc_weight = FCC.get_fcc(

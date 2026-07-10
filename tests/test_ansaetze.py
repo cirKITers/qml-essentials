@@ -233,7 +233,7 @@ def test_ansaetze() -> None:
             circuit_type=ansatz.__name__,
             data_reupload=False,
             initialization="random",
-            output_qubit=0,
+            observables=0,
         )
 
         _ = model(
@@ -294,7 +294,7 @@ def test_ansaetze() -> None:
         circuit_type=custom_ansatz,
         data_reupload=True,
         initialization="random",
-        output_qubit=0,
+        observables=0,
     )
     logger.info(f"{str(model)}")
 
@@ -637,7 +637,7 @@ def test_sn_equivariant_runs():
         n_layers=2,
         circuit_type="Permutation_Equivariant",
         data_reupload=False,
-        output_qubit=-1,
+        observables=-1,
     )
     out = model(model.params, inputs=None, execution_type="expval")
     assert np.asarray(out).shape[-1] == 4

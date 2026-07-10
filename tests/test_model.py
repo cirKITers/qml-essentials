@@ -485,7 +485,7 @@ def test_basic_draw() -> None:
             n_layers=1,
             circuit_type=ansatz.__name__,
             initialization="random",
-            output_qubit=-1,
+            observables=-1,
             remove_zero_encoding=False,
         )
 
@@ -519,7 +519,7 @@ def test_advanced_draw() -> None:
         n_layers=1,
         circuit_type="Circuit_19",
         initialization="random",
-        output_qubit=0,
+        observables=0,
         encoding=["RX", "RY"],
         remove_zero_encoding=False,
     )
@@ -585,7 +585,7 @@ def test_initialization() -> None:
             circuit_type="Circuit_19",
             data_reupload=True,
             initialization=test_case["initialization"],
-            output_qubit=0,
+            observables=0,
             shots=1024,
         )
 
@@ -798,7 +798,7 @@ def test_multi_input() -> None:
             data_reupload=True,
             initialization="random",
             encoding=encoding,
-            output_qubit=0,
+            observables=0,
             shots=1024,
         )
 
@@ -856,7 +856,7 @@ def test_dru() -> None:
             circuit_type="Circuit_19",
             data_reupload=test_case["dru"],
             initialization="random",
-            output_qubit=0,
+            observables=0,
             shots=1024,
         )
 
@@ -903,7 +903,7 @@ def test_local_state() -> None:
         circuit_type="Circuit_19",
         data_reupload=True,
         initialization="random",
-        output_qubit=0,
+        observables=0,
     )
 
     # Check default values
@@ -917,7 +917,7 @@ def test_local_state() -> None:
             circuit_type="Circuit_19",
             data_reupload=True,
             initialization="random",
-            output_qubit=0,
+            observables=0,
         )
 
         model.noise_params = test_case["noise_params"]
@@ -939,7 +939,7 @@ def test_local_state() -> None:
             circuit_type="Circuit_19",
             data_reupload=True,
             initialization="random",
-            output_qubit=0,
+            observables=0,
         )
 
         _ = model(
@@ -960,7 +960,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array(0.1),
             "execution_type": "expval",
-            "output_qubit": [0, 1],
+            "observables": [0, 1],
             "shots": None,
             "force_mean": False,
             "out_shape": (2,),
@@ -969,7 +969,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
-            "output_qubit": [0, 1],
+            "observables": [0, 1],
             "shots": None,
             "force_mean": False,
             "out_shape": (3, 2),
@@ -978,7 +978,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
-            "output_qubit": [0, 1],
+            "observables": [0, 1],
             "shots": None,
             "force_mean": True,
             "out_shape": (3,),
@@ -987,7 +987,7 @@ def test_output_shapes() -> None:
         {
             "inputs": None,
             "execution_type": "density",
-            "output_qubit": -1,
+            "observables": -1,
             "shots": None,
             "force_mean": False,
             "out_shape": (4, 4),
@@ -996,7 +996,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "density",
-            "output_qubit": -1,
+            "observables": -1,
             "shots": None,
             "force_mean": False,
             "out_shape": (3, 4, 4),
@@ -1005,7 +1005,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "density",
-            "output_qubit": 0,
+            "observables": 0,
             "shots": None,
             "force_mean": False,
             "out_shape": (3, 2, 2),
@@ -1014,7 +1014,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
-            "output_qubit": -1,
+            "observables": -1,
             "shots": 1024,
             "force_mean": False,
             "out_shape": (3, 2, 2),
@@ -1023,7 +1023,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
-            "output_qubit": 0,
+            "observables": 0,
             "shots": 1024,
             "force_mean": False,
             "out_shape": (3, 2),
@@ -1032,7 +1032,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
-            "output_qubit": [0, 1],
+            "observables": [0, 1],
             "shots": 1024,
             "force_mean": True,
             "out_shape": (3, 2),
@@ -1041,7 +1041,7 @@ def test_output_shapes() -> None:
         # {
         #     "inputs": jnp.array([0.1, 0.2, 0.3]),
         #     "execution_type": "probs",
-        #     "output_qubit": [0, 1],
+        #     "observables": [0, 1],
         #     "shots": 1024,
         #     "force_mean": False,
         #     "out_shape": (3, 2, 2),
@@ -1056,7 +1056,7 @@ def test_output_shapes() -> None:
             circuit_type="Circuit_19",
             data_reupload=True,
             initialization="random",
-            output_qubit=test_case["output_qubit"],
+            observables=test_case["observables"],
             shots=test_case["shots"],
         )
         if test_case["warning"]:
@@ -1089,13 +1089,13 @@ def test_parity() -> None:
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_1",
-        output_qubit=[[0, 1]],  # parity
+        observables=[[0, 1]],  # parity
     )
     model_b = Model(
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_1",
-        output_qubit=-1,  # individual
+        observables=-1,  # individual
     )
 
     result_a = model_a(params=model_a.params, inputs=None, force_mean=True)
@@ -1180,22 +1180,22 @@ def test_pauli_circuit_model() -> None:
     test_cases = [
         {
             "shots": None,
-            "output_qubit": 0,
+            "observables": 0,
             "inputs": jnp.array([0.5]),
         },
         {
             "shots": None,
-            "output_qubit": -1,
+            "observables": -1,
             "inputs": jnp.array([0.5]),
         },
         {
             "shots": None,
-            "output_qubit": 0,
+            "observables": 0,
             "inputs": None,
         },
         {
             "shots": None,
-            "output_qubit": -1,
+            "observables": -1,
             "inputs": None,
         },
     ]
@@ -1205,7 +1205,7 @@ def test_pauli_circuit_model() -> None:
             n_qubits=3,
             n_layers=2,
             circuit_type="Circuit_19",
-            output_qubit=test_case["output_qubit"],
+            observables=test_case["observables"],
             shots=test_case["shots"],
         )
         # Validate inputs for a single sample (not a batch)
@@ -1251,7 +1251,7 @@ def test_exact_spectrum_subset_of_naive() -> None:
     contains every frequency the FFT finds to be non-zero."""
     from qml_essentials.coefficients import Coefficients
 
-    model = Model(n_qubits=3, n_layers=1, circuit_type="Circuit_19", output_qubit=0)
+    model = Model(n_qubits=3, n_layers=1, circuit_type="Circuit_19", observables=0)
 
     exact = model.exact_spectrum()
     assert len(exact) == model.n_input_feat
@@ -1285,7 +1285,7 @@ def test_exact_spectrum_multi_feature() -> None:
         n_qubits=3,
         n_layers=1,
         circuit_type="Circuit_19",
-        output_qubit=0,
+        observables=0,
         encoding=["RX", "RY"],
     )
 
@@ -1312,7 +1312,7 @@ def test_exact_spectrum_symbolic_cancellation() -> None:
         circuit_type="No_Ansatz",
         data_reupload=True,
         encoding="RX",
-        output_qubit=0,
+        observables=0,
     )
 
     assert set(int(v) for v in model.frequencies[0]) == {-2, -1, 0, 1, 2}
@@ -1414,3 +1414,29 @@ def test_pulse_mode_training() -> None:
     end = time.time()
     print(f"Time taken: {end - start}")
     assert end - start < 60, "Time limit of 60 seconds exceeded"
+
+
+@pytest.mark.unittest
+def test_output_qubit_deprecated() -> None:
+    """output_qubit is a deprecated alias that warns and forwards to observables."""
+    inp = jnp.array([[0.5]])
+
+    # constructor kwarg warns
+    with pytest.warns(DeprecationWarning):
+        m_old = Model(n_qubits=3, n_layers=1, random_seed=5, output_qubit=0)
+
+    # forwarding equivalence: output_qubit=0 matches observables=0
+    m_new = Model(n_qubits=3, n_layers=1, random_seed=5, observables=0)
+    a = np.asarray(m_old(inputs=inp, execution_type="expval"))
+    b = np.asarray(m_new(inputs=inp, execution_type="expval"))
+    assert np.allclose(a, b)
+
+    # property setter warns and forwards
+    m2 = Model(n_qubits=3, n_layers=1, random_seed=5)
+    with pytest.warns(DeprecationWarning):
+        m2.output_qubit = 0
+    assert m2._measured_wires == [0]
+
+    # passing both raises
+    with pytest.raises(ValueError):
+        Model(n_qubits=3, n_layers=1, output_qubit=0, observables=0)
