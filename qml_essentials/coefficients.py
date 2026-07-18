@@ -370,7 +370,8 @@ class FourierTree:
         rotation angle is therefore an affine function of the inputs, so
         perturbing one feature at a time and differencing the recorded angles
         isolates exactly the columns that depend on it, together with the
-        signed integer scaling :math:`\omega_k`.
+        signed scaling :math:`\omega_k` (rational for diagonal-Hamiltonian
+        encodings such as Golomb).
 
         Sets :attr:`input_indices` (``{feature: [columns]}``),
         :attr:`all_input_indices`, :attr:`input_scaling` (per column, ``1`` for
@@ -394,7 +395,7 @@ class FourierTree:
 
         input_indices: Dict[int, list] = defaultdict(list)
         all_input_indices: List[int] = []
-        scaling = np.ones(self.n_params, dtype=np.int64)
+        scaling = np.ones(self.n_params, dtype=np.float64)
         for k in range(self.n_params):
             feats = np.flatnonzero(np.abs(response[:, k]) > tol)
             if feats.size == 0:
@@ -407,17 +408,12 @@ class FourierTree:
                 )
             f = int(feats[0])
             omega = float(response[f, k])
-            w = int(round(omega))
-            if abs(omega - w) > tol:
-                warnings.warn(
-                    f"Non-integer input scaling {omega:.4f} on rotation {k} "
-                    f"(feature {f}); rounding to {w}. The Fourier tree supports "
-                    "integer frequency scalings only.",
-                    UserWarning,
-                )
+            # Scalings may be rational (e.g. diagonal-Hamiltonian / Golomb
+            # encodings, whose per-Pauli-string scalings are dyadic rationals);
+            # the integer-frequency model spectrum is recovered downstream.
             input_indices[f].append(k)
             all_input_indices.append(k)
-            scaling[k] = w
+            scaling[k] = omega
 
         self.input_indices = input_indices
         self.all_input_indices = all_input_indices
@@ -541,7 +537,7 @@ class FourierTree:
                 # scalings, so they are expanded individually and convolved
                 # rather than aggregating counts (which would assume a common
                 # unit scaling).
-                col_factors: List[List[Tuple[int, int, float]]] = []
+                col_factors: List[List[Tuple[int, float, float]]] = []
                 half_exp = 0
                 for axis, feat in enumerate(self.features):
                     for k in self.input_indices[feat]:
@@ -550,10 +546,10 @@ class FourierTree:
                         if s == 0 and c == 0:
                             continue
                         half_exp += s + c
-                        w_k = int(self.input_scaling[k])
+                        w_k = float(self.input_scaling[k])
                         col_factors.append(
                             [
-                                (axis, int(o) * w_k, wt)
+                                (axis, o * w_k, wt)
                                 for o, wt in self._binomial_terms(s, c)
                             ]
                         )
@@ -568,17 +564,27 @@ class FourierTree:
                     continue
 
                 for combo in itertools.product(*col_factors):
-                    omega = [0] * d
+                    omega = [0.0] * d
                     weight = half
                     for axis, o, wt in combo:
                         omega[axis] += o
                         weight *= wt
-                    freq_to_col[tuple(omega)][leaf] += weight
+                    # Snap to a tolerance so dyadic-rational contributions that
+                    # are numerically equal share a single frequency key.
+                    key = tuple(round(v, 9) for v in omega)
+                    freq_to_col[key][leaf] += weight
 
             if freq_to_col:
                 omegas = sorted(freq_to_col.keys())
                 W = np.stack([freq_to_col[o] for o in omegas])  # (n_freq, n_leaves)
-                freqs = np.array(omegas, dtype=np.int64)  # (n_freq, d)
+                freqs = np.array(omegas, dtype=float)  # (n_freq, d)
+                # Diagonal-Hamiltonian (Golomb) encodings produce rational
+                # per-rotation scalings but integer model frequencies; snap to
+                # int64 when every entry is integral so integer-encoding
+                # consumers are unchanged, otherwise keep the rational floats.
+                rounded = np.rint(freqs)
+                if np.all(np.abs(freqs - rounded) < 1e-6):
+                    freqs = rounded.astype(np.int64)
             else:
                 freqs = np.zeros((1, max(d, 1)), dtype=np.int64)
                 W = np.zeros((1, n_leaves), dtype=np.complex128)
@@ -763,15 +769,18 @@ class FourierTree:
 
         - ``"dp"`` (scalable): merges tree nodes with identical
           ``(rotation index, observable)`` — at most ``n_params * 4^n_qubits``
-          states — and tracks the achievable input sine/cosine count pairs
-          ``(s, c)`` per state.  The support is the union of the (exact)
-          expansion supports of :math:`\cos^c x\, (i \sin x)^s` over all
-          achievable pairs.  This is exact per tree path (including interior
-          zero coefficients of the expansions), but unlike ``"tree"`` it cannot
-          detect coefficients that cancel identically *across* paths with
-          identical variational signatures (e.g. directly repeated encodings).
-          It therefore yields a tight superset in such corner cases.
-          Currently restricted to a single input feature.
+          states — and tracks, per state, the achievable per-feature sine/cosine
+          count vectors ``(s_f, c_f)`` as a mixed-radix bitmask.  Each feature's
+          support is the union of the (exact) expansion supports of
+          :math:`\cos^{c_f} x_f\, (i \sin x_f)^{s_f}`, and the model support is
+          their Cartesian product across features.  This is exact per tree path
+          (including interior zero coefficients of the expansions), but unlike
+          ``"tree"`` it cannot detect coefficients that cancel identically
+          *across* paths with identical variational signatures (e.g. directly
+          repeated encodings).  It therefore yields a tight superset in such
+          corner cases.  Supports any number of input features, but requires
+          unit-magnitude input scaling: per-gate :math:`|\omega| \neq 1`
+          scalings (e.g. Golomb encodings) are rejected — use ``"tree"``.
 
         Args:
             method (str): ``"tree"`` (fully exact) or ``"dp"`` (scalable).
@@ -816,18 +825,20 @@ class FourierTree:
 
         Instead of enumerating all (worst-case exponentially many) tree paths,
         nodes are merged on ``(rotation index, bare observable)``.  Each state
-        stores the set of achievable input ``(s, c)`` count pairs as a bitmask,
-        so transitions are O(1) big-int operations.  See
-        :meth:`get_exact_support` for semantics and limitations.
+        stores the set of achievable per-axis count vectors
+        ``(c_0, s_0, ..., c_{d-1}, s_{d-1})`` as a mixed-radix bitmask (one
+        digit per feature sine/cosine count), so transitions are O(1) big-int
+        operations.  See :meth:`get_exact_support` for semantics and
+        limitations.
         """
-        if len(self.features) != 1:
-            raise NotImplementedError(
-                "The 'dp' support method currently supports exactly one input "
-                "feature; use method='tree' for multi-feature models."
-            )
-
+        # Count aggregation is valid as long as every input rotation has
+        # unit-magnitude scaling.  A Clifford-commutation sign flip (scaling -1)
+        # leaves the frequency support unchanged -- cos is even and sin odd, so
+        # the sign only flips the coefficient, which the support ignores -- but a
+        # genuine per-gate scaling (|omega| != 1, e.g. Golomb / heterogeneous
+        # frequencies) cannot be represented by sin/cos counts.
         if self.all_input_indices and np.any(
-            self.input_scaling[self.all_input_indices] != 1
+            np.abs(self.input_scaling[self.all_input_indices]) != 1
         ):
             raise NotImplementedError(
                 "The 'dp' support method does not support non-unit input "
@@ -836,10 +847,28 @@ class FourierTree:
             )
 
         n = self.n_qubits
-        is_input = np.zeros(self.n_params, dtype=bool)
-        is_input[self.all_input_indices] = True
-        n_inp = int(is_input.sum())
-        stride = n_inp + 1  # bit index for (s, c) is  s * stride + c
+        d = len(self.features)
+        # Pack the achievable per-axis sine/cosine counts into one big-int as a
+        # mixed-radix bitmask over (c_0, s_0, ..., c_{d-1}, s_{d-1}).  Axis a's
+        # counts range 0..n_a (n_a input rotations encode feature a), so each
+        # digit has radix n_a + 1; a left-shift by a digit's place value
+        # increments that count, OR is set-union.  (For d == 1 this reduces to
+        # shift_c = 1, shift_s = n_inp + 1, i.e. the flat (s, c) layout.)
+        ranges = [len(self.input_indices[self.features[a]]) + 1 for a in range(d)]
+        shift_c = [0] * d
+        shift_s = [0] * d
+        place = 1
+        for a in range(d):
+            shift_c[a] = place
+            place *= ranges[a]
+            shift_s[a] = place
+            place *= ranges[a]
+        # Feature axis of each input rotation (-1 if variational), in the same
+        # enumerate(self.features) order the tree method uses for its axes.
+        axis_of_col = np.full(self.n_params, -1, dtype=np.int64)
+        for a in range(d):
+            for k in self.input_indices[self.features[a]]:
+                axis_of_col[k] = a
 
         def encode(word: PauliWord) -> Tuple[int, int]:
             x = z = 0
@@ -877,9 +906,10 @@ class FourierTree:
             xp, zp = paulis[idx]
             cos_child = dp(idx - 1, xo, zo, memo)
             sin_child = dp(idx - 1, xo ^ xp, zo ^ zp, memo)
-            if is_input[idx]:
-                # Active input gate: cosine increments c, sine increments s.
-                val = (cos_child << 1) | (sin_child << stride)
+            a = int(axis_of_col[idx])
+            if a >= 0:
+                # Active input gate: cosine increments c_a, sine increments s_a.
+                val = (cos_child << shift_c[a]) | (sin_child << shift_s[a])
             else:
                 val = cos_child | sin_child
             memo[key] = val
@@ -894,16 +924,43 @@ class FourierTree:
                 memo: dict = {}
                 xo, zo = encode(obs)
                 mask = dp(self.n_params - 1, xo, zo, memo)
-                freqs: set = set()
-                while mask:
-                    bit = mask & -mask
-                    i = bit.bit_length() - 1
-                    freqs |= self._expansion_support(i // stride, i % stride)
-                    mask ^= bit
-                supports.append(np.array(sorted(freqs), dtype=np.int64))
+                supports.append(self._dp_mask_to_support(mask, d, ranges))
         finally:
             sys.setrecursionlimit(old_limit)
         return supports
+
+    def _dp_mask_to_support(self, mask: int, d: int, ranges: List[int]) -> np.ndarray:
+        """Decode a count bitmask (see :meth:`_support_dp`) into a frequency
+        support.  Each set bit is a per-axis count vector ``(c_a, s_a)``; the
+        per-axis expansion supports are combined across axes (Cartesian
+        product) and unioned over all bits.
+
+        Returns an ``(n_freq, d)`` array, collapsed to 1-D for ``d <= 1`` to
+        match :meth:`get_exact_support` with ``method="tree"`` (``d == 0`` keeps
+        only the DC term).
+        """
+        tupleset: set = set()
+        while mask:
+            bit = mask & -mask
+            i = bit.bit_length() - 1
+            rem = i
+            axis_freqs = []
+            for a in range(d):
+                c_a = rem % ranges[a]
+                rem //= ranges[a]
+                s_a = rem % ranges[a]
+                rem //= ranges[a]
+                axis_freqs.append(sorted(self._expansion_support(s_a, c_a)))
+            tupleset.update(itertools.product(*axis_freqs))
+            mask ^= bit
+
+        if d >= 2:
+            if not tupleset:
+                return np.empty((0, d), dtype=np.int64)
+            return np.array(sorted(tupleset), dtype=np.int64)
+        # d in {0, 1}: collapse to a 1-D frequency array.
+        flat = sorted(t[0] for t in tupleset) if d == 1 else ([0] if tupleset else [])
+        return np.array(flat, dtype=np.int64)
 
     @staticmethod
     @lru_cache(maxsize=None)
@@ -943,21 +1000,25 @@ class FourierTree:
             frequencies = [jnp.asarray(f) for f in per_root_freqs]
             return coefficients, frequencies
 
-        # Average over roots on the union of all frequency vectors.
+        # Average over roots on the union of all frequency vectors.  Keys are
+        # snapped to a tolerance so rational frequencies dedup robustly.
         accum: Dict[tuple, complex] = defaultdict(complex)
         for coeffs, freqs in zip(per_root_coeffs, per_root_freqs):
             freqs_np = np.asarray(freqs)
             for k in range(freqs_np.shape[0]):
                 key = (
-                    (int(freqs_np[k]),)
+                    (round(float(freqs_np[k]), 9),)
                     if freqs_np.ndim == 1
-                    else tuple(int(v) for v in freqs_np[k])
+                    else tuple(round(float(v), 9) for v in freqs_np[k])
                 )
                 accum[key] += complex(coeffs[k])
         n_roots = max(len(per_root_coeffs), 1)
         keys = sorted(accum.keys())
         mean_coeffs = jnp.array([accum[k] / n_roots for k in keys])
-        freq_arr = np.array(keys, dtype=np.int64)
+        freq_arr = np.array(keys, dtype=float)
+        rounded = np.rint(freq_arr)
+        if np.all(np.abs(freq_arr - rounded) < 1e-6):
+            freq_arr = rounded.astype(np.int64)
         if freq_arr.shape[1] == 1:
             freq_arr = freq_arr[:, 0]
         return [mean_coeffs], [jnp.asarray(freq_arr)]
@@ -1395,9 +1456,7 @@ class FCC:
         return result
 
     @classmethod
-    def _complex_pearson(
-        cls, mat: jnp.ndarray, minp: Optional[int] = 1
-    ) -> jnp.ndarray:
+    def _complex_pearson(cls, mat: jnp.ndarray, minp: Optional[int] = 1) -> jnp.ndarray:
         """
         Compute the complex Pearson correlation between columns of `mat`,
         permitting missing values (NaN or ±Inf).
