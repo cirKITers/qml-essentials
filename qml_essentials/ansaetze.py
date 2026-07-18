@@ -857,7 +857,7 @@ class Encoding:
         if mask.ndim == 1:  # (n_qubits,) -> treat as a single layer
             mask = mask[None, :]
 
-        if self._strategy not in ("hamming", "binary", "ternary"):
+        if self._strategy not in ("hamming", "binary", "ternary", "golomb"):
             raise NotImplementedError
         if self._strategy == "golomb":
             from qml_essentials.unitary import golomb_ruler
