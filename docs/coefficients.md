@@ -130,6 +130,18 @@ psd = Coefficients.get_psd(coeffs)
 ![Model PSD](figures/model_psd_light.png#center#only-light)
 ![Model PSD](figures/model_psd_dark.png#center#only-dark)
 
+## Evaluating a Fourier Series
+
+Given a set of coefficients and frequencies (e.g. those returned by `get_spectrum`), the corresponding Fourier series can be evaluated at arbitrary input points with `evaluate_Fourier_series`:
+
+```python
+coeffs, freqs = Coefficients.get_spectrum(model)
+
+y = Coefficients.evaluate_Fourier_series(coeffs, freqs, inputs=0.5)
+```
+
+This accepts both single- and multi-dimensional frequency arrays, mirroring the shapes produced by `get_spectrum`.
+
 ## Analytic Coefficients
 
 All of the calculations above were performed by applying a Fast Fourier Transform to the output of our Model.
@@ -321,6 +333,7 @@ Note that `get_fcc` also (by default) trims down the fingerprint before calculat
 
 When `trim_redundant` is enabled, the frequencies returned alongside the fingerprint are a `(row_freqs, col_freqs)` tuple that labels the two (trimmed) matrix axes one-to-one, so they always match the shape of the returned correlation matrix.
 The optional `numerical_cap` argument (passed through to `get_spectrum`) prunes negligible Fourier modes: coefficients below the cap are zeroed and, for a single input feature, the corresponding frequencies are dropped from the spectrum. 
+The `get_fourier_fingerprint` method additionally accepts `nan_to_one` (default `False`), which replaces undefined correlation entries (`NaN`s, e.g. arising from constant coefficient vectors with zero variance) with one.
 
 Both `get_fcc` and `get_fourier_fingerprint` support a `weight` parameter, which can be used to weight the correlation matrix, such that high-frequency components receive a lower weight.
 Intuitively this adresses the issue, that low frequency components have a higher impact on the mean-squared error (c.f. App. D in our paper). 

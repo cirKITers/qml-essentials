@@ -20,6 +20,8 @@ To get an overview of all the available Ansaetze, checkout the [references](http
 ## Custom Ansatz
 
 For building the different Ansatzes, we use topology patterns defined in `qml_essentials.topologies`.
+Three patterns are available: `Topology.stairs` (a configurable chain of entangling gates), `Topology.bricks` (a brick-wall pattern) and `Topology.all_to_all` (all qubit pairs).
+Several built-in circuits rely on them, e.g. Circuit_5 uses `all_to_all` and Circuit_7 uses `bricks`.
 You can find a list of all the available topologies in the [references](https://cirkiters.github.io/qml-essentials/references/) as well.
 
 To start implementing your own ansatz, you can inheriting from the `Circuit` class:
@@ -220,6 +222,10 @@ Oh and in case you need a refresh on the rotational axes and their corresponding
 ![Circuit 19](figures/circuits_4q/Circuit_19_light.png#circuit#only-light)
 ![Circuit 19](figures/circuits_4q/Circuit_19_dark.png#circuit#only-dark)
 
+#### Circuit 20
+![Circuit 20](figures/circuits_4q/Circuit_20_light.png#circuit#only-light)
+![Circuit 20](figures/circuits_4q/Circuit_20_dark.png#circuit#only-dark)
+
 #### No Entangling
 ![No Entangling](figures/circuits_4q/No_Entangling_light.png#circuit#only-light)
 ![No Entangling](figures/circuits_4q/No_Entangling_dark.png#circuit#only-dark)
@@ -310,6 +316,10 @@ Oh and in case you need a refresh on the rotational axes and their corresponding
 ![Circuit 19](figures/circuits_5q/Circuit_19_light.png#circuit#only-light)
 ![Circuit 19](figures/circuits_5q/Circuit_19_dark.png#circuit#only-dark)
 
+#### Circuit 20
+![Circuit 20](figures/circuits_5q/Circuit_20_light.png#circuit#only-light)
+![Circuit 20](figures/circuits_5q/Circuit_20_dark.png#circuit#only-dark)
+
 #### No Entangling
 ![No Entangling](figures/circuits_5q/No_Entangling_light.png#circuit#only-light)
 ![No Entangling](figures/circuits_5q/No_Entangling_dark.png#circuit#only-dark)
@@ -399,6 +409,10 @@ Oh and in case you need a refresh on the rotational axes and their corresponding
 #### Circuit 19
 ![Circuit 19](figures/circuits_6q/Circuit_19_light.png#circuit#only-light)
 ![Circuit 19](figures/circuits_6q/Circuit_19_dark.png#circuit#only-dark)
+
+#### Circuit 20
+![Circuit 20](figures/circuits_6q/Circuit_20_light.png#circuit#only-light)
+![Circuit 20](figures/circuits_6q/Circuit_20_dark.png#circuit#only-dark)
 
 #### No Entangling
 ![No Entangling](figures/circuits_6q/No_Entangling_light.png#circuit#only-light)
