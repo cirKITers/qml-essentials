@@ -223,11 +223,59 @@ from qml_essentials.operations import KrausChannel
     options:
       heading_level: 4
 
+### Parametrized Hamiltonian
+
+```python
+from qml_essentials.operations import ParametrizedHamiltonian
+```
+
+::: qml_essentials.operations.ParametrizedHamiltonian
+    options:
+      heading_level: 4
+
+### Pauli Rotation
+
+```python
+from qml_essentials.operations import PauliRot
+```
+
+::: qml_essentials.operations.PauliRot
+    options:
+      heading_level: 4
+
+### Pauli Word
+
+```python
+from qml_essentials.operations import PauliWord
+```
+
+::: qml_essentials.operations.PauliWord
+    options:
+      heading_level: 4
+
+## Pauli Circuit
+
+```python
+from qml_essentials.pauli import PauliCircuit
+```
+
+::: qml_essentials.pauli.PauliCircuit
+    options:
+      heading_level: 3
+
 ## Math
 
 ```python
-from qml_essentials.math import fidelity, trace_distance, phase_difference
+from qml_essentials.math import quantum_fisher_information, fubini_study_metric, fidelity, trace_distance, phase_difference
 ```
+
+::: qml_essentials.math.quantum_fisher_information
+    options:
+      heading_level: 3
+
+::: qml_essentials.math.fubini_study_metric
+    options:
+      heading_level: 3
 
 ::: qml_essentials.math.fidelity
     options:

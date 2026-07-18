@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 from qml_essentials.operations import _cdtype
 from scipy.linalg import logm
@@ -204,3 +205,227 @@ def phase_difference(
 
     inner = jnp.einsum(f"{idx0},{idx1}->{target}", jnp.conj(state0), state1)
     return jnp.angle(inner)
+
+
+def _fubini_study_statevector(
+    jac: jnp.ndarray,
+    state: jnp.ndarray,
+) -> jnp.ndarray:
+    r"""Fubini-Study metric of a pure state.
+
+    The Fubini-Study metric is the real part of the quantum geometric tensor:
+
+    .. math::
+
+        g_{ij} = \mathrm{Re}\left[
+            \braket{\partial_i\psi | \partial_j\psi}
+            - \braket{\partial_i\psi | \psi}\braket{\psi | \partial_j\psi}
+        \right]
+
+    It relates to the pure-state quantum Fisher information by
+    :math:`F_{ij} = 4\,g_{ij}`.
+
+    Args:
+        jac: Jacobian :math:`\partial\ket{\psi}/\partial\theta` of shape
+            ``(d, P)`` with ``d = 2**N`` and ``P`` the number of parameters.
+        state: State vector of shape ``(d,)``.
+
+    Returns:
+        Real, symmetric metric of shape ``(P, P)``.
+    """
+    A = jnp.conj(jac.T) @ jac  # A_ij = <∂_i ψ | ∂_j ψ>
+    v = jnp.conj(jac.T) @ state  # v_i = <∂_i ψ | ψ>
+    return jnp.real(A - jnp.outer(v, jnp.conj(v)))
+
+
+def _qfi_statevector(
+    jac: jnp.ndarray,
+    state: jnp.ndarray,
+) -> jnp.ndarray:
+    r"""Quantum Fisher Information of a pure state.
+
+    For a normalised state :math:`\ket{\psi(\theta)}` the QFI is four times the
+    Fubini-Study metric (see :func:`_fubini_study_statevector`):
+
+    .. math::
+
+        F_{ij} = 4\,\mathrm{Re}\left[
+            \braket{\partial_i\psi | \partial_j\psi}
+            - \braket{\partial_i\psi | \psi}\braket{\psi | \partial_j\psi}
+        \right]
+
+    Args:
+        jac: Jacobian :math:`\partial\ket{\psi}/\partial\theta` of shape
+            ``(d, P)`` with ``d = 2**N`` and ``P`` the number of parameters.
+        state: State vector of shape ``(d,)``.
+
+    Returns:
+        Real, symmetric QFI matrix of shape ``(P, P)``.
+    """
+    return 4.0 * _fubini_study_statevector(jac, state)
+
+
+def _qfi_density(
+    jac: jnp.ndarray,
+    state: jnp.ndarray,
+    eps: float = 1e-12,
+) -> jnp.ndarray:
+    r"""Quantum Fisher Information of a mixed state.
+
+    Using the symmetric logarithmic derivative, the QFI of a density matrix
+    :math:`\rho = \sum_k p_k \ket{k}\bra{k}` reads
+
+    .. math::
+
+        F_{ij} = 2 \sum_{k, l : p_k + p_l > 0}
+            \frac{\mathrm{Re}\left(
+                \braket{k | \partial_i\rho | l}\braket{l | \partial_j\rho | k}
+            \right)}{p_k + p_l}
+
+    Eigenvalue pairs with :math:`p_k + p_l \le` ``eps`` are excluded from the
+    sum. Negative eigenvalues (numerical noise) are clamped to zero.
+
+    Args:
+        jac: Jacobian :math:`\partial\rho/\partial\theta` of shape
+            ``(d, d, P)`` with ``d = 2**N`` and ``P`` the number of parameters.
+        state: Density matrix of shape ``(d, d)``.
+        eps: Threshold below which an eigenvalue pair is masked out.
+
+    Returns:
+        Real, symmetric QFI matrix of shape ``(P, P)``.
+    """
+    evals, evecs = jnp.linalg.eigh(state)
+    evals = jnp.where(jnp.real(evals) > 0.0, jnp.real(evals), 0.0)
+
+    # ∂_i ρ in the eigenbasis: M[i]_kl = <k| ∂_i ρ |l>.
+    drho = jnp.moveaxis(jac, -1, 0)  # (P, d, d)
+    M = jnp.conj(evecs.T) @ drho @ evecs  # broadcast (d, d) over P
+
+    s = evals[:, None] + evals[None, :]  # (d, d)
+    weights = jnp.where(s > eps, 2.0 / s, 0.0)
+
+    # ∂_i ρ is Hermitian, so <l| ∂_j ρ |k> = conj(<k| ∂_j ρ |l>).
+    F = jnp.einsum("ikl,jkl->ij", M * weights[None], jnp.conj(M))
+    return jnp.real(F)
+
+
+def _state_and_jacobian(state_fn, params: jnp.ndarray):
+    r"""Evaluate *state_fn* and its Jacobian at *params*.
+
+    The Jacobian is obtained with forward-mode automatic differentiation
+    (:func:`jax.jacfwd`), which yields the complex Jacobian directly for the
+    real-valued parameters.
+
+    Args:
+        state_fn: Callable mapping *params* to a quantum state.
+        params: Parameters at which to evaluate.
+
+    Returns:
+        Tuple ``(state, jac)`` of the state and its Jacobian, both cast to the
+        complex working dtype.
+    """
+    state = jnp.asarray(state_fn(params), dtype=_cdtype())
+    jac = jnp.asarray(jax.jacfwd(state_fn)(params), dtype=_cdtype())
+    return state, jac
+
+
+def quantum_fisher_information(
+    state_fn,
+    params: jnp.ndarray,
+) -> jnp.ndarray:
+    r"""Compute the Quantum Fisher Information (QFI) at a parameter point.
+
+    The QFI is the metric tensor of the state manifold evaluated at
+    ``params``. It therefore requires the state as a *function* of the
+    parameters rather than a single state; the Jacobian is obtained with
+    forward-mode automatic differentiation (:func:`jax.jacfwd`), which yields
+    the complex Jacobian directly for real-valued parameters.
+
+    Both pure and mixed states are supported and dispatched on the kind of
+    object returned by *state_fn* (state vector vs. density matrix), mirroring
+    :func:`fidelity`:
+
+    - state vector of shape ``(d,)`` -> Fubini-Study formula
+      (see :func:`_qfi_statevector`),
+    - density matrix of shape ``(d, d)`` -> symmetric logarithmic derivative
+      formula (see :func:`_qfi_density`).
+
+    The returned matrix has shape ``(P, P)`` where ``P`` is the total number of
+    parameters (the parameter axes of *params* are flattened).
+
+    Args:
+        state_fn: Callable mapping *params* to a normalised quantum state.
+            Typically ``lambda p: model(params=p, inputs=x)`` with the model's
+            ``execution_type`` set to ``"state"`` (pure) or ``"density"``
+            (mixed).
+        params: Parameters at which the QFI is evaluated. Must be passed in the
+            shape expected by *state_fn* (e.g. the model's batched
+            ``model.params``).
+
+    Returns:
+        Real, symmetric QFI matrix of shape ``(P, P)``.
+
+    Raises:
+        ValueError: If *state_fn* returns neither a state vector nor a square
+            density matrix.
+    """
+    state, jac = _state_and_jacobian(state_fn, params)
+
+    if state.ndim == 1:
+        jac = jac.reshape(state.shape[0], -1)
+        return _qfi_statevector(jac, state)
+    elif state.ndim == 2 and state.shape[-1] == state.shape[-2]:
+        jac = jac.reshape(state.shape[0], state.shape[1], -1)
+        return _qfi_density(jac, state)
+    else:
+        raise ValueError(
+            "state_fn must return a state vector of shape (d,) or a density "
+            f"matrix of shape (d, d), got shape {state.shape}."
+        )
+
+
+def fubini_study_metric(
+    state_fn,
+    params: jnp.ndarray,
+) -> jnp.ndarray:
+    r"""Compute the Fubini-Study metric tensor at a parameter point.
+
+    The Fubini-Study metric is the real part of the quantum geometric tensor on
+    the manifold of pure states and equals the pure-state quantum Fisher
+    information up to a factor of four, :math:`F_{ij} = 4\,g_{ij}`:
+
+    .. math::
+
+        g_{ij} = \mathrm{Re}\left[
+            \braket{\partial_i\psi | \partial_j\psi}
+            - \braket{\partial_i\psi | \psi}\braket{\psi | \partial_j\psi}
+        \right]
+
+    It is only defined for pure states; *state_fn* must therefore return a
+    normalised state vector. See :func:`quantum_fisher_information` for the
+    calling convention.
+
+    Args:
+        state_fn: Callable mapping *params* to a normalised state vector.
+            Typically ``lambda p: model(params=p, inputs=x)`` with the model's
+            ``execution_type`` set to ``"state"``.
+        params: Parameters at which the metric is evaluated.
+
+    Returns:
+        Real, symmetric metric of shape ``(P, P)`` where ``P`` is the total
+        number of parameters.
+
+    Raises:
+        ValueError: If *state_fn* does not return a state vector.
+    """
+    state, jac = _state_and_jacobian(state_fn, params)
+
+    if state.ndim != 1:
+        raise ValueError(
+            "The Fubini-Study metric is only defined for pure states; "
+            f"state_fn must return a state vector of shape (d,), got shape "
+            f"{state.shape}."
+        )
+
+    jac = jac.reshape(state.shape[0], -1)
+    return _fubini_study_statevector(jac, state)
