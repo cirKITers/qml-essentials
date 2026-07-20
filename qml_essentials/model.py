@@ -18,12 +18,16 @@ import logging
 
 log = logging.getLogger(__name__)
 
-# gate_mode -> (backend for ansatz/state-prep gates, backend for encoding gates)
-_GATE_MODES = {
+GATE_MODES = {
     "unitary": ("unitary", "unitary"),
-    "pulse": ("pulse", "unitary"),
+    "ansatz_pulse": ("pulse", "unitary"),
+    "enc_pulse": ("unitary", "pulse"),
     "all_pulse": ("pulse", "pulse"),
 }
+
+# the modes that run the respective gate group at pulse level
+_ANSATZ_PULSE_MODES = ("ansatz_pulse", "all_pulse")
+_ENC_PULSE_MODES = ("enc_pulse", "all_pulse")
 
 
 class Model:
@@ -1043,10 +1047,11 @@ class Model:
                 scalers of shape (n_layers, n_qubits, n_enc_pulse_per_qubit) for
                 "all_pulse" execution. Defaults to None (uses model's
                 enc_pulse_params).
-            gate_mode (str): Gate execution mode, one of "unitary", "pulse" or
-                "all_pulse". "pulse" runs the ansatz and state preparation as
-                pulses (encoding stays unitary); "all_pulse" additionally runs
-                the encoding gates as pulses. Defaults to "unitary".
+            gate_mode (str): Gate execution mode, one of "unitary",
+                "ansatz_pulse", "enc_pulse" or "all_pulse". "ansatz_pulse" runs
+                the ansatz and state preparation as pulses (encoding stays
+                unitary); "enc_pulse" runs only the encoding gates as pulses;
+                "all_pulse" runs both as pulses. Defaults to "unitary".
             noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
                 Noise parameters for simulation. Defaults to None.
 
@@ -1058,7 +1063,7 @@ class Model:
             that would normally be passed through the forward method.
         """
         # which backend the ansatz / state-prep gates and the encoding gates use
-        sub_mode, enc_gate_mode = _GATE_MODES[gate_mode]
+        sub_mode, enc_gate_mode = GATE_MODES[gate_mode]
 
         # TODO: rework and double check params shape
         params = self._debatch(params, 2)
@@ -1364,7 +1369,7 @@ class Model:
     def draw_pulse(
         self,
         inputs: Optional[jnp.ndarray] = None,
-        gate_mode: str = "pulse",
+        gate_mode: str = "ansatz_pulse",
         **kwargs: Any,
     ) -> Any:
         """Visualize the pulse schedule for the circuit.
@@ -1374,9 +1379,10 @@ class Model:
 
         Args:
             inputs: Input data.  If ``None``, default zero inputs are used.
-            gate_mode: Pulse mode to record. ``"pulse"`` (default) renders the
-                ansatz and state-preparation pulses; ``"all_pulse"`` also
-                renders the encoding gate pulses.
+            gate_mode: Pulse mode to record. ``"ansatz_pulse"`` (default)
+                renders the ansatz and state-preparation pulses,
+                ``"enc_pulse"`` only the encoding gate pulses and
+                ``"all_pulse"`` both.
             **kwargs: Forwarded to
                 :func:`~qml_essentials.drawing.draw_pulse_schedule`
                 (e.g. ``show_carrier=True``, ``n_samples=300``).
@@ -1803,8 +1809,8 @@ class Model:
                 "probs", or "state". If None, uses current execution_type setting.
             force_mean (bool): If True, averages results over measurement qubits.
                 Defaults to False.
-            gate_mode (str): Gate execution backend, "unitary", "pulse" or
-                "all_pulse". Defaults to "unitary".
+            gate_mode (str): Gate execution backend, "unitary", "ansatz_pulse",
+                "enc_pulse" or "all_pulse". Defaults to "unitary".
             enc_pulse_params (Optional[jnp.ndarray]): Encoding pulse-parameter
                 scalers for "all_pulse" execution. If None, uses model's encoding
                 pulse parameters.
@@ -1870,8 +1876,8 @@ class Model:
                 "probs", or "state". If None, uses current execution_type setting.
             force_mean (bool): If True, averages results over measurement qubits.
                 Defaults to False.
-            gate_mode (str): Gate execution backend, "unitary" or "pulse".
-                Defaults to "unitary".
+            gate_mode (str): Gate execution backend, "unitary", "ansatz_pulse",
+                "enc_pulse" or "all_pulse". Defaults to "unitary".
 
         Returns:
             jnp.ndarray: Circuit output with shape depending on execution_type:
@@ -1892,23 +1898,25 @@ class Model:
         self.gate_mode = gate_mode
 
         # consistency checks
-        if gate_mode not in _GATE_MODES:
+        if gate_mode not in GATE_MODES:
             raise ValueError(
-                f"Unknown gate_mode: {gate_mode}. Use one of {list(_GATE_MODES)}."
+                f"Unknown gate_mode: {gate_mode}. Use one of {list(GATE_MODES)}."
             )
-        if pulse_params is not None and gate_mode not in ("pulse", "all_pulse"):
+        if pulse_params is not None and gate_mode not in _ANSATZ_PULSE_MODES:
             raise ValueError(
-                "pulse_params were provided but gate_mode is not 'pulse' or "
-                "'all_pulse'. Either switch gate_mode or do not pass pulse_params."
+                f"pulse_params were provided but gate_mode is not one of "
+                f"{list(_ANSATZ_PULSE_MODES)}. Either switch gate_mode or do "
+                "not pass pulse_params."
             )
-        if enc_pulse_params is not None and gate_mode != "all_pulse":
+        if enc_pulse_params is not None and gate_mode not in _ENC_PULSE_MODES:
             raise ValueError(
-                "enc_pulse_params were provided but gate_mode is not 'all_pulse'. "
-                "Either switch gate_mode='all_pulse' or do not pass enc_pulse_params."
+                f"enc_pulse_params were provided but gate_mode is not one of "
+                f"{list(_ENC_PULSE_MODES)}. Either switch gate_mode or do not "
+                "pass enc_pulse_params."
             )
-        if gate_mode == "all_pulse" and not self._enc_pulse_capable:
+        if gate_mode in _ENC_PULSE_MODES and not self._enc_pulse_capable:
             raise ValueError(
-                "gate_mode='all_pulse' requires an encoding whose gates have a "
+                f"gate_mode={gate_mode!r} requires an encoding whose gates have a "
                 "pulse parametrization (golomb and custom callables do not)."
             )
 
