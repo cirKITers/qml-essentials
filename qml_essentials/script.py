@@ -144,6 +144,7 @@ class Script:
         in_axes: Optional[Tuple] = None,
         shots: Optional[int] = None,
         key: Optional[jnp.ndarray] = None,
+        initial_state: Optional[jnp.ndarray] = None,
     ) -> jnp.ndarray:
         """Execute the circuit and return measurement results.
 
@@ -177,6 +178,10 @@ class Script:
                 types.
             key: JAX PRNG key for shot sampling.  If ``None`` and *shots*
                 is set, a default key ``jax.random.PRNGKey(0)`` is used.
+            initial_state: Optional statevector to start the simulation from
+                instead of |00…0⟩.  Without *in_axes* it must be a 1D state of
+                shape ``(2**n,)``.  With *in_axes* it may be 1D (broadcast across
+                the batch) or 2D of shape ``(B, 2**n)`` (one state per sample).
 
         Returns:
             Without in_axes: shape determined by type.
@@ -188,6 +193,18 @@ class Script:
             kwargs = {}
         if shots is not None and key is None:
             key = jax.random.PRNGKey(0)
+        if initial_state is not None:
+            nd = jnp.ndim(initial_state)
+            if in_axes is None and nd != 1:
+                raise ValueError(
+                    "initial_state must be a 1D statevector when in_axes is "
+                    f"None; got ndim={nd}."
+                )
+            if in_axes is not None and nd not in (1, 2):
+                raise ValueError(
+                    "Batched initial_state must be 1D (broadcast) or 2D "
+                    f"(one state per sample); got ndim={nd}."
+                )
 
         # Split single/ parallel execution
         # TODO: we might want to unify the n_qubit stuff such that we can eliminate
@@ -201,6 +218,7 @@ class Script:
                 in_axes=in_axes,
                 shots=shots,
                 key=key,
+                initial_state=initial_state,
             )
         else:
             tape = self._record(*args, **kwargs)
@@ -216,6 +234,7 @@ class Script:
                 use_density,
                 shots=shots,
                 key=key,
+                initial_state=initial_state,
             )
 
     @staticmethod
@@ -276,6 +295,7 @@ class Script:
         args: tuple,
         kwargs: dict,
         in_axes: Tuple,
+        has_initial_state: bool = False,
     ) -> _BatchPlan:
         """Trace the circuit once and build the cacheable execution plan.
 
@@ -286,13 +306,20 @@ class Script:
         AOT-eligible plain ``jax.jit`` wrapper is built too; :meth:`_dispatch`
         lowers and compiles it lazily per batch size, and only with concrete
         args (the AOT path is gated off under a transform by the caller).
+
+        When *has_initial_state* is ``True`` the last entry of *args* is the
+        (vmapped) initial statevector rather than a circuit argument; it is
+        stripped before recording the tape and forwarded to
+        :func:`~qml_essentials.simulation.simulate_and_measure`.
         """
         scalar_args = tuple(
             self._slice_first(a, ax) if ax is not None else a
             for a, ax in zip(args, in_axes)
         )
+        # The trailing scalar is the initial state, not a circuit argument.
+        record_args = scalar_args[:-1] if has_initial_state else scalar_args
         n_qubits, use_density, n_ops = self._record_metadata(
-            scalar_args, kwargs, obs, type
+            record_args, kwargs, obs, type
         )
 
         # Re-recording inside this closure is necessary: tape operations may
@@ -300,9 +327,13 @@ class Script:
         # with theta a tracer).  jax.vmap traces this once into a single XLA
         # computation spanning the whole batch.
         def _single_execute(*single_args):
-            single_tape = self._record(*single_args, **kwargs)
+            if has_initial_state:
+                *circuit_args, init_state = single_args
+            else:
+                circuit_args, init_state = single_args, None
+            single_tape = self._record(*circuit_args, **kwargs)
             return simulation.simulate_and_measure(
-                single_tape, n_qubits, type, obs, use_density
+                single_tape, n_qubits, type, obs, use_density, initial_state=init_state
             )
 
         # Wrapping the vmapped function in eqx.filter_jit: (1) treats non-array
@@ -405,6 +436,7 @@ class Script:
         in_axes: Tuple,
         shots: Optional[int] = None,
         key: Optional[jnp.ndarray] = None,
+        initial_state: Optional[jnp.ndarray] = None,
     ) -> jnp.ndarray:
         """Vectorise :meth:`execute` over a batch axis using ``jax.vmap``.
 
@@ -432,6 +464,10 @@ class Script:
                 convention: an int gives the batch axis; ``None`` broadcasts.
             shots: Number of measurement shots.  If ``None``, exact results.
             key: JAX PRNG key for shot sampling.
+            initial_state: Optional initial statevector.  A 1D state is
+                broadcast across the batch; a 2D ``(B, 2**n)`` state is vmapped
+                over axis 0 (one state per sample).  It is appended as an extra
+                vmapped argument alongside the circuit arguments.
 
         Returns:
             Batched measurement results of shape ``(B, ...)`` where *B* is the
@@ -458,16 +494,26 @@ class Script:
                 "Provide one in_axes entry per positional argument."
             )
 
-        batch_size = self._batch_size(args, in_axes)
+        # Append the initial state as an extra vmapped argument so it threads
+        # through the same plan/cache machinery as the circuit arguments: a 1D
+        # state is broadcast (axis None), a 2D state is batched over axis 0.
+        has_init = initial_state is not None
+        init_axis = (0 if jnp.ndim(initial_state) == 2 else None) if has_init else None
+        eff_args = args + (initial_state,) if has_init else args
+        eff_in_axes = in_axes + (init_axis,) if has_init else in_axes
+
+        batch_size = self._batch_size(eff_args, eff_in_axes)
 
         # Running under an outer JAX transform (e.g. ``jax.jacrev``) makes
         # ``args`` tracers.  The tracer-tolerant ``batched_fn`` wrapper is still
         # cached and reused (see exact-mode dispatch below); only the AOT
         # ``plain_fn`` executable is gated off, as it cannot accept tracers.
-        in_transform = self._args_contain_tracer(args)
+        in_transform = self._args_contain_tracer(eff_args)
 
+        # ``a.__class__`` (not ``type(a)``: ``type`` is shadowed by the
+        # measurement-type parameter) keys non-array statics by their class.
         arg_shapes = tuple(
-            (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in args
+            (a.shape, a.dtype) if hasattr(a, "shape") else a.__class__ for a in eff_args
         )
         # TODO: we need to fix the dirty class-level `batch_gate_error` hack.
         # It is a global toggle that changes the compiled circuit, so it has to
@@ -476,9 +522,9 @@ class Script:
 
         # --- Shot mode: compute exact probabilities, then sample. ---
         if shots is not None and type in ("probs", "expval"):
-            shot_cache_key = (type, "shots", shots, in_axes, arg_shapes, gate_error)
-            shot_in_axes = in_axes + (0,)  # shot key batched over axis 0
-            shot_args = args + (jax.random.split(key, batch_size),)
+            shot_cache_key = (type, "shots", shots, eff_in_axes, arg_shapes, gate_error)
+            shot_in_axes = eff_in_axes + (0,)  # shot key batched over axis 0
+            shot_args = eff_args + (jax.random.split(key, batch_size),)
 
             plan = self._jit_cache.get(shot_cache_key)
             if plan is None:
@@ -491,13 +537,22 @@ class Script:
                 )
 
                 # Re-recording inside the closure lets jax.vmap trace the whole
-                # batch into one XLA program; the shot key is the extra vmapped
-                # argument.
+                # batch into one XLA program; the initial state (when present)
+                # and the shot key are the extra vmapped arguments.
                 def _single_execute_shots(*single_args_and_key):
-                    *single_args, shot_key = single_args_and_key
+                    if has_init:
+                        *single_args, init_state, shot_key = single_args_and_key
+                    else:
+                        *single_args, shot_key = single_args_and_key
+                        init_state = None
                     single_tape = self._record(*single_args, **kwargs)
                     exact_result = simulation.simulate_and_measure(
-                        single_tape, n_qubits, "probs", obs, use_density
+                        single_tape,
+                        n_qubits,
+                        "probs",
+                        obs,
+                        use_density,
+                        initial_state=init_state,
                     )
                     return simulation.sample_shots(
                         exact_result, n_qubits, type, obs, shots, shot_key
@@ -527,7 +582,7 @@ class Script:
         cache_kwargs = _make_hashable(
             {k: v for k, v in kwargs.items() if not isinstance(v, jnp.ndarray)}
         )
-        cache_key = (type, in_axes, arg_shapes, cache_kwargs, gate_error)
+        cache_key = (type, eff_in_axes, arg_shapes, cache_kwargs, gate_error)
 
         # The cached ``batched_fn`` (eqx.filter_jit wrapper) is reused across
         # calls including under an outer transform: its ``_single_execute``
@@ -538,7 +593,9 @@ class Script:
         # is invalid for tracers; its use is gated below by ``in_transform``.
         plan = self._jit_cache.get(cache_key)
         if plan is None:
-            plan = self._build_plan(type, obs, args, kwargs, in_axes)
+            plan = self._build_plan(
+                type, obs, eff_args, kwargs, eff_in_axes, has_initial_state=has_init
+            )
             self._jit_cache[cache_key] = plan
 
         chunk_size = self._chunk_size(cache_key, plan, type, len(obs), batch_size)
@@ -546,8 +603,8 @@ class Script:
             ("_aot", cache_key, batch_size),
             plan.batched_fn,
             None if in_transform else plan.plain_fn,
-            args,
-            in_axes,
+            eff_args,
+            eff_in_axes,
             batch_size,
             chunk_size,
         )

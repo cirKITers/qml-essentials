@@ -1030,7 +1030,7 @@ class FCC:
             lower_count = (total_count - diag_count) / 2.0
             return lower_sum / lower_count
 
-        fourier_fingerprint, _ = cls.get_fourier_fingerprint(
+        fourier_fingerprint, _, _ = cls.get_fourier_fingerprint(
             model,
             n_samples,
             random_key,
@@ -1055,7 +1055,7 @@ class FCC:
         trim_redundant: Optional[bool] = True,
         nan_to_one: Optional[bool] = False,
         **kwargs: Any,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         """
         Shortcut method to get just the fourier fingerprint.
         This includes
@@ -1083,11 +1083,14 @@ class FCC:
             **kwargs: Additional keyword arguments for the model function.
 
         Returns:
-            Tuple[jnp.ndarray, jnp.ndarray]: The fourier fingerprint and the
-            corresponding frequency indices. If `trim_redundant` is True the
+            Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]: The fourier
+            fingerprint, the corresponding frequency indices and the
+            corresponding coefficients. If `trim_redundant` is True the
             frequencies are returned as a `(row_freqs, col_freqs)` tuple that
-            labels the two (redundancy-trimmed) matrix axes; otherwise the
-            full frequency vector is returned.
+            labels the two (redundancy-trimmed) matrix axes and the
+            coefficients as a matching `(row_coeffs, col_coeffs)` tuple whose
+            rows align with those frequencies; otherwise the full frequency
+            vector and full coefficient array are returned.
         """
         _, coeffs, freqs = cls._calculate_coefficients(
             model, n_samples, random_key, scale, **kwargs
@@ -1121,7 +1124,11 @@ class FCC:
             col_mask = jnp.any(jnp.isfinite(fourier_fingerprint), axis=0)
             fourier_fingerprint = fourier_fingerprint[row_mask][:, col_mask]
 
-            return fourier_fingerprint, (pos_freqs[row_mask], pos_freqs[col_mask])
+            return (
+                fourier_fingerprint,
+                (pos_freqs[row_mask], pos_freqs[col_mask]),
+                (coeffs_sub[row_mask], coeffs_sub[col_mask]),
+            )
 
         fourier_fingerprint = cls._correlate(coeffs.transpose(), method=method)
 
@@ -1139,6 +1146,7 @@ class FCC:
         if trim_redundant:
             pos_idx = cls._calculate_mask(freqs)
             pos_freqs = cls._flat_frequencies(freqs)[pos_idx]
+            coeffs_sub = coeffs.reshape(-1, coeffs.shape[-1])[pos_idx]
 
             # restrict to the positive-frequency sub-block (M x M with
             # M = number of non-negative flat-frequencies) instead of
@@ -1157,9 +1165,13 @@ class FCC:
 
             fourier_fingerprint = fourier_fingerprint[row_mask][:, col_mask]
 
-            return fourier_fingerprint, (pos_freqs[row_mask], pos_freqs[col_mask])
+            return (
+                fourier_fingerprint,
+                (pos_freqs[row_mask], pos_freqs[col_mask]),
+                (coeffs_sub[row_mask], coeffs_sub[col_mask]),
+            )
 
-        return fourier_fingerprint, freqs
+        return fourier_fingerprint, freqs, coeffs
 
     @classmethod
     def calculate_fcc(
@@ -1395,9 +1407,7 @@ class FCC:
         return result
 
     @classmethod
-    def _complex_pearson(
-        cls, mat: jnp.ndarray, minp: Optional[int] = 1
-    ) -> jnp.ndarray:
+    def _complex_pearson(cls, mat: jnp.ndarray, minp: Optional[int] = 1) -> jnp.ndarray:
         """
         Compute the complex Pearson correlation between columns of `mat`,
         permitting missing values (NaN or ±Inf).
@@ -1695,25 +1705,96 @@ class Datasets:
         # that instead of wrapping your head around symmetries in multi-
         # dimensional coefficient matrices, one can simply look at the flattened
         # version of such a matrix and reshape later. It just works out.
+        domain_samples_per_input_dim = cls.construct_domain_samples(model)
 
-        # going from [0, 2pi] with the resolution required for highest frequency
-        # permute with input dimensionality to get an n-d grid of domain samples
-        # the output shape comes from the fact that want to create a "coordinate system"
-        domain_samples_per_input_dim = jnp.stack(
+        frequencies = cls.construct_frequencies(model)
+
+        coefficients = cls.construct_coefficients(
+            random_key, model, coefficients_min, coefficients_max, zero_centered
+        )
+
+        values = cls.calculate_values(
+            domain_samples_per_input_dim, frequencies, coefficients
+        )
+
+        # return all the information we have
+        return [
+            domain_samples_per_input_dim.reshape(*model.degree, -1),
+            values.reshape(model.degree),
+            coefficients.reshape(model.degree),
+        ]
+
+    @classmethod
+    def construct_domain_samples(cls, model: Model) -> jnp.ndarray:
+        """
+        Builds the input-domain sample grid for the model spectrum.
+
+        Going from $[0, 2\\pi]$ with the resolution required for the highest
+        frequency, permuted with the input dimensionality to get an n-d grid
+        of domain samples (a "coordinate system").
+
+        Args:
+            model (Model): The quantum circuit model.
+
+        Returns:
+            jnp.ndarray: Domain samples with shape
+                ($\\prod$ degree, n_input_feat).
+        """
+        return jnp.stack(
             jnp.meshgrid(
                 *[jnp.arange(0, 2 * jnp.pi, 2 * jnp.pi / d) for d in model.degree]
             )
         ).T.reshape(-1, model.n_input_feat)
 
-        # generate the frequency indices for each dimension.
-        # this will have the same shape as the domain samples
-        frequencies = jnp.stack(jnp.meshgrid(*model.frequencies)).T.reshape(
+    @classmethod
+    def construct_frequencies(cls, model: Model) -> jnp.ndarray:
+        """
+        Builds the frequency-index grid for the model spectrum.
+
+        This has the same shape as the domain samples returned by
+        `construct_domain_samples`.
+
+        Args:
+            model (Model): The quantum circuit model.
+
+        Returns:
+            jnp.ndarray: Frequency indices with shape
+                ($\\prod$ degree, n_input_feat).
+        """
+        return jnp.stack(jnp.meshgrid(*model.frequencies)).T.reshape(
             -1, model.n_input_feat
         )
 
-        # using the frequency information, sample coefficients for each dimension
-        # shape: (input_dims, n_freqs_per_input_dim // 2 + 1)
+    @classmethod
+    def construct_coefficients(
+        cls,
+        random_key: random.PRNGKey,
+        model: Model,
+        coefficients_min: float = 0.0,
+        coefficients_max: float = 1.0,
+        zero_centered: bool = False,
+    ) -> jnp.ndarray:
+        """
+        Samples the conjugate-symmetric Fourier coefficient vector.
 
+        Coefficients are drawn from a uniform circle (see `uniform_circle`).
+        The offset coefficient (first entry) is either zeroed or made real,
+        then the spectrum is mirrored to enforce conjugate symmetry.
+
+        Args:
+            random_key (random.PRNGKey): Random number key for JAX.
+            model (Model): The quantum circuit model.
+            coefficients_min (float, optional): Minimum value for the
+                coefficients. Defaults to 0.0.
+            coefficients_max (float, optional): Maximum value for the
+                coefficients. Defaults to 1.0.
+            zero_centered (bool, optional): Whether to zero-center the
+                coefficients. Defaults to False.
+
+        Returns:
+            jnp.ndarray: Conjugate-symmetric coefficient vector of size
+                $\\prod$ degree.
+        """
         coefficients = cls.uniform_circle(
             random_key,
             low=coefficients_min,
@@ -1731,7 +1812,7 @@ class Datasets:
 
         # ensure symmetry (here, non_negative_ is removed!),
         # giving us the full coefficients vector
-        coefficients = jnp.concat(
+        return jnp.concat(
             [
                 jnp.flip(coefficients[..., 1:]).conjugate(),
                 coefficients,
@@ -1739,23 +1820,36 @@ class Datasets:
             axis=-1,
         )
 
-        # Vectorized version of $f(x) = \sum_{n=0}^{N-1} c_n * e^{i * \omega_n * x}$
-        # it takes into account the input dimension, i.e. the output is a matrix
-        # normalization uses the n_freqs component of the coefficients
-        values = jnp.real(
-            (
-                jnp.exp(1j * (domain_samples_per_input_dim @ frequencies.T))
-                * coefficients
-            ).sum(axis=1)
+    @classmethod
+    def calculate_values(
+        cls,
+        domain_samples: jnp.ndarray,
+        frequencies: jnp.ndarray,
+        coefficients: jnp.ndarray,
+    ) -> jnp.ndarray:
+        """
+        Evaluates the real-valued Fourier series on the domain grid.
+
+        Vectorized version of
+        $f(x) = \\sum_{n=0}^{N-1} c_n e^{i \\omega_n x}$ that takes the input
+        dimension into account, normalized by the number of coefficients.
+
+        Args:
+            domain_samples (jnp.ndarray): Domain samples with shape
+                (n_points, n_input_feat).
+            frequencies (jnp.ndarray): Frequency indices with shape
+                (n_freqs, n_input_feat).
+            coefficients (jnp.ndarray): Fourier coefficients with shape
+                (n_freqs,).
+
+        Returns:
+            jnp.ndarray: Real-valued Fourier series samples with shape
+                (n_points,).
+        """
+        return jnp.real(
+            (jnp.exp(1j * (domain_samples @ frequencies.T)) * coefficients).sum(axis=1)
             / coefficients.size
         )
-
-        # return all the information we have
-        return [
-            domain_samples_per_input_dim.reshape(*model.degree, -1),
-            values.reshape(model.degree),
-            coefficients.reshape(model.degree),
-        ]
 
     @classmethod
     def uniform_circle(
