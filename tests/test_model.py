@@ -771,6 +771,168 @@ def test_pulse_model_batching():
 
 
 @pytest.mark.unittest
+def test_pulse_encoding_shape() -> None:
+    model = Model(n_qubits=3, n_layers=2, circuit_type="Hardware_Efficient")
+
+    # one scaler per encoding-gate pulse parameter, per qubit, per feature
+    s = PulseInformation.gate_by_name("RX").size
+    assert model.enc_pulse_params.shape == (1, model.n_layers, model.n_qubits, s), (
+        "enc_pulse_params has unexpected shape"
+    )
+
+    # scalers are initialized to ones (no deviation from calibrated defaults)
+    assert jnp.allclose(model.enc_pulse_params, 1.0), (
+        "enc_pulse_params should be initialized to ones"
+    )
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_equivalence() -> None:
+    model = Model(n_qubits=3, n_layers=1, circuit_type="Hardware_Efficient")
+
+    # nonzero inputs are required: zero inputs skip encoding entirely
+    inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
+
+    y_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
+    y_all_pulse = model(inputs=inputs, gate_mode="all_pulse", force_mean=True)
+
+    assert jnp.allclose(y_unitary, y_all_pulse, atol=1e-2), (
+        "all_pulse output with unit scalers did not match unitary output"
+    )
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_effect() -> None:
+    model = Model(n_qubits=3, n_layers=1, circuit_type="Hardware_Efficient")
+    inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
+
+    y_all_pulse = model(inputs=inputs, gate_mode="all_pulse", force_mean=True)
+    y_pulse = model(inputs=inputs, gate_mode="pulse", force_mean=True)
+
+    original = model.enc_pulse_params.copy()
+    model.enc_pulse_params = model.enc_pulse_params + 0.1
+
+    # perturbing enc_pulse_params changes all_pulse output ...
+    y_all_pulse_perturbed = model(inputs=inputs, gate_mode="all_pulse", force_mean=True)
+    assert not jnp.allclose(y_all_pulse, y_all_pulse_perturbed), (
+        "all_pulse output did not change after perturbing enc_pulse_params"
+    )
+
+    # ... but leaves the plain pulse output (unitary encoding) untouched
+    y_pulse_after = model(inputs=inputs, gate_mode="pulse", force_mean=True)
+    assert jnp.allclose(y_pulse, y_pulse_after), (
+        "pulse output changed after perturbing enc_pulse_params"
+    )
+
+    model.enc_pulse_params = original
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_gradient() -> None:
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+
+    domain = np.array([-jnp.pi, jnp.pi])
+    x = jnp.linspace(domain[0], domain[1], num=10)
+    y = jnp.stack([jnp.cos(sample) for sample in x])
+
+    def cost_fct(enc_pp):
+        y_hat = model(
+            inputs=x,
+            enc_pulse_params=enc_pp,
+            force_mean=True,
+            gate_mode="all_pulse",
+        )
+        return jnp.mean((y_hat - y) ** 2)
+
+    enc_pp = model.enc_pulse_params.copy()
+    grads = grad(cost_fct)(enc_pp)
+    assert jnp.any(jnp.abs(grads) > 1e-6), "Gradient wrt enc_pulse_params is too small"
+
+    # use the original (non-traced) array for the optax step; reading back
+    # model.enc_pulse_params after grad would return a leaked tracer (same
+    # convention as pulse_params in test_pulse_model)
+    opt = optax.adam(0.05)
+    opt_state = opt.init(enc_pp)
+    updates, opt_state = opt.update(grads, opt_state, enc_pp)
+    enc_pp_after = optax.apply_updates(enc_pp, updates)
+
+    assert not jnp.allclose(enc_pp, enc_pp_after), (
+        "enc_pulse_params did not update during training"
+    )
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_batching() -> None:
+    random_key = random.key(1000)
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+
+    inputs = random.uniform(random_key, (3,), maxval=2 * jnp.pi)
+
+    # batch enc_pulse_params along axis 0 (B_E = 2)
+    batched = jnp.repeat(model.enc_pulse_params, 2, axis=0)
+    res = model(inputs=inputs, enc_pulse_params=batched, gate_mode="all_pulse")
+
+    # B_I = 3 inputs, B_E = 2 scaler sets, two qubits -> two expvals
+    assert res.shape == (3, 2, 2), "enc_pulse_params batch shape mismatch"
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_errors() -> None:
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+
+    # enc_pulse_params only allowed in all_pulse mode
+    with pytest.raises(ValueError):
+        model(enc_pulse_params=model.enc_pulse_params, gate_mode="pulse")
+
+    # unknown gate_mode
+    with pytest.raises(ValueError):
+        model(gate_mode="foobar")
+
+    # pulse_params remain valid alongside all_pulse
+    model(pulse_params=model.pulse_params, gate_mode="all_pulse")
+
+    # golomb encoding has no pulse parametrization -> all_pulse unsupported
+    golomb_model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+        encoding=Encoding("golomb", None),
+    )
+    with pytest.raises(ValueError):
+        golomb_model(gate_mode="all_pulse")
+
+    # a custom encoding callable has no pulse parametrization either
+    def custom_enc(inputs, wires, **kwargs):
+        Gates.RX(inputs, wires=wires, **kwargs)
+
+    custom_model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+        encoding=custom_enc,
+    )
+    with pytest.raises(ValueError):
+        custom_model(gate_mode="all_pulse")
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_backward_compat() -> None:
+    # a 3-element repeat_batch_axis (pre-enc_pulse_params) must still work
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+        repeat_batch_axis=[True, True, True],
+    )
+    inputs = jnp.linspace(-jnp.pi, jnp.pi, 5)
+
+    # plain pulse mode is unaffected by the encoding-pulse extension
+    res_u = model(inputs=inputs, gate_mode="unitary", force_mean=True)
+    res_p = model(inputs=inputs, gate_mode="pulse", force_mean=True)
+    assert jnp.allclose(res_u, res_p, atol=1e-2), "pulse output drifted from unitary"
+
+
+@pytest.mark.unittest
 def test_multi_input() -> None:
     input_cases = [
         np.random.rand(1, 1),
