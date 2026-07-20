@@ -73,28 +73,35 @@ When building an ansatz in pulse mode (via a `Model`), the framework internally 
 If `pulse_params` are provided for a model or gate, these are treated similarly as element-wise scalers to modify the default pulses. We again take advantage of the **kwargs and call:
 
 ```python
-model(gate_mode="pulse", pulse_params=model.pulse_params_scaler * 1.5)
+model(gate_mode="ansatz_pulse", pulse_params=model.pulse_params_scaler * 1.5)
 ```
 
 Here, input and params are inferred from the `Model` instance, and we scale all pulse parameters by a factor of 1.5.
 Currently there is no way to change the raw values of pulse parameter through the model api directly.
 
+Note that a `Model` accepts a different set of `gate_mode` values than an individual gate does.
+A gate is either `"unitary"` or `"pulse"`, whereas a model selects per gate group and therefore knows `"unitary"`, `"ansatz_pulse"`, `"enc_pulse"` and `"all_pulse"`.
+
 Similar to the input and standard parameters, we also support batching for the `pulse_params` argument, meaning that you can also pass a batched array of pulse parameters of e.g. size 2 to as follows:
 
 ```python
-model(pulse_params=np.repeat(model.pulse_params, 2, axis=-1), gate_mode="pulse")
+model(pulse_params=np.repeat(model.pulse_params, 2, axis=-1), gate_mode="ansatz_pulse")
 ``` 
 
 ## Pulse-Level Encoding
 
-With `gate_mode="pulse"`, the ansatz and state-preparation gates run at pulse level while the input-encoding gates are still applied as ideal unitaries. 
-To additionally run the encoding gates at pulse level, use `gate_mode="all_pulse"`.
+With `gate_mode="ansatz_pulse"`, the ansatz and state-preparation gates run at pulse level while the input-encoding gates are still applied as ideal unitaries. 
+The two remaining modes cover the encoding gates: `gate_mode="enc_pulse"` runs only the encoding gates at pulse level and keeps the ansatz unitary, while `gate_mode="all_pulse"` runs both groups at pulse level.
+Use `enc_pulse` if you want to study the encoding in isolation, without the ansatz pulses contributing to the result.
 The scalers (identical behavior to pulse parameters for trainable unitaries), can be supplied via `enc_pulse_params` when calling the model.
 
 ```python
 model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
 
-# encoding gates run as pulses, scaled by enc_pulse_params
+# only the encoding gates run as pulses, the ansatz stays unitary
+model(inputs=inputs, gate_mode="enc_pulse")
+
+# encoding and ansatz gates run as pulses
 model(inputs=inputs, gate_mode="all_pulse")
 
 # scale the encoding pulses explicitly
@@ -107,7 +114,10 @@ model(inputs=inputs, enc_pulse_params=model.enc_pulse_params * 1.5, gate_mode="a
 model(inputs=inputs, enc_pulse_params=np.repeat(model.enc_pulse_params, 2, axis=0), gate_mode="all_pulse")
 ```
 
-Note that Golomb encoding and custom encoding callables have pulse level representation, so `gate_mode="all_pulse"` raises a `ValueError` for them.
+The two parameter sets follow the mode they belong to.
+`pulse_params` is only accepted in `ansatz_pulse` and `all_pulse`, and `enc_pulse_params` only in `enc_pulse` and `all_pulse`; passing either one in a mode that does not run the corresponding gates at pulse level raises a `ValueError`.
+
+Note that Golomb encoding and custom encoding callables have no pulse level representation, so both `gate_mode="enc_pulse"` and `gate_mode="all_pulse"` raise a `ValueError` for them.
 
 ## Pulse Envelopes and Solver
 

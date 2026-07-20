@@ -232,9 +232,19 @@ Switching between unitary-level and pulse-level execution is seamless and contro
 # Default unitary-level simulation
 model(params, inputs)
 
-# Pulse-level simulation
-model(params, inputs, gate_mode="pulse")
+# Ansatz and state-preparation gates at pulse level
+model(params, inputs, gate_mode="ansatz_pulse")
+
+# Only the input-encoding gates at pulse level
+model(params, inputs, gate_mode="enc_pulse")
+
+# Everything at pulse level
+model(params, inputs, gate_mode="all_pulse")
 ```
+
+The four modes let you choose which group of gates is lowered to the pulse layer.
+`unitary` keeps every gate ideal, `ansatz_pulse` lowers the ansatz and state-preparation gates, `enc_pulse` lowers only the input-encoding gates, and `all_pulse` lowers both groups.
+See [*Pulses*](pulses.md#pulse_level_encoding) for the parameters belonging to each group.
 
 Pulse-level gates can also be instantiated directly:
 

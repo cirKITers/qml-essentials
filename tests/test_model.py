@@ -673,7 +673,7 @@ def test_pulse_model() -> None:
             pulse_params=all_params[1],
             inputs=x,
             force_mean=True,
-            gate_mode="pulse",
+            gate_mode="ansatz_pulse",
         )
         return jnp.mean((y_hat - y) ** 2)
 
@@ -707,7 +707,7 @@ def test_pulse_model_inference():
     inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
 
     # forward pass with initial pulse_params
-    y_hat_original = model(inputs=inputs, gate_mode="pulse", force_mean=True)
+    y_hat_original = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
 
     y_hat_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
 
@@ -720,7 +720,7 @@ def test_pulse_model_inference():
     model.pulse_params += 0.1
 
     # forward pass with perturbed pulse_params
-    y_hat_perturbed = model(inputs=inputs, gate_mode="pulse", force_mean=True)
+    y_hat_perturbed = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
 
     assert y_hat_original.shape[0] == inputs.shape[0], "Output batch size mismatch"
 
@@ -740,7 +740,8 @@ def test_pulse_model_batching():
 
     # test pulse params batching
     res_b = model(
-        pulse_params=jnp.repeat(model.pulse_params, 2, axis=0), gate_mode="pulse"
+        pulse_params=jnp.repeat(model.pulse_params, 2, axis=0),
+        gate_mode="ansatz_pulse",
     )
 
     # two qubits -> two expvals with batch size 2
@@ -751,7 +752,7 @@ def test_pulse_model_batching():
 
     # test pulse params & inputs batching
     res_a = model(inputs=inputs, gate_mode="unitary")
-    res_b = model(inputs=inputs, gate_mode="pulse")
+    res_b = model(inputs=inputs, gate_mode="ansatz_pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
     assert jnp.allclose(res_a, res_b, atol=1e-2), (
@@ -762,7 +763,7 @@ def test_pulse_model_batching():
 
     # test pulse params & params & inputs batching
     res_a = model(inputs=inputs, gate_mode="unitary")
-    res_b = model(inputs=inputs, gate_mode="pulse")
+    res_b = model(inputs=inputs, gate_mode="ansatz_pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
     assert jnp.allclose(res_a, res_b, atol=1e-2), (
@@ -795,9 +796,14 @@ def test_pulse_encoding_equivalence() -> None:
 
     y_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
     y_all_pulse = model(inputs=inputs, gate_mode="all_pulse", force_mean=True)
+    y_enc_pulse = model(inputs=inputs, gate_mode="enc_pulse", force_mean=True)
 
     assert jnp.allclose(y_unitary, y_all_pulse, atol=1e-2), (
         "all_pulse output with unit scalers did not match unitary output"
+    )
+
+    assert jnp.allclose(y_unitary, y_enc_pulse, atol=1e-2), (
+        "enc_pulse output with unit scalers did not match unitary output"
     )
 
 
@@ -807,7 +813,8 @@ def test_pulse_encoding_effect() -> None:
     inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
 
     y_all_pulse = model(inputs=inputs, gate_mode="all_pulse", force_mean=True)
-    y_pulse = model(inputs=inputs, gate_mode="pulse", force_mean=True)
+    y_enc_pulse = model(inputs=inputs, gate_mode="enc_pulse", force_mean=True)
+    y_pulse = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
 
     original = model.enc_pulse_params.copy()
     model.enc_pulse_params = model.enc_pulse_params + 0.1
@@ -818,10 +825,16 @@ def test_pulse_encoding_effect() -> None:
         "all_pulse output did not change after perturbing enc_pulse_params"
     )
 
-    # ... but leaves the plain pulse output (unitary encoding) untouched
-    y_pulse_after = model(inputs=inputs, gate_mode="pulse", force_mean=True)
+    # ... and equally the enc_pulse output ...
+    y_enc_pulse_perturbed = model(inputs=inputs, gate_mode="enc_pulse", force_mean=True)
+    assert not jnp.allclose(y_enc_pulse, y_enc_pulse_perturbed), (
+        "enc_pulse output did not change after perturbing enc_pulse_params"
+    )
+
+    # ... but leaves the ansatz_pulse output (unitary encoding) untouched
+    y_pulse_after = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
     assert jnp.allclose(y_pulse, y_pulse_after), (
-        "pulse output changed after perturbing enc_pulse_params"
+        "ansatz_pulse output changed after perturbing enc_pulse_params"
     )
 
     model.enc_pulse_params = original
@@ -880,26 +893,36 @@ def test_pulse_encoding_batching() -> None:
 def test_pulse_encoding_errors() -> None:
     model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
 
-    # enc_pulse_params only allowed in all_pulse mode
-    with pytest.raises(ValueError):
-        model(enc_pulse_params=model.enc_pulse_params, gate_mode="pulse")
+    # enc_pulse_params only allowed in the encoding-pulse modes
+    for mode in ("unitary", "ansatz_pulse"):
+        with pytest.raises(ValueError, match="enc_pulse_params were provided"):
+            model(enc_pulse_params=model.enc_pulse_params, gate_mode=mode)
+
+    # pulse_params only allowed in the ansatz-pulse modes
+    for mode in ("unitary", "enc_pulse"):
+        with pytest.raises(ValueError, match="pulse_params were provided"):
+            model(pulse_params=model.pulse_params, gate_mode=mode)
 
     # unknown gate_mode
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Unknown gate_mode"):
         model(gate_mode="foobar")
 
     # pulse_params remain valid alongside all_pulse
     model(pulse_params=model.pulse_params, gate_mode="all_pulse")
 
-    # golomb encoding has no pulse parametrization -> all_pulse unsupported
+    # enc_pulse_params remain valid alongside enc_pulse
+    model(enc_pulse_params=model.enc_pulse_params, gate_mode="enc_pulse")
+
+    # golomb encoding has no pulse parametrization -> encoding pulses unsupported
     golomb_model = Model(
         n_qubits=2,
         n_layers=1,
         circuit_type="Hardware_Efficient",
         encoding=Encoding("golomb", None),
     )
-    with pytest.raises(ValueError):
-        golomb_model(gate_mode="all_pulse")
+    for mode in ("enc_pulse", "all_pulse"):
+        with pytest.raises(ValueError, match="requires an encoding"):
+            golomb_model(gate_mode=mode)
 
     # a custom encoding callable has no pulse parametrization either
     def custom_enc(inputs, wires, **kwargs):
@@ -911,8 +934,9 @@ def test_pulse_encoding_errors() -> None:
         circuit_type="Hardware_Efficient",
         encoding=custom_enc,
     )
-    with pytest.raises(ValueError):
-        custom_model(gate_mode="all_pulse")
+    for mode in ("enc_pulse", "all_pulse"):
+        with pytest.raises(ValueError, match="requires an encoding"):
+            custom_model(gate_mode=mode)
 
 
 @pytest.mark.unittest
@@ -926,9 +950,9 @@ def test_pulse_encoding_backward_compat() -> None:
     )
     inputs = jnp.linspace(-jnp.pi, jnp.pi, 5)
 
-    # plain pulse mode is unaffected by the encoding-pulse extension
+    # plain ansatz pulse mode is unaffected by the encoding-pulse extension
     res_u = model(inputs=inputs, gate_mode="unitary", force_mean=True)
-    res_p = model(inputs=inputs, gate_mode="pulse", force_mean=True)
+    res_p = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
     assert jnp.allclose(res_u, res_p, atol=1e-2), "pulse output drifted from unitary"
 
 
@@ -1564,7 +1588,7 @@ def test_pulse_mode_training() -> None:
             targets=fourier_samples,
             execution_type="expval",
             force_mean=True,
-            gate_mode="pulse",
+            gate_mode="ansatz_pulse",
         )
         updates, opt_state = opt.update(grads, opt_state, params)
         params = optax.apply_updates(params, updates)

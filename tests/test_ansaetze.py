@@ -369,7 +369,7 @@ def test_pulse_params_ansaetze() -> None:
         )
 
         try:
-            res = model(gate_mode="pulse")
+            res = model(gate_mode="ansatz_pulse")
             assert np.allclose(res, res, atol=1e-6)
         except Exception as e:
             raise Exception(f"Error for ansatz {ansatz}: {e}")
@@ -412,7 +412,7 @@ def test_pulse_params_ansaetze_4q() -> None:
         )
 
         try:
-            res = model(gate_mode="pulse")
+            res = model(gate_mode="ansatz_pulse")
             assert np.allclose(res, res, atol=1e-6), (
                 f"Results for ansatz {ansatz} are not close enough"
             )
@@ -430,7 +430,7 @@ def test_pulse_benchmarks() -> None:
         circuit_type="Circuit_19",
         data_reupload=False,
     )
-    _ = model(gate_mode="pulse")
+    _ = model(gate_mode="ansatz_pulse")
     end = time.time()
     print(f"Time: {end - start}")
 
