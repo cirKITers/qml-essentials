@@ -85,6 +85,30 @@ Similar to the input and standard parameters, we also support batching for the `
 model(pulse_params=np.repeat(model.pulse_params, 2, axis=-1), gate_mode="pulse")
 ``` 
 
+## Pulse-Level Encoding
+
+With `gate_mode="pulse"`, the ansatz and state-preparation gates run at pulse level while the input-encoding gates are still applied as ideal unitaries. 
+To additionally run the encoding gates at pulse level, use `gate_mode="all_pulse"`.
+The scalers (identical behavior to pulse parameters for trainable unitaries), can be supplied via `enc_pulse_params` when calling the model.
+
+```python
+model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+
+# encoding gates run as pulses, scaled by enc_pulse_params
+model(inputs=inputs, gate_mode="all_pulse")
+
+# scale the encoding pulses explicitly
+model(inputs=inputs, enc_pulse_params=model.enc_pulse_params * 1.5, gate_mode="all_pulse")
+```
+
+`enc_pulse_params` is batchable along its leading axis, analogous to `pulse_params`:
+
+```python
+model(inputs=inputs, enc_pulse_params=np.repeat(model.enc_pulse_params, 2, axis=0), gate_mode="all_pulse")
+```
+
+Note that Golomb encoding and custom encoding callables have pulse level representation, so `gate_mode="all_pulse"` raises a `ValueError` for them.
+
 ## Pulse Envelopes and Solver
 
 Each pulse is shaped by an envelope. The available envelopes can be queried with `PulseEnvelope.available()`:
