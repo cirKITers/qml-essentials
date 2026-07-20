@@ -187,6 +187,7 @@ class Model:
         # enc_pulse_params in _iec under "all_pulse" mode. Only encodings whose
         # gates all have a pulse parametrization are supported (golomb and
         # custom callables do not).
+        # TODO: golomb should be doable but needs a closer investigation
         self._enc_pulse_sizes: List[int] = []
         self._enc_pulse_capable = not self._enc.is_golomb
         if self._enc_pulse_capable:
