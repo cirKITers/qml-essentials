@@ -345,9 +345,10 @@ def test_encoding_weights() -> None:
                 sum(s * wk for s, wk in zip(signs, w))
                 for signs in product((-1, 0, 1), repeat=n)
             }
-            assert len(spectrum) == enc.get_n_freqs(n), (
+            n_freqs = enc.get_n_freqs(np.ones(n, dtype=bool))
+            assert len(spectrum) == n_freqs, (
                 f"{strategy}: |Omega|={len(spectrum)} != \
-                get_n_freqs={enc.get_n_freqs(n)}"
+                get_n_freqs={n_freqs}"
             )
 
     with pytest.raises(ValueError):
