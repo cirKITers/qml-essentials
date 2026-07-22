@@ -1373,3 +1373,143 @@ class TestDatasets:
         assert jnp.allclose(domain_samples.reshape(*model.degree, -1), ref_domain)
         assert jnp.allclose(values.reshape(model.degree), ref_values)
         assert jnp.allclose(coefficients.reshape(model.degree), ref_coeffs)
+
+    @pytest.mark.unittest
+    @pytest.mark.parametrize("mts, mfs", [(1, 1), (4, 1), (1, 2), (2, 3)])
+    def test_domain_sample_oversampling(self, mts, mfs) -> None:
+        """
+        `mts` covers that many periods and `mfs` raises the sample density,
+        following the same convention as `Coefficients._fourier_transform`.
+        """
+        model = Model(n_qubits=2, n_layers=1, encoding=Encoding("hamming", ["RY"]))
+
+        domain_samples = Datasets.construct_domain_samples(model, mts=mts, mfs=mfs)
+
+        n_points = mts * mfs * math.prod(model.degree)
+        assert domain_samples.shape == (n_points, 1)
+        assert domain_samples.min() == 0.0
+        assert domain_samples.max() < 2 * mts * jnp.pi
+        # spacing is set by the density alone, the span by the period count
+        assert jnp.allclose(
+            jnp.diff(domain_samples[:, 0]), 2 * jnp.pi / (mfs * model.degree[0])
+        )
+
+    @pytest.mark.unittest
+    @pytest.mark.parametrize("offgrid_mode", ["index", "generator"])
+    @pytest.mark.parametrize("n_input_feat", [1, 2])
+    def test_offgrid_frequencies(self, offgrid_mode, n_input_feat) -> None:
+        """
+        The off-grid modes must displace components without changing the
+        structure the rest of the dataset construction relies on: the comb
+        keeps its size, stays antisymmetric and stays inside the model's
+        frequency range. At zero probability nothing moves at all.
+        """
+        random_key = jax.random.key(1000)
+        model = Model(
+            n_qubits=3,
+            n_layers=1,
+            encoding=Encoding("hamming", ["RY" for _ in range(n_input_feat)]),
+        )
+        nominal = Datasets.construct_frequencies(model)
+
+        unchanged = Datasets.construct_frequencies(
+            model, random_key, offgrid_mode, offgrid_prob=0.0
+        )
+        assert jnp.allclose(unchanged, nominal), "Zero probability displaced a comb"
+
+        displaced = Datasets.construct_frequencies(
+            model, random_key, offgrid_mode, offgrid_prob=1.0
+        )
+        assert displaced.shape == nominal.shape
+        assert not jnp.allclose(displaced, nominal), "Nothing was displaced"
+
+        for i in range(n_input_feat):
+            comb = jnp.unique(displaced[:, i])
+            limit = jnp.abs(jnp.asarray(model.frequencies[i])).max()
+            assert jnp.allclose(comb, -jnp.flip(comb)), "Comb is not antisymmetric"
+            assert jnp.abs(comb).max() <= limit, "Comb left the model frequency range"
+
+    @pytest.mark.unittest
+    def test_offgrid_index_displacement_rate(self) -> None:
+        """
+        The displacement probability must control how many components leave
+        the model comb, which is the knob the off-grid study varies.
+        """
+        model = Model(n_qubits=3, n_layers=1, encoding=Encoding("hamming", ["RY"]))
+        n_positive = int((math.prod(model.degree) - 1) / 2)
+
+        for prob in (0.25, 0.75):
+            offgrid = 0
+            for seed in range(200):
+                frequencies = Datasets.construct_frequencies(
+                    model, jax.random.key(seed), "index", offgrid_prob=prob
+                )
+                positive = frequencies[frequencies > 0]
+                offgrid += int(jnp.sum(positive != jnp.round(positive)))
+
+            assert abs(offgrid / (200 * n_positive) - prob) < 0.05
+
+    @pytest.mark.unittest
+    def test_offgrid_generator_stays_reachable(self) -> None:
+        """
+        Generator mode must only ever produce frequencies that some encoding
+        pulse configuration can actually reach, i.e. sums of the displaced
+        per-gate generators. This is what separates it from index mode.
+        """
+        model = Model(n_qubits=3, n_layers=1, encoding=Encoding("hamming", ["RY"]))
+
+        for seed in range(20):
+            frequencies = Datasets.construct_frequencies(
+                model, jax.random.key(seed), "generator", offgrid_prob=1.0
+            )
+            # every generator is displaced, so each is 0.5 or 1.5 and any
+            # reachable frequency is a sum of three such values with signs
+            reachable = {
+                round(a + b + c, 9)
+                for a in (-1.5, -0.5, 0.0, 0.5, 1.5)
+                for b in (-1.5, -0.5, 0.0, 0.5, 1.5)
+                for c in (-1.5, -0.5, 0.0, 0.5, 1.5)
+            }
+            for frequency in frequencies.ravel().tolist():
+                assert round(frequency, 9) in reachable
+
+    @pytest.mark.unittest
+    def test_offgrid_series_stays_real(self) -> None:
+        """
+        The displaced comb must keep the conjugate symmetry that
+        `construct_coefficients` enforces, otherwise the series that
+        `calculate_values` takes the real part of would lose its imaginary
+        cancellation and the targets would be silently wrong.
+        """
+        random_key = jax.random.key(1000)
+        model = Model(n_qubits=3, n_layers=1, encoding=Encoding("hamming", ["RY"]))
+
+        frequencies = Datasets.construct_frequencies(
+            model, random_key, "index", offgrid_prob=1.0
+        )
+        domain_samples = Datasets.construct_domain_samples(model, mts=2)
+        coefficients = Datasets.construct_coefficients(random_key, model)
+
+        exponentials = jnp.exp(1j * (domain_samples @ frequencies.T))
+        series = (exponentials * coefficients).sum(axis=1) / coefficients.size
+
+        assert jnp.allclose(series.imag, 0.0, atol=1e-10)
+        assert jnp.allclose(
+            series.real,
+            Datasets.calculate_values(domain_samples, frequencies, coefficients),
+        )
+
+    @pytest.mark.unittest
+    def test_offgrid_rejects_bad_arguments(self) -> None:
+        model = Model(n_qubits=2, n_layers=1, encoding=Encoding("hamming", ["RY"]))
+
+        with pytest.raises(ValueError, match="requires a random_key"):
+            Datasets.construct_frequencies(model, offgrid_mode="index")
+
+        with pytest.raises(ValueError, match="Unknown offgrid_mode"):
+            Datasets.construct_frequencies(model, jax.random.key(0), "jitter")
+
+        with pytest.raises(ValueError, match="at least 2"):
+            Datasets.construct_frequencies(
+                model, jax.random.key(0), "index", offgrid_resolution=1
+            )
