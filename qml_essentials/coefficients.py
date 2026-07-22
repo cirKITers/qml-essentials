@@ -1725,45 +1725,267 @@ class Datasets:
         ]
 
     @classmethod
-    def construct_domain_samples(cls, model: Model) -> jnp.ndarray:
+    def construct_domain_samples(
+        cls, model: Model, mts: int = 1, mfs: int = 1
+    ) -> jnp.ndarray:
         """
         Builds the input-domain sample grid for the model spectrum.
 
-        Going from $[0, 2\\pi]$ with the resolution required for the highest
-        frequency, permuted with the input dimensionality to get an n-d grid
-        of domain samples (a "coordinate system").
+        Going from $[0, 2 \\pi \\, \\mathrm{mts}]$ with the resolution required
+        for the highest frequency, permuted with the input dimensionality to get
+        an n-d grid of domain samples (a "coordinate system").
+
+        The grid follows the same convention as
+        `Coefficients._fourier_transform`, so a dataset built here lands on the
+        bins that `Coefficients.get_spectrum` analyses with the same `mts` and
+        `mfs`. A target component at $k + j/r$ has period $2 \\pi r$, hence
+        `mts` should be at least $r$ to cover a full period.
 
         Args:
             model (Model): The quantum circuit model.
+            mts (int, optional): Domain oversampling, i.e. the number of
+                periods covered. Defaults to 1.
+            mfs (int, optional): Frequency oversampling, i.e. the sample
+                density per period. Defaults to 1.
 
         Returns:
             jnp.ndarray: Domain samples with shape
-                ($\\prod$ degree, n_input_feat).
+                (mts $\\cdot$ mfs $\\cdot$ $\\prod$ degree, n_input_feat).
         """
         return jnp.stack(
             jnp.meshgrid(
-                *[jnp.arange(0, 2 * jnp.pi, 2 * jnp.pi / d) for d in model.degree]
+                *[
+                    jnp.arange(0, 2 * mts * jnp.pi, 2 * jnp.pi / (mfs * d))
+                    for d in model.degree
+                ]
             )
         ).T.reshape(-1, model.n_input_feat)
 
     @classmethod
-    def construct_frequencies(cls, model: Model) -> jnp.ndarray:
+    def construct_frequencies(
+        cls,
+        model: Model,
+        random_key: Optional[random.PRNGKey] = None,
+        offgrid_mode: str = "none",
+        offgrid_prob: float = 0.0,
+        offgrid_resolution: int = 2,
+    ) -> jnp.ndarray:
         """
         Builds the frequency-index grid for the model spectrum.
 
         This has the same shape as the domain samples returned by
         `construct_domain_samples`.
 
+        By default the grid is the model's own comb, so the dataset is exactly
+        representable. The off-grid modes move a controllable fraction of the
+        components off that comb.
+        Offsets are always multiples of $1/r$ for the given resolution $r$.
+
         Args:
             model (Model): The quantum circuit model.
+            random_key (Optional[random.PRNGKey]): Random number key for JAX.
+                Required unless `offgrid_mode` is "none".
+            offgrid_mode (str, optional): How to displace components off the
+                model comb. "none" keeps the model comb. "index" perturbs each
+                frequency independently, which spans arbitrary combs that are
+                in general not exactly reachable. "generator" perturbs the
+                per-gate generator frequencies and rebuilds the comb as their
+                Minkowski sum, which stays exactly reachable by an encoding
+                pulse configuration. Defaults to "none".
+            offgrid_prob (float, optional): Probability that a single component
+                ("index") or generator ("generator") is displaced. Defaults to
+                0.0, which reproduces the model comb in every mode. Note that
+                this is the fraction of components that end up off the comb
+                only in "index" mode: a sum of displaced generators can land
+                back on an integer, so "generator" mode displaces noticeably
+                fewer components than asked for and saturates well below one.
+            offgrid_resolution (int, optional): Denominator $r$ of the offset
+                grid, i.e. offsets are drawn from $\\{\\pm j/r\\}$ with
+                $j = 1 \\dots r-1$. Defaults to 2, giving half-integer offsets.
 
         Returns:
             jnp.ndarray: Frequency indices with shape
                 ($\\prod$ degree, n_input_feat).
         """
-        return jnp.stack(jnp.meshgrid(*model.frequencies)).T.reshape(
-            -1, model.n_input_feat
+        if offgrid_mode == "none":
+            frequencies = model.frequencies
+        else:
+            if random_key is None:
+                raise ValueError(f"offgrid_mode={offgrid_mode!r} requires a random_key")
+            if offgrid_resolution < 2:
+                raise ValueError(
+                    f"offgrid_resolution must be at least 2, "
+                    f"got {offgrid_resolution}. There is no non-integer offset "
+                    "on a grid of resolution 1."
+                )
+            if offgrid_mode == "index":
+                displace = cls._displace_indices
+            elif offgrid_mode == "generator":
+                displace = cls._displace_generators
+            else:
+                raise ValueError(
+                    f"Unknown offgrid_mode: {offgrid_mode!r}. Use one of "
+                    "'none', 'index', 'generator'."
+                )
+
+            frequencies = []
+            for i in range(model.n_input_feat):
+                random_key, sub_key = random.split(random_key)
+                frequencies.append(
+                    displace(model, i, sub_key, offgrid_prob, offgrid_resolution)
+                )
+
+        return jnp.stack(jnp.meshgrid(*frequencies)).T.reshape(-1, model.n_input_feat)
+
+    @classmethod
+    def _offsets(
+        cls,
+        random_key: random.PRNGKey,
+        shape: Tuple[int, ...],
+        prob: float,
+        resolution: int,
+    ) -> jnp.ndarray:
+        """
+        Draws signed offsets on the $1/r$ grid, zero where not displaced.
+
+        Args:
+            random_key (random.PRNGKey): Random number key for JAX.
+            shape (Tuple[int, ...]): Shape of the offset array.
+            prob (float): Probability that an entry is displaced.
+            resolution (int): Denominator $r$ of the offset grid.
+
+        Returns:
+            jnp.ndarray: Offsets drawn from $\\{0\\} \\cup \\{\\pm j/r\\}$ with
+                $j = 1 \\dots r-1$.
+        """
+        move_key, magnitude_key, sign_key = random.split(random_key, 3)
+        magnitude = random.randint(magnitude_key, shape, 1, resolution) / resolution
+        return (
+            random.bernoulli(move_key, prob, shape)
+            * random.rademacher(sign_key, shape)
+            * magnitude
         )
+
+    @classmethod
+    def _displace_indices(
+        cls,
+        model: Model,
+        feature: int,
+        random_key: random.PRNGKey,
+        prob: float,
+        resolution: int,
+    ) -> jnp.ndarray:
+        """
+        Displaces individual frequencies of one input feature off the comb.
+
+        Each positive frequency is displaced independently, the result is
+        re-sorted and mirrored so that the comb stays antisymmetric. This is
+        what `construct_coefficients` relies on to enforce conjugate symmetry,
+        and in turn what keeps the series real-valued. The comb never leaves
+        the model's frequency range: an offset that would push a component past
+        the highest frequency has its sign flipped rather than being clipped,
+        which would put the component back on the comb.
+
+        Args:
+            model (Model): The quantum circuit model.
+            feature (int): Index of the input feature.
+            random_key (random.PRNGKey): Random number key for JAX.
+            prob (float): Probability that a component is displaced.
+            resolution (int): Denominator $r$ of the offset grid.
+
+        Returns:
+            jnp.ndarray: Displaced comb, same size as the model comb.
+        """
+        nominal = jnp.asarray(model.frequencies[feature])
+        positive = nominal[nominal > 0]
+        limit = positive[-1]
+
+        offsets = cls._offsets(random_key, positive.shape, prob, resolution)
+        # the smallest positive frequency is 1 and offsets are below 1, so only
+        # the upper end of the range can be overshot
+        offsets = jnp.where(positive + offsets > limit, -offsets, offsets)
+
+        # ponytail: two components can collide (1 + 0.5 and 2 - 0.5), in which
+        # case their coefficients simply add. Deduplicating would change the
+        # number of components, which is the one thing the study holds fixed.
+        positive = jnp.sort(positive + offsets)
+
+        return jnp.concatenate([-jnp.flip(positive), jnp.zeros(1), positive])
+
+    @classmethod
+    def _displace_generators(
+        cls,
+        model: Model,
+        feature: int,
+        random_key: random.PRNGKey,
+        prob: float,
+        resolution: int,
+    ) -> jnp.ndarray:
+        """
+        Displaces the generator frequencies of one input feature off the comb.
+
+        Mirrors `Encoding.get_spectrum`, but scales each encoding gate's
+        generator by a displaced $\\eta$ before taking the Minkowski sum, which
+        is exactly what an encoding pulse scaler does to the gate it drives.
+        The reachable comb then grows past the model degree in both count and
+        range, so each model frequency claims the closest reachable one that is
+        still inside the model's range. Staying in range matters: a component
+        beyond the highest model frequency would be unreachable.
+        Two model frequencies may end up claiming the same
+        reachable one, as in `_displace_indices`.
+
+        Args:
+            model (Model): The quantum circuit model.
+            feature (int): Index of the input feature.
+            random_key (random.PRNGKey): Random number key for JAX.
+            prob (float): Probability that a generator is displaced.
+            resolution (int): Denominator $r$ of the offset grid.
+
+        Returns:
+            jnp.ndarray: Displaced comb, same size as the model comb.
+        """
+        base = {"hamming": 1, "binary": 2, "ternary": 3}.get(model._enc._strategy)
+        if base is None:
+            raise ValueError(
+                f"offgrid_mode='generator' does not support the "
+                f"{model._enc._strategy!r} encoding strategy, which has no "
+                "per-gate pulse parametrization to displace."
+            )
+
+        nominal = np.asarray(model.frequencies[feature])
+        limit = nominal.max()
+
+        mask = np.asarray(model.data_reupload[..., feature], dtype=bool)
+        scale = base ** np.arange(mask.shape[1])
+        offsets = np.asarray(cls._offsets(random_key, mask.shape, prob, resolution))
+        # a generator displaced past the highest model frequency would leave no
+        # reachable frequency in range at all, so flip it inwards instead
+        offsets = np.where(scale * (1.0 + offsets) > limit, -offsets, offsets)
+        eta = 1.0 + offsets
+
+        # Minkowski sum over the displaced per-gate generators. Rounded before
+        # deduplication, which is exact for a power-of-two resolution.
+        reach = {0.0}
+        for layer, qubit in zip(*np.nonzero(mask)):
+            generator = scale[qubit] * eta[layer, qubit]
+            reach = {
+                round(a + s * generator, 9) for a in reach for s in (-1.0, 0.0, 1.0)
+            }
+        reachable = sorted(v for v in reach if 0 < v <= limit)
+
+        # claim the closest reachable frequency, so the displaced comb tracks
+        # the original one
+        positive = jnp.sort(
+            jnp.asarray(
+                [
+                    min(reachable, key=lambda v: abs(v - frequency))
+                    for frequency in nominal[nominal > 0]
+                ],
+                dtype=float,
+            )
+        )
+
+        return jnp.concatenate([-jnp.flip(positive), jnp.zeros(1), positive])
 
     @classmethod
     def construct_coefficients(
