@@ -911,10 +911,14 @@ class Model:
                 noise. Defaults to None.
             enc_pulse_params (Optional[jnp.ndarray]): Encoding pulse-parameter
                 scalers of shape (n_qubits, n_enc_pulse_per_qubit) for the
-                current layer, used only when gate_mode is "pulse". Defaults to
-                None.
-            gate_mode (str): Encoding gate backend, "unitary" (ideal) or "pulse".
-                Defaults to "unitary".
+                current layer. Used when the encoding gates run at pulse level,
+                i.e. the model-level mode is "enc_pulse" or "all_pulse".
+                Defaults to None.
+            gate_mode (str): Resolved per-gate encoding backend, "unitary"
+                (ideal) or "pulse". This is the backend selected for the
+                encoding group, distinct from the model-level modes
+                (unitary, ansatz_pulse, enc_pulse, all_pulse). Defaults to
+                "unitary".
 
         Returns:
             None: Gates are applied in-place to the quantum circuit.
