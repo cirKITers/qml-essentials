@@ -809,6 +809,35 @@ def test_pulse_encoding_equivalence() -> None:
 
 
 @pytest.mark.unittest
+def test_pulse_encoding_frequency_scaling() -> None:
+    # Scaling the amplitude component of enc_pulse_params by s is the same
+    # frequency-scaling knob as the unitary trainable frequency enc_params = s
+    # (arXiv:2309.03279): under RWA the encoding gate implements RX/RY(s * x).
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+    inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
+
+    scale = 1.5
+    # amplitude entry of each encoding gate sits at its offset in the last axis
+    amp_idx = jnp.array(model._enc_pulse_offsets)
+    eta = model.enc_pulse_params.at[..., amp_idx].set(scale)
+
+    # enc_pulse leaves enc_params at its default (ones), so evaluate it first
+    y_enc_pulse = model(
+        inputs=inputs, gate_mode="enc_pulse", enc_pulse_params=eta, force_mean=True
+    )
+    y_unitary = model(
+        inputs=inputs,
+        gate_mode="unitary",
+        enc_params=scale * jnp.ones_like(model.enc_params),
+        force_mean=True,
+    )
+
+    assert jnp.allclose(y_enc_pulse, y_unitary, atol=1e-2), (
+        "amplitude scaler did not act as the trainable-frequency knob enc_params"
+    )
+
+
+@pytest.mark.unittest
 def test_pulse_encoding_effect() -> None:
     model = Model(n_qubits=3, n_layers=1, circuit_type="Hardware_Efficient")
     inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
@@ -861,6 +890,15 @@ def test_pulse_encoding_gradient() -> None:
     enc_pp = model.enc_pulse_params.copy()
     grads = grad(cost_fct)(enc_pp)
     assert jnp.any(jnp.abs(grads) > 1e-6), "Gradient wrt enc_pulse_params is too small"
+
+    # the study-4 conclusion rests on the ODE-adjoint gradient being correct:
+    # verify it against a central finite difference on one amplitude coordinate
+    idx = (0, 0, 0, model._enc_pulse_offsets[0])
+    h = 1e-3
+    fd = (cost_fct(enc_pp.at[idx].add(h)) - cost_fct(enc_pp.at[idx].add(-h))) / (2 * h)
+    assert jnp.allclose(fd, grads[idx], rtol=5e-2, atol=1e-3), (
+        f"autodiff grad {grads[idx]} disagrees with finite difference {fd}"
+    )
 
     # use the original (non-traced) array for the optax step; reading back
     # model.enc_pulse_params after grad would return a leaked tracer (same

@@ -524,6 +524,45 @@ class TestFourierTree:
             )
 
     @pytest.mark.unittest
+    def test_pulse_encoding_spectrum_shift(self) -> None:
+        # Scaling the amplitude component of enc_pulse_params by s must move the
+        # spectral mass from the nominal integer comb onto s * comb. Requires
+        # mfs >= ceil(s) so the scaled frequencies do not alias (see get_spectrum).
+        model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+        scale = 1.5
+        amp_idx = jnp.array(model._enc_pulse_offsets)
+        eta = model.enc_pulse_params.at[..., amp_idx].set(scale)
+
+        coeffs, freqs = Coefficients.get_spectrum(
+            model, mfs=2, mts=4, shift=True, gate_mode="enc_pulse", enc_pulse_params=eta
+        )
+        freqs = np.asarray(freqs).ravel()
+        mag = np.abs(np.asarray(coeffs)).ravel()
+
+        def mass_at(f0):
+            return float(mag[np.argmin(np.abs(freqs - f0))])
+
+        # nominal frequencies {1, 2} scaled by 1.5 -> mass appears at {1.5, 3.0}
+        assert mass_at(scale * 1.0) > 1e-2, "no spectral mass at the scaled frequency"
+        # the original integer bins are vacated
+        assert mass_at(1.0) < 1e-4, "spectral mass remained on the integer grid"
+        assert mass_at(2.0) < 1e-4, "spectral mass remained on the integer grid"
+
+    @pytest.mark.unittest
+    def test_fourier_tree_rejects_noninteger_scaling(self) -> None:
+        # A non-integer frequency scaling would be silently rounded to a
+        # different model; FourierTree must refuse rather than mislead.
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            trainable_frequencies=True,
+        )
+        model.enc_params = 1.5 * jnp.ones_like(model.enc_params)
+        with pytest.raises(NotImplementedError, match="integer frequency scalings"):
+            FourierTree(model)
+
+    @pytest.mark.unittest
     def test_coefficients_tree_multi_feature(self) -> None:
         """Multi-dimensional spectrum: the analytical Fourier series and the
         tree expectation must reproduce the circuit for a 2-feature model."""
@@ -1472,6 +1511,40 @@ class TestDatasets:
             }
             for frequency in frequencies.ravel().tolist():
                 assert round(frequency, 9) in reachable
+
+    @pytest.mark.unittest
+    def test_generator_etas_reproduce_comb(self) -> None:
+        """
+        generator_etas must return exactly the scalers construct_frequencies
+        used, so rebuilding the comb from them reproduces the target frequencies.
+        """
+        model = Model(n_qubits=3, n_layers=1, encoding=Encoding("hamming", ["RY"]))
+
+        for seed in range(5):
+            key = jax.random.key(seed)
+            frequencies = Datasets.construct_frequencies(
+                model, key, "generator", offgrid_prob=1.0, offgrid_resolution=2
+            )
+            eta = Datasets.generator_etas(
+                model, key, offgrid_prob=1.0, offgrid_resolution=2
+            )[0]
+
+            nominal = np.asarray(model.frequencies[0])
+            limit = nominal.max()
+            mask = np.asarray(model.data_reupload[..., 0], dtype=bool)
+            reach = {0.0}
+            for layer, qubit in zip(*np.nonzero(mask)):
+                g = eta[layer, qubit]  # hamming: generator scale is 1
+                reach = {round(a + s * g, 9) for a in reach for s in (-1.0, 0.0, 1.0)}
+            reachable = sorted(v for v in reach if 0 < v <= limit)
+            positive = sorted(
+                min(reachable, key=lambda v: abs(v - f)) for f in nominal[nominal > 0]
+            )
+            rebuilt = [-p for p in reversed(positive)] + [0.0] + positive
+
+            assert np.allclose(np.sort(np.asarray(frequencies).ravel()), rebuilt), (
+                "comb rebuilt from generator_etas does not match construct_frequencies"
+            )
 
     @pytest.mark.unittest
     def test_offgrid_series_stays_real(self) -> None:
