@@ -206,10 +206,12 @@ The tree distinguishes encoding from variational rotations **automatically**.
 Because every canonical rotation angle is an affine function of the inputs (encodings apply $\omega_k\,x_f$; Clifford commutation only flips a generator's sign), the tree perturbs each input feature in turn and reads off, from the change in the recorded angles, which rotations depend on which feature and with what signed integer scaling $\omega_k$.
 
 The only requirement is that each encoding rotation be **linear in a single feature**, $\omega_k\,x_f$. Heterogeneous scalings such as $(1, 3, 9)$ are then resolved to the correctly scaled frequencies (here $\{-13, -11, -7, -5, 5, 7, 11, 13\}$) instead of unit counts. 
-Non-integer scalings are rounded with a warning; a rotation depending on more than one feature raises `NotImplementedError`; and the `method="dp"` exact-support path does not support non-unit scaling.
+Non-integer scalings raise `NotImplementedError`, since rounding them would compute the coefficients of a different model; use `Coefficients.get_spectrum` with a sufficient `mfs` to analyze frequency-scaled models. 
+A rotation depending on more than one feature also raises `NotImplementedError`; and the `method="dp"` exact-support path does not support non-unit scaling.
 
 For the numerical FFT (`Coefficients.get_spectrum`) a custom circuit additionally requires `model.degree` to be set high enough to resolve the largest frequency.
 The sampling grid is built from `model.degree` (the number of frequencies, i.e. $2\,\omega_\text{max} + 1$), not `model.frequencies`.
+Because `model.degree` reflects the nominal integer comb and not any scaling applied through `enc_params` or `enc_pulse_params`, a model whose effective frequencies exceed the nominal degree by a factor $s > 1$ needs `mfs` at least $\lceil s \rceil$ to avoid aliasing the scaled components.
 
 ## Estimating the Exact Spectrum
 
