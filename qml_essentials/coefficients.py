@@ -44,7 +44,7 @@ class Coefficients:
 
         Args:
             model (Model): The model to sample.
-            mfs (int): Multiplicator for the highest frequency. Default is 2.
+            mfs (int): Multiplicator for the highest frequency. Default is 1.
             mts (int): Multiplicator for the number of time samples. Default is 1.
             shift (bool): Whether to apply jnp-fftshift. Default is False.
             trim (bool): Whether to remove the Nyquist frequency if spectrum is even.
@@ -58,6 +58,14 @@ class Coefficients:
         Returns:
             Tuple[jnp.ndarray, jnp.ndarray]: Tuple containing the coefficients
             and frequencies.
+
+        Note:
+            The FFT grid is built from the nominal `model.degree`, which does
+            not account for frequency scaling via `enc_params` or
+            `enc_pulse_params`. For a model whose effective frequencies exceed
+            the nominal degree by a factor $s > 1$, choose `mfs` at least
+            $\\lceil s \\rceil$ (e.g. `mfs=2` covers scalings up to 2),
+            otherwise the scaled components alias.
         """
         kwargs.setdefault("force_mean", True)
         kwargs.setdefault("execution_type", "expval")
@@ -409,11 +417,12 @@ class FourierTree:
             omega = float(response[f, k])
             w = int(round(omega))
             if abs(omega - w) > tol:
-                warnings.warn(
+                raise NotImplementedError(
                     f"Non-integer input scaling {omega:.4f} on rotation {k} "
-                    f"(feature {f}); rounding to {w}. The Fourier tree supports "
-                    "integer frequency scalings only.",
-                    UserWarning,
+                    f"(feature {f}); the Fourier tree supports integer frequency "
+                    "scalings only. Rounding would compute the coefficients of a "
+                    "different model. Use Coefficients.get_spectrum with a "
+                    "sufficient mfs to analyze frequency-scaled models."
                 )
             input_indices[f].append(k)
             all_input_indices.append(k)
@@ -1944,24 +1953,15 @@ class Datasets:
         Returns:
             jnp.ndarray: Displaced comb, same size as the model comb.
         """
-        base = {"hamming": 1, "binary": 2, "ternary": 3}.get(model._enc._strategy)
-        if base is None:
-            raise ValueError(
-                f"offgrid_mode='generator' does not support the "
-                f"{model._enc._strategy!r} encoding strategy, which has no "
-                "per-gate pulse parametrization to displace."
-            )
+        # the offset draw and in-range flip live in _generator_etas, so the
+        # scalers exposed by generator_etas cannot desync from this comb
+        eta = cls._generator_etas(model, feature, random_key, prob, resolution)
 
+        base = {"hamming": 1, "binary": 2, "ternary": 3}[model._enc._strategy]
         nominal = np.asarray(model.frequencies[feature])
         limit = nominal.max()
-
         mask = np.asarray(model.data_reupload[..., feature], dtype=bool)
         scale = base ** np.arange(mask.shape[1])
-        offsets = np.asarray(cls._offsets(random_key, mask.shape, prob, resolution))
-        # a generator displaced past the highest model frequency would leave no
-        # reachable frequency in range at all, so flip it inwards instead
-        offsets = np.where(scale * (1.0 + offsets) > limit, -offsets, offsets)
-        eta = 1.0 + offsets
 
         # Minkowski sum over the displaced per-gate generators. Rounded before
         # deduplication, which is exact for a power-of-two resolution.
@@ -1986,6 +1986,88 @@ class Datasets:
         )
 
         return jnp.concatenate([-jnp.flip(positive), jnp.zeros(1), positive])
+
+    @classmethod
+    def _generator_etas(
+        cls,
+        model: Model,
+        feature: int,
+        random_key: random.PRNGKey,
+        prob: float,
+        resolution: int,
+    ) -> np.ndarray:
+        """
+        The per-gate scalers $\\eta = 1 + \\text{offset}$ applied to the
+        encoding generators of one input feature in `offgrid_mode='generator'`.
+
+        This is the offset draw and in-range flip shared with
+        `_displace_generators`; the returned array has the shape of the
+        data-reupload mask ($n_\\text{layers}, n_\\text{qubits}$) and holds
+        exactly the encoding pulse amplitude scalers that make the generator
+        comb reachable.
+
+        Args:
+            model (Model): The quantum circuit model.
+            feature (int): Index of the input feature.
+            random_key (random.PRNGKey): Random number key for JAX.
+            prob (float): Probability that a generator is displaced.
+            resolution (int): Denominator $r$ of the offset grid.
+
+        Returns:
+            np.ndarray: Amplitude scalers $\\eta$, shape
+                ($n_\\text{layers}, n_\\text{qubits}$).
+        """
+        base = {"hamming": 1, "binary": 2, "ternary": 3}.get(model._enc._strategy)
+        if base is None:
+            raise ValueError(
+                f"offgrid_mode='generator' does not support the "
+                f"{model._enc._strategy!r} encoding strategy, which has no "
+                "per-gate pulse parametrization to displace."
+            )
+
+        nominal = np.asarray(model.frequencies[feature])
+        limit = nominal.max()
+        mask = np.asarray(model.data_reupload[..., feature], dtype=bool)
+        scale = base ** np.arange(mask.shape[1])
+        offsets = np.asarray(cls._offsets(random_key, mask.shape, prob, resolution))
+        offsets = np.where(scale * (1.0 + offsets) > limit, -offsets, offsets)
+        return 1.0 + offsets
+
+    @classmethod
+    def generator_etas(
+        cls,
+        model: Model,
+        random_key: random.PRNGKey,
+        offgrid_prob: float,
+        offgrid_resolution: int,
+    ) -> List[np.ndarray]:
+        """
+        The encoding pulse amplitude scalers `construct_frequencies` applies in
+        `offgrid_mode='generator'`, one ($n_\\text{layers}, n_\\text{qubits}$)
+        array per input feature.
+
+        Call with the same `random_key` passed to `construct_frequencies` to
+        recover the encoding pulse configuration that makes the off-grid target
+        reachable, e.g. to oracle-initialize or score trained scalers against
+        it. The per-feature key split mirrors `construct_frequencies`.
+
+        Args:
+            model (Model): The quantum circuit model.
+            random_key (random.PRNGKey): The key passed to
+                `construct_frequencies`.
+            offgrid_prob (float): Probability that a generator is displaced.
+            offgrid_resolution (int): Denominator $r$ of the offset grid.
+
+        Returns:
+            List[np.ndarray]: Amplitude scalers $\\eta$ per input feature.
+        """
+        etas = []
+        for i in range(model.n_input_feat):
+            random_key, sub_key = random.split(random_key)
+            etas.append(
+                cls._generator_etas(model, i, sub_key, offgrid_prob, offgrid_resolution)
+            )
+        return etas
 
     @classmethod
     def construct_coefficients(
