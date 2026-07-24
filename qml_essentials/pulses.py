@@ -531,6 +531,12 @@ class PulseEnvelope:
             # H_I^RWA = (Ω(t)/2) [cos(φ) X + sin(φ) Y]; we keep the
             # ``p[-1]`` rotation-angle scaling so the calling
             # ParametrizedHamiltonian shape is unchanged.
+            #
+            # Note the envelope center convention: ``t_c = t / 2`` uses the
+            # running integration variable ``t``, so ``envelope_fn`` evaluates
+            # to a monotone decay over ``[0, t_final]`` rather than a bump
+            # centered at the pulse midpoint. The calibrated defaults are fit
+            # around this exact form.
             half = jnp.asarray(0.5)
 
             def _coeff_RX_X(p, t):
@@ -646,9 +652,10 @@ class PulseInformation:
     _envelope: str = DEFAULT_ENVELOPE
     # Whether to apply the rotating-wave approximation when building the
     # interaction-picture coefficient functions.
-    # Default ``True`` (exact dynamics, no RWA).
-    # Setting to ``True`` drops the fast counter-rotating terms —
-    # much faster to integrate
+    # Default ``True``: the RWA is applied, dropping the fast
+    # counter-rotating terms (much faster to integrate).
+    # Set to ``False`` for the exact dynamics, retaining the carrier
+    # and counter-rotating terms.
     # See :meth:`PulseEnvelope.build_coeff_fns`.
     _rwa: bool = DEFAULT_RWA
     # Algebraic representation of the (non-RWA) coefficients.  Either
