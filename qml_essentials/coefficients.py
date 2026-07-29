@@ -44,7 +44,7 @@ class Coefficients:
 
         Args:
             model (Model): The model to sample.
-            mfs (int): Multiplicator for the highest frequency. Default is 2.
+            mfs (int): Multiplicator for the highest frequency. Default is 1.
             mts (int): Multiplicator for the number of time samples. Default is 1.
             shift (bool): Whether to apply jnp-fftshift. Default is False.
             trim (bool): Whether to remove the Nyquist frequency if spectrum is even.
@@ -58,6 +58,14 @@ class Coefficients:
         Returns:
             Tuple[jnp.ndarray, jnp.ndarray]: Tuple containing the coefficients
             and frequencies.
+
+        Note:
+            The FFT grid is built from the nominal `model.degree`, which does
+            not account for frequency scaling via `enc_params` or
+            `enc_pulse_params`. For a model whose effective frequencies exceed
+            the nominal degree by a factor $s > 1$, choose `mfs` at least
+            $\\lceil s \\rceil$ (e.g. `mfs=2` covers scalings up to 2),
+            otherwise the scaled components alias.
         """
         kwargs.setdefault("force_mean", True)
         kwargs.setdefault("execution_type", "expval")
@@ -409,11 +417,12 @@ class FourierTree:
             omega = float(response[f, k])
             w = int(round(omega))
             if abs(omega - w) > tol:
-                warnings.warn(
+                raise NotImplementedError(
                     f"Non-integer input scaling {omega:.4f} on rotation {k} "
-                    f"(feature {f}); rounding to {w}. The Fourier tree supports "
-                    "integer frequency scalings only.",
-                    UserWarning,
+                    f"(feature {f}); the Fourier tree supports integer frequency "
+                    "scalings only. Rounding would compute the coefficients of a "
+                    "different model. Use Coefficients.get_spectrum with a "
+                    "sufficient mfs to analyze frequency-scaled models."
                 )
             input_indices[f].append(k)
             all_input_indices.append(k)
@@ -1030,7 +1039,7 @@ class FCC:
             lower_count = (total_count - diag_count) / 2.0
             return lower_sum / lower_count
 
-        fourier_fingerprint, _ = cls.get_fourier_fingerprint(
+        fourier_fingerprint, _, _ = cls.get_fourier_fingerprint(
             model,
             n_samples,
             random_key,
@@ -1055,7 +1064,7 @@ class FCC:
         trim_redundant: Optional[bool] = True,
         nan_to_one: Optional[bool] = False,
         **kwargs: Any,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         """
         Shortcut method to get just the fourier fingerprint.
         This includes
@@ -1083,11 +1092,14 @@ class FCC:
             **kwargs: Additional keyword arguments for the model function.
 
         Returns:
-            Tuple[jnp.ndarray, jnp.ndarray]: The fourier fingerprint and the
-            corresponding frequency indices. If `trim_redundant` is True the
+            Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]: The fourier
+            fingerprint, the corresponding frequency indices and the
+            corresponding coefficients. If `trim_redundant` is True the
             frequencies are returned as a `(row_freqs, col_freqs)` tuple that
-            labels the two (redundancy-trimmed) matrix axes; otherwise the
-            full frequency vector is returned.
+            labels the two (redundancy-trimmed) matrix axes and the
+            coefficients as a matching `(row_coeffs, col_coeffs)` tuple whose
+            rows align with those frequencies; otherwise the full frequency
+            vector and full coefficient array are returned.
         """
         _, coeffs, freqs = cls._calculate_coefficients(
             model, n_samples, random_key, scale, **kwargs
@@ -1121,7 +1133,11 @@ class FCC:
             col_mask = jnp.any(jnp.isfinite(fourier_fingerprint), axis=0)
             fourier_fingerprint = fourier_fingerprint[row_mask][:, col_mask]
 
-            return fourier_fingerprint, (pos_freqs[row_mask], pos_freqs[col_mask])
+            return (
+                fourier_fingerprint,
+                (pos_freqs[row_mask], pos_freqs[col_mask]),
+                (coeffs_sub[row_mask], coeffs_sub[col_mask]),
+            )
 
         fourier_fingerprint = cls._correlate(coeffs.transpose(), method=method)
 
@@ -1139,6 +1155,7 @@ class FCC:
         if trim_redundant:
             pos_idx = cls._calculate_mask(freqs)
             pos_freqs = cls._flat_frequencies(freqs)[pos_idx]
+            coeffs_sub = coeffs.reshape(-1, coeffs.shape[-1])[pos_idx]
 
             # restrict to the positive-frequency sub-block (M x M with
             # M = number of non-negative flat-frequencies) instead of
@@ -1157,9 +1174,13 @@ class FCC:
 
             fourier_fingerprint = fourier_fingerprint[row_mask][:, col_mask]
 
-            return fourier_fingerprint, (pos_freqs[row_mask], pos_freqs[col_mask])
+            return (
+                fourier_fingerprint,
+                (pos_freqs[row_mask], pos_freqs[col_mask]),
+                (coeffs_sub[row_mask], coeffs_sub[col_mask]),
+            )
 
-        return fourier_fingerprint, freqs
+        return fourier_fingerprint, freqs, coeffs
 
     @classmethod
     def calculate_fcc(
@@ -1395,9 +1416,7 @@ class FCC:
         return result
 
     @classmethod
-    def _complex_pearson(
-        cls, mat: jnp.ndarray, minp: Optional[int] = 1
-    ) -> jnp.ndarray:
+    def _complex_pearson(cls, mat: jnp.ndarray, minp: Optional[int] = 1) -> jnp.ndarray:
         """
         Compute the complex Pearson correlation between columns of `mat`,
         permitting missing values (NaN or ±Inf).
@@ -1695,25 +1714,391 @@ class Datasets:
         # that instead of wrapping your head around symmetries in multi-
         # dimensional coefficient matrices, one can simply look at the flattened
         # version of such a matrix and reshape later. It just works out.
+        domain_samples_per_input_dim = cls.construct_domain_samples(model)
 
-        # going from [0, 2pi] with the resolution required for highest frequency
-        # permute with input dimensionality to get an n-d grid of domain samples
-        # the output shape comes from the fact that want to create a "coordinate system"
-        domain_samples_per_input_dim = jnp.stack(
+        frequencies = cls.construct_frequencies(model)
+
+        coefficients = cls.construct_coefficients(
+            random_key, model, coefficients_min, coefficients_max, zero_centered
+        )
+
+        values = cls.calculate_values(
+            domain_samples_per_input_dim, frequencies, coefficients
+        )
+
+        # return all the information we have
+        return [
+            domain_samples_per_input_dim.reshape(*model.degree, -1),
+            values.reshape(model.degree),
+            coefficients.reshape(model.degree),
+        ]
+
+    @classmethod
+    def construct_domain_samples(
+        cls, model: Model, mts: int = 1, mfs: int = 1
+    ) -> jnp.ndarray:
+        """
+        Builds the input-domain sample grid for the model spectrum.
+
+        Going from $[0, 2 \\pi \\, \\mathrm{mts}]$ with the resolution required
+        for the highest frequency, permuted with the input dimensionality to get
+        an n-d grid of domain samples (a "coordinate system").
+
+        The grid follows the same convention as
+        `Coefficients._fourier_transform`, so a dataset built here lands on the
+        bins that `Coefficients.get_spectrum` analyses with the same `mts` and
+        `mfs`. A target component at $k + j/r$ has period $2 \\pi r$, hence
+        `mts` should be at least $r$ to cover a full period.
+
+        Args:
+            model (Model): The quantum circuit model.
+            mts (int, optional): Domain oversampling, i.e. the number of
+                periods covered. Defaults to 1.
+            mfs (int, optional): Frequency oversampling, i.e. the sample
+                density per period. Defaults to 1.
+
+        Returns:
+            jnp.ndarray: Domain samples with shape
+                (mts $\\cdot$ mfs $\\cdot$ $\\prod$ degree, n_input_feat).
+        """
+        return jnp.stack(
             jnp.meshgrid(
-                *[jnp.arange(0, 2 * jnp.pi, 2 * jnp.pi / d) for d in model.degree]
+                *[
+                    jnp.arange(0, 2 * mts * jnp.pi, 2 * jnp.pi / (mfs * d))
+                    for d in model.degree
+                ]
             )
         ).T.reshape(-1, model.n_input_feat)
 
-        # generate the frequency indices for each dimension.
-        # this will have the same shape as the domain samples
-        frequencies = jnp.stack(jnp.meshgrid(*model.frequencies)).T.reshape(
-            -1, model.n_input_feat
+    @classmethod
+    def construct_frequencies(
+        cls,
+        model: Model,
+        random_key: Optional[random.PRNGKey] = None,
+        offgrid_mode: str = "none",
+        offgrid_prob: float = 0.0,
+        offgrid_resolution: int = 2,
+    ) -> jnp.ndarray:
+        """
+        Builds the frequency-index grid for the model spectrum.
+
+        This has the same shape as the domain samples returned by
+        `construct_domain_samples`.
+
+        By default the grid is the model's own comb, so the dataset is exactly
+        representable. The off-grid modes move a controllable fraction of the
+        components off that comb.
+        Offsets are always multiples of $1/r$ for the given resolution $r$.
+
+        Args:
+            model (Model): The quantum circuit model.
+            random_key (Optional[random.PRNGKey]): Random number key for JAX.
+                Required unless `offgrid_mode` is "none".
+            offgrid_mode (str, optional): How to displace components off the
+                model comb. "none" keeps the model comb. "index" perturbs each
+                frequency independently, which spans arbitrary combs that are
+                in general not exactly reachable. "generator" perturbs the
+                per-gate generator frequencies and rebuilds the comb as their
+                Minkowski sum, which stays exactly reachable by an encoding
+                pulse configuration. Defaults to "none".
+            offgrid_prob (float, optional): Probability that a single component
+                ("index") or generator ("generator") is displaced. Defaults to
+                0.0, which reproduces the model comb in every mode. Note that
+                this is the fraction of components that end up off the comb
+                only in "index" mode: a sum of displaced generators can land
+                back on an integer, so "generator" mode displaces noticeably
+                fewer components than asked for and saturates well below one.
+            offgrid_resolution (int, optional): Denominator $r$ of the offset
+                grid, i.e. offsets are drawn from $\\{\\pm j/r\\}$ with
+                $j = 1 \\dots r-1$. Defaults to 2, giving half-integer offsets.
+
+        Returns:
+            jnp.ndarray: Frequency indices with shape
+                ($\\prod$ degree, n_input_feat).
+        """
+        if offgrid_mode == "none":
+            frequencies = model.frequencies
+        else:
+            if random_key is None:
+                raise ValueError(f"offgrid_mode={offgrid_mode!r} requires a random_key")
+            if offgrid_resolution < 2:
+                raise ValueError(
+                    f"offgrid_resolution must be at least 2, "
+                    f"got {offgrid_resolution}. There is no non-integer offset "
+                    "on a grid of resolution 1."
+                )
+            if offgrid_mode == "index":
+                displace = cls._displace_indices
+            elif offgrid_mode == "generator":
+                displace = cls._displace_generators
+            else:
+                raise ValueError(
+                    f"Unknown offgrid_mode: {offgrid_mode!r}. Use one of "
+                    "'none', 'index', 'generator'."
+                )
+
+            frequencies = []
+            for i in range(model.n_input_feat):
+                random_key, sub_key = random.split(random_key)
+                frequencies.append(
+                    displace(model, i, sub_key, offgrid_prob, offgrid_resolution)
+                )
+
+        return jnp.stack(jnp.meshgrid(*frequencies)).T.reshape(-1, model.n_input_feat)
+
+    @classmethod
+    def _offsets(
+        cls,
+        random_key: random.PRNGKey,
+        shape: Tuple[int, ...],
+        prob: float,
+        resolution: int,
+    ) -> jnp.ndarray:
+        """
+        Draws signed offsets on the $1/r$ grid, zero where not displaced.
+
+        Args:
+            random_key (random.PRNGKey): Random number key for JAX.
+            shape (Tuple[int, ...]): Shape of the offset array.
+            prob (float): Probability that an entry is displaced.
+            resolution (int): Denominator $r$ of the offset grid.
+
+        Returns:
+            jnp.ndarray: Offsets drawn from $\\{0\\} \\cup \\{\\pm j/r\\}$ with
+                $j = 1 \\dots r-1$.
+        """
+        move_key, magnitude_key, sign_key = random.split(random_key, 3)
+        magnitude = random.randint(magnitude_key, shape, 1, resolution) / resolution
+        return (
+            random.bernoulli(move_key, prob, shape)
+            * random.rademacher(sign_key, shape)
+            * magnitude
         )
 
-        # using the frequency information, sample coefficients for each dimension
-        # shape: (input_dims, n_freqs_per_input_dim // 2 + 1)
+    @classmethod
+    def _displace_indices(
+        cls,
+        model: Model,
+        feature: int,
+        random_key: random.PRNGKey,
+        prob: float,
+        resolution: int,
+    ) -> jnp.ndarray:
+        """
+        Displaces individual frequencies of one input feature off the comb.
 
+        Each positive frequency is displaced independently, the result is
+        re-sorted and mirrored so that the comb stays antisymmetric. This is
+        what `construct_coefficients` relies on to enforce conjugate symmetry,
+        and in turn what keeps the series real-valued. The comb never leaves
+        the model's frequency range: an offset that would push a component past
+        the highest frequency has its sign flipped rather than being clipped,
+        which would put the component back on the comb.
+
+        Args:
+            model (Model): The quantum circuit model.
+            feature (int): Index of the input feature.
+            random_key (random.PRNGKey): Random number key for JAX.
+            prob (float): Probability that a component is displaced.
+            resolution (int): Denominator $r$ of the offset grid.
+
+        Returns:
+            jnp.ndarray: Displaced comb, same size as the model comb.
+        """
+        nominal = jnp.asarray(model.frequencies[feature])
+        positive = nominal[nominal > 0]
+        limit = positive[-1]
+
+        offsets = cls._offsets(random_key, positive.shape, prob, resolution)
+        # the smallest positive frequency is 1 and offsets are below 1, so only
+        # the upper end of the range can be overshot
+        offsets = jnp.where(positive + offsets > limit, -offsets, offsets)
+
+        # ponytail: two components can collide (1 + 0.5 and 2 - 0.5), in which
+        # case their coefficients simply add. Deduplicating would change the
+        # number of components, which is the one thing the study holds fixed.
+        positive = jnp.sort(positive + offsets)
+
+        return jnp.concatenate([-jnp.flip(positive), jnp.zeros(1), positive])
+
+    @classmethod
+    def _displace_generators(
+        cls,
+        model: Model,
+        feature: int,
+        random_key: random.PRNGKey,
+        prob: float,
+        resolution: int,
+    ) -> jnp.ndarray:
+        """
+        Displaces the generator frequencies of one input feature off the comb.
+
+        Mirrors `Encoding.get_spectrum`, but scales each encoding gate's
+        generator by a displaced $\\eta$ before taking the Minkowski sum, which
+        is exactly what an encoding pulse scaler does to the gate it drives.
+        The reachable comb then grows past the model degree in both count and
+        range, so each model frequency claims the closest reachable one that is
+        still inside the model's range. Staying in range matters: a component
+        beyond the highest model frequency would be unreachable.
+        Two model frequencies may end up claiming the same
+        reachable one, as in `_displace_indices`.
+
+        Args:
+            model (Model): The quantum circuit model.
+            feature (int): Index of the input feature.
+            random_key (random.PRNGKey): Random number key for JAX.
+            prob (float): Probability that a generator is displaced.
+            resolution (int): Denominator $r$ of the offset grid.
+
+        Returns:
+            jnp.ndarray: Displaced comb, same size as the model comb.
+        """
+        # the offset draw and in-range flip live in _generator_etas, so the
+        # scalers exposed by generator_etas cannot desync from this comb
+        eta = cls._generator_etas(model, feature, random_key, prob, resolution)
+
+        base = {"hamming": 1, "binary": 2, "ternary": 3}[model._enc._strategy]
+        nominal = np.asarray(model.frequencies[feature])
+        limit = nominal.max()
+        mask = np.asarray(model.data_reupload[..., feature], dtype=bool)
+        scale = base ** np.arange(mask.shape[1])
+
+        # Minkowski sum over the displaced per-gate generators. Rounded before
+        # deduplication, which is exact for a power-of-two resolution.
+        reach = {0.0}
+        for layer, qubit in zip(*np.nonzero(mask)):
+            generator = scale[qubit] * eta[layer, qubit]
+            reach = {
+                round(a + s * generator, 9) for a in reach for s in (-1.0, 0.0, 1.0)
+            }
+        reachable = sorted(v for v in reach if 0 < v <= limit)
+
+        # claim the closest reachable frequency, so the displaced comb tracks
+        # the original one
+        positive = jnp.sort(
+            jnp.asarray(
+                [
+                    min(reachable, key=lambda v: abs(v - frequency))
+                    for frequency in nominal[nominal > 0]
+                ],
+                dtype=float,
+            )
+        )
+
+        return jnp.concatenate([-jnp.flip(positive), jnp.zeros(1), positive])
+
+    @classmethod
+    def _generator_etas(
+        cls,
+        model: Model,
+        feature: int,
+        random_key: random.PRNGKey,
+        prob: float,
+        resolution: int,
+    ) -> np.ndarray:
+        """
+        The per-gate scalers $\\eta = 1 + \\text{offset}$ applied to the
+        encoding generators of one input feature in `offgrid_mode='generator'`.
+
+        This is the offset draw and in-range flip shared with
+        `_displace_generators`; the returned array has the shape of the
+        data-reupload mask ($n_\\text{layers}, n_\\text{qubits}$) and holds
+        exactly the encoding pulse amplitude scalers that make the generator
+        comb reachable.
+
+        Args:
+            model (Model): The quantum circuit model.
+            feature (int): Index of the input feature.
+            random_key (random.PRNGKey): Random number key for JAX.
+            prob (float): Probability that a generator is displaced.
+            resolution (int): Denominator $r$ of the offset grid.
+
+        Returns:
+            np.ndarray: Amplitude scalers $\\eta$, shape
+                ($n_\\text{layers}, n_\\text{qubits}$).
+        """
+        base = {"hamming": 1, "binary": 2, "ternary": 3}.get(model._enc._strategy)
+        if base is None:
+            raise ValueError(
+                f"offgrid_mode='generator' does not support the "
+                f"{model._enc._strategy!r} encoding strategy, which has no "
+                "per-gate pulse parametrization to displace."
+            )
+
+        nominal = np.asarray(model.frequencies[feature])
+        limit = nominal.max()
+        mask = np.asarray(model.data_reupload[..., feature], dtype=bool)
+        scale = base ** np.arange(mask.shape[1])
+        offsets = np.asarray(cls._offsets(random_key, mask.shape, prob, resolution))
+        offsets = np.where(scale * (1.0 + offsets) > limit, -offsets, offsets)
+        return 1.0 + offsets
+
+    @classmethod
+    def generator_etas(
+        cls,
+        model: Model,
+        random_key: random.PRNGKey,
+        offgrid_prob: float,
+        offgrid_resolution: int,
+    ) -> List[np.ndarray]:
+        """
+        The encoding pulse amplitude scalers `construct_frequencies` applies in
+        `offgrid_mode='generator'`, one ($n_\\text{layers}, n_\\text{qubits}$)
+        array per input feature.
+
+        Call with the same `random_key` passed to `construct_frequencies` to
+        recover the encoding pulse configuration that makes the off-grid target
+        reachable, e.g. to oracle-initialize or score trained scalers against
+        it. The per-feature key split mirrors `construct_frequencies`.
+
+        Args:
+            model (Model): The quantum circuit model.
+            random_key (random.PRNGKey): The key passed to
+                `construct_frequencies`.
+            offgrid_prob (float): Probability that a generator is displaced.
+            offgrid_resolution (int): Denominator $r$ of the offset grid.
+
+        Returns:
+            List[np.ndarray]: Amplitude scalers $\\eta$ per input feature.
+        """
+        etas = []
+        for i in range(model.n_input_feat):
+            random_key, sub_key = random.split(random_key)
+            etas.append(
+                cls._generator_etas(model, i, sub_key, offgrid_prob, offgrid_resolution)
+            )
+        return etas
+
+    @classmethod
+    def construct_coefficients(
+        cls,
+        random_key: random.PRNGKey,
+        model: Model,
+        coefficients_min: float = 0.0,
+        coefficients_max: float = 1.0,
+        zero_centered: bool = False,
+    ) -> jnp.ndarray:
+        """
+        Samples the conjugate-symmetric Fourier coefficient vector.
+
+        Coefficients are drawn from a uniform circle (see `uniform_circle`).
+        The offset coefficient (first entry) is either zeroed or made real,
+        then the spectrum is mirrored to enforce conjugate symmetry.
+
+        Args:
+            random_key (random.PRNGKey): Random number key for JAX.
+            model (Model): The quantum circuit model.
+            coefficients_min (float, optional): Minimum value for the
+                coefficients. Defaults to 0.0.
+            coefficients_max (float, optional): Maximum value for the
+                coefficients. Defaults to 1.0.
+            zero_centered (bool, optional): Whether to zero-center the
+                coefficients. Defaults to False.
+
+        Returns:
+            jnp.ndarray: Conjugate-symmetric coefficient vector of size
+                $\\prod$ degree.
+        """
         coefficients = cls.uniform_circle(
             random_key,
             low=coefficients_min,
@@ -1731,7 +2116,7 @@ class Datasets:
 
         # ensure symmetry (here, non_negative_ is removed!),
         # giving us the full coefficients vector
-        coefficients = jnp.concat(
+        return jnp.concat(
             [
                 jnp.flip(coefficients[..., 1:]).conjugate(),
                 coefficients,
@@ -1739,23 +2124,36 @@ class Datasets:
             axis=-1,
         )
 
-        # Vectorized version of $f(x) = \sum_{n=0}^{N-1} c_n * e^{i * \omega_n * x}$
-        # it takes into account the input dimension, i.e. the output is a matrix
-        # normalization uses the n_freqs component of the coefficients
-        values = jnp.real(
-            (
-                jnp.exp(1j * (domain_samples_per_input_dim @ frequencies.T))
-                * coefficients
-            ).sum(axis=1)
+    @classmethod
+    def calculate_values(
+        cls,
+        domain_samples: jnp.ndarray,
+        frequencies: jnp.ndarray,
+        coefficients: jnp.ndarray,
+    ) -> jnp.ndarray:
+        """
+        Evaluates the real-valued Fourier series on the domain grid.
+
+        Vectorized version of
+        $f(x) = \\sum_{n=0}^{N-1} c_n e^{i \\omega_n x}$ that takes the input
+        dimension into account, normalized by the number of coefficients.
+
+        Args:
+            domain_samples (jnp.ndarray): Domain samples with shape
+                (n_points, n_input_feat).
+            frequencies (jnp.ndarray): Frequency indices with shape
+                (n_freqs, n_input_feat).
+            coefficients (jnp.ndarray): Fourier coefficients with shape
+                (n_freqs,).
+
+        Returns:
+            jnp.ndarray: Real-valued Fourier series samples with shape
+                (n_points,).
+        """
+        return jnp.real(
+            (jnp.exp(1j * (domain_samples @ frequencies.T)) * coefficients).sum(axis=1)
             / coefficients.size
         )
-
-        # return all the information we have
-        return [
-            domain_samples_per_input_dim.reshape(*model.degree, -1),
-            values.reshape(model.degree),
-            coefficients.reshape(model.degree),
-        ]
 
     @classmethod
     def uniform_circle(

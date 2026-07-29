@@ -325,6 +325,37 @@ def test_encoding() -> None:
 
 
 @pytest.mark.unittest
+def test_encoding_weights() -> None:
+    """Encoding.get_weights returns the per-qubit weight vector w (phi_q = w_q x),
+    consistent with the strategy scaling and with get_n_freqs."""
+    from itertools import product
+
+    for n in range(1, 6):
+        cases = {
+            "hamming": np.ones(n),
+            "binary": 2.0 ** np.arange(n),
+            "ternary": 3.0 ** np.arange(n),
+        }
+        for strategy, expected in cases.items():
+            enc = Encoding(strategy, ["RX"])
+            w = np.asarray(enc.get_weights(n))
+            np.testing.assert_allclose(w, expected)
+            # spectrum {sum_k s_k w_k : s_k in {-1,0,1}} has |Omega| = get_n_freqs(n)
+            spectrum = {
+                sum(s * wk for s, wk in zip(signs, w))
+                for signs in product((-1, 0, 1), repeat=n)
+            }
+            n_freqs = enc.get_n_freqs(np.ones(n, dtype=bool))
+            assert len(spectrum) == n_freqs, (
+                f"{strategy}: |Omega|={len(spectrum)} != \
+                get_n_freqs={n_freqs}"
+            )
+
+    with pytest.raises(ValueError):
+        Encoding("golomb", None).get_weights(2)
+
+
+@pytest.mark.unittest
 def test_golomb_encoding() -> None:
     """Test the Golomb encoding strategy end-to-end.
 
@@ -392,9 +423,9 @@ def test_golomb_encoding() -> None:
     d = 2**model.n_qubits
     marks = golomb_ruler(d)
     max_mark = max(marks)
-    # With DRU on all qubits for 1 layer, n_encoding_gates = n_qubits
-    n_enc = int(np.count_nonzero(model.data_reupload[..., 0]))
-    expected_n_freqs = 2 * n_enc * max_mark + 1
+    # Golomb applies one multi-qubit diagonal gate per active layer
+    n_app = int(np.count_nonzero(np.asarray(model.data_reupload[..., 0]).any(axis=1)))
+    expected_n_freqs = 2 * n_app * max_mark + 1
     assert model.degree[0] == expected_n_freqs, (
         f"Expected degree {expected_n_freqs}, got {model.degree[0]}"
     )
@@ -455,7 +486,7 @@ def test_basic_draw() -> None:
             n_layers=1,
             circuit_type=ansatz.__name__,
             initialization="random",
-            output_qubit=-1,
+            observables=-1,
             remove_zero_encoding=False,
         )
 
@@ -489,7 +520,7 @@ def test_advanced_draw() -> None:
         n_layers=1,
         circuit_type="Circuit_19",
         initialization="random",
-        output_qubit=0,
+        observables=0,
         encoding=["RX", "RY"],
         remove_zero_encoding=False,
     )
@@ -555,7 +586,7 @@ def test_initialization() -> None:
             circuit_type="Circuit_19",
             data_reupload=True,
             initialization=test_case["initialization"],
-            output_qubit=0,
+            observables=0,
             shots=1024,
         )
 
@@ -643,7 +674,7 @@ def test_pulse_model() -> None:
             pulse_params=all_params[1],
             inputs=x,
             force_mean=True,
-            gate_mode="pulse",
+            gate_mode="ansatz_pulse",
         )
         return jnp.mean((y_hat - y) ** 2)
 
@@ -677,7 +708,7 @@ def test_pulse_model_inference():
     inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
 
     # forward pass with initial pulse_params
-    y_hat_original = model(inputs=inputs, gate_mode="pulse", force_mean=True)
+    y_hat_original = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
 
     y_hat_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
 
@@ -690,7 +721,7 @@ def test_pulse_model_inference():
     model.pulse_params += 0.1
 
     # forward pass with perturbed pulse_params
-    y_hat_perturbed = model(inputs=inputs, gate_mode="pulse", force_mean=True)
+    y_hat_perturbed = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
 
     assert y_hat_original.shape[0] == inputs.shape[0], "Output batch size mismatch"
 
@@ -710,7 +741,8 @@ def test_pulse_model_batching():
 
     # test pulse params batching
     res_b = model(
-        pulse_params=jnp.repeat(model.pulse_params, 2, axis=0), gate_mode="pulse"
+        pulse_params=jnp.repeat(model.pulse_params, 2, axis=0),
+        gate_mode="ansatz_pulse",
     )
 
     # two qubits -> two expvals with batch size 2
@@ -721,7 +753,7 @@ def test_pulse_model_batching():
 
     # test pulse params & inputs batching
     res_a = model(inputs=inputs, gate_mode="unitary")
-    res_b = model(inputs=inputs, gate_mode="pulse")
+    res_b = model(inputs=inputs, gate_mode="ansatz_pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
     assert jnp.allclose(res_a, res_b, atol=1e-2), (
@@ -732,12 +764,235 @@ def test_pulse_model_batching():
 
     # test pulse params & params & inputs batching
     res_a = model(inputs=inputs, gate_mode="unitary")
-    res_b = model(inputs=inputs, gate_mode="pulse")
+    res_b = model(inputs=inputs, gate_mode="ansatz_pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
     assert jnp.allclose(res_a, res_b, atol=1e-2), (
         "Params batching failed. Results differ."
     )
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_shape() -> None:
+    model = Model(n_qubits=3, n_layers=2, circuit_type="Hardware_Efficient")
+
+    # one scaler per encoding-gate pulse parameter, per qubit, per feature
+    s = PulseInformation.gate_by_name("RX").size
+    assert model.enc_pulse_params.shape == (1, model.n_layers, model.n_qubits, s), (
+        "enc_pulse_params has unexpected shape"
+    )
+
+    # scalers are initialized to ones (no deviation from calibrated defaults)
+    assert jnp.allclose(model.enc_pulse_params, 1.0), (
+        "enc_pulse_params should be initialized to ones"
+    )
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_equivalence() -> None:
+    model = Model(n_qubits=3, n_layers=1, circuit_type="Hardware_Efficient")
+
+    # nonzero inputs are required: zero inputs skip encoding entirely
+    inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
+
+    y_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
+    y_all_pulse = model(inputs=inputs, gate_mode="all_pulse", force_mean=True)
+    y_enc_pulse = model(inputs=inputs, gate_mode="enc_pulse", force_mean=True)
+
+    assert jnp.allclose(y_unitary, y_all_pulse, atol=1e-2), (
+        "all_pulse output with unit scalers did not match unitary output"
+    )
+
+    assert jnp.allclose(y_unitary, y_enc_pulse, atol=1e-2), (
+        "enc_pulse output with unit scalers did not match unitary output"
+    )
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_frequency_scaling() -> None:
+    # Scaling the amplitude component of enc_pulse_params by s is the same
+    # frequency-scaling knob as the unitary trainable frequency enc_params = s
+    # (arXiv:2309.03279): under RWA the encoding gate implements RX/RY(s * x).
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+    inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
+
+    scale = 1.5
+    # amplitude entry of each encoding gate sits at its offset in the last axis
+    amp_idx = jnp.array(model._enc_pulse_offsets)
+    eta = model.enc_pulse_params.at[..., amp_idx].set(scale)
+
+    # enc_pulse leaves enc_params at its default (ones), so evaluate it first
+    y_enc_pulse = model(
+        inputs=inputs, gate_mode="enc_pulse", enc_pulse_params=eta, force_mean=True
+    )
+    y_unitary = model(
+        inputs=inputs,
+        gate_mode="unitary",
+        enc_params=scale * jnp.ones_like(model.enc_params),
+        force_mean=True,
+    )
+
+    assert jnp.allclose(y_enc_pulse, y_unitary, atol=1e-2), (
+        "amplitude scaler did not act as the trainable-frequency knob enc_params"
+    )
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_effect() -> None:
+    model = Model(n_qubits=3, n_layers=1, circuit_type="Hardware_Efficient")
+    inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
+
+    y_all_pulse = model(inputs=inputs, gate_mode="all_pulse", force_mean=True)
+    y_enc_pulse = model(inputs=inputs, gate_mode="enc_pulse", force_mean=True)
+    y_pulse = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
+
+    original = model.enc_pulse_params.copy()
+    model.enc_pulse_params = model.enc_pulse_params + 0.1
+
+    # perturbing enc_pulse_params changes all_pulse output ...
+    y_all_pulse_perturbed = model(inputs=inputs, gate_mode="all_pulse", force_mean=True)
+    assert not jnp.allclose(y_all_pulse, y_all_pulse_perturbed), (
+        "all_pulse output did not change after perturbing enc_pulse_params"
+    )
+
+    # ... and equally the enc_pulse output ...
+    y_enc_pulse_perturbed = model(inputs=inputs, gate_mode="enc_pulse", force_mean=True)
+    assert not jnp.allclose(y_enc_pulse, y_enc_pulse_perturbed), (
+        "enc_pulse output did not change after perturbing enc_pulse_params"
+    )
+
+    # ... but leaves the ansatz_pulse output (unitary encoding) untouched
+    y_pulse_after = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
+    assert jnp.allclose(y_pulse, y_pulse_after), (
+        "ansatz_pulse output changed after perturbing enc_pulse_params"
+    )
+
+    model.enc_pulse_params = original
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_gradient() -> None:
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+
+    domain = np.array([-jnp.pi, jnp.pi])
+    x = jnp.linspace(domain[0], domain[1], num=10)
+    y = jnp.stack([jnp.cos(sample) for sample in x])
+
+    def cost_fct(enc_pp):
+        y_hat = model(
+            inputs=x,
+            enc_pulse_params=enc_pp,
+            force_mean=True,
+            gate_mode="all_pulse",
+        )
+        return jnp.mean((y_hat - y) ** 2)
+
+    enc_pp = model.enc_pulse_params.copy()
+    grads = grad(cost_fct)(enc_pp)
+    assert jnp.any(jnp.abs(grads) > 1e-6), "Gradient wrt enc_pulse_params is too small"
+
+    # the study-4 conclusion rests on the ODE-adjoint gradient being correct:
+    # verify it against a central finite difference on one amplitude coordinate
+    idx = (0, 0, 0, model._enc_pulse_offsets[0])
+    h = 1e-3
+    fd = (cost_fct(enc_pp.at[idx].add(h)) - cost_fct(enc_pp.at[idx].add(-h))) / (2 * h)
+    assert jnp.allclose(fd, grads[idx], rtol=5e-2, atol=1e-3), (
+        f"autodiff grad {grads[idx]} disagrees with finite difference {fd}"
+    )
+
+    # use the original (non-traced) array for the optax step; reading back
+    # model.enc_pulse_params after grad would return a leaked tracer (same
+    # convention as pulse_params in test_pulse_model)
+    opt = optax.adam(0.05)
+    opt_state = opt.init(enc_pp)
+    updates, opt_state = opt.update(grads, opt_state, enc_pp)
+    enc_pp_after = optax.apply_updates(enc_pp, updates)
+
+    assert not jnp.allclose(enc_pp, enc_pp_after), (
+        "enc_pulse_params did not update during training"
+    )
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_batching() -> None:
+    random_key = random.key(1000)
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+
+    inputs = random.uniform(random_key, (3,), maxval=2 * jnp.pi)
+
+    # batch enc_pulse_params along axis 0 (B_E = 2)
+    batched = jnp.repeat(model.enc_pulse_params, 2, axis=0)
+    res = model(inputs=inputs, enc_pulse_params=batched, gate_mode="all_pulse")
+
+    # B_I = 3 inputs, B_E = 2 scaler sets, two qubits -> two expvals
+    assert res.shape == (3, 2, 2), "enc_pulse_params batch shape mismatch"
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_errors() -> None:
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+
+    # enc_pulse_params only allowed in the encoding-pulse modes
+    for mode in ("unitary", "ansatz_pulse"):
+        with pytest.raises(ValueError, match="enc_pulse_params were provided"):
+            model(enc_pulse_params=model.enc_pulse_params, gate_mode=mode)
+
+    # pulse_params only allowed in the ansatz-pulse modes
+    for mode in ("unitary", "enc_pulse"):
+        with pytest.raises(ValueError, match="pulse_params were provided"):
+            model(pulse_params=model.pulse_params, gate_mode=mode)
+
+    # unknown gate_mode
+    with pytest.raises(ValueError, match="Unknown gate_mode"):
+        model(gate_mode="foobar")
+
+    # pulse_params remain valid alongside all_pulse
+    model(pulse_params=model.pulse_params, gate_mode="all_pulse")
+
+    # enc_pulse_params remain valid alongside enc_pulse
+    model(enc_pulse_params=model.enc_pulse_params, gate_mode="enc_pulse")
+
+    # golomb encoding has no pulse parametrization -> encoding pulses unsupported
+    golomb_model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+        encoding=Encoding("golomb", None),
+    )
+    for mode in ("enc_pulse", "all_pulse"):
+        with pytest.raises(ValueError, match="requires an encoding"):
+            golomb_model(gate_mode=mode)
+
+    # a custom encoding callable has no pulse parametrization either
+    def custom_enc(inputs, wires, **kwargs):
+        Gates.RX(inputs, wires=wires, **kwargs)
+
+    custom_model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+        encoding=custom_enc,
+    )
+    for mode in ("enc_pulse", "all_pulse"):
+        with pytest.raises(ValueError, match="requires an encoding"):
+            custom_model(gate_mode=mode)
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_backward_compat() -> None:
+    # a 3-element repeat_batch_axis (pre-enc_pulse_params) must still work
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+        repeat_batch_axis=[True, True, True],
+    )
+    inputs = jnp.linspace(-jnp.pi, jnp.pi, 5)
+
+    # plain ansatz pulse mode is unaffected by the encoding-pulse extension
+    res_u = model(inputs=inputs, gate_mode="unitary", force_mean=True)
+    res_p = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
+    assert jnp.allclose(res_u, res_p, atol=1e-2), "pulse output drifted from unitary"
 
 
 @pytest.mark.unittest
@@ -768,7 +1023,7 @@ def test_multi_input() -> None:
             data_reupload=True,
             initialization="random",
             encoding=encoding,
-            output_qubit=0,
+            observables=0,
             shots=1024,
         )
 
@@ -826,7 +1081,7 @@ def test_dru() -> None:
             circuit_type="Circuit_19",
             data_reupload=test_case["dru"],
             initialization="random",
-            output_qubit=0,
+            observables=0,
             shots=1024,
         )
 
@@ -873,7 +1128,7 @@ def test_local_state() -> None:
         circuit_type="Circuit_19",
         data_reupload=True,
         initialization="random",
-        output_qubit=0,
+        observables=0,
     )
 
     # Check default values
@@ -887,7 +1142,7 @@ def test_local_state() -> None:
             circuit_type="Circuit_19",
             data_reupload=True,
             initialization="random",
-            output_qubit=0,
+            observables=0,
         )
 
         model.noise_params = test_case["noise_params"]
@@ -909,7 +1164,7 @@ def test_local_state() -> None:
             circuit_type="Circuit_19",
             data_reupload=True,
             initialization="random",
-            output_qubit=0,
+            observables=0,
         )
 
         _ = model(
@@ -930,7 +1185,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array(0.1),
             "execution_type": "expval",
-            "output_qubit": [0, 1],
+            "observables": [0, 1],
             "shots": None,
             "force_mean": False,
             "out_shape": (2,),
@@ -939,7 +1194,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
-            "output_qubit": [0, 1],
+            "observables": [0, 1],
             "shots": None,
             "force_mean": False,
             "out_shape": (3, 2),
@@ -948,7 +1203,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "expval",
-            "output_qubit": [0, 1],
+            "observables": [0, 1],
             "shots": None,
             "force_mean": True,
             "out_shape": (3,),
@@ -957,7 +1212,7 @@ def test_output_shapes() -> None:
         {
             "inputs": None,
             "execution_type": "density",
-            "output_qubit": -1,
+            "observables": -1,
             "shots": None,
             "force_mean": False,
             "out_shape": (4, 4),
@@ -966,7 +1221,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "density",
-            "output_qubit": -1,
+            "observables": -1,
             "shots": None,
             "force_mean": False,
             "out_shape": (3, 4, 4),
@@ -975,7 +1230,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "density",
-            "output_qubit": 0,
+            "observables": 0,
             "shots": None,
             "force_mean": False,
             "out_shape": (3, 2, 2),
@@ -984,7 +1239,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
-            "output_qubit": -1,
+            "observables": -1,
             "shots": 1024,
             "force_mean": False,
             "out_shape": (3, 2, 2),
@@ -993,7 +1248,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
-            "output_qubit": 0,
+            "observables": 0,
             "shots": 1024,
             "force_mean": False,
             "out_shape": (3, 2),
@@ -1002,7 +1257,7 @@ def test_output_shapes() -> None:
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "execution_type": "probs",
-            "output_qubit": [0, 1],
+            "observables": [0, 1],
             "shots": 1024,
             "force_mean": True,
             "out_shape": (3, 2),
@@ -1011,7 +1266,7 @@ def test_output_shapes() -> None:
         # {
         #     "inputs": jnp.array([0.1, 0.2, 0.3]),
         #     "execution_type": "probs",
-        #     "output_qubit": [0, 1],
+        #     "observables": [0, 1],
         #     "shots": 1024,
         #     "force_mean": False,
         #     "out_shape": (3, 2, 2),
@@ -1026,7 +1281,7 @@ def test_output_shapes() -> None:
             circuit_type="Circuit_19",
             data_reupload=True,
             initialization="random",
-            output_qubit=test_case["output_qubit"],
+            observables=test_case["observables"],
             shots=test_case["shots"],
         )
         if test_case["warning"]:
@@ -1059,13 +1314,13 @@ def test_parity() -> None:
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_1",
-        output_qubit=[[0, 1]],  # parity
+        observables=[[0, 1]],  # parity
     )
     model_b = Model(
         n_qubits=2,
         n_layers=1,
         circuit_type="Circuit_1",
-        output_qubit=-1,  # individual
+        observables=-1,  # individual
     )
 
     result_a = model_a(params=model_a.params, inputs=None, force_mean=True)
@@ -1150,22 +1405,22 @@ def test_pauli_circuit_model() -> None:
     test_cases = [
         {
             "shots": None,
-            "output_qubit": 0,
+            "observables": 0,
             "inputs": jnp.array([0.5]),
         },
         {
             "shots": None,
-            "output_qubit": -1,
+            "observables": -1,
             "inputs": jnp.array([0.5]),
         },
         {
             "shots": None,
-            "output_qubit": 0,
+            "observables": 0,
             "inputs": None,
         },
         {
             "shots": None,
-            "output_qubit": -1,
+            "observables": -1,
             "inputs": None,
         },
     ]
@@ -1175,7 +1430,7 @@ def test_pauli_circuit_model() -> None:
             n_qubits=3,
             n_layers=2,
             circuit_type="Circuit_19",
-            output_qubit=test_case["output_qubit"],
+            observables=test_case["observables"],
             shots=test_case["shots"],
         )
         # Validate inputs for a single sample (not a batch)
@@ -1221,7 +1476,7 @@ def test_exact_spectrum_subset_of_naive() -> None:
     contains every frequency the FFT finds to be non-zero."""
     from qml_essentials.coefficients import Coefficients
 
-    model = Model(n_qubits=3, n_layers=1, circuit_type="Circuit_19", output_qubit=0)
+    model = Model(n_qubits=3, n_layers=1, circuit_type="Circuit_19", observables=0)
 
     exact = model.exact_spectrum()
     assert len(exact) == model.n_input_feat
@@ -1255,7 +1510,7 @@ def test_exact_spectrum_multi_feature() -> None:
         n_qubits=3,
         n_layers=1,
         circuit_type="Circuit_19",
-        output_qubit=0,
+        observables=0,
         encoding=["RX", "RY"],
     )
 
@@ -1282,7 +1537,7 @@ def test_exact_spectrum_symbolic_cancellation() -> None:
         circuit_type="No_Ansatz",
         data_reupload=True,
         encoding="RX",
-        output_qubit=0,
+        observables=0,
     )
 
     assert set(int(v) for v in model.frequencies[0]) == {-2, -1, 0, 1, 2}
@@ -1372,7 +1627,7 @@ def test_pulse_mode_training() -> None:
             targets=fourier_samples,
             execution_type="expval",
             force_mean=True,
-            gate_mode="pulse",
+            gate_mode="ansatz_pulse",
         )
         updates, opt_state = opt.update(grads, opt_state, params)
         params = optax.apply_updates(params, updates)
@@ -1384,3 +1639,29 @@ def test_pulse_mode_training() -> None:
     end = time.time()
     print(f"Time taken: {end - start}")
     assert end - start < 60, "Time limit of 60 seconds exceeded"
+
+
+@pytest.mark.unittest
+def test_output_qubit_deprecated() -> None:
+    """output_qubit is a deprecated alias that warns and forwards to observables."""
+    inp = jnp.array([[0.5]])
+
+    # constructor kwarg warns
+    with pytest.warns(DeprecationWarning):
+        m_old = Model(n_qubits=3, n_layers=1, random_seed=5, output_qubit=0)
+
+    # forwarding equivalence: output_qubit=0 matches observables=0
+    m_new = Model(n_qubits=3, n_layers=1, random_seed=5, observables=0)
+    a = np.asarray(m_old(inputs=inp, execution_type="expval"))
+    b = np.asarray(m_new(inputs=inp, execution_type="expval"))
+    assert np.allclose(a, b)
+
+    # property setter warns and forwards
+    m2 = Model(n_qubits=3, n_layers=1, random_seed=5)
+    with pytest.warns(DeprecationWarning):
+        m2.output_qubit = 0
+    assert m2._measured_wires == [0]
+
+    # passing both raises
+    with pytest.raises(ValueError):
+        Model(n_qubits=3, n_layers=1, output_qubit=0, observables=0)

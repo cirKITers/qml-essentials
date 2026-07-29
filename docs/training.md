@@ -284,12 +284,39 @@ for epoch in range(1, 1000):
 
 Note that it's more difficult for the model to fit this specific dataset as it, opposed to the previous datasets, also contains complex parts in the coefficients, effectively causing a phase shift.
 
+### Off-grid Datasets
 
-## Pulse Level
+`generate_fourier_series` composes four building blocks, which you can also call individually if you need more control than the wrapper offers:
+`construct_domain_samples`, `construct_frequencies`, `construct_coefficients` and `calculate_values`.
 
-> **Note:** Not implemented yet
+Two of them take arguments that let you build a dataset the model can *not* represent exactly, which is useful for studying how much a model gains from being able to move its own frequencies.
 
-- How to train pulse parameters
+`construct_frequencies` accepts an `offgrid_mode` that displaces components off the model comb, with `offgrid_prob` setting the likelihood that any single component moves and `offgrid_resolution` the denominator $r$ of the offset grid, i.e. offsets are drawn from $\{\pm j/r\}$ with $j = 1 \dots r-1$.
+Mode `index` displaces each component independently, which spans arbitrary combs that are in general not reachable by the model at all.
+Mode `generator` instead displaces the per-gate generator frequencies and rebuilds the comb as their Minkowski sum, which stays reachable by an encoding pulse configuration.
+Both keep the number of components, the antisymmetry of the comb and the model's frequency range intact.
+Note that `offgrid_prob` equals the fraction of off-grid components only in `index` mode, since a sum of displaced generators can land back on an integer.
+
+`construct_domain_samples` accepts `mts` and `mfs`, following the same convention as `Coefficients._fourier_transform`, where `mts` sets how many periods the domain covers and `mfs` the sample density per period.
+Oversampling is what makes an off-grid dataset meaningful: at `mts=mfs=1` the grid holds exactly as many samples as the model has Fourier degrees of freedom, so the model can interpolate any target on it regardless of the target's frequency content.
+A component at $k + j/r$ has period $2 \pi r$, so `mts` should be at least $r$.
+
+```python
+frequencies = Datasets.construct_frequencies(
+    model,
+    random_key=jax.random.key(1000),
+    offgrid_mode="index",
+    offgrid_prob=0.5,
+    offgrid_resolution=2,
+)
+domain_samples = Datasets.construct_domain_samples(model, mts=2)
+coefficients = Datasets.construct_coefficients(jax.random.key(1000), model)
+fourier_samples = Datasets.calculate_values(
+    domain_samples, frequencies, coefficients
+)
+```
+
+For a model supporting $0, 1, 2, 3$ this yields a target on e.g. $0, 1, 1.5, 2.5$ instead.
 
 
 Btw, if you're in a hurry, we have a Jupyter notebook with the exact same examples [here](https://github.com/cirKITers/qml-essentials/blob/main/docs/training.ipynb) :upside_down_face:.

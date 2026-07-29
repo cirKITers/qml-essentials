@@ -13,6 +13,7 @@ import pytest
 
 from qml_essentials.operations import (
     PauliWord,
+    state_expectation,
     H,
     S,
     CX,
@@ -108,6 +109,51 @@ class TestPauliWordAlgebra:
         rot = PauliRot(0.3, "XY", wires=[0, 1])
         pw = PauliWord.from_operation(rot, 2)
         assert pw.to_pauli_string() == "XY"
+
+
+class TestPauliWordExpectation:
+    """Arbitrary-state Pauli expectation vs dense-matrix ground truth."""
+
+    @staticmethod
+    def _random_state(n, seed):
+        rng = np.random.default_rng(seed)
+        psi = rng.standard_normal(2**n) + 1j * rng.standard_normal(2**n)
+        return psi / np.linalg.norm(psi)
+
+    @pytest.mark.unittest
+    @pytest.mark.parametrize("n", [1, 2, 3])
+    def test_expectation_matches_matrix_sandwich(self, n):
+        psi = self._random_state(n, n)
+        for s in all_pauli_strings(n):
+            pw = PauliWord.from_pauli_string(s, list(range(n)), n)
+            expected = psi.conj() @ pw_to_matrix(pw) @ psi
+            assert np.allclose(pw.expectation(psi), expected), s
+
+    @pytest.mark.unittest
+    @pytest.mark.parametrize("phase", [0, 1, 2, 3])
+    def test_expectation_tracks_global_phase(self, phase):
+        # i^phase * (Z on qubit 0) on a random 2-qubit state.
+        psi = self._random_state(2, phase)
+        pw = PauliWord.from_pauli_string("ZI", [0, 1], 2).compose(
+            PauliWord(np.zeros(2, np.int8), np.zeros(2, np.int8), phase)
+        )
+        expected = psi.conj() @ pw_to_matrix(pw) @ psi
+        assert np.allclose(pw.expectation(psi), expected)
+
+    @pytest.mark.unittest
+    def test_expectation_zero_state_matches_zero_expectation(self):
+        psi = np.zeros(4, dtype=complex)
+        psi[0] = 1.0
+        for s in all_pauli_strings(2):
+            pw = PauliWord.from_pauli_string(s, [0, 1], 2)
+            assert np.allclose(pw.expectation(psi), pw.zero_expectation()), s
+
+    @pytest.mark.unittest
+    def test_state_expectation_free_function(self):
+        psi = self._random_state(2, 0)
+        pw = PauliWord.from_pauli_string("XY", [0, 1], 2)
+        assert np.allclose(state_expectation("XY", psi), pw.expectation(psi))
+        assert np.allclose(state_expectation(pw, psi), pw.expectation(psi))
 
 
 class TestCliffordConjugation:

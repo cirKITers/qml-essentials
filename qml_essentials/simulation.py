@@ -62,12 +62,16 @@ def _stack_obs(obs: List[Operation], n_qubits: int) -> jnp.ndarray:
     return jnp.stack([ob.lifted_matrix(n_qubits) for ob in obs], axis=0)
 
 
-def simulate_pure(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
+def simulate_pure(
+    tape: List[Operation],
+    n_qubits: int,
+    initial_state: Optional[jnp.ndarray] = None,
+) -> jnp.ndarray:
     """Statevector simulation kernel.
 
-    Starts from |00…0⟩ and applies each gate in *tape* via tensor
-    contraction.  The state is kept in rank-*n* tensor form ``(2,)*n``
-    throughout the gate loop to avoid per-gate ``reshape`` dispatch;
+    Starts from |00…0⟩ (or *initial_state* when given) and applies each gate in
+    *tape* via tensor contraction.  The state is kept in rank-*n* tensor form
+    ``(2,)*n`` throughout the gate loop to avoid per-gate ``reshape`` dispatch;
     only the initial and final conversions to/from the flat ``(2**n,)``
     representation incur a reshape.
 
@@ -79,6 +83,8 @@ def simulate_pure(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
     Args:
         tape: Ordered list of gate operations to apply.
         n_qubits: Total number of qubits.
+        initial_state: Optional statevector of shape ``(2**n_qubits,)`` to start
+            from.  When ``None`` (default), the all-zero state |00…0⟩ is used.
 
     Returns:
         Statevector of shape ``(2**n_qubits,)``.
@@ -97,18 +103,26 @@ def simulate_pure(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
         sub = _einsum_subscript(n_qubits, k, tuple(op.wires))
         compiled.append((gt, sub))
 
-    state = jnp.zeros(dim, dtype=_cdtype()).at[0].set(1.0)
+    if initial_state is None:
+        state = jnp.zeros(dim, dtype=_cdtype()).at[0].set(1.0)
+    else:
+        state = jnp.asarray(initial_state, dtype=_cdtype()).reshape(dim)
     psi = state.reshape((2,) * n_qubits)
     for gt, sub in compiled:
         psi = jnp.einsum(sub, gt, psi)
     return psi.reshape(dim)
 
 
-def simulate_mixed(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
+def simulate_mixed(
+    tape: List[Operation],
+    n_qubits: int,
+    initial_state: Optional[jnp.ndarray] = None,
+) -> jnp.ndarray:
     """Density-matrix simulation kernel.
 
-    Starts from \\rho  = \\vert 0\\rangle\\langle 0\\vert and
-    applies each gate in *tape* via
+    Starts from \\rho  = \\vert 0\\rangle\\langle 0\\vert (or from
+    \\rho  = \\vert\\psi\\rangle\\langle\\psi\\vert for a given *initial_state*
+    \\vert\\psi\\rangle) and applies each gate in *tape* via
     :meth:`~qml_essentials.operations.Operation.apply_to_density`
     (\\rho  -> U\\rho U† for unitaries, \\Sigma_k K_k \\rho  K_k\\dagger
     for Kraus channels).
@@ -117,12 +131,18 @@ def simulate_mixed(tape: List[Operation], n_qubits: int) -> jnp.ndarray:
     Args:
         tape: Ordered list of gate or channel operations to apply.
         n_qubits: Total number of qubits.
+        initial_state: Optional statevector of shape ``(2**n_qubits,)`` to start
+            from.  When ``None`` (default), the all-zero state |00…0⟩ is used.
 
     Returns:
         Density matrix of shape ``(2**n_qubits, 2**n_qubits)``.
     """
     dim = 2**n_qubits
-    rho = jnp.zeros((dim, dim), dtype=_cdtype()).at[0, 0].set(1.0)
+    if initial_state is None:
+        rho = jnp.zeros((dim, dim), dtype=_cdtype()).at[0, 0].set(1.0)
+    else:
+        psi = jnp.asarray(initial_state, dtype=_cdtype()).reshape(dim)
+        rho = jnp.outer(psi, jnp.conj(psi))
     for op in tape:
         rho = op.apply_to_density(rho, n_qubits)
     return rho
@@ -136,6 +156,7 @@ def simulate_and_measure(
     use_density: bool,
     shots: Optional[int] = None,
     key: Optional[jnp.ndarray] = None,
+    initial_state: Optional[jnp.ndarray] = None,
 ) -> jnp.ndarray:
     """Run simulation and measurement in a single dispatch.
 
@@ -169,6 +190,8 @@ def simulate_and_measure(
             exact analytic results are returned.
         key: JAX PRNG key for shot sampling.  Required when *shots*
             is not ``None``.
+        initial_state: Optional statevector of shape ``(2**n_qubits,)`` to start
+            from.  When ``None`` (default), the all-zero state |00…0⟩ is used.
 
     Returns:
         Measurement result (shape depends on *type*).
@@ -178,14 +201,14 @@ def simulate_and_measure(
         has_noise = any(isinstance(o, KrausChannel) for o in tape)
         if has_noise:
             # Must do full density-matrix evolution for Kraus channels.
-            rho = simulate_mixed(tape, n_qubits)
+            rho = simulate_mixed(tape, n_qubits, initial_state=initial_state)
         else:
             # Pure circuit requesting density output: simulate the
             # statevector (O(depth\times 2^n)) and form  # noqa: W605
             # \rho  = \vert\psi\rangle\langle\psi\vert once  # noqa: W605
             # (O(4^n)).  This avoids the O(depth\times 4^n) cost of  # noqa: W605
             # evolving the full density matrix gate by gate.
-            state = simulate_pure(tape, n_qubits)
+            state = simulate_pure(tape, n_qubits, initial_state=initial_state)
             rho = jnp.outer(state, jnp.conj(state))
 
         if shots is not None and type in ("probs", "expval"):
@@ -193,7 +216,7 @@ def simulate_and_measure(
             return sample_shots(exact_probs, n_qubits, type, obs, shots, key)
         return measure_density(rho, n_qubits, type, obs)
 
-    state = simulate_pure(tape, n_qubits)
+    state = simulate_pure(tape, n_qubits, initial_state=initial_state)
 
     if shots is not None and type in ("probs", "expval"):
         exact_probs = jnp.abs(state) ** 2
