@@ -4,6 +4,7 @@ from qml_essentials.coefficients import Coefficients, FourierTree, FCC, Datasets
 from pennylane.fourier import coefficients as pcoefficients
 
 import traceback
+import math
 import numpy as np
 import jax.numpy as jnp
 import jax
@@ -1114,7 +1115,7 @@ class TestFCC:
             encoding=Encoding("hamming", "RZ"),
             output_qubit=-1,
         )
-        matrix, freqs = FCC.get_fourier_fingerprint(
+        matrix, freqs, coeffs = FCC.get_fourier_fingerprint(
             model=model,
             n_samples=50,
             random_key=jax.random.key(1000),
@@ -1135,6 +1136,19 @@ class TestFCC:
             f"({matrix.shape[1]})."
         )
 
+        assert isinstance(coeffs, tuple) and len(coeffs) == 2, (
+            "Trimmed fingerprint must return a (row_coeffs, col_coeffs) tuple."
+        )
+        row_coeffs, col_coeffs = coeffs
+        assert row_coeffs.shape[0] == row_freqs.shape[0], (
+            f"Row coeffs ({row_coeffs.shape[0]}) must match row freqs "
+            f"({row_freqs.shape[0]})."
+        )
+        assert col_coeffs.shape[0] == col_freqs.shape[0], (
+            f"Col coeffs ({col_coeffs.shape[0]}) must match col freqs "
+            f"({col_freqs.shape[0]})."
+        )
+
     @pytest.mark.unittest
     def test_fingerprint_freqs_match_matrix_2d(self) -> None:
         """
@@ -1148,7 +1162,7 @@ class TestFCC:
             encoding=["RX", "RY"],
             output_qubit=-1,
         )
-        matrix, freqs = FCC.get_fourier_fingerprint(
+        matrix, freqs, coeffs = FCC.get_fourier_fingerprint(
             model=model,
             n_samples=50,
             random_key=jax.random.key(1000),
@@ -1162,6 +1176,11 @@ class TestFCC:
         # each axis label is a (f_x, f_y) frequency tuple
         assert row_freqs.shape[1] == model.n_input_feat
         assert col_freqs.shape[1] == model.n_input_feat
+
+        assert isinstance(coeffs, tuple) and len(coeffs) == 2
+        row_coeffs, col_coeffs = coeffs
+        assert row_coeffs.shape[0] == row_freqs.shape[0]
+        assert col_coeffs.shape[0] == col_freqs.shape[0]
 
     @pytest.mark.unittest
     def test_weighting(self) -> None:
@@ -1320,3 +1339,37 @@ class TestDatasets:
             assert jnp.isclose(fourier_samples.mean(), 0.0, atol=1e-1), (
                 "Zero centering failed"
             )
+
+    @pytest.mark.unittest
+    @pytest.mark.parametrize("n_input_feat", [1, 2])
+    def test_fourier_series_building_blocks(self, n_input_feat) -> None:
+        """
+        The decomposed `construct_*`/`calculate_values` helpers must
+        reproduce `generate_fourier_series` exactly when composed in the
+        same order, and expose the flat shapes expected by callers.
+        """
+        random_key = jax.random.key(1000)
+
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            encoding=Encoding("hamming", ["RY" for _ in range(n_input_feat)]),
+        )
+
+        domain_samples = Datasets.construct_domain_samples(model)
+        frequencies = Datasets.construct_frequencies(model)
+        coefficients = Datasets.construct_coefficients(random_key, model)
+        values = Datasets.calculate_values(domain_samples, frequencies, coefficients)
+
+        n_points = math.prod(model.degree)
+        assert domain_samples.shape == (n_points, model.n_input_feat)
+        assert frequencies.shape == (n_points, model.n_input_feat)
+        assert coefficients.shape == (n_points,)
+        assert values.shape == (n_points,)
+
+        ref_domain, ref_values, ref_coeffs = Datasets.generate_fourier_series(
+            random_key, model=model
+        )
+        assert jnp.allclose(domain_samples.reshape(*model.degree, -1), ref_domain)
+        assert jnp.allclose(values.reshape(model.degree), ref_values)
+        assert jnp.allclose(coefficients.reshape(model.degree), ref_coeffs)

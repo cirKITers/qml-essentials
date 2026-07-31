@@ -315,7 +315,7 @@ Similar, other methods which require specifying `n_samples` (c.f. calculation of
 As described in our paper, the FCC is calculated as the mean of the Fourier fingerprint, which in turn can be obtained separately as follows:
 
 ```python
-fingerprint = FCC.get_fourier_fingerprint(
+fingerprint, freqs, coeffs = FCC.get_fourier_fingerprint(
     model=model,
     n_samples=500,
     random_key=jax.random.key(1000),
@@ -331,7 +331,7 @@ This is implicitly done in `FCC.get_fourier_fingerprint` (and controlled using t
 - removing symmetries inside the correlation matrix (the Fourier fingerprint), e.g. $c_{0,1} = c_{1,0}$
 Note that `get_fcc` also (by default) trims down the fingerprint before calculating the actual FCC. 
 
-When `trim_redundant` is enabled, the frequencies returned alongside the fingerprint are a `(row_freqs, col_freqs)` tuple that labels the two (trimmed) matrix axes one-to-one, so they always match the shape of the returned correlation matrix.
+When `trim_redundant` is enabled, the frequencies returned alongside the fingerprint are a `(row_freqs, col_freqs)` tuple that labels the two (trimmed) matrix axes one-to-one, so they always match the shape of the returned correlation matrix. The coefficients are returned as a matching `(row_coeffs, col_coeffs)` tuple whose rows align with those frequencies.
 The optional `numerical_cap` argument (passed through to `get_spectrum`) prunes negligible Fourier modes: coefficients below the cap are zeroed and, for a single input feature, the corresponding frequencies are dropped from the spectrum. 
 The `get_fourier_fingerprint` method additionally accepts `nan_to_one` (default `False`), which replaces undefined correlation entries (`NaN`s, e.g. arising from constant coefficient vectors with zero variance) with one.
 
