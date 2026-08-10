@@ -238,28 +238,23 @@ This correctly removes frequencies whose contributions cancel identically across
 Two methods are available:
 
 - `method="tree"` (default): fully exact, but enumerates the explicit tree, whose size can grow exponentially with circuit depth.
-- `method="dp"`: merges tree nodes with identical (rotation index, observable) state — at most $n_\text{params} \cdot 4^{n_\text{qubits}}$ states — and tracks the achievable per-feature sine/cosine counts per state as a mixed-radix bitmask.
-  This scales to deep circuits where the explicit tree is infeasible (e.g. a 10-layer `Strongly_Entangling` ansatz on 5 qubits takes seconds instead of being intractable).
-  It is exact per path, but cannot detect coefficients that cancel identically *across* paths with identical variational dependence (such as the repeated-encoding example above), where it returns a tight superset.
+- `method="dp"`: merges tree nodes with identical (rotation index, observable) state, at most $n_\text{params} \cdot 4^{n_\text{qubits}}$ states, and tracks the achievable per-feature sine/cosine counts per state as a mixed-radix bitmask.
+  While it scales better for deep circuits and is exact per path, it cannot detect coefficients that cancel identically *across* paths with identical variational dependence (such as the repeated-encoding example above), where it returns a tight superset.
   It supports any number of input features, returning the same per-feature frequency layout as `method="tree"`, but requires unit-magnitude input scaling: per-gate non-unit scalings such as Golomb encodings are rejected (use `method="tree"`).
 
 ```python
 exact = model.exact_spectrum(method="dp")  # for deep circuits
 ```
 
-Both `method="dp"` limitations follow from its merged-state design, which keeps only the achievable sine/cosine counts per node and discards the per-path variational signature for two reasons:
+Both `method="dp"` limitations mentioned above follow from its merged-state design, which keeps only the achievable sine/cosine counts per node and discards the per-path variational signature:
 
 1. Cross-path cancellations are invisible. 
 The tree method groups leaves by their variational signature and tests whether each group's weights sum to zero; the DP never stores those signatures, so it can confirm that a frequency is structurally reachable but not whether contributions from distinct paths cancel. 
 It therefore returns a tight superset (e.g. it keeps $\omega = 0$ for the repeated-encoding $\langle Z \rangle = \cos(2x)$ that the tree removes).
 2. Only unit-magnitude input scaling is allowed. 
 Within a feature the DP aggregates the total sine/cosine counts $(s_f, c_f)$ over all of that feature's rotations, which is exact only when those rotations share a single angle $x_f$. 
-A sign flip ($\omega = -1$, arising from Clifford commutation) is harmless because $\cos$ is even and $\sin$ odd, so it changes only the coefficient sign and not the support; a genuine per-gate scaling ($|\omega| \neq 1$, e.g. Golomb encodings) changes the angle and would require expanding and convolving each rotation individually.
-This is exactly the per-gate work the count-merging avoids, thus such models fall back to `method="tree"`.
-
-Note that `exact_spectrum` requires a Clifford + Pauli-rotation ansatz (the same restriction as the `FourierTree`).
-Also keep in mind that a *structurally present* frequency can still have an exponentially small coefficient (the leaf weights scale with $0.5^{s+c}$), so numerically thresholding an FFT spectrum may show fewer frequencies than the exact symbolic support.
-
+A sign flip ($\omega = -1$, arising from Clifford commutation) is harmless because $\cos$ is even and $\sin$ odd, changing only the coefficient sign.
+A genuine per-gate scaling (as for the `method="tree"` case)  changes the angle and would require expanding and convolving each rotation individually.
 
 ## Multi-Dimensional Coefficients
 
