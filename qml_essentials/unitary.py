@@ -697,5 +697,7 @@ class UnitaryGates:
         # Build diagonal: exp(-i * mark_j * x)
         diag = jnp.exp(-1j * marks * w)
 
-        op.DiagonalQubitUnitary(diag, wires=wires_list)
+        # Pass the real generator (marks) and scalar (w) so the analytical
+        # Fourier tree can decompose the gate into commuting Pauli-Z rotations.
+        op.DiagonalQubitUnitary(diag, wires=wires_list, generator=marks, scale=w)
         UnitaryGates.Noise(wires_list, noise_params)

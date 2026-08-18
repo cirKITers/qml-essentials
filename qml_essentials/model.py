@@ -546,9 +546,8 @@ class Model:
         into a single rotation) are excluded exactly; this enumerates the
         explicit tree, which can be infeasible for deep entangling circuits.
         With ``method="dp"``, a merged-state dynamic program derives the support
-        without enumerating paths, which scales to deep circuits (single input
-        feature only) at the cost of not detecting identical cross-path
-        cancellations.
+        without enumerating paths, which scales to deep circuits at the cost of
+        not detecting identical cross-path cancellations.
 
         Requires a Clifford + Pauli-rotation ansatz (see
         :class:`~qml_essentials.pauli.PauliCircuit`); other gate sets raise

@@ -904,9 +904,18 @@ class DiagonalQubitUnitary(Operation):
         self,
         diag: jnp.ndarray,
         wires: Union[int, List[int]] = 0,
+        generator: Optional[jnp.ndarray] = None,
+        scale: Optional[float] = None,
         **kwargs,
     ) -> None:
         self.diag = diag
+        # Optional real data-encoding generator: ``diag = exp(-i * generator *
+        # scale)`` with a real diagonal Hamiltonian ``generator`` and real
+        # scalar ``scale``.  When present, :meth:`decompose` expands the gate
+        # into commuting Pauli-Z rotations; the complex ``diag`` alone is
+        # insufficient because its phase wraps modulo ``2 pi``.
+        self._generator = generator
+        self._scale = scale
         wires_list = list(wires) if isinstance(wires, (list, tuple)) else [wires]
         expected_dim = 2 ** len(wires_list)
         if diag.shape != (expected_dim,):
@@ -918,6 +927,57 @@ class DiagonalQubitUnitary(Operation):
         # Use a descriptive name for drawing
         kwargs.setdefault("name", "DiagU")
         super().__init__(wires=wires, matrix=mat, **kwargs)
+
+    def decompose(self) -> List["Operation"]:
+        r"""Expand a real-generator diagonal encoding into Pauli-Z rotations.
+
+        For ``diag = exp(-i H x)`` with a real diagonal Hamiltonian
+        ``H = diag(self._generator)`` and real scalar ``x = self._scale``, the
+        Walsh-Hadamard transform writes ``H = \sum_P \alpha_P P`` over commuting
+        Pauli-Z strings ``P``.  Because the strings commute,
+
+        .. math::
+            e^{-i H x} = \prod_P e^{-i \alpha_P x P}
+                       = \prod_P \mathrm{PauliRot}(2 x \alpha_P, P),
+
+        up to the global phase from the identity term (dropped).  Zero-weight
+        strings are omitted.
+
+        Returns:
+            List of :class:`PauliRot` gates (``record=False``) whose ordered
+            product equals the diagonal gate up to a global phase.
+
+        Raises:
+            NotImplementedError: If the gate carries no real generator (a
+                generic diagonal unitary has no Pauli-rotation decomposition).
+        """
+        if self._generator is None:
+            return super().decompose()
+
+        k = len(self.wires)
+        dim = 2**k
+        marks = np.asarray(self._generator, dtype=float).reshape(-1)
+        # Sign vector per qubit position: +1/-1 for basis bit 0/1.  Position i
+        # (i = 0 is the most-significant bit of the diagonal index) acts on
+        # ``self.wires[i]`` -- the same order PauliRot uses for its word.
+        signs = np.array(
+            [[1 - 2 * ((j >> (k - 1 - i)) & 1) for j in range(dim)] for i in range(k)]
+        )
+
+        ops: List["Operation"] = []
+        tol = 1e-12
+        for mask in range(1, dim):  # skip mask 0 (identity -> global phase)
+            chi = np.ones(dim)
+            for i in range(k):
+                if (mask >> i) & 1:
+                    chi = chi * signs[i]
+            alpha = float(marks @ chi) / dim
+            if abs(alpha) < tol:
+                continue
+            word = "".join("Z" if (mask >> i) & 1 else "I" for i in range(k))
+            theta = 2.0 * alpha * self._scale
+            ops.append(PauliRot(theta, word, wires=self.wires, record=False))
+        return ops
 
     def apply_to_state(self, state: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
         """Apply diagonal gate via element-wise multiplication.

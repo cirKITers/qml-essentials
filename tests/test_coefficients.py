@@ -620,6 +620,74 @@ class TestFourierTree:
             assert np.isclose(series, circ.reshape(-1)[0], atol=1.0e-5)
 
     @pytest.mark.unittest
+    def test_coefficients_tree_golomb(self) -> None:
+        """FourierTree supports the Golomb diagonal-Hamiltonian encoding.
+
+        The encoding gate ``exp(-i x diag(marks))`` decomposes into commuting
+        Pauli-Z rotations whose per-string scalings are rational, while the
+        model spectrum is the integer set of Golomb-mark differences.  The
+        analytical series must match both the FFT spectrum and the circuit
+        output, and must not warn about non-integer scalings."""
+        import warnings
+        from qml_essentials.unitary import golomb_ruler
+
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_1",
+            encoding=Encoding("golomb", None),
+            output_qubit=0,
+            remove_zero_encoding=False,
+        )
+
+        # Rational per-string scalings must not trigger a warning.
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            tree = FourierTree(model)
+            coeffs, freqs = tree.get_spectrum()
+        assert not any("scaling" in str(w.message).lower() for w in caught), (
+            "unexpected non-integer scaling warning for Golomb encoding"
+        )
+
+        coeffs = np.asarray(coeffs[0])
+        freqs = np.asarray(freqs[0])
+        # Integer model spectrum despite rational intermediate scalings.
+        assert np.issubdtype(freqs.dtype, np.integer)
+
+        nz = np.abs(coeffs) > 1e-8
+        support = {int(v) for v in freqs[nz]}
+        marks = golomb_ruler(2**model.n_qubits)  # (0, 1, 3, 7)
+        diffs = {a - b for a in marks for b in marks}
+        assert support <= diffs, f"support {support} exceeds Golomb diffs {diffs}"
+        assert len(support) > 1, "expected a non-trivial Golomb spectrum"
+
+        # The analytical support agrees with the numerical FFT spectrum.
+        fft_coeffs, fft_freqs = Coefficients.get_spectrum(
+            model, shift=True, force_mean=False
+        )
+        fft_nz = np.abs(np.asarray(fft_coeffs)) > 1e-8
+        fft_support = {int(v) for v in np.asarray(fft_freqs)[fft_nz]}
+        assert support == fft_support
+
+        # Real-valued model -> Hermitian spectrum.
+        assert np.isclose(np.sum(coeffs).imag, 0.0, atol=1e-5)
+
+        # The analytical Fourier series reproduces the circuit output.
+        rng = np.random.default_rng(0)
+        for _ in range(8):
+            x = float(rng.uniform(-np.pi, np.pi))
+            series = np.real(np.sum(coeffs * np.exp(1j * freqs * x)))
+            circ = np.asarray(model(model.params, inputs=jnp.array([[x]])))
+            assert np.isclose(series, circ.reshape(-1)[0], atol=1e-5)
+            assert np.isclose(
+                np.asarray(tree(inputs=x)).reshape(-1)[0], series, atol=1e-5
+            )
+
+        # The 'dp' support method cannot represent rational per-gate scalings.
+        with pytest.raises(NotImplementedError, match="scaling"):
+            tree.get_exact_support(method="dp")
+
+    @pytest.mark.unittest
     def test_coefficients_tree_multi_feature_per_gate_rejected(self) -> None:
         """Auto-detection requires each encoding rotation to be linear in a
         single feature; a rotation mixing two features is rejected."""
@@ -738,6 +806,47 @@ class TestFourierTree:
             if abs(c) > 1e-4
         }
         assert significant.issubset(union)
+
+    @pytest.mark.unittest
+    def test_exact_support_dp_matches_tree_multi_feature(self) -> None:
+        """The merged-state DP support equals the fully exact tree support for
+        multi-feature models (no cross-path cancellations on these circuits).
+        Supports are (n_freq, d) frequency-vector arrays, compared as row sets."""
+        import numpy as np
+
+        for circuit_type in ["Circuit_19", "Hardware_Efficient"]:
+            model = Model(
+                n_qubits=3,
+                n_layers=1,
+                circuit_type=circuit_type,
+                output_qubit=0,
+                encoding=["RX", "RY"],
+            )
+            assert model.n_input_feat == 2
+
+            tree = FourierTree(model)
+            sup_tree = tree.get_exact_support(method="tree")
+            sup_dp = tree.get_exact_support(method="dp")
+            for st, sd in zip(sup_tree, sup_dp):
+                st, sd = np.asarray(st), np.asarray(sd)
+                assert st.ndim == 2 and st.shape[1] == 2
+                assert sd.ndim == 2 and sd.shape[1] == 2
+                tree_rows = set(map(tuple, st.tolist()))
+                dp_rows = set(map(tuple, sd.tolist()))
+                assert tree_rows == dp_rows, (
+                    f"DP and tree multi-feature supports differ for {circuit_type}"
+                )
+
+            # exact_spectrum threads the multi-feature dp support through to a
+            # per-feature tuple, matching the tree method per axis.
+            spec_dp = model.exact_spectrum(method="dp")
+            spec_tree = model.exact_spectrum(method="tree")
+            assert len(spec_dp) == 2
+            for sd, st, naive in zip(spec_dp, spec_tree, model.frequencies):
+                assert set(np.asarray(sd).tolist()) == set(np.asarray(st).tolist())
+                assert set(np.asarray(sd).tolist()).issubset(
+                    {int(v) for v in np.asarray(naive)}
+                )
 
 
 class TestFCC:
