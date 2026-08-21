@@ -498,12 +498,12 @@ class Model:
         self._data_reupload = np.asarray(value).astype(bool)
 
         self.degree: Tuple = tuple(
-            self._enc.get_n_freqs(np.count_nonzero(self.data_reupload[..., i]))
+            self._enc.get_n_freqs(self.data_reupload[..., i])
             for i in range(self.n_input_feat)
         )
 
         self.frequencies: Tuple = tuple(
-            self._enc.get_spectrum(np.count_nonzero(self.data_reupload[..., i]))
+            self._enc.get_spectrum(self.data_reupload[..., i])
             for i in range(self.n_input_feat)
         )
 
