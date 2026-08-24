@@ -89,6 +89,8 @@ plt.legend()
 plt.show()
 ```
 
+To compile the whole training step with `jax.jit`, build the cost function on `model.apply` instead of calling the model directly (see [*Usage*](usage.md#functional_execution)).
+
 ```
 Epoch: 100, Cost: 0.0081
 Epoch: 200, Cost: 0.0073
