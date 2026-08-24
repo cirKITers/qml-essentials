@@ -356,6 +356,51 @@ def test_encoding_weights() -> None:
 
 
 @pytest.mark.unittest
+@pytest.mark.parametrize("strategy", ["hamming", "binary", "ternary", "golomb"])
+@pytest.mark.parametrize("n_qubits", [2, 3])
+def test_encoding_spectrum_reference(strategy, n_qubits) -> None:
+    """The FFT-significant frequencies of the model equal the spectrum Omega of
+    Peters and Schuld (arXiv:2209.05523, Table 1) for each encoding strategy.
+    For golomb, Omega is the sparse set of mark differences with
+    |Omega| = d(d-1)+1; model.frequencies is its contiguous superset."""
+    from qml_essentials.coefficients import Coefficients
+    from qml_essentials.unitary import golomb_ruler
+
+    n = n_qubits
+    if strategy == "golomb":
+        marks = golomb_ruler(2**n)
+        expected = {a - b for a in marks for b in marks}
+        assert len(expected) == 2**n * (2**n - 1) + 1
+    else:
+        half = {"hamming": n, "binary": 2**n - 1, "ternary": (3**n - 1) // 2}[strategy]
+        expected = set(range(-half, half + 1))
+
+    model = Model(
+        n_qubits=n,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+        encoding=Encoding(strategy, None if strategy == "golomb" else ["RX"]),
+        remove_zero_encoding=False,
+    )
+    naive = set(int(v) for v in model.frequencies[0])
+    if strategy == "golomb":
+        assert expected.issubset(naive)
+    else:
+        assert naive == expected
+
+    # oversample (mfs=2) so frequencies beyond the predicted range are visible
+    coeffs, freqs = Coefficients.get_spectrum(model, mfs=2, shift=True)
+    coeffs = np.asarray(coeffs).ravel()
+    freqs = np.asarray(freqs).ravel()
+    # Golomb coefficients (|R(k)| = 1) can be ~1e-5 for random parameters; the
+    # float32 FFT noise floor is ~1e-7, so 1e-6 separates the two.
+    significant = {int(round(f)) for f, c in zip(freqs, coeffs) if abs(c) > 1e-6}
+    assert significant == expected, (
+        f"{strategy} n={n}: FFT support {sorted(significant)} != {sorted(expected)}"
+    )
+
+
+@pytest.mark.unittest
 def test_golomb_encoding() -> None:
     """Test the Golomb encoding strategy end-to-end.
 
@@ -474,6 +519,49 @@ def test_golomb_encoding() -> None:
     # --- Invalid strategy raises error ---
     with pytest.raises(ValueError):
         Encoding("invalid_strategy", None)
+
+
+@pytest.mark.unittest
+def test_golomb_diagonal_decompose() -> None:
+    """DiagonalQubitUnitary.decompose() reproduces exp(-i diag(marks) x) as a
+    product of commuting Pauli-Z rotations (up to a global phase).
+
+    Uses real marks (not the wrapped complex diagonal), so it stays exact even
+    when x * max(mark) exceeds pi (n=3 has marks up to 44).
+    """
+    from functools import reduce
+    from qml_essentials.unitary import golomb_ruler
+    from qml_essentials.operations import DiagonalQubitUnitary, PauliRot
+
+    for n in [1, 2, 3]:
+        d = 2**n
+        marks = jnp.array(golomb_ruler(d), dtype=float)
+        w = 0.7
+        diag = jnp.exp(-1j * marks * w)
+        gate = DiagonalQubitUnitary(
+            diag, wires=list(range(n)), generator=marks, scale=w, record=False
+        )
+
+        ops = gate.decompose()
+        assert len(ops) >= 1, f"no factors for n={n}"
+        for o in ops:
+            assert isinstance(o, PauliRot)
+            # Only diagonal (I/Z) strings, never the dropped identity.
+            assert set(o.pauli_word) <= {"I", "Z"} and "Z" in o.pauli_word
+
+        u_dec = reduce(lambda a, b: a @ b, [o.matrix for o in ops])
+        expected = jnp.diag(diag)
+        # Compare up to a global phase by normalising the (0, 0) entry.
+        u_dec = u_dec / u_dec[0, 0]
+        expected = expected / expected[0, 0]
+        assert jnp.allclose(u_dec, expected, atol=1e-10), (
+            f"decompose() mismatch for n={n}"
+        )
+
+    # A generic diagonal unitary without a stored generator is primitive.
+    plain = DiagonalQubitUnitary(jnp.array([1.0, 1j]), wires=0, record=False)
+    with pytest.raises(NotImplementedError):
+        plain.decompose()
 
 
 @pytest.mark.smoketest
