@@ -3,8 +3,6 @@ from typing import Any, Dict, List, Tuple, Union
 from dataclasses import dataclass
 from typing import Optional
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 
 from qml_essentials.operations import (
     Operation,
@@ -386,6 +384,8 @@ def draw_mpl(
     Returns:
         Tuple ``(fig, ax)`` — a Matplotlib ``Figure`` and ``Axes``.
     """
+    import matplotlib.pyplot as plt  # lazy - matplotlib is dev-only
+    import matplotlib.patches as mpatches
 
     # Schedule into columns (same logic as text)
     columns: List[Dict[int, str]] = []
@@ -789,6 +789,8 @@ def _draw_block(
     ev: PulseEvent, t_start: float, axes, color: str, amp_max: float
 ) -> None:
     """Draw a gate as a labelled rectangular block on each of its wires."""
+    import matplotlib.patches as mpatches  # lazy - matplotlib is dev-only
+
     label = _make_event_label(ev.gate, ev.parent)
     for wire in ev.wires:
         ax = axes[wire]
@@ -851,6 +853,9 @@ def draw_pulse_schedule(
     Returns:
         ``(fig, axes)`` — Matplotlib Figure and array of Axes.
     """
+    import matplotlib.pyplot as plt  # lazy - matplotlib is dev-only
+    import matplotlib.patches as mpatches
+
     from qml_essentials.gates import PulseGates, PulseInformation
 
     omega_c = float(PulseGates.omega_c)
