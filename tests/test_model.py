@@ -1,6 +1,9 @@
+import jax
 from jax import random, grad, numpy as jnp
 import numpy as np
 import random as pyrandom
+import subprocess
+import sys
 import optax
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Gates, Encoding
@@ -1529,3 +1532,247 @@ def test_output_qubit_deprecated() -> None:
     # passing both raises
     with pytest.raises(ValueError):
         Model(n_qubits=3, n_layers=1, output_qubit=0, observables=0)
+
+
+def _model_state(model: Model) -> dict:
+    """Snapshot the per-call mutable state that ``Model.apply`` must not touch."""
+    return {
+        "params": np.array(model.params),
+        "enc_params": np.array(model.enc_params),
+        "pulse_params": np.array(model.pulse_params),
+        "random_key": np.array(random.key_data(model.random_key)),
+        "noise_params": model.noise_params,
+        "execution_type": model.execution_type,
+        "batch_shape": model._batch_shape,
+        "zero_inputs": model._zero_inputs,
+    }
+
+
+def _assert_state_unchanged(before: dict, after: dict) -> None:
+    for key in ("params", "enc_params", "pulse_params", "random_key"):
+        assert np.array_equal(before[key], after[key]), f"{key} was modified"
+    for key in ("noise_params", "execution_type", "batch_shape", "zero_inputs"):
+        assert before[key] == after[key], f"{key} was modified"
+
+
+@pytest.mark.unittest
+def test_import_without_matplotlib() -> None:
+    """The core import path must not require matplotlib, which is dev-only."""
+    script = (
+        "import builtins\n"
+        "_real = builtins.__import__\n"
+        "def guard(name, *args, **kwargs):\n"
+        "    if name.split('.')[0] == 'matplotlib':\n"
+        "        raise ImportError('matplotlib blocked')\n"
+        "    return _real(name, *args, **kwargs)\n"
+        "builtins.__import__ = guard\n"
+        "from qml_essentials.model import Model\n"
+        "model = Model(n_qubits=2, n_layers=1, circuit_type='Circuit_19')\n"
+        "assert isinstance(model.draw(figure='text'), str)\n"
+        "try:\n"
+        "    model.draw(figure='mpl')\n"
+        "except ImportError:\n"
+        "    pass\n"
+        "else:\n"
+        "    raise AssertionError('expected ImportError for figure=mpl')\n"
+    )
+    subprocess.run([sys.executable, "-c", script], check=True)
+
+
+@pytest.mark.unittest
+def test_apply_pure_under_jit() -> None:
+    """An outer jit around apply must work and leave the model untouched."""
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        initialization="random",
+    )
+
+    before = _model_state(model)
+
+    fn = jax.jit(lambda p, x: model.apply(params=p, inputs=x))
+
+    out_a = fn(model.params, jnp.array([0.1, 0.2, 0.3]))
+    # the second call is where a tracer leaked by the first one would surface
+    out_b = fn(model.params, jnp.array([0.4, 0.5, 0.6]))
+
+    assert out_a.shape == (3, 1, 1, 2)
+    assert out_b.shape == (3, 1, 1, 2)
+    assert not jnp.allclose(out_a, out_b)
+
+    _assert_state_unchanged(before, _model_state(model))
+
+    # a subsequent eager call is where a leaked tracer would raise
+    assert model(inputs=jnp.array([0.4, 0.5, 0.6])).shape == (3, 2)
+
+
+@pytest.mark.unittest
+def test_apply_under_vmap() -> None:
+    """apply must be vmap-able over per-sample inputs."""
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Circuit_19")
+
+    inputs = jnp.array([[0.1], [0.2], [0.3]])
+    before = _model_state(model)
+
+    out = jax.vmap(lambda x: model.apply(inputs=x))(inputs)
+    assert out.shape == (3, 1, 1, 1, 2)
+
+    ref = model.apply(inputs=inputs)
+    assert ref.shape == (3, 1, 1, 2)
+    assert jnp.allclose(out.reshape(3, 2), ref.reshape(3, 2), atol=1e-6)
+
+    _assert_state_unchanged(before, _model_state(model))
+
+
+@pytest.mark.unittest
+def test_apply_jit_grad_train_step() -> None:
+    """A whole training step built on apply must be jit-able and differentiable."""
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Circuit_19")
+
+    inputs = jnp.array([0.1, 0.2, 0.3])
+    targets = jnp.array([0.1, -0.2, 0.3])
+
+    def cost(params):
+        y_hat = model.apply(params=params, inputs=inputs, force_mean=True)
+        return jnp.mean((y_hat.reshape(-1) - targets) ** 2)
+
+    step = jax.jit(jax.value_and_grad(cost))
+
+    params = model.params
+    loss_a, grads = step(params)
+    params = params - 0.1 * grads
+    loss_b, _ = step(params)
+
+    assert jnp.isfinite(loss_a) and jnp.isfinite(loss_b)
+    assert jnp.any(grads != 0.0), "expected non-zero gradients"
+
+
+@pytest.mark.unittest
+def test_apply_matches_call() -> None:
+    """apply and __call__ agree numerically up to the squeeze."""
+    inputs = jnp.array([0.1, 0.2, 0.3])
+
+    for execution_type in ["expval", "density", "state"]:
+        model = Model(n_qubits=2, n_layers=1, circuit_type="Circuit_19")
+
+        out = model.apply(
+            params=model.params, inputs=inputs, execution_type=execution_type
+        )
+        ref = model(model.params, inputs=inputs, execution_type=execution_type)
+
+        assert jnp.allclose(jnp.squeeze(out), ref, atol=1e-6), (
+            f"apply and __call__ disagree for execution_type={execution_type}"
+        )
+
+
+@pytest.mark.unittest
+def test_apply_output_shape() -> None:
+    """apply keeps a fixed rank, including for a single observable or batch of one."""
+    test_cases = [
+        {
+            "inputs": jnp.array(0.1),
+            "observables": [0, 1],
+            "out_shape": (1, 1, 1, 2),
+        },
+        {
+            "inputs": jnp.array([0.1, 0.2, 0.3]),
+            "observables": [0, 1],
+            "out_shape": (3, 1, 1, 2),
+        },
+        {
+            "inputs": jnp.array([0.1, 0.2, 0.3]),
+            "observables": 0,
+            "out_shape": (3, 1, 1, 1),
+        },
+        {
+            "inputs": jnp.array(0.1),
+            "observables": 0,
+            "out_shape": (1, 1, 1, 1),
+        },
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            observables=test_case["observables"],
+        )
+        out = model.apply(inputs=test_case["inputs"])
+
+        assert out.shape == test_case["out_shape"], (
+            f"Expected {test_case['out_shape']}, got shape {out.shape}\
+            for test case {test_case}"
+        )
+
+
+@pytest.mark.unittest
+def test_call_keepdims() -> None:
+    """keepdims=True returns the full [B_I, B_P, B_R, O] shape."""
+    test_cases = [
+        {
+            "inputs": jnp.array([0.1, 0.2, 0.3]),
+            "execution_type": "expval",
+            "observables": [0, 1],
+            "shots": None,
+            "force_mean": False,
+            "out_shape": (3, 1, 1, 2),
+        },
+        {
+            "inputs": jnp.array(0.1),
+            "execution_type": "expval",
+            "observables": 0,
+            "shots": None,
+            "force_mean": False,
+            "out_shape": (1, 1, 1, 1),
+        },
+        {
+            "inputs": jnp.array([0.1, 0.2, 0.3]),
+            "execution_type": "expval",
+            "observables": [0, 1],
+            "shots": None,
+            "force_mean": True,
+            "out_shape": (3, 1, 1, 1),
+        },
+        {
+            "inputs": jnp.array([0.1, 0.2, 0.3]),
+            "execution_type": "density",
+            "observables": -1,
+            "shots": None,
+            "force_mean": False,
+            "out_shape": (3, 1, 1, 4, 4),
+        },
+    ]
+
+    for test_case in test_cases:
+        model = Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            observables=test_case["observables"],
+            shots=test_case["shots"],
+        )
+        out = model(
+            model.params,
+            inputs=test_case["inputs"],
+            force_mean=test_case["force_mean"],
+            noise_params=None,
+            execution_type=test_case["execution_type"],
+            keepdims=True,
+        )
+
+        assert out.shape == test_case["out_shape"], (
+            f"Expected {test_case['out_shape']}, got shape {out.shape}\
+            for test case {test_case}"
+        )
+
+    # the default stays fully squeezed
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        observables=[0, 1],
+    )
+    out = model(model.params, inputs=jnp.array([0.1, 0.2, 0.3]))
+    assert out.shape == (3, 2)
