@@ -520,9 +520,22 @@ class Script:
         # take part in every cache key.
         gate_error = UnitaryGates.batch_gate_error
 
+        # Non-array kwargs change the recorded circuit, so both modes key on them.
+        cache_kwargs = _make_hashable(
+            {k: v for k, v in kwargs.items() if not isinstance(v, jnp.ndarray)}
+        )
+
         # --- Shot mode: compute exact probabilities, then sample. ---
         if shots is not None and type in ("probs", "expval"):
-            shot_cache_key = (type, "shots", shots, eff_in_axes, arg_shapes, gate_error)
+            shot_cache_key = (
+                type,
+                "shots",
+                shots,
+                eff_in_axes,
+                arg_shapes,
+                cache_kwargs,
+                gate_error,
+            )
             shot_in_axes = eff_in_axes + (0,)  # shot key batched over axis 0
             shot_args = eff_args + (jax.random.split(key, batch_size),)
 
@@ -579,9 +592,6 @@ class Script:
             )
 
         # --- Exact mode: reuse the cached plan or build it on a miss. ---
-        cache_kwargs = _make_hashable(
-            {k: v for k, v in kwargs.items() if not isinstance(v, jnp.ndarray)}
-        )
         cache_key = (type, eff_in_axes, arg_shapes, cache_kwargs, gate_error)
 
         # The cached ``batched_fn`` (eqx.filter_jit wrapper) is reused across
