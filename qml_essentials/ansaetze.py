@@ -313,6 +313,9 @@ class Block:
         else:
             n_gates = len(self.wires) if self.wires is not None else n_qubits
 
+        if n_gates == 0:  # an empty block consumes no parameters, shared or not
+            return 0
+
         return per_gate if self.shared else per_gate * n_gates
 
     def n_pulse_params(self, n_qubits: int) -> int:
@@ -775,9 +778,11 @@ class Ansaetze:
         r"""$S_n$ permutation-equivariant layer (Schatzki et al., arXiv:2210.09974).
 
         Shared-angle RX and RY on every qubit followed by a shared-angle RZZ on
-        every qubit pair, realising $\exp(-i a \sum_k X_k) \exp(-i b \sum_k Y_k)
-        \exp(-i c \sum_{j<k} Z_j Z_k)$.  The three parameters are tied (shared
-        across all gates), so the layer width is 3 independent of the qubit count.
+        every qubit pair, realising $\exp(-i \frac{a}{2} \sum_k X_k)
+        \exp(-i \frac{b}{2} \sum_k Y_k) \exp(-i \frac{c}{2} \sum_{j<k} Z_j Z_k)$
+        for the rotation convention $R_P(\theta) = \exp(-i \frac{\theta}{2} P)$.
+        The three parameters are tied (shared across all gates), so the layer
+        width is 3 independent of the qubit count.
 
         Gradients assume JAX autodiff; a parameter-shift differentiator would need
         special handling for the shared parameters.

@@ -535,6 +535,7 @@ class Script:
                 arg_shapes,
                 cache_kwargs,
                 gate_error,
+                has_init,
             )
             shot_in_axes = eff_in_axes + (0,)  # shot key batched over axis 0
             shot_args = eff_args + (jax.random.split(key, batch_size),)
@@ -592,7 +593,10 @@ class Script:
             )
 
         # --- Exact mode: reuse the cached plan or build it on a miss. ---
-        cache_key = (type, eff_in_axes, arg_shapes, cache_kwargs, gate_error)
+        # ``has_init`` is part of the key: the plan strips the trailing argument
+        # before recording the tape, so a plan built with an initial state must
+        # not be reused for a same-shaped trailing circuit argument (and back).
+        cache_key = (type, eff_in_axes, arg_shapes, cache_kwargs, gate_error, has_init)
 
         # The cached ``batched_fn`` (eqx.filter_jit wrapper) is reused across
         # calls including under an outer transform: its ``_single_execute``

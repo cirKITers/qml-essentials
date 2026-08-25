@@ -83,8 +83,11 @@ def loss_variance(
     if obs is None:
         obs = [op.PauliZ(wires=i_out)]
 
+    # Separate streams for the parameter draws and the shot noise, so the two
+    # sources of randomness stay independent.
+    param_key, shot_key = jax.random.split(key)
     W = jax.random.uniform(
-        key, (n_samples, depth, n_params_per_layer), minval=0.0, maxval=2 * np.pi
+        param_key, (n_samples, depth, n_params_per_layer), minval=0.0, maxval=2 * np.pi
     )
 
     if init_state is None:
@@ -101,7 +104,7 @@ def loss_variance(
             args=(W, theta),
             in_axes=(0, None),
             shots=shots,
-            key=key,
+            key=shot_key,
         )
     else:
 
@@ -115,11 +118,11 @@ def loss_variance(
             args=(W,),
             in_axes=(0,),
             shots=shots,
-            key=key,
+            key=shot_key,
             initial_state=init_state,
         )
     vals = np.asarray(vals)
     if vals.ndim > 1 and len(obs) > 1:  # loss = <sum_i O_i>
         vals = vals.sum(axis=-1)
     vals = vals.reshape(-1)
-    return float(np.var(vals)), vals
+    return float(np.var(vals, ddof=1)), vals
