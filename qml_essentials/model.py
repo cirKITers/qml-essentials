@@ -29,7 +29,9 @@ class Model:
         n_qubits: int,
         n_layers: int,
         circuit_type: Union[str, Circuit] = "No_Ansatz",
-        data_reupload: Union[bool, List[List[bool]], List[List[List[bool]]]] = True,
+        data_reupload: Union[
+            bool, List[List[bool]], List[List[List[bool]]], np.ndarray
+        ] = True,
         state_preparation: Union[
             str, Callable, List[Union[str, Callable]], None
         ] = None,
@@ -64,7 +66,8 @@ class Model:
             n_layers (int): The number of layers in the circuit.
             circuit_type (str, Circuit): The type of quantum circuit to use.
                 If None, defaults to "no_ansatz".
-            data_reupload (Union[bool, List[bool], List[List[bool]]], optional):
+            data_reupload (Union[bool, List[List[bool]], List[List[List[bool]]],
+                np.ndarray], optional):
                 Whether to reupload data to the quantum device on each
                 layer and qubit. Detailed re-uploading instructions can be given
                 as a list/array of 0/False and 1/True with shape (n_qubits,
@@ -546,12 +549,15 @@ class Model:
         self._pulse_params = value
 
     @property
-    def data_reupload(self) -> jnp.ndarray:
+    def data_reupload(self) -> np.ndarray:
         """Get the data reupload mask."""
         return self._data_reupload
 
     @data_reupload.setter
-    def data_reupload(self, value: jnp.ndarray) -> None:
+    def data_reupload(
+        self,
+        value: Union[bool, List[List[bool]], List[List[List[bool]]], np.ndarray],
+    ) -> None:
         """Set the data reupload mask.
 
         Always converts to a concrete NumPy boolean array so that
@@ -858,7 +864,7 @@ class Model:
     def _iec(
         self,
         inputs: jnp.ndarray,
-        data_reupload: jnp.ndarray,
+        data_reupload: np.ndarray,
         enc: Encoding,
         enc_params: jnp.ndarray,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
@@ -878,7 +884,7 @@ class Model:
         Args:
             inputs (jnp.ndarray): Input data of shape (n_input_feat,) or
                 (batch_size, n_input_feat).
-            data_reupload (jnp.ndarray): Boolean array of shape (n_qubits, n_input_feat)
+            data_reupload (np.ndarray): Boolean array of shape (n_qubits, n_input_feat)
                 indicating where to apply encoding gates.
             enc (Encoding): Encoding strategy containing the encoding gate functions.
             enc_params (jnp.ndarray): Encoding parameters of shape
@@ -1675,7 +1681,9 @@ class Model:
         inputs: Optional[jnp.ndarray] = None,
         pulse_params: Optional[jnp.ndarray] = None,
         enc_params: Optional[jnp.ndarray] = None,
-        data_reupload: Union[bool, List[List[bool]], List[List[List[bool]]]] = None,
+        data_reupload: Union[
+            bool, List[List[bool]], List[List[List[bool]]], np.ndarray
+        ] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
@@ -1702,7 +1710,8 @@ class Model:
                 pulse-mode gate execution.
             enc_params (Optional[jnp.ndarray]): Encoding parameters of shape
                 (n_qubits, n_input_feat). If None, uses model's encoding parameters.
-            data_reupload (Union[bool, List[List[bool]], List[List[List[bool]]]]):
+            data_reupload (Union[bool, List[List[bool]], List[List[List[bool]]],
+                np.ndarray]):
                 Data reupload configuration. If None, uses previously set reupload
                 configuration.
             noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
@@ -1855,7 +1864,9 @@ class Model:
         inputs: Optional[jnp.ndarray] = None,
         pulse_params: Optional[jnp.ndarray] = None,
         enc_params: Optional[jnp.ndarray] = None,
-        data_reupload: Union[bool, List[List[bool]], List[List[List[bool]]]] = None,
+        data_reupload: Union[
+            bool, List[List[bool]], List[List[List[bool]]], np.ndarray
+        ] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
@@ -1880,7 +1891,8 @@ class Model:
                 pulse-mode gate execution.
             enc_params (Optional[jnp.ndarray]): Encoding parameters of shape
                 (n_qubits, n_input_feat). If None, uses model's encoding parameters.
-            data_reupload (Union[bool, List[List[bool]], List[List[List[bool]]]]):
+            data_reupload (Union[bool, List[List[bool]], List[List[List[bool]]],
+                np.ndarray]):
                 Data reupload configuration. If None, uses previously set reupload
                 configuration.
             noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
