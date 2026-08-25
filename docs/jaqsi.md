@@ -33,7 +33,7 @@ Together they form a pipeline that turns a circuit function into a measurement r
 - `memory.py` : memory accounting. Pure helpers that estimate the peak memory of a batched run and, when it would not fit in available RAM, split the batch into chunks that do (`estimate_peak_bytes`, `compute_chunk_size`, `execute_chunked`). `Script` calls these to drive its memory-aware `vmap` chunking.
 - `evolution.py` : Hamiltonian time-evolution. The `Evolution` class builds gates that evolve a (parametrized) Hamiltonian in time, either analytically (`exp(-i t H)` for a static `H`) or by solving the Schrödinger equation with an adaptive `diffrax` solver or a fixed-step Magnus integrator. This module backs the pulse-level simulation.
 - `jaqsi.py` : the entry-point module. Exposes `Script` for circuit building, the `Hamiltonian` factory for time-evolution sources, and a few pulse/gate-independent quantum-info helpers (`partial_trace`, `marginalize_probs`, `build_parity_observable`). Time evolution is invoked as a method on the Hamiltonian object (`hamiltonian.evolve(...)`); the `Evolution` engine is re-exported here for solver configuration (`Evolution.set_solver_defaults`).
-- `algebra.py` : a companion module for dynamical Lie algebra (DLA) and trainability analysis, layered on `operations.py` rather than part of the simulate-measure pipeline. It builds DLAs from generators (`lie_closure_paulis`, `lie_closure_matrices`), constructs the matchgate algebra $\mathfrak{so}(2n)$ (`matchgate_generators`, `matchgate_basis`, `dim_so2n`), computes the g-purity of a state against a DLA basis (`g_purity_from_basis`, `g_purity_matrix`), and provides the permutation-symmetric operators `symmetric_pauli_sum`, `sn_equivariant_generators` and `sn_equivariant_observable`.
+- `algebra.py` : a companion module for dynamical Lie algebra (DLA) and trainability analysis, layered on `operations.py` rather than part of the simulate-measure pipeline. It builds DLAs from generators (`lie_closure_paulis`, with an optional `max_dim` cap for closures that saturate $\mathfrak{su}(2^n)$, and `lie_closure_matrices`), constructs the matchgate algebra $\mathfrak{so}(2n)$ (`matchgate_generators`, `matchgate_basis`, `dim_so2n`), computes the g-purity of a state against a DLA basis (`g_purity_from_basis`, `g_purity_matrix`), and provides the permutation-symmetric operators `symmetric_pauli_sum`, `sn_equivariant_generators` and `sn_equivariant_observable`.
 - `states.py` : state-preparation utilities returning dense statevectors of shape $(2^n,)$ (qubit 0 leftmost): the Dicke state (`dicke_state`), Haar-random states (`haar_state`) and graph states (`graph_state_vector` with the edge-set constructors `matching_edges`, `path_edges`, `complete_edges`). The arrays feed `Script.execute(initial_state=...)` and the `g_purity_*` helpers directly.
 
 A call to `Script.execute(...)` then runs four stages:
@@ -179,6 +179,14 @@ gens = matchgate_generators(n)         # {Z_k} u {X_k X_{k+1}}
 basis = matchgate_basis(n)             # the n(2n-1) Pauli strings of so(2n)
 assert len(basis) == dim_so2n(n)
 assert {pw.to_pauli_string() for pw in lie_closure_paulis(gens)} == set(basis)
+```
+
+An ansatz that saturates $\mathfrak{su}(2^n)$ has a closure of $4^n - 1$ words, which quickly becomes intractable to enumerate.
+Pass `max_dim` to stop the growth early; a result of that length means $\dim \mathfrak{g} \geq$ `max_dim` and the basis is partial, so it is only meaningful as a dimension bound:
+
+```python
+capped = lie_closure_paulis(gens, max_dim=dim_so2n(n))
+assert len(capped) == dim_so2n(n)      # so(2n) is reached exactly
 ```
 
 The g-purity $P_g = \sum_B \langle\psi\lvert B\rvert\psi\rangle^2$ of a statevector with respect to a DLA basis measures how much of the state lies in the algebra:
