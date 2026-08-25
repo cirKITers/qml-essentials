@@ -74,6 +74,18 @@ class TestLieClosurePaulis:
         assert len(basis) == n * (2 * n - 1)
 
     @pytest.mark.unittest
+    @pytest.mark.parametrize("max_dim", [1, 4, 7])
+    def test_max_dim_caps_growth(self, max_dim):
+        # so(6) has dimension 15; the cap must stop the closure exactly there.
+        basis = lie_closure_paulis(_matchgate_generators(3), max_dim=max_dim)
+        assert len(basis) == max_dim
+
+    @pytest.mark.unittest
+    def test_max_dim_above_dimension_is_exact(self):
+        gens = _matchgate_generators(3)
+        assert lie_closure_paulis(gens, max_dim=100) == lie_closure_paulis(gens)
+
+    @pytest.mark.unittest
     def test_accepts_pauliword_inputs(self):
         gens = [PauliWord.from_pauli_string(s, [0], 1) for s in ("X", "Y")]
         basis = lie_closure_paulis(gens)
