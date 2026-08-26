@@ -1601,6 +1601,7 @@ class Model:
         execution_type: Optional[str] = None,
         force_mean: bool = False,
         gate_mode: str = "unitary",
+        random_key: Optional[random.PRNGKey] = None,
     ) -> jnp.ndarray:
         """
         Execute the quantum circuit (callable interface).
@@ -1629,6 +1630,13 @@ class Model:
                 Defaults to False.
             gate_mode (str): Gate execution backend, "unitary" or "pulse".
                 Defaults to "unitary".
+            random_key (Optional[random.PRNGKey]): JAX random key for stochastic
+                execution (``GateError`` noise and shot sampling). If provided,
+                the caller owns key advancement and the model's internal
+                ``random_key`` is left untouched - this is the jit-safe way to
+                get fresh randomness per call, since the internal key cannot be
+                advanced from inside a trace. If None, the internal key is used
+                and advanced (eager calls only).
 
         Returns:
             jnp.ndarray: Circuit output with shape depending on execution_type:
@@ -1648,6 +1656,7 @@ class Model:
             execution_type=execution_type,
             force_mean=force_mean,
             gate_mode=gate_mode,
+            random_key=random_key,
         )
 
     def _forward(
@@ -1661,6 +1670,7 @@ class Model:
         execution_type: Optional[str] = None,
         force_mean: bool = False,
         gate_mode: str = "unitary",
+        random_key: Optional[random.PRNGKey] = None,
     ) -> jnp.ndarray:
         """
         Execute the quantum circuit forward pass.
@@ -1691,6 +1701,10 @@ class Model:
                 Defaults to False.
             gate_mode (str): Gate execution backend, "unitary" or "pulse".
                 Defaults to "unitary".
+            random_key (Optional[random.PRNGKey]): JAX random key for stochastic
+                execution. If provided, it is used instead of (and does not
+                modify) the model's internal ``random_key``. See
+                :meth:`__call__` for details.
 
         Returns:
             jnp.ndarray: Circuit output with shape depending on execution_type:
@@ -1733,12 +1747,20 @@ class Model:
         )
 
         # split to generate a sub_key, required for actual execution.
-        # Under JAX tracing (jit / grad) the split result is a tracer; stashing it
-        # on ``self`` leaks the tracer across calls (UnexpectedTracerError), so only
-        # advance the key eagerly
-        new_key, sub_key = safe_random_split(self.random_key)
-        if not isinstance(new_key, jax.core.Tracer):
-            self.random_key = new_key
+        if random_key is not None:
+            # explicit key: purely functional, the caller advances it. This is
+            # the only way to get fresh randomness inside a trace, because a
+            # jitted call is traced once and then replays the trace-time key.
+            _, sub_key = safe_random_split(random_key)
+        else:
+            # Under JAX tracing (jit) the split result is a tracer; stashing it
+            # on ``self`` leaks the tracer across calls (UnexpectedTracerError),
+            # so only advance the key eagerly. Note that a jitted call
+            # therefore reuses the same key on every execution - pass
+            # ``random_key`` explicitly if that matters.
+            new_key, sub_key = safe_random_split(self.random_key)
+            if not isinstance(new_key, jax.core.Tracer):
+                self.random_key = new_key
 
         # Build measurement type & observables from execution_type / output_qubit
         meas_type, obs = self._build_obs()
