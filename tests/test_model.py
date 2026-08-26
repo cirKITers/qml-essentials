@@ -1,4 +1,6 @@
+import jax
 from jax import random, grad, numpy as jnp
+from typing import Any, Dict
 import numpy as np
 import random as pyrandom
 import optax
@@ -200,6 +202,93 @@ def test_random_key() -> None:
 
     assert key_a != key_b, "Keys should be different"
     assert key_b != model.random_key, "Keys should be different"
+
+
+@pytest.mark.unittest
+def test_random_key_call() -> None:
+    """The internal key advances on eager calls, but a jitted call is traced
+    once and replays the trace-time key, so an explicit ``random_key`` is the
+    only way to get fresh randomness inside a trace."""
+    kwargs: Dict[str, Any] = dict(
+        inputs=jnp.array([0.0]),
+        noise_params={"GateError": 0.3},
+        execution_type="expval",
+        force_mean=True,
+    )
+
+    def mk() -> Model:
+        return Model(
+            n_qubits=2, n_layers=1, circuit_type="Circuit_19", random_seed=1000
+        )
+
+    # eager: internal key advances, so stochastic results differ per call
+    model = mk()
+    key_before = model.random_key
+    a = model(**kwargs)
+    assert key_before != model.random_key, "Key should advance on an eager call"
+    assert not jnp.allclose(a, model(**kwargs)), "Eager noise should be resampled"
+
+    # an explicit key reproduces what the internal key would have produced
+    model = mk()
+    b = model(random_key=key_before, **kwargs)
+    assert jnp.allclose(a, b), "Explicit key should match the internal key result"
+    assert key_before == model.random_key, "Explicit key must not advance the state"
+
+    # under jit the internal key is frozen: identical results on every call
+    model = mk()
+    key_before = model.random_key
+    frozen = jax.jit(lambda p: model(params=p, **kwargs))
+    params = jnp.array(model.params)
+    assert jnp.allclose(frozen(params), frozen(params)), (
+        "Without an explicit key, a jitted call replays the trace-time key"
+    )
+    assert key_before == model.random_key, "Tracer must not be stashed on the model"
+
+    # ... whereas an explicit key gives fresh randomness per call
+    model = mk()
+    fresh = jax.jit(lambda p, k: model(params=p, random_key=k, **kwargs))
+    key = random.key(1000)
+    results = []
+    for _ in range(3):
+        key, sub_key = random.split(key)
+        results.append(fresh(params, sub_key))
+    assert not jnp.allclose(results[0], results[1])
+    assert not jnp.allclose(results[1], results[2])
+
+
+@pytest.mark.unittest
+def test_no_tracer_leak_on_model_state(caplog) -> None:
+    """Traced arguments must not be stashed on the model, otherwise the next
+    read of e.g. ``model.params`` raises an UnexpectedTracerError."""
+    caplog.set_level(logging.DEBUG, logger="qml_essentials.model")
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Circuit_19", random_seed=1000)
+    params = jnp.array(model.params)
+    enc_params = jnp.array(model.enc_params)
+
+    cost = jax.jit(
+        lambda p, e: jnp.sum(
+            model(
+                params=p,
+                enc_params=e,
+                inputs=jnp.array([0.0]),
+                execution_type="expval",
+                force_mean=True,
+            )
+        )
+    )
+    cost(params, enc_params)
+
+    for name in ("params", "enc_params"):
+        assert not isinstance(getattr(model, name), jax.core.Tracer), (
+            f"`{name}` must not hold a tracer after a traced call"
+        )
+        assert any(f"`{name}` is a JAX tracer" in r.message for r in caplog.records), (
+            f"Skipping the `{name}` write should be reported at debug level"
+        )
+
+    # a second call reads the model state again; this raised before the guard
+    cost(params, enc_params)
+    grad(lambda p: jnp.sum(model(params=p, inputs=jnp.array([0.0]))))(params)
 
 
 @pytest.mark.smoketest
