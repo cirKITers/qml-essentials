@@ -28,7 +28,7 @@ class Model:
         self,
         n_qubits: int,
         n_layers: int,
-        circuit_type: Union[str, Circuit] = "No_Ansatz",
+        circuit_type: Union[str, type[Circuit]] = "No_Ansatz",
         data_reupload: Union[
             bool, List[List[bool]], List[List[List[bool]]], np.ndarray
         ] = True,
