@@ -1,6 +1,7 @@
 .vscode
 logs/
 tests_external/
+references
 
 # General files
 *.bkp
