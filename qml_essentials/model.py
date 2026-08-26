@@ -1316,13 +1316,20 @@ class Model:
                 params = jnp.expand_dims(params, axis=0)
 
             # Avoid stashing JAX tracers on ``self``: under an outer
-            # transform (e.g. ``jacrev``) the tracer becomes invalid once
-            # the transform returns, and a subsequent read of
+            # transform (e.g. ``jit``/``jacrev``) the tracer becomes invalid
+            # once the transform returns, and a subsequent read of
             # ``self.params`` would feed a leaked tracer into the next
             # call (raising ``UnexpectedTracerError``).
-            # if not isinstance(params, jax.core.Tracer):
-            #     self.params = params
-            self.params = params
+            if not isinstance(params, jax.core.Tracer):
+                self.params = params
+            else:
+                log.debug(
+                    "`params` is a JAX tracer; `self.params` is left at its "
+                    "previous value. Anything reading model state afterwards "
+                    "(draw, Entanglement, Expressibility, or a call that omits "
+                    "`params`) will see the stale parameters - assign "
+                    "`model.params` explicitly if you need the state to follow."
+                )
         else:
             params = self.params
 
@@ -1352,9 +1359,13 @@ class Model:
                 pulse_params = jnp.expand_dims(pulse_params, axis=0)
             # See note in _params_validation: never stash JAX tracers on
             # ``self``.
-            # if not isinstance(pulse_params, jax.core.Tracer):
-            #     self.pulse_params = pulse_params
-            self.pulse_params = pulse_params
+            if not isinstance(pulse_params, jax.core.Tracer):
+                self.pulse_params = pulse_params
+            else:
+                log.debug(
+                    "`pulse_params` is a JAX tracer; `self.pulse_params` is "
+                    "left at its previous value."
+                )
 
         return pulse_params
 
@@ -1381,15 +1392,16 @@ class Model:
         else:
             # See note in _params_validation: never stash JAX tracers on
             # ``self``.
-            # if not isinstance(enc_params, jax.core.Tracer):
-            #     if self.trainable_frequencies:
-            #         self.enc_params = enc_params
-            #     else:
-            #         self.enc_params = jnp.array(enc_params)
-            if self.trainable_frequencies:
-                self.enc_params = enc_params
+            if not isinstance(enc_params, jax.core.Tracer):
+                if self.trainable_frequencies:
+                    self.enc_params = enc_params
+                else:
+                    self.enc_params = jnp.array(enc_params)
             else:
-                self.enc_params = jnp.array(enc_params)
+                log.debug(
+                    "`enc_params` is a JAX tracer; `self.enc_params` is left "
+                    "at its previous value."
+                )
 
         if len(enc_params.shape) == 1 and self.n_input_feat == 1:
             enc_params = enc_params.reshape(-1, 1)
@@ -1644,6 +1656,25 @@ class Model:
                 - "density": (2^n_output, 2^n_output)
                 - "probs": (2^n_output,) or (n_pairs, 2^pair_size)
                 - "state": (2^n_qubits,)
+
+        Note:
+            An eager call stores ``params``, ``pulse_params`` and ``enc_params``
+            on the model, but a traced call (``jit``, ``grad``, ``vmap``) does
+            not: JAX tracers must not outlive their transform, so the model
+            state keeps its previous value. Two consequences:
+
+            - Anything reading model state after a traced call - ``draw``,
+              :class:`~qml_essentials.entanglement.Entanglement`,
+              :class:`~qml_essentials.expressibility.Expressibility`, or a
+              later call that omits ``params`` - sees the *old* parameters.
+              Assign ``model.params = params`` yourself if the state should
+              follow a traced optimization step.
+            - Omitting ``params`` in a second call inside the same trace falls
+              back to that stale state, so the result does not depend on the
+              traced parameters (its gradient is zero). Pass ``params``
+              explicitly on every call inside a trace.
+
+            The skipped writes are reported at debug log level.
         """
         # Call forward method which handles the actual caching etc.
         return self._forward(
