@@ -228,12 +228,21 @@ class UnitaryGates:
                 "A random_key must be provided when using GateError"
             )
 
+            # Gates within an ansatz layer all receive the same ``random_key``,
+            # so the position on the tape is folded in to decorrelate their
+            # draws. It is a Python int at trace time (this runs while the tape
+            # is being recorded) and hence constant across the batch.
+            tape = op.active_tape()
+            position = len(tape) if tape is not None else 0
+
             if UnitaryGates.batch_gate_error:
                 random_key, sub_key = safe_random_split(random_key)
+                sub_key = jax.random.fold_in(sub_key, position)
             else:
-                # Use a fixed key so that every batch element (under vmap)
-                # draws the same noise value, effectively broadcasting.
-                sub_key = jax.random.key(0)
+                # Use a batch-independent key so that every batch element
+                # (under vmap) draws the same noise value, effectively
+                # broadcasting.
+                sub_key = jax.random.fold_in(jax.random.key(0), position)
 
             w += noise_params["GateError"] * jax.random.normal(
                 sub_key,
