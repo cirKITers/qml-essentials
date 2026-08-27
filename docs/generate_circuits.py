@@ -1,7 +1,11 @@
 import os
 
-from qml_essentials.model import Model
+import jax.numpy as jnp
+
 from qml_essentials.ansaetze import Ansaetze
+from qml_essentials.drawing import draw_mpl
+from qml_essentials.operations import Barrier
+from qml_essentials.tape import recording
 
 edit_ansaetze_file = False
 ansaetze = Ansaetze.get_available()
@@ -9,16 +13,16 @@ cwd = os.path.dirname(__file__)
 
 
 def plot_circuit(q, ansatz):
-    model = Model(
-        n_qubits=q,
-        n_layers=1,
-        circuit_type=ansatz.__name__,
-        observables=None,
-        remove_zero_encoding=True,
-        data_reupload=False,
-    )
+    # record the ansatz directly with jaqsi to exclude any encoding gates
+    pqc = ansatz()
+    params = jnp.zeros(pqc.n_params_per_layer(q))
 
-    fig, _ = model.draw(figure="mpl")
+    with recording() as tape:
+        pqc(params, q)
+
+    # barriers and gate angles only add clutter to the ansatz overview
+    ops = [op for op in tape if not isinstance(op, Barrier)]
+    fig, _ = draw_mpl(ops, q, gate_values=False)
 
     fig.savefig(
         f"{cwd}/figures/circuits_{q}q/{ansatz.__name__}_light.png",
