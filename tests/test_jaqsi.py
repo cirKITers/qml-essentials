@@ -1650,6 +1650,29 @@ class TestGateOperations:
         assert result.matrix.shape == (8, 8)
 
 
+class TestDrawing:
+    @pytest.mark.unittest
+    def test_draw_mpl_gate_values(self):
+        """gate_values=False labels gates by name, without angles."""
+        import matplotlib.pyplot as plt
+        from qml_essentials.drawing import draw_mpl
+        from qml_essentials.tape import recording
+
+        with recording() as tape:
+            RX(jnp.pi / 2, wires=0)
+            CRX(jnp.pi / 2, wires=[0, 1])
+
+        fig, ax = draw_mpl(list(tape), 2)
+        assert "RX(\u03c0/2)" in [t.get_text() for t in ax.texts]
+        plt.close(fig)
+
+        fig, ax = draw_mpl(list(tape), 2, gate_values=False)
+        labels = [t.get_text() for t in ax.texts]
+        assert "RX" in labels
+        assert not any("(" in label for label in labels)
+        plt.close(fig)
+
+
 class TestMemory:
     @pytest.mark.unittest
     @pytest.mark.limit_memory("1 GB")
@@ -1808,6 +1831,7 @@ class TestChunk:
             (),
             UnitaryGates.batch_gate_error,
             False,  # has_init
+            None,  # fingerprint
         )
         batched_fn, *_ = script._jit_cache[cache_key]
 
@@ -1979,6 +2003,7 @@ class TestChunk:
             (),
             UnitaryGates.batch_gate_error,
             False,  # has_init
+            None,  # fingerprint
         )
         batched_fn, *_ = script2._jit_cache[cache_key]
 
@@ -2025,6 +2050,7 @@ class TestChunk:
             (),
             UnitaryGates.batch_gate_error,
             False,  # has_init
+            None,  # fingerprint
         )
         batched_fn, *_ = script2._jit_cache[cache_key]
 

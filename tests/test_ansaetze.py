@@ -23,16 +23,25 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.unittest
 def test_gate_error_noise():
-    random_key = jax.random.key(1000)
-
-    def circuit(noise_params=None):
+    def circuit(noise_params=None, random_key=None):
         Gates.RX(np.pi, wires=0, noise_params=noise_params, random_key=random_key)
 
     obs = [op.PauliZ(wires=0)]
 
     script = js.Script(circuit, n_qubits=1)
-    no_noise = script.execute(type="expval", obs=obs, args=({},))
-    with_noise = script.execute(type="expval", obs=obs, args=({"GateError": 50},))
+    no_noise = script.execute(type="expval", obs=obs, args=({}, jax.random.key(1000)))
+    # a single draw can land close to a multiple of 2\pi, which leaves the
+    # expectation value unchanged, so the check is averaged over several keys
+    with_noise = np.mean(
+        [
+            script.execute(
+                type="expval",
+                obs=obs,
+                args=({"GateError": 50}, jax.random.key(seed)),
+            )
+            for seed in range(8)
+        ]
+    )
 
     assert np.isclose(no_noise, -1, atol=0.01), (
         f"Expected ~-1 with no noise, got {no_noise}"
@@ -40,6 +49,35 @@ def test_gate_error_noise():
     assert not np.isclose(with_noise, no_noise, atol=0.01), (
         "Expected with noise output to differ, "
         + f"got with noise: {with_noise} and with no noise: {no_noise}"
+    )
+
+
+@pytest.mark.unittest
+def test_gate_error_independent_per_gate():
+    from qml_essentials.tape import recording
+
+    model = Model(
+        n_qubits=2,
+        n_layers=2,
+        circuit_type="Circuit_19",
+        random_seed=1000,
+    )
+
+    # with zero parameters and zero inputs, every recorded rotation angle is
+    # exactly the gate error draw of that gate
+    with recording() as tape:
+        model._variational(
+            jnp.zeros_like(model.params[0]),
+            jnp.array([0.0]),
+            random_key=jax.random.key(1000),
+            enc_params=model.enc_params,
+            noise_params={"GateError": 0.5},
+        )
+
+    draws = [float(o.parameters[0]) for o in tape if o.parameters]
+    assert len(draws) > 1, "Expected multiple parameterized gates"
+    assert len(set(draws)) == len(draws), (
+        f"Expected pairwise distinct gate error draws, got {draws}"
     )
 
 
@@ -369,7 +407,7 @@ def test_pulse_params_ansaetze() -> None:
         )
 
         try:
-            res = model(gate_mode="pulse")
+            res = model(gate_mode="ansatz_pulse")
             assert np.allclose(res, res, atol=1e-6)
         except Exception as e:
             raise Exception(f"Error for ansatz {ansatz}: {e}")
@@ -412,7 +450,7 @@ def test_pulse_params_ansaetze_4q() -> None:
         )
 
         try:
-            res = model(gate_mode="pulse")
+            res = model(gate_mode="ansatz_pulse")
             assert np.allclose(res, res, atol=1e-6), (
                 f"Results for ansatz {ansatz} are not close enough"
             )
@@ -430,7 +468,7 @@ def test_pulse_benchmarks() -> None:
         circuit_type="Circuit_19",
         data_reupload=False,
     )
-    _ = model(gate_mode="pulse")
+    _ = model(gate_mode="ansatz_pulse")
     end = time.time()
     print(f"Time: {end - start}")
 

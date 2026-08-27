@@ -1,5 +1,6 @@
 import jax
 from jax import random, grad, numpy as jnp
+from typing import Any, Dict
 import numpy as np
 import random as pyrandom
 import subprocess
@@ -13,6 +14,7 @@ from qml_essentials.pulses import PulseInformation
 from qml_essentials.coefficients import Datasets
 import pytest
 import logging
+import warnings
 import pennylane as qml
 import time
 
@@ -205,6 +207,226 @@ def test_random_key() -> None:
     assert key_b != model.random_key, "Keys should be different"
 
 
+@pytest.mark.unittest
+def test_random_key_call() -> None:
+    """The internal key advances on eager calls, but a jitted call is traced
+    once and replays the trace-time key, so an explicit ``random_key`` is the
+    only way to get fresh randomness inside a trace."""
+    kwargs: Dict[str, Any] = dict(
+        inputs=jnp.array([0.0]),
+        noise_params={"GateError": 0.3},
+        execution_type="expval",
+        force_mean=True,
+    )
+
+    def mk() -> Model:
+        return Model(
+            n_qubits=2, n_layers=1, circuit_type="Circuit_19", random_seed=1000
+        )
+
+    # eager: internal key advances, so stochastic results differ per call
+    model = mk()
+    key_before = model.random_key
+    a = model(**kwargs)
+    assert key_before != model.random_key, "Key should advance on an eager call"
+    assert not jnp.allclose(a, model(**kwargs)), "Eager noise should be resampled"
+
+    # an explicit key reproduces what the internal key would have produced
+    model = mk()
+    b = model(random_key=key_before, **kwargs)
+    assert jnp.allclose(a, b), "Explicit key should match the internal key result"
+    assert key_before == model.random_key, "Explicit key must not advance the state"
+
+    # under jit the internal key is frozen: identical results on every call
+    model = mk()
+    key_before = model.random_key
+    frozen = jax.jit(lambda p: model(params=p, **kwargs))
+    params = jnp.array(model.params)
+    with pytest.warns(UserWarning, match="replays the same noise realization"):
+        first = frozen(params)
+    assert jnp.allclose(first, frozen(params)), (
+        "Without an explicit key, a jitted call replays the trace-time key"
+    )
+    assert key_before == model.random_key, "Tracer must not be stashed on the model"
+
+    # ... whereas an explicit key gives fresh randomness per call
+    model = mk()
+    fresh = jax.jit(lambda p, k: model(params=p, random_key=k, **kwargs))
+    key = random.key(1000)
+    results = []
+    for _ in range(3):
+        key, sub_key = random.split(key)
+        results.append(fresh(params, sub_key))
+    assert not jnp.allclose(results[0], results[1])
+    assert not jnp.allclose(results[1], results[2])
+
+
+@pytest.mark.unittest
+def test_frozen_randomness_warning() -> None:
+    """Stochastic execution without an explicit key warns under a transform."""
+
+    def mk(**kwargs: Any) -> Model:
+        return Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            random_seed=1000,
+            **kwargs,
+        )
+
+    inputs = jnp.array([0.5])
+    noise_params = {"GateError": 0.3}
+
+    model = mk()
+    with pytest.warns(UserWarning, match="replays the same noise realization"):
+        jax.jit(lambda p: model(params=p, inputs=inputs, noise_params=noise_params))(
+            model.params
+        )
+
+    # shots are stochastic as well
+    model = mk(shots=100)
+    with pytest.warns(UserWarning, match="replays the same noise realization"):
+        jax.jit(lambda p: model(params=p, inputs=inputs))(model.params)
+
+    # no warning eagerly, with an explicit key, or without any randomness
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+
+        model = mk()
+        model(inputs=inputs, noise_params=noise_params)
+
+        model = mk()
+        jax.jit(
+            lambda p, k: model(
+                params=p, inputs=inputs, noise_params=noise_params, random_key=k
+            )
+        )(model.params, random.key(0))
+
+        model = mk()
+        jax.jit(lambda p: model(params=p, inputs=inputs))(model.params)
+
+
+@pytest.mark.unittest
+def test_next_key() -> None:
+    """``next_key`` advances the internal key and feeds a traced call."""
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Circuit_19", random_seed=1000)
+
+    key_before = model.random_key
+    first, second = model.next_key(), model.next_key()
+    assert key_before != model.random_key, "next_key should advance the internal key"
+    assert first != second, "next_key should return a fresh key each time"
+
+    noisy = jax.jit(
+        lambda p, k: model(
+            params=p,
+            inputs=jnp.array([0.5]),
+            noise_params={"GateError": 0.3},
+            random_key=k,
+        )
+    )
+    params = jnp.array(model.params)
+    assert not jnp.allclose(noisy(params, model.next_key()), noisy(params, first)), (
+        "A key per call should give fresh noise inside the trace"
+    )
+
+
+@pytest.mark.unittest
+def test_structural_change_invalidates_plan() -> None:
+    """Changing the circuit structure must not reuse a cached batched plan."""
+
+    def mk(**kwargs: Any) -> Model:
+        return Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            random_seed=1000,
+            **kwargs,
+        )
+
+    # batched inputs, so the cached (vmapped) execution path is used
+    inputs = jnp.array([[0.5], [1.2]])
+
+    model = mk()
+    model(inputs=inputs)
+    reused = model(inputs=inputs, data_reupload=False)
+    assert jnp.allclose(reused, mk(data_reupload=False)(inputs=inputs)), (
+        "data_reupload change must not reuse the previous plan"
+    )
+
+    model = mk()
+    model(inputs=inputs)
+    model.observables = 0
+    assert jnp.allclose(model(inputs=inputs), mk(observables=0)(inputs=inputs)), (
+        "observables change must not reuse the previous plan"
+    )
+
+    # noise is captured in the traced closure, and shot mode caches it too
+    model = mk(shots=1000)
+    key = random.key(1000)
+    noiseless = model(inputs=inputs, random_key=key)
+    noisy = model(inputs=inputs, noise_params={"BitFlip": 0.5}, random_key=key)
+    assert not jnp.allclose(noiseless, noisy), (
+        "noise change must not reuse the previous shot plan"
+    )
+
+
+@pytest.mark.unittest
+def test_zero_inputs_eager_matches_traced() -> None:
+    """Zero inputs must not take a circuit path that tracing cannot take."""
+    kwargs: Dict[str, Any] = dict(
+        inputs=jnp.array([0.0]),
+        noise_params={"BitFlip": 0.2},
+        random_key=random.key(1000),
+    )
+
+    def mk() -> Model:
+        return Model(
+            n_qubits=2, n_layers=1, circuit_type="Circuit_19", random_seed=1000
+        )
+
+    eager = mk()(**kwargs)
+    model = mk()
+    traced = jax.jit(lambda p: model(params=p, **kwargs))(jnp.array(model.params))
+    assert jnp.allclose(eager, traced), (
+        "Zero inputs with noise must give the same result eagerly and traced"
+    )
+
+
+@pytest.mark.unittest
+def test_no_tracer_leak_on_model_state(caplog) -> None:
+    """Traced arguments must not be stashed on the model, otherwise the next
+    read of e.g. ``model.params`` raises an UnexpectedTracerError."""
+    caplog.set_level(logging.DEBUG, logger="qml_essentials.model")
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Circuit_19", random_seed=1000)
+    params = jnp.array(model.params)
+    enc_params = jnp.array(model.enc_params)
+
+    cost = jax.jit(
+        lambda p, e: jnp.sum(
+            model(
+                params=p,
+                enc_params=e,
+                inputs=jnp.array([0.0]),
+                execution_type="expval",
+                force_mean=True,
+            )
+        )
+    )
+    cost(params, enc_params)
+
+    for name in ("params", "enc_params"):
+        assert not isinstance(getattr(model, name), jax.core.Tracer), (
+            f"`{name}` must not hold a tracer after a traced call"
+        )
+        assert any(f"`{name}` is a JAX tracer" in r.message for r in caplog.records), (
+            f"Skipping the `{name}` write should be reported at debug level"
+        )
+
+    # a second call reads the model state again; this raised before the guard
+    cost(params, enc_params)
+    grad(lambda p: jnp.sum(model(params=p, inputs=jnp.array([0.0]))))(params)
+
+
 @pytest.mark.smoketest
 def test_state_preparation() -> None:
     test_cases = [
@@ -231,7 +453,6 @@ def test_state_preparation() -> None:
             n_layers=1,
             circuit_type="Circuit_19",
             state_preparation=test_case["state_preparation_unitary"],
-            remove_zero_encoding=False,
         )
 
         _ = model(
@@ -305,7 +526,6 @@ def test_encoding() -> None:
             n_layers=1,
             circuit_type="Circuit_19",
             encoding=test_case["encoding"],
-            remove_zero_encoding=False,
         )
 
         if test_case["warning"]:
@@ -383,7 +603,6 @@ def test_encoding_spectrum_reference(strategy, n_qubits) -> None:
         n_layers=1,
         circuit_type="Hardware_Efficient",
         encoding=Encoding(strategy, None if strategy == "golomb" else ["RX"]),
-        remove_zero_encoding=False,
     )
     naive = set(int(v) for v in model.frequencies[0])
     if strategy == "golomb":
@@ -442,7 +661,6 @@ def test_golomb_encoding() -> None:
         n_layers=1,
         circuit_type="Circuit_1",
         encoding=enc,
-        remove_zero_encoding=False,
     )
 
     assert model.n_input_feat == 1, "Golomb encoding should have 1 input feature"
@@ -498,7 +716,6 @@ def test_golomb_encoding() -> None:
         circuit_type="Circuit_1",
         encoding=enc,
         data_reupload=True,
-        remove_zero_encoding=False,
     )
     result_dru = model_dru(inputs=0.5)
     assert jnp.all(jnp.isfinite(result_dru)), (
@@ -512,7 +729,6 @@ def test_golomb_encoding() -> None:
         circuit_type="Circuit_1",
         encoding=Encoding("golomb", None),
         data_reupload=False,
-        remove_zero_encoding=False,
     )
     result_no_dru = model_no_dru(inputs=0.5)
     assert jnp.all(jnp.isfinite(result_no_dru)), (
@@ -578,7 +794,6 @@ def test_basic_draw() -> None:
             circuit_type=ansatz.__name__,
             initialization="random",
             observables=-1,
-            remove_zero_encoding=False,
         )
 
         if model.params.size >= 4:
@@ -613,7 +828,6 @@ def test_advanced_draw() -> None:
         initialization="random",
         observables=0,
         encoding=["RX", "RY"],
-        remove_zero_encoding=False,
     )
 
     if model.params.size >= 4:
@@ -691,26 +905,18 @@ def test_initialization() -> None:
 
 @pytest.mark.smoketest
 def test_inputs() -> None:
-    test_cases = [
-        {"inputs": 0.0, "remove_zero_encoding": True},
-        {"inputs": 0.0, "remove_zero_encoding": False},
-        {"inputs": jnp.zeros(5), "remove_zero_encoding": True},
-        {"inputs": jnp.zeros(5), "remove_zero_encoding": False},
-        {"inputs": jnp.arange(5), "remove_zero_encoding": True},
-        {"inputs": jnp.arange(5), "remove_zero_encoding": False},
-    ]
+    test_cases = [0.0, jnp.zeros(5), jnp.arange(5)]
 
-    for test_case in test_cases:
+    for inputs in test_cases:
         model = Model(
             n_qubits=2,
             n_layers=1,
             circuit_type="Circuit_19",
-            remove_zero_encoding=test_case["remove_zero_encoding"],
         )
 
         _ = model(
             model.params,
-            inputs=test_case["inputs"],
+            inputs=inputs,
             noise_params=None,
             execution_type="expval",
         )
@@ -765,7 +971,7 @@ def test_pulse_model() -> None:
             pulse_params=all_params[1],
             inputs=x,
             force_mean=True,
-            gate_mode="pulse",
+            gate_mode="ansatz_pulse",
         )
         return jnp.mean((y_hat - y) ** 2)
 
@@ -799,7 +1005,7 @@ def test_pulse_model_inference():
     inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
 
     # forward pass with initial pulse_params
-    y_hat_original = model(inputs=inputs, gate_mode="pulse", force_mean=True)
+    y_hat_original = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
 
     y_hat_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
 
@@ -812,7 +1018,7 @@ def test_pulse_model_inference():
     model.pulse_params += 0.1
 
     # forward pass with perturbed pulse_params
-    y_hat_perturbed = model(inputs=inputs, gate_mode="pulse", force_mean=True)
+    y_hat_perturbed = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
 
     assert y_hat_original.shape[0] == inputs.shape[0], "Output batch size mismatch"
 
@@ -832,7 +1038,8 @@ def test_pulse_model_batching():
 
     # test pulse params batching
     res_b = model(
-        pulse_params=jnp.repeat(model.pulse_params, 2, axis=0), gate_mode="pulse"
+        pulse_params=jnp.repeat(model.pulse_params, 2, axis=0),
+        gate_mode="ansatz_pulse",
     )
 
     # two qubits -> two expvals with batch size 2
@@ -843,7 +1050,7 @@ def test_pulse_model_batching():
 
     # test pulse params & inputs batching
     res_a = model(inputs=inputs, gate_mode="unitary")
-    res_b = model(inputs=inputs, gate_mode="pulse")
+    res_b = model(inputs=inputs, gate_mode="ansatz_pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
     assert jnp.allclose(res_a, res_b, atol=1e-2), (
@@ -854,12 +1061,235 @@ def test_pulse_model_batching():
 
     # test pulse params & params & inputs batching
     res_a = model(inputs=inputs, gate_mode="unitary")
-    res_b = model(inputs=inputs, gate_mode="pulse")
+    res_b = model(inputs=inputs, gate_mode="ansatz_pulse")
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
     assert jnp.allclose(res_a, res_b, atol=1e-2), (
         "Params batching failed. Results differ."
     )
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_shape() -> None:
+    model = Model(n_qubits=3, n_layers=2, circuit_type="Hardware_Efficient")
+
+    # one scaler per encoding-gate pulse parameter, per qubit, per feature
+    s = PulseInformation.gate_by_name("RX").size
+    assert model.enc_pulse_params.shape == (1, model.n_layers, model.n_qubits, s), (
+        "enc_pulse_params has unexpected shape"
+    )
+
+    # scalers are initialized to ones (no deviation from calibrated defaults)
+    assert jnp.allclose(model.enc_pulse_params, 1.0), (
+        "enc_pulse_params should be initialized to ones"
+    )
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_equivalence() -> None:
+    model = Model(n_qubits=3, n_layers=1, circuit_type="Hardware_Efficient")
+
+    # nonzero inputs are required: zero inputs skip encoding entirely
+    inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
+
+    y_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
+    y_all_pulse = model(inputs=inputs, gate_mode="all_pulse", force_mean=True)
+    y_enc_pulse = model(inputs=inputs, gate_mode="enc_pulse", force_mean=True)
+
+    assert jnp.allclose(y_unitary, y_all_pulse, atol=1e-2), (
+        "all_pulse output with unit scalers did not match unitary output"
+    )
+
+    assert jnp.allclose(y_unitary, y_enc_pulse, atol=1e-2), (
+        "enc_pulse output with unit scalers did not match unitary output"
+    )
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_frequency_scaling() -> None:
+    # Scaling the amplitude component of enc_pulse_params by s is the same
+    # frequency-scaling knob as the unitary trainable frequency enc_params = s
+    # (arXiv:2309.03279): under RWA the encoding gate implements RX/RY(s * x).
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+    inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
+
+    scale = 1.5
+    # amplitude entry of each encoding gate sits at its offset in the last axis
+    amp_idx = jnp.array(model._enc_pulse_offsets)
+    eta = model.enc_pulse_params.at[..., amp_idx].set(scale)
+
+    # enc_pulse leaves enc_params at its default (ones), so evaluate it first
+    y_enc_pulse = model(
+        inputs=inputs, gate_mode="enc_pulse", enc_pulse_params=eta, force_mean=True
+    )
+    y_unitary = model(
+        inputs=inputs,
+        gate_mode="unitary",
+        enc_params=scale * jnp.ones_like(model.enc_params),
+        force_mean=True,
+    )
+
+    assert jnp.allclose(y_enc_pulse, y_unitary, atol=1e-2), (
+        "amplitude scaler did not act as the trainable-frequency knob enc_params"
+    )
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_effect() -> None:
+    model = Model(n_qubits=3, n_layers=1, circuit_type="Hardware_Efficient")
+    inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
+
+    y_all_pulse = model(inputs=inputs, gate_mode="all_pulse", force_mean=True)
+    y_enc_pulse = model(inputs=inputs, gate_mode="enc_pulse", force_mean=True)
+    y_pulse = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
+
+    original = model.enc_pulse_params.copy()
+    model.enc_pulse_params = model.enc_pulse_params + 0.1
+
+    # perturbing enc_pulse_params changes all_pulse output ...
+    y_all_pulse_perturbed = model(inputs=inputs, gate_mode="all_pulse", force_mean=True)
+    assert not jnp.allclose(y_all_pulse, y_all_pulse_perturbed), (
+        "all_pulse output did not change after perturbing enc_pulse_params"
+    )
+
+    # ... and equally the enc_pulse output ...
+    y_enc_pulse_perturbed = model(inputs=inputs, gate_mode="enc_pulse", force_mean=True)
+    assert not jnp.allclose(y_enc_pulse, y_enc_pulse_perturbed), (
+        "enc_pulse output did not change after perturbing enc_pulse_params"
+    )
+
+    # ... but leaves the ansatz_pulse output (unitary encoding) untouched
+    y_pulse_after = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
+    assert jnp.allclose(y_pulse, y_pulse_after), (
+        "ansatz_pulse output changed after perturbing enc_pulse_params"
+    )
+
+    model.enc_pulse_params = original
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_gradient() -> None:
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+
+    domain = np.array([-jnp.pi, jnp.pi])
+    x = jnp.linspace(domain[0], domain[1], num=10)
+    y = jnp.stack([jnp.cos(sample) for sample in x])
+
+    def cost_fct(enc_pp):
+        y_hat = model(
+            inputs=x,
+            enc_pulse_params=enc_pp,
+            force_mean=True,
+            gate_mode="all_pulse",
+        )
+        return jnp.mean((y_hat - y) ** 2)
+
+    enc_pp = model.enc_pulse_params.copy()
+    grads = grad(cost_fct)(enc_pp)
+    assert jnp.any(jnp.abs(grads) > 1e-6), "Gradient wrt enc_pulse_params is too small"
+
+    # the study-4 conclusion rests on the ODE-adjoint gradient being correct:
+    # verify it against a central finite difference on one amplitude coordinate
+    idx = (0, 0, 0, model._enc_pulse_offsets[0])
+    h = 1e-3
+    fd = (cost_fct(enc_pp.at[idx].add(h)) - cost_fct(enc_pp.at[idx].add(-h))) / (2 * h)
+    assert jnp.allclose(fd, grads[idx], rtol=5e-2, atol=1e-3), (
+        f"autodiff grad {grads[idx]} disagrees with finite difference {fd}"
+    )
+
+    # use the original (non-traced) array for the optax step; reading back
+    # model.enc_pulse_params after grad would return a leaked tracer (same
+    # convention as pulse_params in test_pulse_model)
+    opt = optax.adam(0.05)
+    opt_state = opt.init(enc_pp)
+    updates, opt_state = opt.update(grads, opt_state, enc_pp)
+    enc_pp_after = optax.apply_updates(enc_pp, updates)
+
+    assert not jnp.allclose(enc_pp, enc_pp_after), (
+        "enc_pulse_params did not update during training"
+    )
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_batching() -> None:
+    random_key = random.key(1000)
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+
+    inputs = random.uniform(random_key, (3,), maxval=2 * jnp.pi)
+
+    # batch enc_pulse_params along axis 0 (B_E = 2)
+    batched = jnp.repeat(model.enc_pulse_params, 2, axis=0)
+    res = model(inputs=inputs, enc_pulse_params=batched, gate_mode="all_pulse")
+
+    # B_I = 3 inputs, B_E = 2 scaler sets, two qubits -> two expvals
+    assert res.shape == (3, 2, 2), "enc_pulse_params batch shape mismatch"
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_errors() -> None:
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+
+    # enc_pulse_params only allowed in the encoding-pulse modes
+    for mode in ("unitary", "ansatz_pulse"):
+        with pytest.raises(ValueError, match="enc_pulse_params were provided"):
+            model(enc_pulse_params=model.enc_pulse_params, gate_mode=mode)
+
+    # pulse_params only allowed in the ansatz-pulse modes
+    for mode in ("unitary", "enc_pulse"):
+        with pytest.raises(ValueError, match="pulse_params were provided"):
+            model(pulse_params=model.pulse_params, gate_mode=mode)
+
+    # unknown gate_mode
+    with pytest.raises(ValueError, match="Unknown gate_mode"):
+        model(gate_mode="foobar")
+
+    # pulse_params remain valid alongside all_pulse
+    model(pulse_params=model.pulse_params, gate_mode="all_pulse")
+
+    # enc_pulse_params remain valid alongside enc_pulse
+    model(enc_pulse_params=model.enc_pulse_params, gate_mode="enc_pulse")
+
+    # golomb encoding has no pulse parametrization -> encoding pulses unsupported
+    golomb_model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+        encoding=Encoding("golomb", None),
+    )
+    for mode in ("enc_pulse", "all_pulse"):
+        with pytest.raises(ValueError, match="requires an encoding"):
+            golomb_model(gate_mode=mode)
+
+    # a custom encoding callable has no pulse parametrization either
+    def custom_enc(inputs, wires, **kwargs):
+        Gates.RX(inputs, wires=wires, **kwargs)
+
+    custom_model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+        encoding=custom_enc,
+    )
+    for mode in ("enc_pulse", "all_pulse"):
+        with pytest.raises(ValueError, match="requires an encoding"):
+            custom_model(gate_mode=mode)
+
+
+@pytest.mark.unittest
+def test_pulse_encoding_backward_compat() -> None:
+    # a 3-element repeat_batch_axis (pre-enc_pulse_params) must still work
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+        repeat_batch_axis=[True, True, True],
+    )
+    inputs = jnp.linspace(-jnp.pi, jnp.pi, 5)
+
+    # plain ansatz pulse mode is unaffected by the encoding-pulse extension
+    res_u = model(inputs=inputs, gate_mode="unitary", force_mean=True)
+    res_p = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
+    assert jnp.allclose(res_u, res_p, atol=1e-2), "pulse output drifted from unitary"
 
 
 @pytest.mark.unittest
@@ -1494,7 +1924,7 @@ def test_pulse_mode_training() -> None:
             targets=fourier_samples,
             execution_type="expval",
             force_mean=True,
-            gate_mode="pulse",
+            gate_mode="ansatz_pulse",
         )
         updates, opt_state = opt.update(grads, opt_state, params)
         params = optax.apply_updates(params, updates)
@@ -1544,14 +1974,13 @@ def _model_state(model: Model) -> dict:
         "noise_params": model.noise_params,
         "execution_type": model.execution_type,
         "batch_shape": model._batch_shape,
-        "zero_inputs": model._zero_inputs,
     }
 
 
 def _assert_state_unchanged(before: dict, after: dict) -> None:
     for key in ("params", "enc_params", "pulse_params", "random_key"):
         assert np.array_equal(before[key], after[key]), f"{key} was modified"
-    for key in ("noise_params", "execution_type", "batch_shape", "zero_inputs"):
+    for key in ("noise_params", "execution_type", "batch_shape"):
         assert before[key] == after[key], f"{key} was modified"
 
 
@@ -1597,8 +2026,8 @@ def test_apply_pure_under_jit() -> None:
     # the second call is where a tracer leaked by the first one would surface
     out_b = fn(model.params, jnp.array([0.4, 0.5, 0.6]))
 
-    assert out_a.shape == (3, 1, 1, 2)
-    assert out_b.shape == (3, 1, 1, 2)
+    assert out_a.shape == (3, 1, 1, 1, 2)
+    assert out_b.shape == (3, 1, 1, 1, 2)
     assert not jnp.allclose(out_a, out_b)
 
     _assert_state_unchanged(before, _model_state(model))
@@ -1616,10 +2045,10 @@ def test_apply_under_vmap() -> None:
     before = _model_state(model)
 
     out = jax.vmap(lambda x: model.apply(inputs=x))(inputs)
-    assert out.shape == (3, 1, 1, 1, 2)
+    assert out.shape == (3, 1, 1, 1, 1, 2)
 
     ref = model.apply(inputs=inputs)
-    assert ref.shape == (3, 1, 1, 2)
+    assert ref.shape == (3, 1, 1, 1, 2)
     assert jnp.allclose(out.reshape(3, 2), ref.reshape(3, 2), atol=1e-6)
 
     _assert_state_unchanged(before, _model_state(model))
@@ -1673,22 +2102,22 @@ def test_apply_output_shape() -> None:
         {
             "inputs": jnp.array(0.1),
             "observables": [0, 1],
-            "out_shape": (1, 1, 1, 2),
+            "out_shape": (1, 1, 1, 1, 2),
         },
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "observables": [0, 1],
-            "out_shape": (3, 1, 1, 2),
+            "out_shape": (3, 1, 1, 1, 2),
         },
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
             "observables": 0,
-            "out_shape": (3, 1, 1, 1),
+            "out_shape": (3, 1, 1, 1, 1),
         },
         {
             "inputs": jnp.array(0.1),
             "observables": 0,
-            "out_shape": (1, 1, 1, 1),
+            "out_shape": (1, 1, 1, 1, 1),
         },
     ]
 
@@ -1709,7 +2138,7 @@ def test_apply_output_shape() -> None:
 
 @pytest.mark.unittest
 def test_call_keepdims() -> None:
-    """keepdims=True returns the full [B_I, B_P, B_R, O] shape."""
+    """keepdims=True returns the full [B_I, B_P, B_R, B_E, O] shape."""
     test_cases = [
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
@@ -1717,7 +2146,7 @@ def test_call_keepdims() -> None:
             "observables": [0, 1],
             "shots": None,
             "force_mean": False,
-            "out_shape": (3, 1, 1, 2),
+            "out_shape": (3, 1, 1, 1, 2),
         },
         {
             "inputs": jnp.array(0.1),
@@ -1725,7 +2154,7 @@ def test_call_keepdims() -> None:
             "observables": 0,
             "shots": None,
             "force_mean": False,
-            "out_shape": (1, 1, 1, 1),
+            "out_shape": (1, 1, 1, 1, 1),
         },
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
@@ -1733,7 +2162,7 @@ def test_call_keepdims() -> None:
             "observables": [0, 1],
             "shots": None,
             "force_mean": True,
-            "out_shape": (3, 1, 1, 1),
+            "out_shape": (3, 1, 1, 1, 1),
         },
         {
             "inputs": jnp.array([0.1, 0.2, 0.3]),
@@ -1741,7 +2170,7 @@ def test_call_keepdims() -> None:
             "observables": -1,
             "shots": None,
             "force_mean": False,
-            "out_shape": (3, 1, 1, 4, 4),
+            "out_shape": (3, 1, 1, 1, 4, 4),
         },
     ]
 

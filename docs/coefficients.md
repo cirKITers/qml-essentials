@@ -211,6 +211,7 @@ A rotation depending on more than one feature raises `NotImplementedError`; and 
 
 For the numerical FFT (`Coefficients.get_spectrum`) a custom circuit additionally requires `model.degree` to be set high enough to resolve the largest frequency.
 The sampling grid is built from `model.degree` (the number of frequencies, i.e. $2\,\omega_\text{max} + 1$), not `model.frequencies`.
+Because `model.degree` reflects the nominal integer comb and not any scaling applied through `enc_params` or `enc_pulse_params`, a model whose effective frequencies exceed the nominal degree by a factor $s > 1$ needs `mfs` at least $\lceil s \rceil$ to avoid aliasing the scaled components.
 
 ## Estimating the Exact Spectrum
 

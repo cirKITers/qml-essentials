@@ -92,6 +92,7 @@ The `initialize_params` method provides the option to re-initialise the paramete
 Given a PRNG key, it returns the `key` from `key, subkey = random.split(key)`  as documented [here](https://docs.jax.dev/en/latest/random-numbers.html) and uses the subkey for the actual parameter initialization.
 It's also possible to omit the `key` argument entirely, as the model has an internal `random_key` state which is updated every time randomness is utilized.
 This allows to repeatingly call `model.initialize_params()` to generate a continous sequence of random initializations.
+The same key state can be advanced manually with `model.next_key()`, which is required to obtain fresh randomness inside a JAX transformation (see [Noise](noise.md#randomness-under-jax-transformations)).
 
 
 ## Encoding
@@ -110,7 +111,7 @@ Other options are:
 See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
 Otherwise multiple inputs are treated as batches of inputs.
-If you want to visualize zero-valued encoding gates in the model, set `remove_zero_encoding` to `False` on instantiation.
+Encoding gates are always part of the circuit, also when the input is zero and the gates reduce to the identity.
 
 In case of a multi-dimensional input, you can obtain the highest frequency in each encoding dimension from the `model.degree` property.
 Note that, `model.degree` includes the negative and zero frequency (i.e. the full spectrum).
@@ -198,6 +199,7 @@ Noise can be added to the model by providing a `noise_params` argument, when cal
 
 with values between $0$ and $1$.
 Additionally, a `GateError` can be applied, which controls the variance of a Gaussian distribution with zero mean applied on the input vector.
+Each gate draws its error independently.
 
 While `BitFlip`, `PhaseFlip`, `Depolarizing` and `GateError`s are applied on each gate, `AmplitudeDamping`, `PhaseDamping`, `StatePreparation` and `Measurement` are applied on the whole circuit.
 
@@ -232,9 +234,19 @@ Switching between unitary-level and pulse-level execution is seamless and contro
 # Default unitary-level simulation
 model(params, inputs)
 
-# Pulse-level simulation
-model(params, inputs, gate_mode="pulse")
+# Ansatz and state-preparation gates at pulse level
+model(params, inputs, gate_mode="ansatz_pulse")
+
+# Only the input-encoding gates at pulse level
+model(params, inputs, gate_mode="enc_pulse")
+
+# Everything at pulse level
+model(params, inputs, gate_mode="all_pulse")
 ```
+
+The four modes let you choose which group of gates is lowered to the pulse layer.
+`unitary` keeps every gate ideal, `ansatz_pulse` lowers the ansatz and state-preparation gates, `enc_pulse` lowers only the input-encoding gates, and `all_pulse` lowers both groups.
+See [*Pulses*](pulses.md#pulse_level_encoding) for the parameters belonging to each group.
 
 Pulse-level gates can also be instantiated directly:
 
@@ -292,12 +304,15 @@ model(inputs=random.uniform(key, (10, 1)))
 ```
 In this example, instead of a batch size of `100`, the output will have a batch size of `10` instead (shape `(10,2)`).
 
+Calls with a batch dimension reuse a compiled execution plan whenever the shapes of the arguments match.
+Changes to the circuit structure, such as `data_reupload` or `observables`, are accounted for, but replacing the `encoding` after instantiation is not supported.
+
 ## Functional Execution
 
 Calling the model directly stores the arguments it receives on the model, which is convenient but means that such a call cannot be wrapped in an outer `jax.jit` or `jax.vmap`: the stashed tracer would escape the transform and invalidate the next call.
 
 For that purpose, the model provides `apply`, which is a pure counterpart of the regular call.
-It writes no model state, and the output always keeps the full `[B_I, B_P, B_R, O]` shape, so its rank does not depend on the batch sizes.
+It writes no model state, and the output always keeps the full `[B_I, B_P, B_R, B_E, O]` shape, so its rank does not depend on the batch sizes.
 
 ```python
 import jax
@@ -314,6 +329,7 @@ Arguments left as `None` fall back to the current model state, which an outer `j
 Anything that varies between calls, such as the parameters during training or the key for shots, has to be passed explicitly.
 In contrast to the regular call, `apply` takes no `data_reupload` argument, as that reconfigures the circuit; set `model.data_reupload` beforehand instead.
 Randomness is controlled through the `key` argument, which defaults to the model's random key without advancing it.
+The regular call accepts the equivalent `random_key` argument; in both cases a fresh key per step comes from `model.next_key()`, see [Noise](noise.md#randomness-under-jax-transformations).
 
 ## Quantikz Export
 

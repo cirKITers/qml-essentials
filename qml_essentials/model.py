@@ -12,11 +12,23 @@ from qml_essentials.tape import recording
 from qml_essentials.operations import KrausChannel
 from qml_essentials.ansaetze import Ansaetze, Circuit, Encoding
 from qml_essentials.gates import Gates, PulseInformation as pinfo
+from qml_essentials.script import _make_hashable
 from qml_essentials.utils import safe_random_split
 
 import logging
 
 log = logging.getLogger(__name__)
+
+GATE_MODES = {
+    "unitary": ("unitary", "unitary"),
+    "ansatz_pulse": ("pulse", "unitary"),
+    "enc_pulse": ("unitary", "pulse"),
+    "all_pulse": ("pulse", "pulse"),
+}
+
+# the modes that run the respective gate group at pulse level
+_ANSATZ_PULSE_MODES = ("ansatz_pulse", "all_pulse")
+_ENC_PULSE_MODES = ("enc_pulse", "all_pulse")
 
 
 class Model:
@@ -45,8 +57,7 @@ class Model:
         ] = None,
         shots: Optional[int] = None,
         random_seed: int = 1000,
-        remove_zero_encoding: bool = True,
-        repeat_batch_axis: List[bool] = [True, True, True],
+        repeat_batch_axis: List[bool] = [True, True, True, True],
         pulse_shape: str = "gaussian",
     ) -> None:
         """
@@ -100,13 +111,12 @@ class Model:
             random_seed (int, optional): seed for the random number generator
                 in initialization is "random" and for random noise parameters.
                 Defaults to 1000.
-            remove_zero_encoding (bool, optional): whether to
-                remove the zero encoding from the circuit. Defaults to True.
             repeat_batch_axis (List[bool], optional): Each boolean in the array
                 determines over which axes to parallelise computation. The axes
-                correspond to [inputs, params, pulse_params]. Defaults to
-                [True, True, True], meaning that batching is enabled over all
-                axes.
+                correspond to [inputs, params, pulse_params, enc_pulse_params].
+                Defaults to [True, True, True, True], meaning that batching is
+                enabled over all axes. A 3-element list (legacy) is accepted and
+                extended with a trailing True for the enc_pulse_params axis.
             pulse_shape (str, optional): Pulse envelope shape for pulse-level
                 simulation. One of ``PulseEnvelope.available()``.
                 Defaults to ``"gaussian"``.
@@ -129,9 +139,14 @@ class Model:
         self.n_layers: int = n_layers
         self.noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None
         self.shots = shots
-        self.remove_zero_encoding = remove_zero_encoding
         self.trainable_frequencies: bool = trainable_frequencies
         self.execution_type: str = "expval"
+        # backward compatibility
+        # TODO: consider making this more generic in future
+        # (for someone wanting to control this without bothering with pulse stuff)
+        if len(repeat_batch_axis) == 3:
+            log.warning("Batch axis should have length 4")
+            repeat_batch_axis = list(repeat_batch_axis) + [True]
         self.repeat_batch_axis: List[bool] = repeat_batch_axis
 
         # --- Pulse envelope ---
@@ -172,7 +187,29 @@ class Model:
         # Trainable frequencies, default initialization as in arXiv:2309.03279v2
         self.enc_params = jnp.ones((self.n_layers, self.n_qubits, self.n_input_feat))
 
-        self._zero_inputs = False
+        # Per-feature pulse-parameter sizes/offsets used to slice
+        # enc_pulse_params in _iec under "all_pulse" mode. Only encodings whose
+        # gates all have a pulse parametrization are supported (golomb and
+        # custom callables do not).
+        # TODO: golomb should be doable but needs a closer investigation
+        self._enc_pulse_sizes: List[int] = []
+        self._enc_pulse_capable = not self._enc.is_golomb
+        if self._enc_pulse_capable:
+            for g in self._enc._gates:
+                if pinfo.gate_by_name(g) is None:
+                    self._enc_pulse_capable = False
+                    self._enc_pulse_sizes = []
+                    break
+                self._enc_pulse_sizes.append(pinfo.gate_by_name(g).size)
+
+        self._enc_pulse_offsets: List[int] = list(
+            np.cumsum([0, *self._enc_pulse_sizes[:-1]])
+        )
+        self._enc_pulse_shape: Tuple[int, int, int] = (
+            self.n_layers,
+            self.n_qubits,
+            sum(self._enc_pulse_sizes),
+        )
 
         # --- Data-Reuploading ---
 
@@ -225,6 +262,15 @@ class Model:
         self.pulse_params: jnp.ndarray = jnp.ones((1, *self._pulse_params_shape))
 
         log.info(f"Initialized pulse parameters with shape {self.pulse_params.shape}.")
+
+        # Initializing encoding pulse params (element-wise scalers, ones by
+        # default). Batch-first convention, mirroring pulse_params.
+        self.enc_pulse_params: jnp.ndarray = jnp.ones((1, *self._enc_pulse_shape))
+
+        log.info(
+            f"Initialized encoding pulse parameters with shape "
+            f"{self.enc_pulse_params.shape}."
+        )
 
         # Initialise the jaqsi Script that wraps _variational.
         # No device selection needed - jaqsi auto-routes between statevector
@@ -549,6 +595,16 @@ class Model:
         self._pulse_params = value
 
     @property
+    def enc_pulse_params(self) -> jnp.ndarray:
+        """Get the encoding pulse parameters for all_pulse-mode execution."""
+        return self._enc_pulse_params
+
+    @enc_pulse_params.setter
+    def enc_pulse_params(self, value: jnp.ndarray) -> None:
+        """Set the encoding pulse parameters."""
+        self._enc_pulse_params = value
+
+    @property
     def data_reupload(self) -> np.ndarray:
         """Get the data reupload mask."""
         return self._data_reupload
@@ -710,17 +766,18 @@ class Model:
     @property
     def batch_shape(self) -> Tuple[int, ...]:
         """
-        Get the batch shape (B_I, B_P, B_R).
+        Get the batch shape (B_I, B_P, B_R, B_E).
         If the model was not called before,
-        it returns (1, 1, 1).
+        it returns (1, 1, 1, 1).
 
         Returns:
-            Tuple[int, ...]: Tuple of (input_batch, param_batch, pulse_batch).
-                Returns (1, 1, 1) if model has not been called yet.
+            Tuple[int, ...]: Tuple of (input_batch, param_batch, pulse_batch,
+                enc_pulse_batch). Returns (1, 1, 1, 1) if model has not been
+                called yet.
         """
         if self._batch_shape is None:
-            log.debug("Model was not called yet. Returning (1,1,1) as batch shape.")
-            return (1, 1, 1)
+            log.debug("Model was not called yet. Returning (1,1,1,1) as batch shape.")
+            return (1, 1, 1, 1)
         return self._batch_shape
 
     @property
@@ -839,6 +896,23 @@ class Model:
 
         return random_key
 
+    def next_key(self) -> random.PRNGKey:
+        """
+        Advance the internal random key and return a fresh sub key.
+
+        Intended for stochastic execution inside a JAX transform: a jitted
+        call is traced once and replays the key that was current at trace
+        time, so fresh randomness has to enter as an argument. Call this
+        outside the transform and pass the result as ``random_key``. Since the
+        key is an argument rather than a constant, this does not trigger
+        recompilation.
+
+        Returns:
+            random.PRNGKey: Fresh sub key, split off the internal key.
+        """
+        self.random_key, sub_key = safe_random_split(self.random_key)
+        return sub_key
+
     def transform_input(
         self, inputs: jnp.ndarray, enc_params: jnp.ndarray
     ) -> jnp.ndarray:
@@ -869,7 +943,8 @@ class Model:
         enc_params: jnp.ndarray,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         random_key: Optional[random.PRNGKey] = None,
-        skip_encoding: Optional[bool] = None,
+        enc_pulse_params: Optional[jnp.ndarray] = None,
+        gate_mode: str = "unitary",
     ) -> None:
         """
         Apply Input Encoding Circuit (IEC) with angle encoding.
@@ -893,23 +968,20 @@ class Model:
                 Noise parameters for gate-level noise simulation. Defaults to None.
             random_key (Optional[random.PRNGKey]): JAX random key for stochastic
                 noise. Defaults to None.
-            skip_encoding (Optional[bool]): Whether to skip the encoding
-                entirely, as a value computed by the caller before tracing.
-                If None, it is derived from the model state instead.
+            enc_pulse_params (Optional[jnp.ndarray]): Encoding pulse-parameter
+                scalers of shape (n_qubits, n_enc_pulse_per_qubit) for the
+                current layer. Used when the encoding gates run at pulse level,
+                i.e. the model-level mode is "enc_pulse" or "all_pulse".
+                Defaults to None.
+            gate_mode (str): Resolved per-gate encoding backend, "unitary"
+                (ideal) or "pulse". This is the backend selected for the
+                encoding group, distinct from the model-level modes
+                (unitary, ansatz_pulse, enc_pulse, all_pulse). Defaults to
+                "unitary".
 
         Returns:
             None: Gates are applied in-place to the quantum circuit.
         """
-        # check for zero, because due to input validation, input cannot be none
-        if skip_encoding is None:
-            skip_encoding = (
-                self.remove_zero_encoding
-                and self._zero_inputs
-                and self.batch_shape[0] == 1
-            )
-        if skip_encoding:
-            return
-
         # --- Golomb encoding: single multi-qubit gate on all qubits --------
         if enc.is_golomb:
             idx = 0  # Golomb encoding supports a single input feature
@@ -933,15 +1005,68 @@ class Model:
             # use the last dimension of the inputs (feature dimension)
             for idx in range(inputs.shape[-1]):
                 if data_reupload[q, idx]:
-                    # use elipsis to indiex only the last dimension
-                    # as inputs are generally *not* qubit dependent
                     random_key, sub_key = safe_random_split(random_key)
+                    # TODO: consider merging this with the pulses.py manager
+                    pulse_kwargs = {}
+                    if gate_mode == "pulse":
+                        # scale the calibrated pulse params by this gate's
+                        # scalers, as the pulse manager does for the ansatz
+                        off = self._enc_pulse_offsets[idx]
+                        size = self._enc_pulse_sizes[idx]
+                        base = pinfo.gate_by_name(enc._gates[idx]).params
+                        pulse_kwargs = dict(
+                            pulse_params=base * enc_pulse_params[q, off : off + size],
+                            gate_mode="pulse",
+                        )
+
+                    # use elipsis to index only the last dimension
+                    # as inputs are generally *not* qubit dependent
                     enc[idx](
                         self.transform_input(inputs[..., idx], enc_params[q, idx]),
                         wires=q,
                         noise_params=noise_params,
                         random_key=sub_key,
+                        **pulse_kwargs,
                     )
+
+    @staticmethod
+    def _debatch(value: jnp.ndarray, ndim: int) -> jnp.ndarray:
+        """
+        Drop a leading singleton batch axis (batch-first convention).
+
+        Args:
+            value (jnp.ndarray): Array to de-batch.
+            ndim (int): Rank of a single (un-batched) element.
+
+        Returns:
+            jnp.ndarray: The array without its leading axis if that axis is a
+                singleton batch dimension, otherwise the array unchanged.
+        """
+        if len(value.shape) > ndim and value.shape[0] == 1:
+            return value[0]
+        return value
+
+    def _self_fallback(self, value: Any, name: str, warn: bool) -> Any:
+        """
+        Fall back to the model's own attribute when a parameter is not given.
+
+        Args:
+            value (Any): The provided value, or None.
+            name (str): Name of the attribute to fall back to.
+            warn (bool): Whether to warn when the fallback is used.
+
+        Returns:
+            Any: The provided value, or ``self.<name>`` if value is None.
+        """
+        if value is not None:
+            return value
+        if warn:
+            warnings.warn(
+                "Explicit call to `_circuit` or `_variational` detected: "
+                f"`{name}` is None, using `self.{name}` instead.",
+                RuntimeWarning,
+            )
+        return getattr(self, name)
 
     def _variational(
         self,
@@ -950,9 +1075,9 @@ class Model:
         pulse_params: Optional[jnp.ndarray] = None,
         random_key: Optional[random.PRNGKey] = None,
         enc_params: Optional[jnp.ndarray] = None,
+        enc_pulse_params: Optional[jnp.ndarray] = None,
         gate_mode: str = "unitary",
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
-        skip_encoding: Optional[bool] = None,
     ) -> None:
         """
         Build the variational quantum circuit structure.
@@ -961,9 +1086,9 @@ class Model:
         variational ansatz layers with input encoding layers, and optional
         noise channels.
 
-        The first five parameters (after ``self``) - ``params``, ``inputs``,
-        ``pulse_params``, ``random_key``, ``enc_params`` - are the batchable
-        positional arguments.
+        The first six parameters (after ``self``) - ``params``, ``inputs``,
+        ``pulse_params``, ``random_key``, ``enc_params``, ``enc_pulse_params`` -
+        are the batchable positional arguments.
         The remaining keyword arguments are broadcast across the batch.
 
         Args:
@@ -977,13 +1102,17 @@ class Model:
                 operations. Defaults to None.
             enc_params (Optional[jnp.ndarray]): Encoding parameters of shape
                 (n_qubits, n_input_feat). Defaults to None (uses model's enc_params).
-            gate_mode (str): Gate execution mode, either "unitary" or "pulse".
-                Defaults to "unitary".
+            enc_pulse_params (Optional[jnp.ndarray]): Encoding pulse-parameter
+                scalers of shape (n_layers, n_qubits, n_enc_pulse_per_qubit) for
+                "all_pulse" execution. Defaults to None (uses model's
+                enc_pulse_params).
+            gate_mode (str): Gate execution mode, one of "unitary",
+                "ansatz_pulse", "enc_pulse" or "all_pulse". "ansatz_pulse" runs
+                the ansatz and state preparation as pulses (encoding stays
+                unitary); "enc_pulse" runs only the encoding gates as pulses;
+                "all_pulse" runs both as pulses. Defaults to "unitary".
             noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
                 Noise parameters for simulation. Defaults to None.
-            skip_encoding (Optional[bool]): Forwarded to :meth:`_iec` to skip
-                the encoding for all-zero inputs. Defaults to None, which
-                derives the decision from the model state.
 
         Returns:
             None: Gates are applied in-place to the quantum circuit.
@@ -992,54 +1121,35 @@ class Model:
             Issues RuntimeWarning if called directly without providing parameters
             that would normally be passed through the forward method.
         """
+        # which backend the ansatz / state-prep gates and the encoding gates use
+        sub_mode, enc_gate_mode = GATE_MODES[gate_mode]
+
         # TODO: rework and double check params shape
-        if len(params.shape) > 2 and params.shape[0] == 1:
-            params = params[0]
+        params = self._debatch(params, 2)
+        inputs = self._debatch(inputs, 1)
 
-        if len(inputs.shape) > 1 and inputs.shape[0] == 1:
-            inputs = inputs[0]
+        # TODO: Raise warning if trainable frequencies is True, or similar. I.e., no
+        #   warning if user does not care for frequencies or enc_params
+        enc_params = self._self_fallback(
+            enc_params, "enc_params", self.trainable_frequencies
+        )
 
-        if enc_params is None:
-            # TODO: Raise warning if trainable frequencies is True, or similar. I.e., no
-            #   warning if user does not care for frequencies or enc_params
-            if self.trainable_frequencies:
-                warnings.warn(
-                    "Explicit call to `_circuit` or `_variational` detected: "
-                    "`enc_params` is None, using `self.enc_params` instead.",
-                    RuntimeWarning,
-                )
-            enc_params = self.enc_params
+        pulse_params = self._self_fallback(
+            pulse_params, "pulse_params", sub_mode == "pulse"
+        )
+        pulse_params = self._debatch(pulse_params, 2)
 
-        if pulse_params is None:
-            if gate_mode == "pulse":
-                warnings.warn(
-                    "Explicit call to `_circuit` or `_variational` detected: "
-                    "`pulse_params` is None, using `self.pulse_params` instead.",
-                    RuntimeWarning,
-                )
-            pulse_params = self.pulse_params
+        enc_pulse_params = self._self_fallback(
+            enc_pulse_params, "enc_pulse_params", enc_gate_mode == "pulse"
+        )
+        enc_pulse_params = self._debatch(enc_pulse_params, 3)
 
-        # Squeeze batch dimension for pulse_params (batch-first convention)
-        if len(pulse_params.shape) > 2 and pulse_params.shape[0] == 1:
-            pulse_params = pulse_params[0]
-
-        if noise_params is None:
-            if self.noise_params is not None:
-                warnings.warn(
-                    "Explicit call to `_circuit` or `_variational` detected: "
-                    "`noise_params` is None, using `self.noise_params` instead.",
-                    RuntimeWarning,
-                )
-                noise_params = self.noise_params
+        noise_params = self._self_fallback(
+            noise_params, "noise_params", self.noise_params is not None
+        )
 
         if noise_params is not None:
-            if random_key is None:
-                warnings.warn(
-                    "Explicit call to `_circuit` or `_variational` detected: "
-                    "`random_key` is None, using `random.PRNGKey(0)` instead.",
-                    RuntimeWarning,
-                )
-                random_key = self.random_key
+            random_key = self._self_fallback(random_key, "random_key", True)
             self._apply_state_prep_noise(noise_params=noise_params)
 
         # state preparation
@@ -1051,7 +1161,7 @@ class Model:
                     pulse_params=sp_pulse_params,
                     noise_params=noise_params,
                     random_key=sub_key,
-                    gate_mode=gate_mode,
+                    gate_mode=sub_mode,
                 )
 
         # circuit building
@@ -1064,7 +1174,7 @@ class Model:
                 pulse_params=pulse_params[layer],
                 noise_params=noise_params,
                 random_key=sub_key,
-                gate_mode=gate_mode,
+                gate_mode=sub_mode,
             )
 
             random_key, sub_key = safe_random_split(random_key)
@@ -1076,7 +1186,8 @@ class Model:
                 enc_params=enc_params[layer],
                 noise_params=noise_params,
                 random_key=sub_key,
-                skip_encoding=skip_encoding,
+                enc_pulse_params=enc_pulse_params[layer],
+                gate_mode=enc_gate_mode,
             )
 
         # final ansatz layer
@@ -1088,7 +1199,7 @@ class Model:
                 pulse_params=pulse_params[-1],
                 noise_params=noise_params,
                 random_key=sub_key,
-                gate_mode=gate_mode,
+                gate_mode=sub_mode,
             )
 
         # channel noise
@@ -1326,6 +1437,7 @@ class Model:
     def draw_pulse(
         self,
         inputs: Optional[jnp.ndarray] = None,
+        gate_mode: str = "ansatz_pulse",
         **kwargs: Any,
     ) -> Any:
         """Visualize the pulse schedule for the circuit.
@@ -1335,6 +1447,10 @@ class Model:
 
         Args:
             inputs: Input data.  If ``None``, default zero inputs are used.
+            gate_mode: Pulse mode to record. ``"ansatz_pulse"`` (default)
+                renders the ansatz and state-preparation pulses,
+                ``"enc_pulse"`` only the encoding gate pulses and
+                ``"all_pulse"`` both.
             **kwargs: Forwarded to
                 :func:`~qml_essentials.drawing.draw_pulse_schedule`
                 (e.g. ``show_carrier=True``, ``n_samples=300``).
@@ -1351,7 +1467,7 @@ class Model:
             figure="pulse",
             args=(params, inp),
             kwargs={
-                "gate_mode": "pulse",
+                "gate_mode": gate_mode,
                 "noise_params": None,
             },
             **kwargs,
@@ -1393,8 +1509,21 @@ class Model:
                 # jit; mirrors the pulse_params handling below.
                 params = jnp.expand_dims(params, axis=0)
 
-            if stash:
+            # Avoid stashing JAX tracers on ``self``: under an outer
+            # transform (e.g. ``jit``/``jacrev``) the tracer becomes invalid
+            # once the transform returns, and a subsequent read of
+            # ``self.params`` would feed a leaked tracer into the next
+            # call (raising ``UnexpectedTracerError``).
+            if stash and not isinstance(params, jax.core.Tracer):
                 self.params = params
+            elif stash:
+                log.debug(
+                    "`params` is a JAX tracer; `self.params` is left at its "
+                    "previous value. Anything reading model state afterwards "
+                    "(draw, Entanglement, Expressibility, or a call that omits "
+                    "`params`) will see the stale parameters - assign "
+                    "`model.params` explicitly if you need the state to follow."
+                )
         else:
             params = self.params
 
@@ -1424,10 +1553,57 @@ class Model:
             # ensure batch dimension exists (batch-first convention)
             if len(pulse_params.shape) == 2:
                 pulse_params = jnp.expand_dims(pulse_params, axis=0)
-            if stash:
+            # See note in _params_validation: never stash JAX tracers on
+            # ``self``.
+            if stash and not isinstance(pulse_params, jax.core.Tracer):
                 self.pulse_params = pulse_params
+            elif stash:
+                log.debug(
+                    "`pulse_params` is a JAX tracer; `self.pulse_params` is "
+                    "left at its previous value."
+                )
 
         return pulse_params
+
+    def _enc_pulse_params_validation(
+        self, enc_pulse_params: Optional[jnp.ndarray], stash: bool = True
+    ) -> jnp.ndarray:
+        """
+        Validate and normalize encoding pulse parameters.
+
+        Ensures encoding pulse parameters are set (using model defaults if not
+        provided) and carry a leading batch dimension.
+
+        Args:
+            enc_pulse_params (Optional[jnp.ndarray]): Encoding pulse-parameter
+                scalers. If None, returns the model's current encoding pulse
+                parameters.
+
+        Returns:
+            jnp.ndarray: Validated encoding pulse parameters with shape
+                (batch_size, n_layers, n_qubits, n_enc_pulse_per_qubit).
+
+        Raises:
+            ValueError: If the trailing dimensions do not match the model's
+                encoding pulse parameter shape.
+        """
+        if enc_pulse_params is None:
+            enc_pulse_params = self.enc_pulse_params
+        else:
+            # ensure batch dimension exists (batch-first convention)
+            if len(enc_pulse_params.shape) == 3:
+                enc_pulse_params = jnp.expand_dims(enc_pulse_params, axis=0)
+            if enc_pulse_params.shape[1:] != self._enc_pulse_shape:
+                raise ValueError(
+                    f"enc_pulse_params trailing shape {enc_pulse_params.shape[1:]} "
+                    f"does not match expected {self._enc_pulse_shape}."
+                )
+            # See note in _params_validation: never stash JAX tracers on
+            # ``self``.
+            if stash and not isinstance(enc_pulse_params, jax.core.Tracer):
+                self.enc_pulse_params = enc_pulse_params
+
+        return enc_pulse_params
 
     def _enc_params_validation(
         self, enc_params: Optional[jnp.ndarray], stash: bool = True
@@ -1453,11 +1629,19 @@ class Model:
         """
         if enc_params is None:
             enc_params = self.enc_params
-        elif stash:
-            if self.trainable_frequencies:
-                self.enc_params = enc_params
-            else:
-                self.enc_params = jnp.array(enc_params)
+        else:
+            # See note in _params_validation: never stash JAX tracers on
+            # ``self``.
+            if stash and not isinstance(enc_params, jax.core.Tracer):
+                if self.trainable_frequencies:
+                    self.enc_params = enc_params
+                else:
+                    self.enc_params = jnp.array(enc_params)
+            elif stash:
+                log.debug(
+                    "`enc_params` is a JAX tracer; `self.enc_params` is left "
+                    "at its previous value."
+                )
 
         if len(enc_params.shape) == 1 and self.n_input_feat == 1:
             enc_params = enc_params.reshape(-1, 1)
@@ -1469,29 +1653,8 @@ class Model:
 
         return enc_params
 
-    @staticmethod
-    def _check_zero_inputs(inputs: jnp.ndarray) -> bool:
-        """
-        Check whether all inputs are zero.
-
-        The all-zero-input optimisation needs a concrete boolean; under JAX
-        tracing (jit / grad) ``inputs.any()`` has no concrete value, so the
-        check reports False there (inputs are non-zero in the traced
-        training/inference paths).
-
-        Args:
-            inputs (jnp.ndarray): Input data.
-
-        Returns:
-            bool: True if all inputs are concretely zero, False otherwise.
-        """
-        try:
-            return not bool(inputs.any())
-        except jax.errors.TracerBoolConversionError:
-            return False
-
     def _inputs_validation(
-        self, inputs: Union[None, List, float, int, jnp.ndarray], stash: bool = True
+        self, inputs: Union[None, List, float, int, jnp.ndarray]
     ) -> jnp.ndarray:
         """
         Validate and normalize input data.
@@ -1506,8 +1669,6 @@ class Model:
                 - float/int: Single scalar value
                 - List: List of values or batched inputs
                 - jnp.ndarray: NumPy/JAX array
-            stash (bool): Whether to store the all-zero-input flag on the
-                model. See :meth:`_params_validation`. Defaults to True.
 
         Returns:
             jnp.ndarray: Validated inputs with shape (batch_size, n_input_feat).
@@ -1524,9 +1685,6 @@ class Model:
             inputs = jnp.array([inputs])
         elif inputs is None:
             inputs = jnp.array([[0] * self.n_input_feat])
-
-        if stash:
-            self._zero_inputs = self._check_zero_inputs(inputs)
 
         if len(inputs.shape) <= 1:
             if self.n_input_feat == 1:
@@ -1580,25 +1738,32 @@ class Model:
         inputs: jnp.ndarray,
         params: jnp.ndarray,
         pulse_params: jnp.ndarray,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, Tuple[int, int, int]]:
+        enc_pulse_params: jnp.ndarray,
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, Tuple[int, ...]]:
         """
-        Align batch dimensions across inputs, parameters, and pulse parameters.
+        Align batch dimensions across inputs, parameters, pulse parameters and
+        encoding pulse parameters.
 
         Broadcasts and reshapes arrays to have compatible batch dimensions
         for vectorized circuit execution.
+
+        The batch layout is ``[B_I, B_P, B_R, B_E, <payload>]`` where each array
+        "owns" one batch axis and is replicated across the others (subject to
+        the ``repeat_batch_axis`` mask) before being flattened to ``B``.
 
         Args:
             inputs (jnp.ndarray): Input data of shape (B_I, n_input_feat).
             params (jnp.ndarray): Parameters of shape (B_P, n_layers, n_params).
             pulse_params (jnp.ndarray): Pulse params of shape (B_R, n_layers, n_pulse).
+            enc_pulse_params (jnp.ndarray): Encoding pulse params of shape
+                (B_E, n_layers, n_qubits, n_enc_pulse).
 
         Returns:
-            Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, Tuple[int, int, int]]:
-                Tuple containing:
-                - inputs: Reshaped to (B, n_input_feat) where B = B_I * B_P * B_R
-                - params: Reshaped to (B, n_layers, n_params)
-                - pulse_params: Reshaped to (B, n_layers, n_pulse)
-                - batch_shape: The batch shape (B_I, B_P, B_R)
+            Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray,
+            Tuple[int, ...]]: The four arrays, each reshaped to leading
+            dimension B = B_I * B_P * B_R * B_E (subject to
+            repeat_batch_axis), followed by the batch shape
+            (B_I, B_P, B_R, B_E).
 
         Note:
             The effective batch shape depends on repeat_batch_axis configuration.
@@ -1609,44 +1774,59 @@ class Model:
         # there are no params. In this case we want B_P to be 1
         B_P = 1 if 0 in params.shape else params.shape[0]
         B_R = pulse_params.shape[0]
+        B_E = enc_pulse_params.shape[0]
 
         # THIS is the only place where we derive the batch shape
-        batch_shape = (B_I, B_P, B_R)
+        batch_shape = (B_I, B_P, B_R, B_E)
         B = np.prod(self._eff_batch_shape_of(batch_shape))
 
-        # [B_I, ...] -> [B_I, B_P, B_R, ...] -> [B, ...]
+        # [B_I, ...] -> [B_I, B_P, B_R, B_E, ...] -> [B, ...]
         if B_I > 1 and self.repeat_batch_axis[0]:
+            inputs = inputs[:, None, None, None, ...]
             if self.repeat_batch_axis[1]:
-                inputs = jnp.repeat(inputs[:, None, None, ...], B_P, axis=1)
+                inputs = jnp.repeat(inputs, B_P, axis=1)
             if self.repeat_batch_axis[2]:
                 inputs = jnp.repeat(inputs, B_R, axis=2)
-            inputs = inputs.reshape(B, *inputs.shape[3:])
+            if self.repeat_batch_axis[3]:
+                inputs = jnp.repeat(inputs, B_E, axis=3)
+            inputs = inputs.reshape(B, *inputs.shape[4:])
 
-        # [B_P, ..., ...] -> [B_I, B_P, B_R, ..., ...] -> [B, ..., ...]
+        # [B_P, ...] -> [B_I, B_P, B_R, B_E, ...] -> [B, ...]
         if B_P > 1 and self.repeat_batch_axis[1]:
-            # add B_I axis before first, and B_R axis after first batch dim
-            params = params[None, :, None, ...]  # [B_I(=1), B_P, B_R(=1), ...]
+            params = params[None, :, None, None, ...]  # [1, B_P, 1, 1, ...]
             if self.repeat_batch_axis[0]:
-                params = jnp.repeat(params, B_I, axis=0)  # [B_I, B_P, 1, ...]
+                params = jnp.repeat(params, B_I, axis=0)
             if self.repeat_batch_axis[2]:
-                params = jnp.repeat(params, B_R, axis=2)  # [B_I, B_P, B_R, ...]
-            params = params.reshape(B, *params.shape[3:])
+                params = jnp.repeat(params, B_R, axis=2)
+            if self.repeat_batch_axis[3]:
+                params = jnp.repeat(params, B_E, axis=3)
+            params = params.reshape(B, *params.shape[4:])
 
-        # [B_R, ..., ...] -> [B_I, B_P, B_R, ..., ...] -> [B, ..., ...]
+        # [B_R, ...] -> [B_I, B_P, B_R, B_E, ...] -> [B, ...]
         if B_R > 1 and self.repeat_batch_axis[2]:
-            # add B_I axis and B_P axis before B_R
-            pulse_params = pulse_params[None, None, ...]  # [B_I(=1), B_P(=1), B_R, ...]
+            pulse_params = pulse_params[None, None, :, None, ...]  # [1, 1, B_R, 1, ...]
             if self.repeat_batch_axis[0]:
-                pulse_params = jnp.repeat(
-                    pulse_params, B_I, axis=0
-                )  # [B_I, 1, B_R, ...]
+                pulse_params = jnp.repeat(pulse_params, B_I, axis=0)
             if self.repeat_batch_axis[1]:
-                pulse_params = jnp.repeat(
-                    pulse_params, B_P, axis=1
-                )  # [B_I, B_P, B_R, ...]
-            pulse_params = pulse_params.reshape(B, *pulse_params.shape[3:])
+                pulse_params = jnp.repeat(pulse_params, B_P, axis=1)
+            if self.repeat_batch_axis[3]:
+                pulse_params = jnp.repeat(pulse_params, B_E, axis=3)
+            pulse_params = pulse_params.reshape(B, *pulse_params.shape[4:])
 
-        return inputs, params, pulse_params, batch_shape
+        # [B_E, ...] -> [B_I, B_P, B_R, B_E, ...] -> [B, ...]
+        if B_E > 1 and self.repeat_batch_axis[3]:
+            enc_pulse_params = enc_pulse_params[
+                None, None, None, ...
+            ]  # [1,1,1,B_E,...]
+            if self.repeat_batch_axis[0]:
+                enc_pulse_params = jnp.repeat(enc_pulse_params, B_I, axis=0)
+            if self.repeat_batch_axis[1]:
+                enc_pulse_params = jnp.repeat(enc_pulse_params, B_P, axis=1)
+            if self.repeat_batch_axis[2]:
+                enc_pulse_params = jnp.repeat(enc_pulse_params, B_R, axis=2)
+            enc_pulse_params = enc_pulse_params.reshape(B, *enc_pulse_params.shape[4:])
+
+        return inputs, params, pulse_params, enc_pulse_params, batch_shape
 
     def _requires_density(self) -> bool:
         """
@@ -1675,6 +1855,93 @@ class Model:
                 return True
         return False
 
+    def _is_stochastic(self) -> bool:
+        """
+        Check if execution draws random numbers at runtime.
+
+        Only coherent gate errors and shot sampling are stochastic; the Kraus
+        channels are deterministic maps on the density matrix.
+
+        Returns:
+            bool: True if the result depends on the random key.
+        """
+        gate_error = (self.noise_params or {}).get("GateError") or 0
+        return gate_error > 0 or self.shots is not None
+
+    @staticmethod
+    def _args_are_traced(*args: Any) -> bool:
+        """
+        Check if any argument is a JAX tracer.
+
+        Args:
+            *args (Any): Values to inspect, may be pytrees.
+
+        Returns:
+            bool: True if the call runs inside a JAX transform.
+        """
+        return any(
+            isinstance(x, jax.core.Tracer) for x in jax.tree_util.tree_leaves(args)
+        )
+
+    @staticmethod
+    def _observable_id(obs: op.Operation) -> Any:
+        """
+        Get a stable identity for an observable.
+
+        Uses the Pauli label where available and otherwise a hash of the
+        matrix, memoized on the instance because reading the bytes copies the
+        full $2^n \\times 2^n$ array. Mutating a matrix in place is not
+        detected.
+
+        Args:
+            obs (op.Operation): Observable to identify.
+
+        Returns:
+            Any: Hashable identity of the observable.
+        """
+        label = getattr(obs, "_pauli_label", None)
+        if label is not None:
+            return label
+        if getattr(obs, "_fingerprint_hash", None) is None:
+            obs._fingerprint_hash = hash(np.asarray(obs.matrix).tobytes())
+        return obs._fingerprint_hash
+
+    def _structural_fingerprint(self) -> Tuple:
+        """
+        Summarize the circuit structure for the execution plan cache.
+
+        Covers everything that :meth:`_variational` and :meth:`_iec` read from
+        the model while recording the tape and that can change after
+        initialization without changing the shapes of the execution arguments.
+        Without it, a batched call would silently reuse a plan that was
+        compiled for the previous structure.
+
+        Attributes that are fixed at initialization (the encoding, the state
+        preparation, the number of qubits and layers) are omitted, as replacing
+        them afterwards is not supported.
+
+        Returns:
+            Tuple: Hashable structure summary, passed to
+                :meth:`~qml_essentials.jaqsi.Script.execute`.
+        """
+        if self._observables is None:
+            obs_fingerprint = None
+        else:
+            obs_fingerprint = tuple(
+                (o.name, tuple(o.wires), self._observable_id(o))
+                for o in self._observables
+            )
+
+        return (
+            self._data_reupload.shape,
+            # covers the derived degree, frequencies and has_dru as well
+            self._data_reupload.tobytes(),
+            _make_hashable(self._measured_wires),
+            obs_fingerprint,
+            # hashed by identity, which also covers a replaced ansatz callable
+            self.pqc,
+        )
+
     def __call__(
         self,
         params: Optional[jnp.ndarray] = None,
@@ -1688,6 +1955,8 @@ class Model:
         execution_type: Optional[str] = None,
         force_mean: bool = False,
         gate_mode: str = "unitary",
+        enc_pulse_params: Optional[jnp.ndarray] = None,
+        random_key: Optional[random.PRNGKey] = None,
         keepdims: bool = False,
     ) -> jnp.ndarray:
         """
@@ -1720,11 +1989,25 @@ class Model:
                 "probs", or "state". If None, uses current execution_type setting.
             force_mean (bool): If True, averages results over measurement qubits.
                 Defaults to False.
-            gate_mode (str): Gate execution backend, "unitary" or "pulse".
-                Defaults to "unitary".
+            gate_mode (str): Gate execution backend, "unitary", "ansatz_pulse",
+                "enc_pulse" or "all_pulse". Defaults to "unitary".
+            enc_pulse_params (Optional[jnp.ndarray]): Encoding pulse-parameter
+                scalers for "all_pulse" execution. If None, uses model's encoding
+                pulse parameters.
+            enc_pulse_params (Optional[jnp.ndarray]): Encoding pulse-parameter
+                scalers for "all_pulse" execution. If None, uses model's encoding
+                pulse parameters.
+            random_key (Optional[random.PRNGKey]): JAX random key for stochastic
+                execution (``GateError`` noise and shot sampling). If provided,
+                the caller owns key advancement and the model's internal
+                ``random_key`` is left untouched - this is the jit-safe way to
+                get fresh randomness per call, since the internal key cannot be
+                advanced from inside a trace. Use :meth:`next_key` to obtain
+                one. If None, the internal key is used and advanced (eager
+                calls only).
             keepdims (bool): If True, the full
-                (B_I, B_P, B_R, O) shape is returned. If False (default), all
-                singleton axes are squeezed out.
+                (B_I, B_P, B_R, B_E, O) shape is returned. If False (default),
+                all singleton axes are squeezed out.
 
         Returns:
             jnp.ndarray: Circuit output with shape depending on execution_type:
@@ -1732,6 +2015,25 @@ class Model:
                 - "density": (2^n_output, 2^n_output)
                 - "probs": (2^n_output,) or (n_pairs, 2^pair_size)
                 - "state": (2^n_qubits,)
+
+        Note:
+            An eager call stores ``params``, ``pulse_params`` and ``enc_params``
+            on the model, but a traced call (``jit``, ``grad``, ``vmap``) does
+            not: JAX tracers must not outlive their transform, so the model
+            state keeps its previous value. Two consequences:
+
+            - Anything reading model state after a traced call - ``draw``,
+              :class:`~qml_essentials.entanglement.Entanglement`,
+              :class:`~qml_essentials.expressibility.Expressibility`, or a
+              later call that omits ``params`` - sees the *old* parameters.
+              Assign ``model.params = params`` yourself if the state should
+              follow a traced optimization step.
+            - Omitting ``params`` in a second call inside the same trace falls
+              back to that stale state, so the result does not depend on the
+              traced parameters (its gradient is zero). Pass ``params``
+              explicitly on every call inside a trace.
+
+            The skipped writes are reported at debug log level.
         """
         # Call forward method which handles the actual caching etc.
         return self._forward(
@@ -1744,6 +2046,8 @@ class Model:
             execution_type=execution_type,
             force_mean=force_mean,
             gate_mode=gate_mode,
+            enc_pulse_params=enc_pulse_params,
+            random_key=random_key,
             keepdims=keepdims,
         )
 
@@ -1757,6 +2061,7 @@ class Model:
         execution_type: Optional[str] = None,
         force_mean: bool = False,
         gate_mode: str = "unitary",
+        enc_pulse_params: Optional[jnp.ndarray] = None,
         key: Optional[random.PRNGKey] = None,
     ) -> jnp.ndarray:
         """
@@ -1809,11 +2114,7 @@ class Model:
                 or if shots are set for a density measurement.
         """
         # consistency checks
-        if pulse_params is not None and gate_mode != "pulse":
-            raise ValueError(
-                "pulse_params were provided but gate_mode is not 'pulse'. "
-                "Either switch gate_mode='pulse' or do not pass pulse_params."
-            )
+        self._gate_mode_validation(gate_mode, pulse_params, enc_pulse_params)
 
         if execution_type is None:
             execution_type = self.execution_type
@@ -1826,17 +2127,21 @@ class Model:
         else:
             noise_params = self._normalize_noise_params(noise_params)
 
+        enc_pulse_params = self._enc_pulse_params_validation(
+            enc_pulse_params, stash=False
+        )
         params = self._params_validation(params, stash=False)
         pulse_params = self._pulse_params_validation(pulse_params, stash=False)
-        inputs = self._inputs_validation(inputs, stash=False)
+        inputs = self._inputs_validation(inputs)
         enc_params = self._enc_params_validation(enc_params, stash=False)
 
-        zero_inputs = self._check_zero_inputs(inputs)
-
-        inputs, params, pulse_params, batch_shape = self._assimilate_batch(
-            inputs,
-            params,
-            pulse_params,
+        inputs, params, pulse_params, enc_pulse_params, batch_shape = (
+            self._assimilate_batch(
+                inputs,
+                params,
+                pulse_params,
+                enc_pulse_params,
+            )
         )
 
         # derive a sub key as in _forward, but without advancing the model's key
@@ -1854,7 +2159,7 @@ class Model:
             gate_mode=gate_mode,
             force_mean=force_mean,
             key=sub_key,
-            skip_encoding=self._skip_encoding(zero_inputs, batch_shape),
+            enc_pulse_params=enc_pulse_params,
             keepdims=True,
         )
 
@@ -1871,6 +2176,8 @@ class Model:
         execution_type: Optional[str] = None,
         force_mean: bool = False,
         gate_mode: str = "unitary",
+        enc_pulse_params: Optional[jnp.ndarray] = None,
+        random_key: Optional[random.PRNGKey] = None,
         keepdims: bool = False,
     ) -> jnp.ndarray:
         """
@@ -1901,11 +2208,18 @@ class Model:
                 "probs", or "state". If None, uses current execution_type setting.
             force_mean (bool): If True, averages results over measurement qubits.
                 Defaults to False.
-            gate_mode (str): Gate execution backend, "unitary" or "pulse".
-                Defaults to "unitary".
+            gate_mode (str): Gate execution backend, "unitary", "ansatz_pulse",
+                "enc_pulse" or "all_pulse". Defaults to "unitary".
+            enc_pulse_params (Optional[jnp.ndarray]): Encoding pulse-parameter
+                scalers for "all_pulse" execution. If None, uses model's encoding
+                pulse parameters.
+            random_key (Optional[random.PRNGKey]): JAX random key for stochastic
+                execution. If provided, it is used instead of (and does not
+                modify) the model's internal ``random_key``. See
+                :meth:`__call__` for details.
             keepdims (bool): If True, the full
-                (B_I, B_P, B_R, O) shape is returned. If False (default), all
-                singleton axes are squeezed out.
+                (B_I, B_P, B_R, B_E, O) shape is returned. If False (default),
+                all singleton axes are squeezed out.
 
         Returns:
             jnp.ndarray: Circuit output with shape depending on execution_type:
@@ -1926,11 +2240,7 @@ class Model:
         self.gate_mode = gate_mode
 
         # consistency checks
-        if pulse_params is not None and gate_mode != "pulse":
-            raise ValueError(
-                "pulse_params were provided but gate_mode is not 'pulse'. "
-                "Either switch gate_mode='pulse' or do not pass pulse_params."
-            )
+        self._gate_mode_validation(gate_mode, pulse_params, enc_pulse_params)
 
         # TODO: add testing
         if data_reupload is not None:
@@ -1940,21 +2250,44 @@ class Model:
         pulse_params = self._pulse_params_validation(pulse_params)
         inputs = self._inputs_validation(inputs)
         enc_params = self._enc_params_validation(enc_params)
+        enc_pulse_params = self._enc_pulse_params_validation(enc_pulse_params)
 
-        inputs, params, pulse_params, batch_shape = self._assimilate_batch(
-            inputs,
-            params,
-            pulse_params,
+        inputs, params, pulse_params, enc_pulse_params, batch_shape = (
+            self._assimilate_batch(
+                inputs,
+                params,
+                pulse_params,
+                enc_pulse_params,
+            )
         )
         self._batch_shape = batch_shape
 
         # split to generate a sub_key, required for actual execution.
-        # Under JAX tracing (jit / grad) the split result is a tracer; stashing it
-        # on ``self`` leaks the tracer across calls (UnexpectedTracerError), so only
-        # advance the key eagerly
-        new_key, sub_key = safe_random_split(self.random_key)
-        if not isinstance(new_key, jax.core.Tracer):
-            self.random_key = new_key
+        if random_key is not None:
+            # explicit key: purely functional, the caller advances it. This is
+            # the only way to get fresh randomness inside a trace, because a
+            # jitted call is traced once and then replays the trace-time key.
+            _, sub_key = safe_random_split(random_key)
+        else:
+            if self._is_stochastic() and self._args_are_traced(
+                params, inputs, pulse_params, enc_pulse_params
+            ):
+                warnings.warn(
+                    "Stochastic execution (`GateError` or `shots`) without an "
+                    "explicit `random_key` inside a JAX transform: the key is "
+                    "read at trace time, so a jitted function replays the same "
+                    "noise realization on every call. Pass "
+                    "`random_key=model.next_key()` from outside the transform.",
+                    UserWarning,
+                )
+            # Under JAX tracing (jit) the split result is a tracer; stashing it
+            # on ``self`` leaks the tracer across calls (UnexpectedTracerError),
+            # so only advance the key eagerly. Note that a jitted call
+            # therefore reuses the same key on every execution - pass
+            # ``random_key`` explicitly if that matters.
+            new_key, sub_key = safe_random_split(self.random_key)
+            if not isinstance(new_key, jax.core.Tracer):
+                self.random_key = new_key
 
         return self._execute_forward(
             params=params,
@@ -1962,33 +2295,56 @@ class Model:
             pulse_params=pulse_params,
             enc_params=enc_params,
             batch_shape=batch_shape,
+            enc_pulse_params=enc_pulse_params,
             execution_type=self.execution_type,
             result_shape=self._result_shape,
             noise_params=self.noise_params,
             gate_mode=self.gate_mode,
             force_mean=force_mean,
             key=sub_key,
-            skip_encoding=self._skip_encoding(self._zero_inputs, batch_shape),
             keepdims=keepdims,
         )
 
-    def _skip_encoding(
-        self, zero_inputs: bool, batch_shape: Tuple[int, int, int]
-    ) -> bool:
+    def _gate_mode_validation(
+        self,
+        gate_mode: str,
+        pulse_params: Optional[jnp.ndarray],
+        enc_pulse_params: Optional[jnp.ndarray],
+    ) -> None:
         """
-        Decide whether the input encoding can be skipped entirely.
-
-        Computed before tracing so that :meth:`_iec` does not have to read
-        mutable model state from inside the traced circuit function.
+        Check that the gate mode matches the provided pulse parameters.
 
         Args:
-            zero_inputs (bool): Whether all inputs are concretely zero.
-            batch_shape (Tuple[int, int, int]): Batch shape (B_I, B_P, B_R).
+            gate_mode (str): Gate execution backend.
+            pulse_params (Optional[jnp.ndarray]): Ansatz pulse parameters.
+            enc_pulse_params (Optional[jnp.ndarray]): Encoding pulse parameters.
 
-        Returns:
-            bool: True if the encoding gates can be omitted.
+        Raises:
+            ValueError: If the gate mode is unknown, does not match the
+                provided pulse parameters, or requires an encoding that has no
+                pulse parametrization.
         """
-        return bool(self.remove_zero_encoding and zero_inputs and batch_shape[0] == 1)
+        if gate_mode not in GATE_MODES:
+            raise ValueError(
+                f"Unknown gate_mode: {gate_mode}. Use one of {list(GATE_MODES)}."
+            )
+        if pulse_params is not None and gate_mode not in _ANSATZ_PULSE_MODES:
+            raise ValueError(
+                f"pulse_params were provided but gate_mode is not one of "
+                f"{list(_ANSATZ_PULSE_MODES)}. Either switch gate_mode or do "
+                "not pass pulse_params."
+            )
+        if enc_pulse_params is not None and gate_mode not in _ENC_PULSE_MODES:
+            raise ValueError(
+                f"enc_pulse_params were provided but gate_mode is not one of "
+                f"{list(_ENC_PULSE_MODES)}. Either switch gate_mode or do not "
+                "pass enc_pulse_params."
+            )
+        if gate_mode in _ENC_PULSE_MODES and not self._enc_pulse_capable:
+            raise ValueError(
+                f"gate_mode={gate_mode!r} requires an encoding whose gates have a "
+                "pulse parametrization (golomb and custom callables do not)."
+            )
 
     def _execute_forward(
         self,
@@ -1996,14 +2352,14 @@ class Model:
         inputs: jnp.ndarray,
         pulse_params: jnp.ndarray,
         enc_params: jnp.ndarray,
-        batch_shape: Tuple[int, int, int],
+        enc_pulse_params: jnp.ndarray,
+        batch_shape: Tuple[int, ...],
         execution_type: str,
         result_shape: Tuple[int, ...],
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]],
         gate_mode: str,
         force_mean: bool,
         key: random.PRNGKey,
-        skip_encoding: bool,
         keepdims: bool,
     ) -> jnp.ndarray:
         """
@@ -2018,17 +2374,19 @@ class Model:
             inputs (jnp.ndarray): Validated and batch-aligned inputs.
             pulse_params (jnp.ndarray): Validated and batch-aligned pulse params.
             enc_params (jnp.ndarray): Validated encoding parameters.
-            batch_shape (Tuple[int, int, int]): Batch shape (B_I, B_P, B_R).
+            enc_pulse_params (jnp.ndarray): Validated and batch-aligned
+                encoding pulse parameters.
+            batch_shape (Tuple[int, ...]): Batch shape (B_I, B_P, B_R, B_E).
             execution_type (str): Measurement type: "expval", "density",
                 "probs", or "state".
             result_shape (Tuple[int, ...]): Per-sample output shape.
             noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
                 Normalized noise configuration.
-            gate_mode (str): Gate execution backend, "unitary" or "pulse".
+            gate_mode (str): Gate execution backend, "unitary",
+                "ansatz_pulse", "enc_pulse" or "all_pulse".
             force_mean (bool): If True, averages results over the output axis.
             key (random.PRNGKey): JAX random key for this execution.
-            skip_encoding (bool): Whether to omit the encoding gates.
-            keepdims (bool): If True, the full (B_I, B_P, B_R, O) shape is
+            keepdims (bool): If True, the full (B_I, B_P, B_R, B_E, O) shape is
                 returned. If False, all singleton axes are squeezed out.
 
         Returns:
@@ -2047,7 +2405,6 @@ class Model:
         exec_kwargs = dict(
             noise_params=noise_params,
             gate_mode=gate_mode,
-            skip_encoding=skip_encoding,
         )
 
         # Build a shot key from the given key if shots are requested
@@ -2067,26 +2424,43 @@ class Model:
                 0 if batch_shape[2] > 1 else None,  # pulse_params
                 0,  # random_keys
                 None,  # enc_params (broadcast, not batched)
+                0 if batch_shape[3] > 1 else None,  # enc_pulse_params
             )
 
             result = self.script.execute(
                 type=meas_type,
                 obs=obs,
-                args=(params, inputs, pulse_params, random_keys, enc_params),
+                args=(
+                    params,
+                    inputs,
+                    pulse_params,
+                    random_keys,
+                    enc_params,
+                    enc_pulse_params,
+                ),
                 kwargs=exec_kwargs,
                 in_axes=in_axes,
                 shots=self.shots,
                 key=shot_key,
+                fingerprint=self._structural_fingerprint(),
             )
         else:
             # use the subkey directly
             result = self.script.execute(
                 type=meas_type,
                 obs=obs,
-                args=(params, inputs, pulse_params, sub_key, enc_params),
+                args=(
+                    params,
+                    inputs,
+                    pulse_params,
+                    sub_key,
+                    enc_params,
+                    enc_pulse_params,
+                ),
                 kwargs=exec_kwargs,
                 shots=self.shots,
                 key=shot_key,
+                fingerprint=self._structural_fingerprint(),
             )
 
         result = self._postprocess_res(result)
