@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, NamedTuple, Optional, Tuple, Union
+from typing import Any, Callable, Hashable, List, NamedTuple, Optional, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -145,6 +145,7 @@ class Script:
         shots: Optional[int] = None,
         key: Optional[jnp.ndarray] = None,
         initial_state: Optional[jnp.ndarray] = None,
+        fingerprint: Optional[Hashable] = None,
     ) -> jnp.ndarray:
         """Execute the circuit and return measurement results.
 
@@ -182,6 +183,12 @@ class Script:
                 instead of |00…0⟩.  Without *in_axes* it must be a 1D state of
                 shape ``(2**n,)``.  With *in_axes* it may be 1D (broadcast across
                 the batch) or 2D of shape ``(B, 2**n)`` (one state per sample).
+            fingerprint: Hashable summary of any circuit-function state that is
+                read while recording the tape but does not appear in *args* or
+                *kwargs*.  It takes part in the batched plan cache key, so a
+                caller whose circuit structure depends on mutable external state
+                (e.g. :class:`~qml_essentials.model.Model` attributes) does not
+                silently reuse a plan compiled for the previous structure.
 
         Returns:
             Without in_axes: shape determined by type.
@@ -219,6 +226,7 @@ class Script:
                 shots=shots,
                 key=key,
                 initial_state=initial_state,
+                fingerprint=fingerprint,
             )
         else:
             tape = self._record(*args, **kwargs)
@@ -437,6 +445,7 @@ class Script:
         shots: Optional[int] = None,
         key: Optional[jnp.ndarray] = None,
         initial_state: Optional[jnp.ndarray] = None,
+        fingerprint: Optional[Hashable] = None,
     ) -> jnp.ndarray:
         """Vectorise :meth:`execute` over a batch axis using ``jax.vmap``.
 
@@ -468,6 +477,8 @@ class Script:
                 broadcast across the batch; a 2D ``(B, 2**n)`` state is vmapped
                 over axis 0 (one state per sample).  It is appended as an extra
                 vmapped argument alongside the circuit arguments.
+            fingerprint: Hashable summary of external circuit-function state
+                (see :meth:`execute`); part of the plan cache key.
 
         Returns:
             Batched measurement results of shape ``(B, ...)`` where *B* is the
@@ -520,9 +531,25 @@ class Script:
         # take part in every cache key.
         gate_error = UnitaryGates.batch_gate_error
 
+        # Non-array kwargs (e.g. ``noise_params``, ``gate_mode``) are captured
+        # in the traced closure, so they have to take part in both cache keys.
+        cache_kwargs = _make_hashable(
+            {k: v for k, v in kwargs.items() if not isinstance(v, jnp.ndarray)}
+        )
+
         # --- Shot mode: compute exact probabilities, then sample. ---
         if shots is not None and type in ("probs", "expval"):
-            shot_cache_key = (type, "shots", shots, eff_in_axes, arg_shapes, gate_error)
+            shot_cache_key = (
+                type,
+                "shots",
+                shots,
+                eff_in_axes,
+                arg_shapes,
+                cache_kwargs,
+                gate_error,
+                has_init,
+                fingerprint,
+            )
             shot_in_axes = eff_in_axes + (0,)  # shot key batched over axis 0
             shot_args = eff_args + (jax.random.split(key, batch_size),)
 
@@ -579,10 +606,18 @@ class Script:
             )
 
         # --- Exact mode: reuse the cached plan or build it on a miss. ---
-        cache_kwargs = _make_hashable(
-            {k: v for k, v in kwargs.items() if not isinstance(v, jnp.ndarray)}
+        # ``has_init`` is part of the key: the plan strips the trailing argument
+        # before recording the tape, so a plan built with an initial state must
+        # not be reused for a same-shaped trailing circuit argument (and back).
+        cache_key = (
+            type,
+            eff_in_axes,
+            arg_shapes,
+            cache_kwargs,
+            gate_error,
+            has_init,
+            fingerprint,
         )
-        cache_key = (type, eff_in_axes, arg_shapes, cache_kwargs, gate_error)
 
         # The cached ``batched_fn`` (eqx.filter_jit wrapper) is reused across
         # calls including under an outer transform: its ``_single_execute``

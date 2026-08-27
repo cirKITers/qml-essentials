@@ -92,6 +92,7 @@ The `initialize_params` method provides the option to re-initialise the paramete
 Given a PRNG key, it returns the `key` from `key, subkey = random.split(key)`  as documented [here](https://docs.jax.dev/en/latest/random-numbers.html) and uses the subkey for the actual parameter initialization.
 It's also possible to omit the `key` argument entirely, as the model has an internal `random_key` state which is updated every time randomness is utilized.
 This allows to repeatingly call `model.initialize_params()` to generate a continous sequence of random initializations.
+The same key state can be advanced manually with `model.next_key()`, which is required to obtain fresh randomness inside a JAX transformation (see [Noise](noise.md#randomness-under-jax-transformations)).
 
 
 ## Encoding
@@ -110,7 +111,7 @@ Other options are:
 See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
 Otherwise multiple inputs are treated as batches of inputs.
-If you want to visualize zero-valued encoding gates in the model, set `remove_zero_encoding` to `False` on instantiation.
+Encoding gates are always part of the circuit, also when the input is zero and the gates reduce to the identity.
 
 In case of a multi-dimensional input, you can obtain the highest frequency in each encoding dimension from the `model.degree` property.
 Note that, `model.degree` includes the negative and zero frequency (i.e. the full spectrum).
@@ -198,6 +199,7 @@ Noise can be added to the model by providing a `noise_params` argument, when cal
 
 with values between $0$ and $1$.
 Additionally, a `GateError` can be applied, which controls the variance of a Gaussian distribution with zero mean applied on the input vector.
+Each gate draws its error independently.
 
 While `BitFlip`, `PhaseFlip`, `Depolarizing` and `GateError`s are applied on each gate, `AmplitudeDamping`, `PhaseDamping`, `StatePreparation` and `Measurement` are applied on the whole circuit.
 
@@ -295,6 +297,10 @@ key = model.initialize_params(key, repeat=10)
 model(inputs=random.uniform(key, (10, 1)))
 ```
 In this example, instead of a batch size of `100`, the output will have a batch size of `10` instead (shape `(10,2)`).
+
+Calls with a batch dimension reuse a compiled execution plan whenever the shapes of the arguments match.
+Changes to the circuit structure, such as `data_reupload` or `observables`, are accounted for, but replacing the `encoding` after instantiation is not supported.
+When calling the model inside `jax.jit`, note that randomness has to be passed in explicitly, see [Noise](noise.md#randomness-under-jax-transformations).
 
 ## Quantikz Export
 

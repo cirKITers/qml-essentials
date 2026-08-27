@@ -677,7 +677,6 @@ class TestFourierTree:
             circuit_type="Circuit_1",
             encoding=Encoding("golomb", None),
             output_qubit=0,
-            remove_zero_encoding=False,
         )
 
         # Rational per-string scalings must not trigger a warning.

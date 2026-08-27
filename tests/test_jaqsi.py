@@ -1650,6 +1650,29 @@ class TestGateOperations:
         assert result.matrix.shape == (8, 8)
 
 
+class TestDrawing:
+    @pytest.mark.unittest
+    def test_draw_mpl_gate_values(self):
+        """gate_values=False labels gates by name, without angles."""
+        import matplotlib.pyplot as plt
+        from qml_essentials.drawing import draw_mpl
+        from qml_essentials.tape import recording
+
+        with recording() as tape:
+            RX(jnp.pi / 2, wires=0)
+            CRX(jnp.pi / 2, wires=[0, 1])
+
+        fig, ax = draw_mpl(list(tape), 2)
+        assert "RX(\u03c0/2)" in [t.get_text() for t in ax.texts]
+        plt.close(fig)
+
+        fig, ax = draw_mpl(list(tape), 2, gate_values=False)
+        labels = [t.get_text() for t in ax.texts]
+        assert "RX" in labels
+        assert not any("(" in label for label in labels)
+        plt.close(fig)
+
+
 class TestMemory:
     @pytest.mark.unittest
     @pytest.mark.limit_memory("1 GB")
@@ -1801,7 +1824,15 @@ class TestChunk:
             (a.shape, a.dtype) if hasattr(a, "shape") else type(a)
             for a in (small_thetas,)
         )
-        cache_key = ("density", (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
+        cache_key = (
+            "density",
+            (0,),
+            arg_shapes,
+            (),
+            UnitaryGates.batch_gate_error,
+            False,  # has_init
+            None,  # fingerprint
+        )
         batched_fn, *_ = script._jit_cache[cache_key]
 
         # Now execute a larger batch in chunks of 5 (4 chunks total).
@@ -1965,7 +1996,15 @@ class TestChunk:
         arg_shapes = tuple(
             (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
         )
-        cache_key = (exec_type, (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
+        cache_key = (
+            exec_type,
+            (0,),
+            arg_shapes,
+            (),
+            UnitaryGates.batch_gate_error,
+            False,  # has_init
+            None,  # fingerprint
+        )
         batched_fn, *_ = script2._jit_cache[cache_key]
 
         batch_size = thetas.shape[0]
@@ -2004,7 +2043,15 @@ class TestChunk:
         arg_shapes = tuple(
             (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
         )
-        cache_key = ("probs", (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
+        cache_key = (
+            "probs",
+            (0,),
+            arg_shapes,
+            (),
+            UnitaryGates.batch_gate_error,
+            False,  # has_init
+            None,  # fingerprint
+        )
         batched_fn, *_ = script2._jit_cache[cache_key]
 
         # 7 elements, chunk_size=3 → chunks of [3, 3, 1]
@@ -2969,6 +3016,43 @@ class TestInitialState:
         )
         assert sampled.shape == exact.shape
         assert jnp.allclose(sampled, exact, atol=0.05)
+
+    @pytest.mark.unittest
+    def test_initial_state_not_confused_with_trailing_arg(self):
+        """A cached plan built for a trailing circuit argument must not be
+        reused for an ``initial_state`` of the same shape (and vice versa).
+
+        Both calls produce identical ``eff_args`` shapes and ``eff_in_axes``, so
+        the cache key has to carry whether the trailing entry is the initial
+        state (which is stripped before recording the tape) or a circuit
+        argument (which is not).
+        """
+
+        def circ(theta, extra=None):
+            RX(theta, wires=0)
+            if extra is not None:
+                RZ(jnp.real(extra[0]), wires=0)
+
+        script = Script(circ, n_qubits=1)
+        thetas = jnp.array([0.3, 0.9])
+        vec = jnp.array([1.0, 1.0], dtype=complex) / jnp.sqrt(2.0)  # |+>
+
+        # Populate the cache with the trailing-circuit-argument plan first.
+        with_arg = script.execute(
+            type="expval", obs=[PauliZ(0)], args=(thetas, vec), in_axes=(0, None)
+        )
+        with_state = script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(thetas,),
+            in_axes=(0,),
+            initial_state=vec,
+        )
+
+        # |+> through RX has <Z> = 0 for every theta; the trailing-argument run
+        # starts from |0> and must differ.
+        assert jnp.allclose(with_state, jnp.zeros_like(with_state), atol=1e-10)
+        assert not jnp.allclose(with_arg, with_state, atol=1e-6)
 
     @pytest.mark.unittest
     def test_invalid_initial_state_ndim_raises(self):

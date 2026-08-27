@@ -374,6 +374,7 @@ def draw_text(ops: List[Operation], n_qubits: int) -> str:
 def draw_mpl(
     ops: List[Operation],
     n_qubits: int,
+    gate_values: bool = True,
     **kwargs: Any,
 ) -> Tuple:
     """Render a circuit tape as a Matplotlib figure.
@@ -381,6 +382,8 @@ def draw_mpl(
     Args:
         ops: Ordered list of gate operations (noise channels excluded).
         n_qubits: Total number of qubits.
+        gate_values: If ``True`` (default), show numeric gate angles;
+            otherwise label gates by name only.
         **kwargs: Reserved for future options.
 
     Returns:
@@ -402,7 +405,7 @@ def draw_mpl(
             ctrl_wires = op.wires[:-1]
             target_wire = op.wires[-1]
             target_name = _ctrl_target_name(op.name)
-            if op.parameters:
+            if gate_values and op.parameters:
                 param_str = ", ".join(_format_param(p) for p in op.parameters)
                 target_label = f"{target_name}({param_str})"
             else:
@@ -421,7 +424,7 @@ def draw_mpl(
             for w in all_spanned:
                 wire_busy[w] = start + 1
         else:
-            label = _gate_label(op)
+            label = _gate_label(op) if gate_values else op.name
             for w in op.wires:
                 columns[start][w] = label
                 wire_busy[w] = start + 1
