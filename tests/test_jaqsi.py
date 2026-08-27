@@ -1808,6 +1808,7 @@ class TestChunk:
             (),
             UnitaryGates.batch_gate_error,
             False,  # has_init
+            None,  # fingerprint
         )
         batched_fn, *_ = script._jit_cache[cache_key]
 
@@ -1979,6 +1980,7 @@ class TestChunk:
             (),
             UnitaryGates.batch_gate_error,
             False,  # has_init
+            None,  # fingerprint
         )
         batched_fn, *_ = script2._jit_cache[cache_key]
 
@@ -2025,6 +2027,7 @@ class TestChunk:
             (),
             UnitaryGates.batch_gate_error,
             False,  # has_init
+            None,  # fingerprint
         )
         batched_fn, *_ = script2._jit_cache[cache_key]
 

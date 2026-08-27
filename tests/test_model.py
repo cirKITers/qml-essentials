@@ -12,6 +12,7 @@ from qml_essentials.pulses import PulseInformation
 from qml_essentials.coefficients import Datasets
 import pytest
 import logging
+import warnings
 import pennylane as qml
 import time
 
@@ -239,7 +240,9 @@ def test_random_key_call() -> None:
     key_before = model.random_key
     frozen = jax.jit(lambda p: model(params=p, **kwargs))
     params = jnp.array(model.params)
-    assert jnp.allclose(frozen(params), frozen(params)), (
+    with pytest.warns(UserWarning, match="replays the same noise realization"):
+        first = frozen(params)
+    assert jnp.allclose(first, frozen(params)), (
         "Without an explicit key, a jitted call replays the trace-time key"
     )
     assert key_before == model.random_key, "Tracer must not be stashed on the model"
@@ -254,6 +257,137 @@ def test_random_key_call() -> None:
         results.append(fresh(params, sub_key))
     assert not jnp.allclose(results[0], results[1])
     assert not jnp.allclose(results[1], results[2])
+
+
+@pytest.mark.unittest
+def test_frozen_randomness_warning() -> None:
+    """Stochastic execution without an explicit key warns under a transform."""
+
+    def mk(**kwargs: Any) -> Model:
+        return Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            random_seed=1000,
+            **kwargs,
+        )
+
+    inputs = jnp.array([0.5])
+    noise_params = {"GateError": 0.3}
+
+    model = mk()
+    with pytest.warns(UserWarning, match="replays the same noise realization"):
+        jax.jit(lambda p: model(params=p, inputs=inputs, noise_params=noise_params))(
+            model.params
+        )
+
+    # shots are stochastic as well
+    model = mk(shots=100)
+    with pytest.warns(UserWarning, match="replays the same noise realization"):
+        jax.jit(lambda p: model(params=p, inputs=inputs))(model.params)
+
+    # no warning eagerly, with an explicit key, or without any randomness
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+
+        model = mk()
+        model(inputs=inputs, noise_params=noise_params)
+
+        model = mk()
+        jax.jit(
+            lambda p, k: model(
+                params=p, inputs=inputs, noise_params=noise_params, random_key=k
+            )
+        )(model.params, random.key(0))
+
+        model = mk()
+        jax.jit(lambda p: model(params=p, inputs=inputs))(model.params)
+
+
+@pytest.mark.unittest
+def test_next_key() -> None:
+    """``next_key`` advances the internal key and feeds a traced call."""
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Circuit_19", random_seed=1000)
+
+    key_before = model.random_key
+    first, second = model.next_key(), model.next_key()
+    assert key_before != model.random_key, "next_key should advance the internal key"
+    assert first != second, "next_key should return a fresh key each time"
+
+    noisy = jax.jit(
+        lambda p, k: model(
+            params=p,
+            inputs=jnp.array([0.5]),
+            noise_params={"GateError": 0.3},
+            random_key=k,
+        )
+    )
+    params = jnp.array(model.params)
+    assert not jnp.allclose(noisy(params, model.next_key()), noisy(params, first)), (
+        "A key per call should give fresh noise inside the trace"
+    )
+
+
+@pytest.mark.unittest
+def test_structural_change_invalidates_plan() -> None:
+    """Changing the circuit structure must not reuse a cached batched plan."""
+
+    def mk(**kwargs: Any) -> Model:
+        return Model(
+            n_qubits=2,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            random_seed=1000,
+            **kwargs,
+        )
+
+    # batched inputs, so the cached (vmapped) execution path is used
+    inputs = jnp.array([[0.5], [1.2]])
+
+    model = mk()
+    model(inputs=inputs)
+    reused = model(inputs=inputs, data_reupload=False)
+    assert jnp.allclose(reused, mk(data_reupload=False)(inputs=inputs)), (
+        "data_reupload change must not reuse the previous plan"
+    )
+
+    model = mk()
+    model(inputs=inputs)
+    model.observables = 0
+    assert jnp.allclose(model(inputs=inputs), mk(observables=0)(inputs=inputs)), (
+        "observables change must not reuse the previous plan"
+    )
+
+    # noise is captured in the traced closure, and shot mode caches it too
+    model = mk(shots=1000)
+    key = random.key(1000)
+    noiseless = model(inputs=inputs, random_key=key)
+    noisy = model(inputs=inputs, noise_params={"BitFlip": 0.5}, random_key=key)
+    assert not jnp.allclose(noiseless, noisy), (
+        "noise change must not reuse the previous shot plan"
+    )
+
+
+@pytest.mark.unittest
+def test_zero_inputs_eager_matches_traced() -> None:
+    """Zero inputs must not take a circuit path that tracing cannot take."""
+    kwargs: Dict[str, Any] = dict(
+        inputs=jnp.array([0.0]),
+        noise_params={"BitFlip": 0.2},
+        random_key=random.key(1000),
+    )
+
+    def mk() -> Model:
+        return Model(
+            n_qubits=2, n_layers=1, circuit_type="Circuit_19", random_seed=1000
+        )
+
+    eager = mk()(**kwargs)
+    model = mk()
+    traced = jax.jit(lambda p: model(params=p, **kwargs))(jnp.array(model.params))
+    assert jnp.allclose(eager, traced), (
+        "Zero inputs with noise must give the same result eagerly and traced"
+    )
 
 
 @pytest.mark.unittest
@@ -317,7 +451,6 @@ def test_state_preparation() -> None:
             n_layers=1,
             circuit_type="Circuit_19",
             state_preparation=test_case["state_preparation_unitary"],
-            remove_zero_encoding=False,
         )
 
         _ = model(
@@ -391,7 +524,6 @@ def test_encoding() -> None:
             n_layers=1,
             circuit_type="Circuit_19",
             encoding=test_case["encoding"],
-            remove_zero_encoding=False,
         )
 
         if test_case["warning"]:
@@ -469,7 +601,6 @@ def test_encoding_spectrum_reference(strategy, n_qubits) -> None:
         n_layers=1,
         circuit_type="Hardware_Efficient",
         encoding=Encoding(strategy, None if strategy == "golomb" else ["RX"]),
-        remove_zero_encoding=False,
     )
     naive = set(int(v) for v in model.frequencies[0])
     if strategy == "golomb":
@@ -528,7 +659,6 @@ def test_golomb_encoding() -> None:
         n_layers=1,
         circuit_type="Circuit_1",
         encoding=enc,
-        remove_zero_encoding=False,
     )
 
     assert model.n_input_feat == 1, "Golomb encoding should have 1 input feature"
@@ -584,7 +714,6 @@ def test_golomb_encoding() -> None:
         circuit_type="Circuit_1",
         encoding=enc,
         data_reupload=True,
-        remove_zero_encoding=False,
     )
     result_dru = model_dru(inputs=0.5)
     assert jnp.all(jnp.isfinite(result_dru)), (
@@ -598,7 +727,6 @@ def test_golomb_encoding() -> None:
         circuit_type="Circuit_1",
         encoding=Encoding("golomb", None),
         data_reupload=False,
-        remove_zero_encoding=False,
     )
     result_no_dru = model_no_dru(inputs=0.5)
     assert jnp.all(jnp.isfinite(result_no_dru)), (
@@ -664,7 +792,6 @@ def test_basic_draw() -> None:
             circuit_type=ansatz.__name__,
             initialization="random",
             observables=-1,
-            remove_zero_encoding=False,
         )
 
         if model.params.size >= 4:
@@ -699,7 +826,6 @@ def test_advanced_draw() -> None:
         initialization="random",
         observables=0,
         encoding=["RX", "RY"],
-        remove_zero_encoding=False,
     )
 
     if model.params.size >= 4:
@@ -777,26 +903,18 @@ def test_initialization() -> None:
 
 @pytest.mark.smoketest
 def test_inputs() -> None:
-    test_cases = [
-        {"inputs": 0.0, "remove_zero_encoding": True},
-        {"inputs": 0.0, "remove_zero_encoding": False},
-        {"inputs": jnp.zeros(5), "remove_zero_encoding": True},
-        {"inputs": jnp.zeros(5), "remove_zero_encoding": False},
-        {"inputs": jnp.arange(5), "remove_zero_encoding": True},
-        {"inputs": jnp.arange(5), "remove_zero_encoding": False},
-    ]
+    test_cases = [0.0, jnp.zeros(5), jnp.arange(5)]
 
-    for test_case in test_cases:
+    for inputs in test_cases:
         model = Model(
             n_qubits=2,
             n_layers=1,
             circuit_type="Circuit_19",
-            remove_zero_encoding=test_case["remove_zero_encoding"],
         )
 
         _ = model(
             model.params,
-            inputs=test_case["inputs"],
+            inputs=inputs,
             noise_params=None,
             execution_type="expval",
         )
