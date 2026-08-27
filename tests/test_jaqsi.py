@@ -821,6 +821,39 @@ class TestBatch:
         assert jnp.allclose(results[:, 0], expected, atol=1e-6)
 
     @pytest.mark.unittest
+    def test_batched_static_python_scalar_arg(self) -> None:
+        """A non-array (Python float) broadcast arg must not break cache-key
+        construction.
+
+        Regression: the measurement-type parameter ``type`` shadowed the
+        builtin, so the ``arg_shapes`` fallback ``type(a)`` for a non-array
+        argument raised ``TypeError: 'str' object is not callable``.
+        """
+
+        def scaled_circuit(theta, scale):
+            RX(theta * scale, wires=0)
+
+        script = Script(f=scaled_circuit)
+        thetas = jnp.linspace(0.0, 1.0, 5)  # batched — axis 0
+        scale = 2.0  # Python float (no .shape), broadcast — None
+
+        results = script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(thetas, scale),
+            in_axes=(0, None),
+        )
+
+        expected = jnp.array(
+            [
+                script.execute(type="expval", obs=[PauliZ(0)], args=(t, scale))[0]
+                for t in thetas
+            ]
+        )
+        assert results.shape == (5, 1)
+        assert jnp.allclose(results[:, 0], expected, atol=1e-6)
+
+    @pytest.mark.unittest
     def test_batched_in_axes_mismatch_raises(self) -> None:
         """in_axes length != args length must raise a clear ValueError."""
         script = Script(f=parametrized_circuit)
@@ -1617,6 +1650,29 @@ class TestGateOperations:
         assert result.matrix.shape == (8, 8)
 
 
+class TestDrawing:
+    @pytest.mark.unittest
+    def test_draw_mpl_gate_values(self):
+        """gate_values=False labels gates by name, without angles."""
+        import matplotlib.pyplot as plt
+        from qml_essentials.drawing import draw_mpl
+        from qml_essentials.tape import recording
+
+        with recording() as tape:
+            RX(jnp.pi / 2, wires=0)
+            CRX(jnp.pi / 2, wires=[0, 1])
+
+        fig, ax = draw_mpl(list(tape), 2)
+        assert "RX(\u03c0/2)" in [t.get_text() for t in ax.texts]
+        plt.close(fig)
+
+        fig, ax = draw_mpl(list(tape), 2, gate_values=False)
+        labels = [t.get_text() for t in ax.texts]
+        assert "RX" in labels
+        assert not any("(" in label for label in labels)
+        plt.close(fig)
+
+
 class TestMemory:
     @pytest.mark.unittest
     @pytest.mark.limit_memory("1 GB")
@@ -1768,7 +1824,15 @@ class TestChunk:
             (a.shape, a.dtype) if hasattr(a, "shape") else type(a)
             for a in (small_thetas,)
         )
-        cache_key = ("density", (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
+        cache_key = (
+            "density",
+            (0,),
+            arg_shapes,
+            (),
+            UnitaryGates.batch_gate_error,
+            False,  # has_init
+            None,  # fingerprint
+        )
         batched_fn, *_ = script._jit_cache[cache_key]
 
         # Now execute a larger batch in chunks of 5 (4 chunks total).
@@ -1932,7 +1996,15 @@ class TestChunk:
         arg_shapes = tuple(
             (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
         )
-        cache_key = (exec_type, (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
+        cache_key = (
+            exec_type,
+            (0,),
+            arg_shapes,
+            (),
+            UnitaryGates.batch_gate_error,
+            False,  # has_init
+            None,  # fingerprint
+        )
         batched_fn, *_ = script2._jit_cache[cache_key]
 
         batch_size = thetas.shape[0]
@@ -1971,7 +2043,15 @@ class TestChunk:
         arg_shapes = tuple(
             (a.shape, a.dtype) if hasattr(a, "shape") else type(a) for a in (thetas,)
         )
-        cache_key = ("probs", (0,), arg_shapes, (), UnitaryGates.batch_gate_error)
+        cache_key = (
+            "probs",
+            (0,),
+            arg_shapes,
+            (),
+            UnitaryGates.batch_gate_error,
+            False,  # has_init
+            None,  # fingerprint
+        )
         batched_fn, *_ = script2._jit_cache[cache_key]
 
         # 7 elements, chunk_size=3 → chunks of [3, 3, 1]
@@ -2790,3 +2870,205 @@ class TestPulse:
             assert events[2].wires == [0, 1]
         finally:
             PulseInformation.set_envelope(original)
+
+
+def _rx_circuit(theta):
+    RX(theta, wires=0)
+
+
+def _h_then_rx(theta):
+    H(wires=0)
+    RX(theta, wires=0)
+
+
+def _id_circuit(*args, **kwargs):
+    Id(wires=0)
+
+
+class TestInitialState:
+    """Arbitrary initial statevector in Script.execute (Tier 1 #3)."""
+
+    @pytest.mark.unittest
+    def test_default_unchanged_with_zero_state(self):
+        # Passing |00> explicitly matches the default |00> origin.
+        e0 = jnp.zeros(4, dtype=complex).at[0].set(1.0)
+        script = Script(bell_circuit)
+        default = script.execute(type="probs")
+        explicit = script.execute(type="probs", initial_state=e0)
+        assert jnp.allclose(default, explicit, atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_non_batched_basis_state(self):
+        # |1> through an identity circuit stays |1>; <Z> = -1.
+        one = jnp.array([0.0, 1.0], dtype=complex)
+        script = Script(_id_circuit)
+        state = script.execute(type="state", initial_state=one)
+        assert jnp.allclose(state, one, atol=1e-10)
+        z = script.execute(type="expval", obs=[PauliZ(0)], initial_state=one)
+        assert jnp.allclose(z, jnp.array([-1.0]), atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_non_batched_state_prep_equivalence(self):
+        # Starting from H|0> equals prepending H to a |0>-initialised circuit.
+        plus = jnp.array([1.0, 1.0], dtype=complex) / jnp.sqrt(2.0)
+        from_state = Script(_rx_circuit).execute(
+            type="expval", obs=[PauliZ(0)], args=(0.3,), initial_state=plus
+        )
+        from_prep = Script(_h_then_rx).execute(
+            type="expval", obs=[PauliZ(0)], args=(0.3,)
+        )
+        assert jnp.allclose(from_state, from_prep, atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_broadcast_initial_state_batched_params(self):
+        # One 1D state broadcast across a batch of params.
+        plus = jnp.array([1.0, 1.0], dtype=complex) / jnp.sqrt(2.0)
+        thetas = jnp.linspace(0.0, 1.5, 5)
+        script = Script(_rx_circuit)
+        batched = script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(thetas,),
+            in_axes=(0,),
+            initial_state=plus,
+        )
+        seq = jnp.stack(
+            [
+                script.execute(
+                    type="expval", obs=[PauliZ(0)], args=(t,), initial_state=plus
+                )
+                for t in thetas
+            ]
+        )
+        assert batched.shape == seq.shape
+        assert jnp.allclose(batched, seq, atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_per_sample_states_broadcast_params(self):
+        # 2D batch of states with a broadcast param: batch comes from the states.
+        states = jnp.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], dtype=complex)
+        states = states / jnp.linalg.norm(states, axis=1, keepdims=True)
+        script = Script(_rx_circuit)
+        theta = jnp.array(0.4)
+        batched = script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(theta,),
+            in_axes=(None,),
+            initial_state=states,
+        )
+        seq = jnp.stack(
+            [
+                script.execute(
+                    type="expval", obs=[PauliZ(0)], args=(theta,), initial_state=s
+                )
+                for s in states
+            ]
+        )
+        assert batched.shape == seq.shape
+        assert jnp.allclose(batched, seq, atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_per_sample_states_batched_params(self):
+        # 2D states and batched params, both over axis 0.
+        states = jnp.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], dtype=complex)
+        states = states / jnp.linalg.norm(states, axis=1, keepdims=True)
+        thetas = jnp.array([0.2, 0.5, 1.1])
+        script = Script(_rx_circuit)
+        batched = script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(thetas,),
+            in_axes=(0,),
+            initial_state=states,
+        )
+        seq = jnp.stack(
+            [
+                script.execute(
+                    type="expval", obs=[PauliZ(0)], args=(t,), initial_state=s
+                )
+                for t, s in zip(thetas, states)
+            ]
+        )
+        assert jnp.allclose(batched, seq, atol=1e-10)
+
+    @pytest.mark.unittest
+    def test_shots_with_initial_state(self):
+        # Shot sampling converges to the exact expval with a custom initial state.
+        plus = jnp.array([1.0, 1.0], dtype=complex) / jnp.sqrt(2.0)
+        thetas = jnp.array([0.3, 0.7])
+        script = Script(_rx_circuit)
+        exact = script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(thetas,),
+            in_axes=(0,),
+            initial_state=plus,
+        )
+        sampled = script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(thetas,),
+            in_axes=(0,),
+            initial_state=plus,
+            shots=20000,
+            key=jax.random.PRNGKey(0),
+        )
+        assert sampled.shape == exact.shape
+        assert jnp.allclose(sampled, exact, atol=0.05)
+
+    @pytest.mark.unittest
+    def test_initial_state_not_confused_with_trailing_arg(self):
+        """A cached plan built for a trailing circuit argument must not be
+        reused for an ``initial_state`` of the same shape (and vice versa).
+
+        Both calls produce identical ``eff_args`` shapes and ``eff_in_axes``, so
+        the cache key has to carry whether the trailing entry is the initial
+        state (which is stripped before recording the tape) or a circuit
+        argument (which is not).
+        """
+
+        def circ(theta, extra=None):
+            RX(theta, wires=0)
+            if extra is not None:
+                RZ(jnp.real(extra[0]), wires=0)
+
+        script = Script(circ, n_qubits=1)
+        thetas = jnp.array([0.3, 0.9])
+        vec = jnp.array([1.0, 1.0], dtype=complex) / jnp.sqrt(2.0)  # |+>
+
+        # Populate the cache with the trailing-circuit-argument plan first.
+        with_arg = script.execute(
+            type="expval", obs=[PauliZ(0)], args=(thetas, vec), in_axes=(0, None)
+        )
+        with_state = script.execute(
+            type="expval",
+            obs=[PauliZ(0)],
+            args=(thetas,),
+            in_axes=(0,),
+            initial_state=vec,
+        )
+
+        # |+> through RX has <Z> = 0 for every theta; the trailing-argument run
+        # starts from |0> and must differ.
+        assert jnp.allclose(with_state, jnp.zeros_like(with_state), atol=1e-10)
+        assert not jnp.allclose(with_arg, with_state, atol=1e-6)
+
+    @pytest.mark.unittest
+    def test_invalid_initial_state_ndim_raises(self):
+        script = Script(_rx_circuit)
+        with pytest.raises(ValueError):
+            script.execute(
+                type="expval",
+                obs=[PauliZ(0)],
+                args=(0.3,),
+                initial_state=jnp.zeros((2, 2), dtype=complex),
+            )
+        with pytest.raises(ValueError):
+            script.execute(
+                type="expval",
+                obs=[PauliZ(0)],
+                args=(jnp.array([0.3, 0.4]),),
+                in_axes=(0,),
+                initial_state=jnp.zeros((2, 2, 2), dtype=complex),
+            )

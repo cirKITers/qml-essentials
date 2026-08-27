@@ -194,7 +194,7 @@ def variational(params, inputs, *args, **kwargs):
     g.PauliRot(params[1], "YY", wires=[0, 1])
     g.PauliRot(9 * inputs, "XY", wires=[0, 1])
 
-model = Model(n_qubits=3, n_layers=1, output_qubit=0)
+model = Model(n_qubits=3, n_layers=1, observables=0)
 model._params_shape = (2, 1)
 model.initialize_params()       # reallocate params for the custom shape
 model.script = js.Script(f=variational, n_qubits=3)
@@ -299,7 +299,7 @@ model = Model(
     n_qubits=6,
     n_layers=1,
     circuit_type="Hardware_Efficient",
-    output_qubit=-1,
+    observables=None,
     encoding=["RY"],
 )
 

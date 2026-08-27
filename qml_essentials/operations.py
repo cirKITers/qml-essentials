@@ -1,5 +1,6 @@
 from typing import Callable, List, Optional, Tuple, Union
-from functools import lru_cache
+from functools import lru_cache, reduce
+from itertools import product
 import string
 import numpy as np
 
@@ -1058,6 +1059,29 @@ _PAULI_MATRICES = {
 }
 _PAULI_MATS = [_PAULI_MATRICES[label] for label in _PAULI_LABELS]
 
+# Map from operation name to single-qubit Pauli label.
+_NAME_TO_PAULI_LABEL = {"PauliX": "X", "PauliY": "Y", "PauliZ": "Z", "I": "I"}
+
+
+def _pauli_tensor(word: str) -> jnp.ndarray:
+    """Tensor product of single-qubit Pauli matrices for a Pauli word."""
+    return reduce(jnp.kron, [_PAULI_MATRICES[c] for c in word])
+
+
+def _rot_matrix(theta: float, pauli: jnp.ndarray) -> jnp.ndarray:
+    """Return ``cos(theta/2) I - i sin(theta/2) P`` for a Pauli tensor *P*."""
+    dim = pauli.shape[0]
+    return (
+        jnp.cos(theta / 2) * jnp.eye(dim, dtype=_cdtype())
+        - 1j * jnp.sin(theta / 2) * pauli
+    )
+
+
+def _check_unit_interval(value: float, name: str) -> None:
+    """Raise ``ValueError`` if *value* is outside the closed interval [0, 1]."""
+    if not 0.0 <= value <= 1.0:
+        raise ValueError(f"{name} must be in [0, 1].")
+
 
 def _make_rotation_gate(pauli_class: type, name: str) -> type:
     """Factory for single-qubit rotation gates RX, RY, RZ.
@@ -1086,9 +1110,7 @@ def _make_rotation_gate(pauli_class: type, name: str) -> type:
             self, theta: float, wires: Union[int, List[int]] = 0, **kwargs
         ) -> None:
             self.theta = theta
-            c = jnp.cos(theta / 2)
-            s = jnp.sin(theta / 2)
-            mat = c * Id._matrix - 1j * s * pauli_mat
+            mat = _rot_matrix(theta, pauli_mat)
             super().__init__(wires=wires, matrix=mat, **kwargs)
 
         def generator(self) -> Operation:
@@ -1292,13 +1314,9 @@ class Rot(Operation):
         self.theta = theta
         self.omega = omega
         # Rot(\\phi, \theta, \\omega) = RZ(\\omega) @ RY(\theta) @ RZ(\\phi)
-        rz_phi = jnp.cos(phi / 2) * Id._matrix - 1j * jnp.sin(phi / 2) * PauliZ._matrix
-        ry_theta = (
-            jnp.cos(theta / 2) * Id._matrix - 1j * jnp.sin(theta / 2) * PauliY._matrix
-        )
-        rz_omega = (
-            jnp.cos(omega / 2) * Id._matrix - 1j * jnp.sin(omega / 2) * PauliZ._matrix
-        )
+        rz_phi = _rot_matrix(phi, PauliZ._matrix)
+        ry_theta = _rot_matrix(theta, PauliY._matrix)
+        rz_omega = _rot_matrix(omega, PauliZ._matrix)
         mat = rz_omega @ ry_theta @ rz_phi
         super().__init__(wires=wires, matrix=mat, **kwargs)
 
@@ -1341,18 +1359,11 @@ class PauliRot(Operation):
                 characters specifying the Pauli tensor product.
             wires: Qubit index or list of qubit indices this gate acts on.
         """
-        from functools import reduce as _reduce
-
         self.theta = theta
         self.pauli_word = pauli_word
 
-        pauli_matrices = [self._PAULI_MAP[c] for c in pauli_word]
-        P = _reduce(jnp.kron, pauli_matrices)
-        dim = P.shape[0]
-        mat = (
-            jnp.cos(theta / 2) * jnp.eye(dim, dtype=_cdtype())
-            - 1j * jnp.sin(theta / 2) * P
-        )
+        P = _pauli_tensor(pauli_word)
+        mat = _rot_matrix(theta, P)
         super().__init__(wires=wires, matrix=mat, **kwargs)
 
     def generator(self) -> Operation:
@@ -1365,10 +1376,7 @@ class PauliRot(Operation):
         Returns:
             :class:`Hermitian` operation representing the Pauli tensor product.
         """
-        from functools import reduce as _reduce
-
-        pauli_matrices = [self._PAULI_MAP[c] for c in self.pauli_word]
-        P = _reduce(jnp.kron, pauli_matrices)
+        P = _pauli_tensor(self.pauli_word)
         return Hermitian(matrix=P, wires=self.wires, record=False)
 
 
@@ -1439,8 +1447,6 @@ class ControlledPauliRot(Operation):
         n_controls: int = 1,
         **kwargs,
     ) -> None:
-        from functools import reduce as _reduce
-
         self.theta = theta
         self.pauli_word = pauli_word
         self.n_controls = n_controls
@@ -1454,13 +1460,9 @@ class ControlledPauliRot(Operation):
                 f"{len(wires_list)}."
             )
 
-        pauli_matrices = [PauliRot._PAULI_MAP[c] for c in pauli_word]
-        P = _reduce(jnp.kron, pauli_matrices)
+        P = _pauli_tensor(pauli_word)
         d_t = P.shape[0]
-        R = (
-            jnp.cos(theta / 2) * jnp.eye(d_t, dtype=_cdtype())
-            - 1j * jnp.sin(theta / 2) * P
-        )
+        R = _rot_matrix(theta, P)
 
         d_c = 2**n_controls
         dim = d_c * d_t
@@ -1474,10 +1476,7 @@ class ControlledPauliRot(Operation):
 
     def generator(self) -> Operation:
         """Return the (Hermitian) generator on the full wire set."""
-        from functools import reduce as _reduce
-
-        pauli_matrices = [PauliRot._PAULI_MAP[c] for c in self.pauli_word]
-        P = _reduce(jnp.kron, pauli_matrices)
+        P = _pauli_tensor(self.pauli_word)
         d_t = P.shape[0]
         d_c = 2**self.n_controls
         dim = d_c * d_t
@@ -1660,8 +1659,7 @@ class BitFlip(KrausChannel):
         Raises:
             ValueError: If *p* is outside [0, 1].
         """
-        if not 0.0 <= p <= 1.0:
-            raise ValueError("p must be in [0, 1].")
+        _check_unit_interval(p, "p")
         self.p = p
         super().__init__(wires=wires)
 
@@ -1699,8 +1697,7 @@ class PhaseFlip(KrausChannel):
         Raises:
             ValueError: If *p* is outside [0, 1].
         """
-        if not 0.0 <= p <= 1.0:
-            raise ValueError("p must be in [0, 1].")
+        _check_unit_interval(p, "p")
         self.p = p
         super().__init__(wires=wires)
 
@@ -1739,8 +1736,7 @@ class DepolarizingChannel(KrausChannel):
         Raises:
             ValueError: If *p* is outside [0, 1].
         """
-        if not 0.0 <= p <= 1.0:
-            raise ValueError("p must be in [0, 1].")
+        _check_unit_interval(p, "p")
         self.p = p
         super().__init__(wires=wires)
 
@@ -1782,8 +1778,7 @@ class AmplitudeDamping(KrausChannel):
         Raises:
             ValueError: If *gamma* is outside [0, 1].
         """
-        if not 0.0 <= gamma <= 1.0:
-            raise ValueError("gamma must be in [0, 1].")
+        _check_unit_interval(gamma, "gamma")
         self.gamma = gamma
         super().__init__(wires=wires)
 
@@ -1822,8 +1817,7 @@ class PhaseDamping(KrausChannel):
         Raises:
             ValueError: If *gamma* is outside [0, 1].
         """
-        if not 0.0 <= gamma <= 1.0:
-            raise ValueError("gamma must be in [0, 1].")
+        _check_unit_interval(gamma, "gamma")
         self.gamma = gamma
         super().__init__(wires=wires)
 
@@ -1883,8 +1877,7 @@ class ThermalRelaxationError(KrausChannel):
         Raises:
             ValueError: If any parameter violates the stated constraints.
         """
-        if not 0.0 <= pe <= 1.0:
-            raise ValueError("pe must be in [0, 1].")
+        _check_unit_interval(pe, "pe")
         if t1 <= 0:
             raise ValueError("t1 must be > 0.")
         if t2 <= 0:
@@ -2107,20 +2100,18 @@ def _dominant_pauli_label(matrix: jnp.ndarray) -> Tuple[complex, str]:
     Returns:
         ``(coeff, label)`` with *label* a string over ``{I, X, Y, Z}``.
     """
-    from itertools import product as _product
-    from functools import reduce as _reduce
-
     dim = matrix.shape[0]
     n_qubits = int(jnp.round(jnp.log2(dim)))
 
     best_label = "I" * n_qubits
     best_coeff = 0.0
-    for indices in _product(range(4), repeat=n_qubits):
-        P = _reduce(jnp.kron, [_PAULI_MATS[i] for i in indices])
+    for indices in product(range(4), repeat=n_qubits):
+        label = "".join(_PAULI_LABELS[i] for i in indices)
+        P = _pauli_tensor(label)
         coeff = jnp.trace(P @ matrix) / dim
         if jnp.abs(coeff) > jnp.abs(best_coeff):
             best_coeff = coeff
-            best_label = "".join(_PAULI_LABELS[i] for i in indices)
+            best_label = label
     return best_coeff, best_label
 
 
@@ -2146,8 +2137,6 @@ def pauli_decompose(matrix: jnp.ndarray, wire_order: Optional[List[int]] = None)
         *op* is the Pauli :class:`Operation` (PauliX, PauliY, PauliZ, I, or
         a :class:`Hermitian` for multi-qubit tensor products).
     """
-    from functools import reduce as _reduce
-
     dim = matrix.shape[0]
     n_qubits = int(jnp.round(jnp.log2(dim)))
 
@@ -2172,7 +2161,7 @@ def pauli_decompose(matrix: jnp.ndarray, wire_order: Optional[List[int]] = None)
         return best_coeff, result_op
     else:
         # Multi-qubit tensor product -> Hermitian with pauli label attached
-        P = _reduce(jnp.kron, [_PAULI_MATRICES[ch] for ch in pauli_label])
+        P = _pauli_tensor(pauli_label)
         result_op = Hermitian(matrix=P, wires=wire_order, record=False)
         result_op._pauli_label = pauli_label
         return best_coeff, result_op
@@ -2197,9 +2186,8 @@ def pauli_string_from_operation(op: Operation) -> str:
     # Check for label stored by pauli_decompose
     if hasattr(op, "_pauli_label"):
         return op._pauli_label
-    name_map = {"PauliX": "X", "PauliY": "Y", "PauliZ": "Z", "I": "I"}
-    if op.name in name_map:
-        return name_map[op.name]
+    if op.name in _NAME_TO_PAULI_LABEL:
+        return _NAME_TO_PAULI_LABEL[op.name]
     # Fall back: decompose the matrix
     _, pauli_op = pauli_decompose(op.matrix, wire_order=op.wires)
     return pauli_op._pauli_label
@@ -2229,6 +2217,13 @@ def prod(*ops: Operation) -> Operation:
 # Under this convention Y = i * X * Z, so the single-qubit Y carries x=z=1.
 _XZ_TO_LABEL = {(0, 0): "I", (1, 0): "X", (0, 1): "Z", (1, 1): "Y"}
 _LABEL_TO_XZ = {"I": (0, 0), "X": (1, 0), "Z": (0, 1), "Y": (1, 1)}
+
+# Single-qubit Hermitian Pauli matrices (NumPy) for arbitrary-state expectation.
+_SQ_NP = {
+    "X": np.array([[0, 1], [1, 0]], dtype=complex),
+    "Y": np.array([[0, -1j], [1j, 0]], dtype=complex),
+    "Z": np.array([[1, 0], [0, -1]], dtype=complex),
+}
 
 
 class PauliWord:
@@ -2327,9 +2322,10 @@ class PauliWord:
         rot_to_label = {"RX": "X", "RY": "Y", "RZ": "Z"}
         if op.name in rot_to_label:
             return cls.from_pauli_string(rot_to_label[op.name], op.wires, n_qubits)
-        name_to_label = {"PauliX": "X", "PauliY": "Y", "PauliZ": "Z", "I": "I"}
-        if op.name in name_to_label:
-            return cls.from_pauli_string(name_to_label[op.name], op.wires, n_qubits)
+        if op.name in _NAME_TO_PAULI_LABEL:
+            return cls.from_pauli_string(
+                _NAME_TO_PAULI_LABEL[op.name], op.wires, n_qubits
+            )
         pauli_str = pauli_string_from_operation(op)
         return cls.from_pauli_string(pauli_str, op.wires, n_qubits)
 
@@ -2500,6 +2496,30 @@ class PauliWord:
             return 0.0 + 0.0j
         return complex(1j**self.phase)
 
+    def expectation(self, state: np.ndarray) -> complex:
+        r"""Return ``\langle\psi|P|\psi\rangle`` for an arbitrary statevector.
+
+        Applies the single-qubit Pauli factors to the reshaped state via tensor
+        contraction (``O(n 2^n)``) instead of forming the dense
+        ``2^n \times 2^n`` operator.  The real part is exact for a Hermitian
+        Pauli word.
+
+        Args:
+            state: Statevector of length ``2**n_qubits`` (qubit 0 leftmost).
+
+        Returns:
+            The expectation value ``\langle\psi|P|\psi\rangle``.
+        """
+        n = self.n_qubits
+        psi = np.asarray(state, dtype=complex).reshape((2,) * n)
+        out = psi
+        for q, ch in enumerate(self.to_pauli_string()):
+            if ch == "I":
+                continue
+            out = np.moveaxis(np.tensordot(_SQ_NP[ch], out, axes=(1, q)), 0, q)
+        val = np.vdot(psi.reshape(-1), out.reshape(-1))
+        return self.leading_phase() * complex(val)
+
     def to_pauli_string(self) -> str:
         """Return the bare Pauli string (ignoring the global phase)."""
         return "".join(
@@ -2579,3 +2599,19 @@ class PauliWord:
     def __repr__(self) -> str:
         phase_str = {0: "+", 1: "+i", 2: "-", 3: "-i"}[self.phase]
         return f"PauliWord({phase_str}{self.to_pauli_string()})"
+
+
+def state_expectation(obs: Union[str, PauliWord], state: np.ndarray) -> complex:
+    r"""Return ``\langle\psi|O|\psi\rangle`` for a Pauli observable and statevector.
+
+    Args:
+        obs: The observable, either a :class:`PauliWord` or a bare Pauli string
+            over ``{'I', 'X', 'Y', 'Z'}`` (qubit 0 leftmost).
+        state: Statevector of length ``2**n_qubits``.
+
+    Returns:
+        The expectation value ``\langle\psi|O|\psi\rangle``.
+    """
+    if isinstance(obs, str):
+        obs = PauliWord.from_pauli_string(obs, list(range(len(obs))), len(obs))
+    return obs.expectation(state)

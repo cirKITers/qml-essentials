@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional, Tuple, Callable, Union, List
 import warnings
 import jax.numpy as jnp
 import numpy as np
+import jax
 from jax import random
 
 from qml_essentials import jaqsi as js
@@ -11,6 +12,7 @@ from qml_essentials.tape import recording
 from qml_essentials.operations import KrausChannel
 from qml_essentials.ansaetze import Ansaetze, Circuit, Encoding
 from qml_essentials.gates import Gates, PulseInformation as pinfo
+from qml_essentials.script import _make_hashable
 from qml_essentials.utils import safe_random_split
 
 import logging
@@ -36,10 +38,12 @@ class Model:
         trainable_frequencies: bool = False,
         initialization: str = "random",
         initialization_domain: List[float] = [0, 2 * jnp.pi],
-        output_qubit: Union[List[int], int] = -1,
+        output_qubit: Union[List[int], int, None] = None,
+        observables: Union[
+            int, List[Union[int, List[int]]], List[op.Operation], None
+        ] = None,
         shots: Optional[int] = None,
         random_seed: int = 1000,
-        remove_zero_encoding: bool = True,
         repeat_batch_axis: List[bool] = [True, True, True],
         pulse_shape: str = "gaussian",
     ) -> None:
@@ -77,17 +81,22 @@ class Model:
             initialization (str, optional): The strategy to initialize the parameters.
                 Can be "random", "zeros", "zero-controlled", "pi", or "pi-controlled".
                 Defaults to "random".
-            output_qubit (List[int], int, optional): The index of the output
-                qubit (or qubits). When set to -1 all qubits are measured, or a
-                global measurement is conducted, depending on the execution
-                type.
+            output_qubit (List[int], int, optional): Deprecated alias for
+                ``observables``. Forwards to ``observables`` and will be removed
+                in a future release. Defaults to None.
+            observables (int, List[int], List[List[int]], List[op.Operation],
+                optional): Measurement specification. A qubit index, a list of
+                indices, or a list of qubit groups (for $Z$-parity) selects the
+                measured subsystem with the default PauliZ readout.
+                Alternatively, a list of
+                :class:`~qml_essentials.operations.Operation` observables makes
+                ``execution_type="expval"`` return one expectation value per
+                observable. When None all qubits are measured. Defaults to None.
             shots (Optional[int], optional): The number of shots to use for
                 the quantum device. Defaults to None.
             random_seed (int, optional): seed for the random number generator
                 in initialization is "random" and for random noise parameters.
                 Defaults to 1000.
-            remove_zero_encoding (bool, optional): whether to
-                remove the zero encoding from the circuit. Defaults to True.
             repeat_batch_axis (List[bool], optional): Each boolean in the array
                 determines over which axes to parallelise computation. The axes
                 correspond to [inputs, params, pulse_params]. Defaults to
@@ -102,11 +111,19 @@ class Model:
         """
         # Initialize default parameters needed for circuit evaluation
         self.n_qubits: int = n_qubits
-        self.output_qubit: Union[List[int], int] = output_qubit
+        if output_qubit is not None:
+            if observables is not None:
+                raise ValueError("Pass either output_qubit or observables, not both.")
+            warnings.warn(
+                "output_qubit is deprecated, use observables instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            observables = output_qubit
+        self.observables = observables
         self.n_layers: int = n_layers
         self.noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None
         self.shots = shots
-        self.remove_zero_encoding = remove_zero_encoding
         self.trainable_frequencies: bool = trainable_frequencies
         self.execution_type: str = "expval"
         self.repeat_batch_axis: List[bool] = repeat_batch_axis
@@ -148,8 +165,6 @@ class Model:
 
         # Trainable frequencies, default initialization as in arXiv:2309.03279v2
         self.enc_params = jnp.ones((self.n_layers, self.n_qubits, self.n_input_feat))
-
-        self._zero_inputs = False
 
         # --- Data-Reuploading ---
 
@@ -300,32 +315,78 @@ class Model:
 
     @property
     def output_qubit(self) -> List[int]:
-        """Get the output qubit indices for measurement."""
-        return self._output_qubit
+        """Deprecated alias for :attr:`observables`; returns the measured wires."""
+        warnings.warn(
+            "output_qubit is deprecated, use observables instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._measured_wires
 
     @output_qubit.setter
     def output_qubit(self, value: Union[int, List[int]]) -> None:
-        """
-        Set the output qubit(s) for measurement.
+        warnings.warn(
+            "output_qubit is deprecated, use observables instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.observables = value
 
-        Args:
-            value: Qubit index or list of indices. Use -1 for all qubits.
+    @property
+    def observables(self) -> List:
+        """The custom :class:`~qml_essentials.operations.Operation` observables,
+        or the list of measured wires when using the default PauliZ readout.
+
+        With a list of observables, ``__call__`` and ``execution_type="expval"``
+        returns one expectation value per observable instead of one ``PauliZ``
+        per measured qubit.
         """
-        if isinstance(value, list):
-            assert len(value) <= self.n_qubits, (
-                f"Size of output_qubit {len(value)} cannot be\
-            larger than number of qubits {self.n_qubits}."
+        return (
+            self._observables if self._observables is not None else self._measured_wires
+        )
+
+    @observables.setter
+    def observables(self, value: Union[int, List, None]) -> None:
+        if value is None:
+            self._observables = None
+            self._measured_wires = list(range(self.n_qubits))
+        elif (
+            isinstance(value, list)
+            and value
+            and all(isinstance(o, op.Operation) for o in value)
+        ):
+            self._observables = list(value)
+            self._measured_wires = list(range(self.n_qubits))
+        elif isinstance(value, list) and any(
+            isinstance(o, op.Operation) for o in value
+        ):
+            raise ValueError(
+                "observables list must contain either qubit indices or "
+                "Operation objects, not a mix."
             )
-        elif isinstance(value, int):
-            if value == -1:
-                value = list(range(self.n_qubits))
-            else:
-                assert value < self.n_qubits, (
-                    f"Output qubit {value} cannot be larger than {self.n_qubits}."
+        else:
+            # qubit specification: normalize into the measured wire list
+            self._observables = None
+            if isinstance(value, list):
+                assert len(value) <= self.n_qubits, (
+                    f"Size of observables {len(value)} cannot be larger than "
+                    f"number of qubits {self.n_qubits}."
                 )
-                value = [value]
+                self._measured_wires = value
+            elif isinstance(value, int):
+                if value == -1:
+                    self._measured_wires = list(range(self.n_qubits))
+                else:
+                    assert value < self.n_qubits, (
+                        f"Output qubit {value} cannot be larger than {self.n_qubits}."
+                    )
+                    self._measured_wires = [value]
+            else:
+                self._measured_wires = value
 
-        self._output_qubit = value
+        # recompute the result shape for the (possibly new) observable count
+        if hasattr(self, "_execution_type"):
+            self.execution_type = self.execution_type
 
     @property
     def execution_type(self) -> str:
@@ -341,35 +402,40 @@ class Model:
     def execution_type(self, value: str) -> None:
         if value == "density":
             self._result_shape = (
-                2 ** len(self.output_qubit),
-                2 ** len(self.output_qubit),
+                2 ** len(self._measured_wires),
+                2 ** len(self._measured_wires),
             )
         elif value == "expval":
-            # check if all qubits are used
-            if len(self.output_qubit) == self.n_qubits:
-                self._result_shape = (len(self.output_qubit),)
-            # if not -> parity measurement with only 1D output per pair
-            # or n_local measurement
+            # custom observables (if provided) fix the number of expectation
+            # values; otherwise one PauliZ (or Z-parity) per measured qubit.
+            if getattr(self, "_observables", None) is not None:
+                self._result_shape = (len(self._observables),)
             else:
-                self._result_shape = (len(self.output_qubit),)
+                self._result_shape = (len(self._measured_wires),)
         elif value == "probs":
             # in case this is a list of parities,
             # each pair has 2^len(qubits) probabilities
             n_parity = (
-                (2,) * len(self.output_qubit)
-                if isinstance(self.output_qubit, (Tuple, List))
+                (2,) * len(self._measured_wires)
+                if isinstance(self._measured_wires, (Tuple, List))
                 else (2,)
             )
             self._result_shape = n_parity
         elif value == "state":
-            self._result_shape = (2 ** len(self.output_qubit),)
+            self._result_shape = (2 ** len(self._measured_wires),)
         else:
             raise ValueError(f"Invalid execution type: {value}.")
 
         if value == "state" and not self.all_qubit_measurement:
             warnings.warn(
-                f"{value} measurement does ignore output_qubit, which is "
-                f"{self.output_qubit}.",
+                f"{value} measurement ignores the measured subsystem, which is "
+                f"{self._measured_wires}.",
+                UserWarning,
+            )
+
+        if value != "expval" and getattr(self, "_observables", None) is not None:
+            warnings.warn(
+                f"Custom observables are ignored for execution_type={value!r}.",
                 UserWarning,
             )
 
@@ -597,7 +663,7 @@ class Model:
     @property
     def all_qubit_measurement(self) -> bool:
         """Check if measurement is performed on all qubits."""
-        return self.output_qubit == list(range(self.n_qubits))
+        return self._measured_wires == list(range(self.n_qubits))
 
     @property
     def batch_shape(self) -> Tuple[int, ...]:
@@ -720,6 +786,23 @@ class Model:
 
         return random_key
 
+    def next_key(self) -> random.PRNGKey:
+        """
+        Advance the internal random key and return a fresh sub key.
+
+        Intended for stochastic execution inside a JAX transform: a jitted
+        call is traced once and replays the key that was current at trace
+        time, so fresh randomness has to enter as an argument. Call this
+        outside the transform and pass the result as ``random_key``. Since the
+        key is an argument rather than a constant, this does not trigger
+        recompilation.
+
+        Returns:
+            random.PRNGKey: Fresh sub key, split off the internal key.
+        """
+        self.random_key, sub_key = safe_random_split(self.random_key)
+        return sub_key
+
     def transform_input(
         self, inputs: jnp.ndarray, enc_params: jnp.ndarray
     ) -> jnp.ndarray:
@@ -777,10 +860,6 @@ class Model:
         Returns:
             None: Gates are applied in-place to the quantum circuit.
         """
-        # check for zero, because due to input validation, input cannot be none
-        if self.remove_zero_encoding and self._zero_inputs and self.batch_shape[0] == 1:
-            return
-
         # --- Golomb encoding: single multi-qubit gate on all qubits --------
         if enc.is_golomb:
             idx = 0  # Golomb encoding supports a single input feature
@@ -964,7 +1043,7 @@ class Model:
     def _build_obs(self) -> Tuple[str, List[op.Operation]]:
         """Build the jaqsi measurement type and observable list.
 
-        Translates the model's ``execution_type`` and ``output_qubit``
+        Translates the model's ``execution_type`` and ``observables``
         settings into parameters suitable for
         :meth:`~qml_essentials.jaqsi.Script.execute`.
 
@@ -980,8 +1059,10 @@ class Model:
             return "state", []
 
         if self.execution_type == "expval":
+            if self._observables is not None:
+                return "expval", list(self._observables)
             obs: List[op.Operation] = []
-            for qubit_spec in self.output_qubit:
+            for qubit_spec in self._measured_wires:
                 if isinstance(qubit_spec, int):
                     obs.append(op.PauliZ(wires=qubit_spec))
                 else:
@@ -1238,16 +1319,25 @@ class Model:
         # append batch axis if not provided
         if params is not None:
             if len(params.shape) == 2:
-                params = np.expand_dims(params, axis=0)
+                # jnp (not np) so params stays a JAX array under autodiff /
+                # jit; mirrors the pulse_params handling below.
+                params = jnp.expand_dims(params, axis=0)
 
             # Avoid stashing JAX tracers on ``self``: under an outer
-            # transform (e.g. ``jacrev``) the tracer becomes invalid once
-            # the transform returns, and a subsequent read of
+            # transform (e.g. ``jit``/``jacrev``) the tracer becomes invalid
+            # once the transform returns, and a subsequent read of
             # ``self.params`` would feed a leaked tracer into the next
             # call (raising ``UnexpectedTracerError``).
-            # if not isinstance(params, jax.core.Tracer):
-            #     self.params = params
-            self.params = params
+            if not isinstance(params, jax.core.Tracer):
+                self.params = params
+            else:
+                log.debug(
+                    "`params` is a JAX tracer; `self.params` is left at its "
+                    "previous value. Anything reading model state afterwards "
+                    "(draw, Entanglement, Expressibility, or a call that omits "
+                    "`params`) will see the stale parameters - assign "
+                    "`model.params` explicitly if you need the state to follow."
+                )
         else:
             params = self.params
 
@@ -1277,9 +1367,13 @@ class Model:
                 pulse_params = jnp.expand_dims(pulse_params, axis=0)
             # See note in _params_validation: never stash JAX tracers on
             # ``self``.
-            # if not isinstance(pulse_params, jax.core.Tracer):
-            #     self.pulse_params = pulse_params
-            self.pulse_params = pulse_params
+            if not isinstance(pulse_params, jax.core.Tracer):
+                self.pulse_params = pulse_params
+            else:
+                log.debug(
+                    "`pulse_params` is a JAX tracer; `self.pulse_params` is "
+                    "left at its previous value."
+                )
 
         return pulse_params
 
@@ -1306,15 +1400,16 @@ class Model:
         else:
             # See note in _params_validation: never stash JAX tracers on
             # ``self``.
-            # if not isinstance(enc_params, jax.core.Tracer):
-            #     if self.trainable_frequencies:
-            #         self.enc_params = enc_params
-            #     else:
-            #         self.enc_params = jnp.array(enc_params)
-            if self.trainable_frequencies:
-                self.enc_params = enc_params
+            if not isinstance(enc_params, jax.core.Tracer):
+                if self.trainable_frequencies:
+                    self.enc_params = enc_params
+                else:
+                    self.enc_params = jnp.array(enc_params)
             else:
-                self.enc_params = jnp.array(enc_params)
+                log.debug(
+                    "`enc_params` is a JAX tracer; `self.enc_params` is left "
+                    "at its previous value."
+                )
 
         if len(enc_params.shape) == 1 and self.n_input_feat == 1:
             enc_params = enc_params.reshape(-1, 1)
@@ -1352,16 +1447,12 @@ class Model:
         Warns:
             UserWarning: If input is replicated to match n_input_feat.
         """
-        self._zero_inputs = False
         if isinstance(inputs, List):
             inputs = jnp.array(np.stack(inputs))
         elif isinstance(inputs, float) or isinstance(inputs, int):
             inputs = jnp.array([inputs])
         elif inputs is None:
             inputs = jnp.array([[0] * self.n_input_feat])
-
-        if not inputs.any():
-            self._zero_inputs = True
 
         if len(inputs.shape) <= 1:
             if self.n_input_feat == 1:
@@ -1508,6 +1599,93 @@ class Model:
                 return True
         return False
 
+    def _is_stochastic(self) -> bool:
+        """
+        Check if execution draws random numbers at runtime.
+
+        Only coherent gate errors and shot sampling are stochastic; the Kraus
+        channels are deterministic maps on the density matrix.
+
+        Returns:
+            bool: True if the result depends on the random key.
+        """
+        gate_error = (self.noise_params or {}).get("GateError") or 0
+        return gate_error > 0 or self.shots is not None
+
+    @staticmethod
+    def _args_are_traced(*args: Any) -> bool:
+        """
+        Check if any argument is a JAX tracer.
+
+        Args:
+            *args (Any): Values to inspect, may be pytrees.
+
+        Returns:
+            bool: True if the call runs inside a JAX transform.
+        """
+        return any(
+            isinstance(x, jax.core.Tracer) for x in jax.tree_util.tree_leaves(args)
+        )
+
+    @staticmethod
+    def _observable_id(obs: op.Operation) -> Any:
+        """
+        Get a stable identity for an observable.
+
+        Uses the Pauli label where available and otherwise a hash of the
+        matrix, memoized on the instance because reading the bytes copies the
+        full $2^n \\times 2^n$ array. Mutating a matrix in place is not
+        detected.
+
+        Args:
+            obs (op.Operation): Observable to identify.
+
+        Returns:
+            Any: Hashable identity of the observable.
+        """
+        label = getattr(obs, "_pauli_label", None)
+        if label is not None:
+            return label
+        if getattr(obs, "_fingerprint_hash", None) is None:
+            obs._fingerprint_hash = hash(np.asarray(obs.matrix).tobytes())
+        return obs._fingerprint_hash
+
+    def _structural_fingerprint(self) -> Tuple:
+        """
+        Summarize the circuit structure for the execution plan cache.
+
+        Covers everything that :meth:`_variational` and :meth:`_iec` read from
+        the model while recording the tape and that can change after
+        initialization without changing the shapes of the execution arguments.
+        Without it, a batched call would silently reuse a plan that was
+        compiled for the previous structure.
+
+        Attributes that are fixed at initialization (the encoding, the state
+        preparation, the number of qubits and layers) are omitted, as replacing
+        them afterwards is not supported.
+
+        Returns:
+            Tuple: Hashable structure summary, passed to
+                :meth:`~qml_essentials.jaqsi.Script.execute`.
+        """
+        if self._observables is None:
+            obs_fingerprint = None
+        else:
+            obs_fingerprint = tuple(
+                (o.name, tuple(o.wires), self._observable_id(o))
+                for o in self._observables
+            )
+
+        return (
+            self._data_reupload.shape,
+            # covers the derived degree, frequencies and has_dru as well
+            self._data_reupload.tobytes(),
+            _make_hashable(self._measured_wires),
+            obs_fingerprint,
+            # hashed by identity, which also covers a replaced ansatz callable
+            self.pqc,
+        )
+
     def __call__(
         self,
         params: Optional[jnp.ndarray] = None,
@@ -1519,6 +1697,7 @@ class Model:
         execution_type: Optional[str] = None,
         force_mean: bool = False,
         gate_mode: str = "unitary",
+        random_key: Optional[random.PRNGKey] = None,
     ) -> jnp.ndarray:
         """
         Execute the quantum circuit (callable interface).
@@ -1547,13 +1726,40 @@ class Model:
                 Defaults to False.
             gate_mode (str): Gate execution backend, "unitary" or "pulse".
                 Defaults to "unitary".
+            random_key (Optional[random.PRNGKey]): JAX random key for stochastic
+                execution (``GateError`` noise and shot sampling). If provided,
+                the caller owns key advancement and the model's internal
+                ``random_key`` is left untouched - this is the jit-safe way to
+                get fresh randomness per call, since the internal key cannot be
+                advanced from inside a trace. Use :meth:`next_key` to obtain
+                one. If None, the internal key is used and advanced (eager
+                calls only).
 
         Returns:
             jnp.ndarray: Circuit output with shape depending on execution_type:
-                - "expval": (n_output_qubits,) or scalar
+                - "expval": (n_measured_wiress,) or scalar
                 - "density": (2^n_output, 2^n_output)
                 - "probs": (2^n_output,) or (n_pairs, 2^pair_size)
                 - "state": (2^n_qubits,)
+
+        Note:
+            An eager call stores ``params``, ``pulse_params`` and ``enc_params``
+            on the model, but a traced call (``jit``, ``grad``, ``vmap``) does
+            not: JAX tracers must not outlive their transform, so the model
+            state keeps its previous value. Two consequences:
+
+            - Anything reading model state after a traced call - ``draw``,
+              :class:`~qml_essentials.entanglement.Entanglement`,
+              :class:`~qml_essentials.expressibility.Expressibility`, or a
+              later call that omits ``params`` - sees the *old* parameters.
+              Assign ``model.params = params`` yourself if the state should
+              follow a traced optimization step.
+            - Omitting ``params`` in a second call inside the same trace falls
+              back to that stale state, so the result does not depend on the
+              traced parameters (its gradient is zero). Pass ``params``
+              explicitly on every call inside a trace.
+
+            The skipped writes are reported at debug log level.
         """
         # Call forward method which handles the actual caching etc.
         return self._forward(
@@ -1566,6 +1772,7 @@ class Model:
             execution_type=execution_type,
             force_mean=force_mean,
             gate_mode=gate_mode,
+            random_key=random_key,
         )
 
     def _forward(
@@ -1579,6 +1786,7 @@ class Model:
         execution_type: Optional[str] = None,
         force_mean: bool = False,
         gate_mode: str = "unitary",
+        random_key: Optional[random.PRNGKey] = None,
     ) -> jnp.ndarray:
         """
         Execute the quantum circuit forward pass.
@@ -1609,10 +1817,14 @@ class Model:
                 Defaults to False.
             gate_mode (str): Gate execution backend, "unitary" or "pulse".
                 Defaults to "unitary".
+            random_key (Optional[random.PRNGKey]): JAX random key for stochastic
+                execution. If provided, it is used instead of (and does not
+                modify) the model's internal ``random_key``. See
+                :meth:`__call__` for details.
 
         Returns:
             jnp.ndarray: Circuit output with shape depending on execution_type:
-                - "expval": (n_output_qubits,) or scalar
+                - "expval": (n_measured_wiress,) or scalar
                 - "density": (2^n_output, 2^n_output)
                 - "probs": (2^n_output,) or (n_pairs, 2^pair_size)
                 - "state": (2^n_qubits,)
@@ -1650,8 +1862,32 @@ class Model:
             pulse_params,
         )
 
-        # split to generate a sub_key, required for actual execution
-        self.random_key, sub_key = safe_random_split(self.random_key)
+        # split to generate a sub_key, required for actual execution.
+        if random_key is not None:
+            # explicit key: purely functional, the caller advances it. This is
+            # the only way to get fresh randomness inside a trace, because a
+            # jitted call is traced once and then replays the trace-time key.
+            _, sub_key = safe_random_split(random_key)
+        else:
+            if self._is_stochastic() and self._args_are_traced(
+                params, inputs, pulse_params
+            ):
+                warnings.warn(
+                    "Stochastic execution (`GateError` or `shots`) without an "
+                    "explicit `random_key` inside a JAX transform: the key is "
+                    "read at trace time, so a jitted function replays the same "
+                    "noise realization on every call. Pass "
+                    "`random_key=model.next_key()` from outside the transform.",
+                    UserWarning,
+                )
+            # Under JAX tracing (jit) the split result is a tracer; stashing it
+            # on ``self`` leaks the tracer across calls (UnexpectedTracerError),
+            # so only advance the key eagerly. Note that a jitted call
+            # therefore reuses the same key on every execution - pass
+            # ``random_key`` explicitly if that matters.
+            new_key, sub_key = safe_random_split(self.random_key)
+            if not isinstance(new_key, jax.core.Tracer):
+                self.random_key = new_key
 
         # Build measurement type & observables from execution_type / output_qubit
         meas_type, obs = self._build_obs()
@@ -1692,6 +1928,7 @@ class Model:
                 in_axes=in_axes,
                 shots=self.shots,
                 key=shot_key,
+                fingerprint=self._structural_fingerprint(),
             )
         else:
             # use the subkey directly
@@ -1702,25 +1939,28 @@ class Model:
                 kwargs=exec_kwargs,
                 shots=self.shots,
                 key=shot_key,
+                fingerprint=self._structural_fingerprint(),
             )
 
         result = self._postprocess_res(result)
 
         # --- Post-processing for partial-qubit measurements ---------------
         if self.execution_type == "density" and not self.all_qubit_measurement:
-            result = js.partial_trace(result, self.n_qubits, self.output_qubit)
+            result = js.partial_trace(result, self.n_qubits, self._measured_wires)
 
         if self.execution_type == "probs" and not self.all_qubit_measurement:
-            if isinstance(self.output_qubit[0], (list, tuple)):
+            if isinstance(self._measured_wires[0], (list, tuple)):
                 # list of qubit groups - marginalize each independently
                 result = jnp.stack(
                     [
                         js.marginalize_probs(result, self.n_qubits, list(group))
-                        for group in self.output_qubit
+                        for group in self._measured_wires
                     ]
                 )
             else:
-                result = js.marginalize_probs(result, self.n_qubits, self.output_qubit)
+                result = js.marginalize_probs(
+                    result, self.n_qubits, self._measured_wires
+                )
 
         result = jnp.asarray(result)
         result = result.reshape((*self.eff_batch_shape, *self._result_shape)).squeeze()

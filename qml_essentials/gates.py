@@ -213,6 +213,10 @@ class Gates(metaclass=GatesMeta):
             "RY",
             "RZ",
             "Rot",
+            "RXX",
+            "RYY",
+            "RZZ",
+            "RZX",
             "CRX",
             "CRY",
             "CRZ",
@@ -222,4 +226,20 @@ class Gates(metaclass=GatesMeta):
 
     @classmethod
     def is_entangling(cls, gate):
+        return gate.__name__ in [
+            "CX",
+            "CY",
+            "CZ",
+            "RXX",
+            "RYY",
+            "RZZ",
+            "RZX",
+            "CRX",
+            "CRY",
+            "CRZ",
+            "CPhase",
+        ]
+
+    @classmethod
+    def is_controlled(cls, gate):
         return gate.__name__ in ["CX", "CY", "CZ", "CRX", "CRY", "CRZ", "CPhase"]

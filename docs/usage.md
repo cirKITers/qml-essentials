@@ -30,7 +30,7 @@ I.e. simply running the following
 ```python
 model()
 ```
-will return the combined expectation value of a n-local measurement (`output_qubit=-1` is default). 
+will return the combined expectation value of a n-local measurement (`observables=None` is default, measuring all qubits). 
 
 In the following we will describe some concepts of the `Model` class.
 For a more detailled reference on the methods and arguments that are available, please see the [references page](https://cirkiters.github.io/qml-essentials/references/#model).
@@ -92,6 +92,7 @@ The `initialize_params` method provides the option to re-initialise the paramete
 Given a PRNG key, it returns the `key` from `key, subkey = random.split(key)`  as documented [here](https://docs.jax.dev/en/latest/random-numbers.html) and uses the subkey for the actual parameter initialization.
 It's also possible to omit the `key` argument entirely, as the model has an internal `random_key` state which is updated every time randomness is utilized.
 This allows to repeatingly call `model.initialize_params()` to generate a continous sequence of random initializations.
+The same key state can be advanced manually with `model.next_key()`, which is required to obtain fresh randomness inside a JAX transformation (see [Noise](noise.md#randomness-under-jax-transformations)).
 
 
 ## Encoding
@@ -110,7 +111,7 @@ Other options are:
 See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
 If a list of encodings is provided, the input is assumed to be multi-dimensional.
 Otherwise multiple inputs are treated as batches of inputs.
-If you want to visualize zero-valued encoding gates in the model, set `remove_zero_encoding` to `False` on instantiation.
+Encoding gates are always part of the circuit, also when the input is zero and the gates reduce to the identity.
 
 In case of a multi-dimensional input, you can obtain the highest frequency in each encoding dimension from the `model.degree` property.
 Note that, `model.degree` includes the negative and zero frequency (i.e. the full spectrum).
@@ -162,10 +163,12 @@ See page [*Ansaetze*](ansaetze.md) for more details regarding the `Gates` class.
 
 ## Output Shape
 
-The output shape is determined by the `output_qubit` argument, provided in the instantiation of the model.
-When set to -1 all qubits are measured which will result in the shape being of size $n$ by default (depending on the execution type, see below).
-Setting `output_qubit` to an integer will measue the qubit with the index specified.
-Furthermore, "parity measurements" are supported, where `output_qubit` becomes a list of qubit pairs, e.g. `[[0, 1], [2, 3]]` to measure the parity between qubits 0 and 1 and qubits 2 and 3.
+The output shape is determined by the `observables` argument, provided in the instantiation of the model.
+When set to `None` all qubits are measured which will result in the shape being of size $n$ by default (depending on the execution type, see below).
+Setting `observables` to an integer will measure the qubit with the index specified.
+Furthermore, "parity measurements" are supported, where `observables` becomes a list of qubit groups, e.g. `[[0, 1], [2, 3]]` to measure the parity between qubits 0 and 1 and qubits 2 and 3.
+Alternatively, `observables` accepts a list of `Operation` objects, in which case the `expval` execution type returns one expectation value per observable.
+The `output_qubit` argument is a deprecated alias for `observables`.
 
 If `force_mean` flag is set when calling the model, the output is averaged to a single value (while keeping the batch/ input dimension).
 This is usually helpful, if you want to perform a n-local measurement over all qubits where only the average over $n$ expecation values is of interest.
@@ -178,7 +181,7 @@ Our model be simulated in different ways by setting the `execution_type` propert
 - `density`: Calculates the density matrix
 - `probs`: Simulates the model with the number of shots, set by `model.shots`
 
-For all three different execution types, the output shape is determined by the `output_qubit` argument, provided in the instantiation of the model.
+For all three different execution types, the output shape is determined by the `observables` argument, provided in the instantiation of the model.
 In case of `density` the partial density matrix is returned.
 
 ## Noise
@@ -196,6 +199,7 @@ Noise can be added to the model by providing a `noise_params` argument, when cal
 
 with values between $0$ and $1$.
 Additionally, a `GateError` can be applied, which controls the variance of a Gaussian distribution with zero mean applied on the input vector.
+Each gate draws its error independently.
 
 While `BitFlip`, `PhaseFlip`, `Depolarizing` and `GateError`s are applied on each gate, `AmplitudeDamping`, `PhaseDamping`, `StatePreparation` and `Measurement` are applied on the whole circuit.
 
@@ -284,6 +288,10 @@ model(inputs=random.uniform(key, (10, 1)))
 ```
 In this example, instead of a batch size of `100`, the output will have a batch size of `10` instead (shape `(10,2)`).
 
+Calls with a batch dimension reuse a compiled execution plan whenever the shapes of the arguments match.
+Changes to the circuit structure, such as `data_reupload` or `observables`, are accounted for, but replacing the `encoding` after instantiation is not supported.
+When calling the model inside `jax.jit`, note that randomness has to be passed in explicitly, see [Noise](noise.md#randomness-under-jax-transformations).
+
 ## Quantikz Export
 
 In addition to the printing the model to console and into a figure using matplotlib (thanks to Pennylane); our framework extends this functionality by allowing you to create nice [Quantikz](https://doi.org/10.48550/arXiv.1809.03842) figures that you can embedd in a Latex document :heart_eyes:.
@@ -327,7 +335,7 @@ params = jnp.array([[jnp.pi / 2, 1]])
 model = Model(
     n_qubits=2,
     n_layers=1,
-    output_qubit=0,  # this will correspond to PauliZ on qubit 0
+    observables=0,  # this will correspond to PauliZ on qubit 0
 )
 
 # Define the spectrum (usually this is inferred from the encoding)
