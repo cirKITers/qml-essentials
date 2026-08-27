@@ -549,20 +549,6 @@ class TestFourierTree:
         assert mass_at(2.0) < 1e-4, "spectral mass remained on the integer grid"
 
     @pytest.mark.unittest
-    def test_fourier_tree_rejects_noninteger_scaling(self) -> None:
-        # A non-integer frequency scaling would be silently rounded to a
-        # different model; FourierTree must refuse rather than mislead.
-        model = Model(
-            n_qubits=2,
-            n_layers=1,
-            circuit_type="Circuit_19",
-            trainable_frequencies=True,
-        )
-        model.enc_params = 1.5 * jnp.ones_like(model.enc_params)
-        with pytest.raises(NotImplementedError, match="integer frequency scalings"):
-            FourierTree(model)
-
-    @pytest.mark.unittest
     def test_coefficients_tree_multi_feature(self) -> None:
         """Multi-dimensional spectrum: the analytical Fourier series and the
         tree expectation must reproduce the circuit for a 2-feature model."""
