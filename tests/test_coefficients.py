@@ -534,7 +534,7 @@ class TestFourierTree:
         eta = model.enc_pulse_params.at[..., amp_idx].set(scale)
 
         coeffs, freqs = Coefficients.get_spectrum(
-            model, mfs=2, mts=4, shift=True, gate_mode="enc_pulse", enc_pulse_params=eta
+            model, mfs=2, mts=4, shift=True, enc_pulse_params=eta
         )
         freqs = np.asarray(freqs).ravel()
         mag = np.abs(np.asarray(coeffs)).ravel()
