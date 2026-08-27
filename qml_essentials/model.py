@@ -26,7 +26,8 @@ GATE_MODES = {
     "all_pulse": ("pulse", "pulse"),
 }
 
-# the modes that run the respective gate group at pulse level
+# the modes that run the respective gate group at pulse level. Both only serve
+# the deprecated explicit gate_mode argument and can go with it.
 _ANSATZ_PULSE_MODES = ("ansatz_pulse", "all_pulse")
 _ENC_PULSE_MODES = ("enc_pulse", "all_pulse")
 
@@ -1380,7 +1381,6 @@ class Model:
     def draw_pulse(
         self,
         inputs: Optional[jnp.ndarray] = None,
-        gate_mode: str = "ansatz_pulse",
         **kwargs: Any,
     ) -> Any:
         """Visualize the pulse schedule for the circuit.
@@ -1388,12 +1388,12 @@ class Model:
         Records the circuit in pulse mode and collects PulseEvents
         automatically via the pulse-event tape, then renders them.
 
+        State preparation, ansatz and encoding gates are all rendered as
+        pulses. Encodings without a pulse parametrization (golomb and custom
+        callables) are omitted from the schedule.
+
         Args:
             inputs: Input data.  If ``None``, default zero inputs are used.
-            gate_mode: Pulse mode to record. ``"ansatz_pulse"`` (default)
-                renders the ansatz and state-preparation pulses,
-                ``"enc_pulse"`` only the encoding gate pulses and
-                ``"all_pulse"`` both.
             **kwargs: Forwarded to
                 :func:`~qml_essentials.drawing.draw_pulse_schedule`
                 (e.g. ``show_carrier=True``, ``n_samples=300``).
@@ -1401,18 +1401,35 @@ class Model:
         Returns:
             ``(fig, axes)`` — Matplotlib Figure and array of Axes.
         """
+        if "gate_mode" in kwargs:
+            warnings.warn(
+                "draw_pulse no longer takes gate_mode, every gate group with a "
+                "pulse representation is drawn.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            kwargs.pop("gate_mode")
+
         inputs = self._inputs_validation(inputs)
         params = self.params[0] if self.params.ndim == 3 else self.params
         inp = inputs[0] if inputs.ndim == 2 else inputs
+
+        # pass the model's own pulse parameters, so that _variational does not
+        # fall back to them with a warning. Both are batch-first, so drawing
+        # picks the first set, same as params above
+        record_kwargs: Dict[str, Any] = {
+            "gate_mode": "all_pulse" if self._enc_pulse_capable else "ansatz_pulse",
+            "noise_params": None,
+            "pulse_params": self.pulse_params[0],
+        }
+        if self._enc_pulse_capable:
+            record_kwargs["enc_pulse_params"] = self.enc_pulse_params[0]
 
         draw_script = js.Script(f=self._variational, n_qubits=self.n_qubits)
         return draw_script.draw(
             figure="pulse",
             args=(params, inp),
-            kwargs={
-                "gate_mode": gate_mode,
-                "noise_params": None,
-            },
+            kwargs=record_kwargs,
             **kwargs,
         )
 
@@ -1538,6 +1555,82 @@ class Model:
             self.enc_pulse_params = enc_pulse_params
 
         return enc_pulse_params
+
+    def _resolve_gate_mode(
+        self,
+        gate_mode: Optional[str],
+        pulse_params: Optional[jnp.ndarray],
+        enc_pulse_params: Optional[jnp.ndarray],
+    ) -> str:
+        """
+        Determine which gate groups run at pulse level.
+
+        The mode follows from the pulse parameters that were provided:
+        ``pulse_params`` lowers the ansatz and state-preparation gates,
+        ``enc_pulse_params`` lowers the encoding gates, both together lower
+        everything.
+
+        Args:
+            gate_mode (Optional[str]): Deprecated explicit mode. If None, the
+                mode is inferred from the pulse parameters.
+            pulse_params (Optional[jnp.ndarray]): Ansatz pulse-parameter scalers.
+            enc_pulse_params (Optional[jnp.ndarray]): Encoding pulse-parameter
+                scalers.
+
+        Returns:
+            str: One of the keys of ``GATE_MODES``.
+
+        Raises:
+            ValueError: If the encoding gates would run at pulse level but the
+                encoding has no pulse parametrization, or if an explicitly
+                passed (deprecated) gate_mode is unknown or inconsistent with
+                the provided pulse parameters.
+        """
+        if gate_mode is None:
+            if pulse_params is not None and enc_pulse_params is not None:
+                gate_mode = "all_pulse"
+            elif pulse_params is not None:
+                gate_mode = "ansatz_pulse"
+            elif enc_pulse_params is not None:
+                gate_mode = "enc_pulse"
+            else:
+                gate_mode = "unitary"
+        else:
+            warnings.warn(
+                "gate_mode is deprecated, the mode is inferred from the "
+                "provided pulse parameters instead. Pass pulse_params to run "
+                "the ansatz at pulse level and enc_pulse_params to run the "
+                "encoding at pulse level, e.g. "
+                "model(pulse_params=model.pulse_params).",
+                DeprecationWarning,
+                stacklevel=4,
+            )
+            # consistency checks, only reachable via the deprecated argument
+            if gate_mode not in GATE_MODES:
+                raise ValueError(
+                    f"Unknown gate_mode: {gate_mode}. Use one of {list(GATE_MODES)}."
+                )
+            if pulse_params is not None and gate_mode not in _ANSATZ_PULSE_MODES:
+                raise ValueError(
+                    f"pulse_params were provided but gate_mode is not one of "
+                    f"{list(_ANSATZ_PULSE_MODES)}. Either switch gate_mode or do "
+                    "not pass pulse_params."
+                )
+            if enc_pulse_params is not None and gate_mode not in _ENC_PULSE_MODES:
+                raise ValueError(
+                    f"enc_pulse_params were provided but gate_mode is not one of "
+                    f"{list(_ENC_PULSE_MODES)}. Either switch gate_mode or do not "
+                    "pass enc_pulse_params."
+                )
+
+        if gate_mode in _ENC_PULSE_MODES and not self._enc_pulse_capable:
+            raise ValueError(
+                "Pulse-level encoding requires an encoding whose gates have a "
+                "pulse parametrization (golomb and custom callables do not). "
+                "Do not pass enc_pulse_params for this model."
+            )
+
+        return gate_mode
 
     def _enc_params_validation(self, enc_params: Optional[jnp.ndarray]) -> jnp.ndarray:
         """
@@ -1880,7 +1973,7 @@ class Model:
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
-        gate_mode: str = "unitary",
+        gate_mode: Optional[str] = None,
         enc_pulse_params: Optional[jnp.ndarray] = None,
         random_key: Optional[random.PRNGKey] = None,
     ) -> jnp.ndarray:
@@ -1897,7 +1990,8 @@ class Model:
             inputs (Optional[jnp.ndarray]): Input data of shape
                 (batch_size, n_input_feat). If None, uses zero inputs.
             pulse_params (Optional[jnp.ndarray]): Pulse parameter scalers for
-                pulse-mode gate execution.
+                the ansatz and state-preparation gates. Passing them runs those
+                gates at pulse level. If None, they stay unitary.
             enc_params (Optional[jnp.ndarray]): Encoding parameters of shape
                 (n_qubits, n_input_feat). If None, uses model's encoding parameters.
             data_reupload (Union[bool, List[List[bool]], List[List[List[bool]]]]):
@@ -1909,11 +2003,16 @@ class Model:
                 "probs", or "state". If None, uses current execution_type setting.
             force_mean (bool): If True, averages results over measurement qubits.
                 Defaults to False.
-            gate_mode (str): Gate execution backend, "unitary", "ansatz_pulse",
-                "enc_pulse" or "all_pulse". Defaults to "unitary".
-            enc_pulse_params (Optional[jnp.ndarray]): Encoding pulse-parameter
-                scalers for "all_pulse" execution. If None, uses model's encoding
-                pulse parameters.
+            gate_mode (Optional[str]): Deprecated. If None (default), the gate
+                execution backend is inferred from the provided pulse
+                parameters: ``pulse_params`` runs the ansatz and state
+                preparation at pulse level, ``enc_pulse_params`` the encoding
+                gates, both together everything. Passing "unitary",
+                "ansatz_pulse", "enc_pulse" or "all_pulse" explicitly still
+                works but emits a DeprecationWarning.
+            enc_pulse_params (Optional[jnp.ndarray]): Pulse parameter scalers
+                for the encoding gates. Passing them runs the encoding gates at
+                pulse level. If None, they stay unitary.
             random_key (Optional[random.PRNGKey]): JAX random key for stochastic
                 execution (``GateError`` noise and shot sampling). If provided,
                 the caller owns key advancement and the model's internal
@@ -1974,7 +2073,7 @@ class Model:
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
-        gate_mode: str = "unitary",
+        gate_mode: Optional[str] = None,
         enc_pulse_params: Optional[jnp.ndarray] = None,
         random_key: Optional[random.PRNGKey] = None,
     ) -> jnp.ndarray:
@@ -2005,8 +2104,10 @@ class Model:
                 "probs", or "state". If None, uses current execution_type setting.
             force_mean (bool): If True, averages results over measurement qubits.
                 Defaults to False.
-            gate_mode (str): Gate execution backend, "unitary", "ansatz_pulse",
-                "enc_pulse" or "all_pulse". Defaults to "unitary".
+            gate_mode (Optional[str]): Deprecated. If None (default), the mode
+                is inferred from the provided pulse parameters. Passing
+                "unitary", "ansatz_pulse", "enc_pulse" or "all_pulse"
+                explicitly emits a DeprecationWarning.
             random_key (Optional[random.PRNGKey]): JAX random key for stochastic
                 execution. If provided, it is used instead of (and does not
                 modify) the model's internal ``random_key``. See
@@ -2020,38 +2121,18 @@ class Model:
                 - "state": (2^n_qubits,)
 
         Raises:
-            ValueError: If pulse_params provided without pulse gate_mode, or
-                if noise_params provided with pulse gate_mode.
+            ValueError: If the encoding gates would run at pulse level but the
+                encoding has no pulse parametrization, or if an explicitly
+                passed (deprecated) gate_mode is unknown or inconsistent with
+                the provided pulse parameters.
         """
         # set the parameters as object attributes
         if noise_params is not None:
             self.noise_params = noise_params
         if execution_type is not None:
             self.execution_type = execution_type
-        self.gate_mode = gate_mode
 
-        # consistency checks
-        if gate_mode not in GATE_MODES:
-            raise ValueError(
-                f"Unknown gate_mode: {gate_mode}. Use one of {list(GATE_MODES)}."
-            )
-        if pulse_params is not None and gate_mode not in _ANSATZ_PULSE_MODES:
-            raise ValueError(
-                f"pulse_params were provided but gate_mode is not one of "
-                f"{list(_ANSATZ_PULSE_MODES)}. Either switch gate_mode or do "
-                "not pass pulse_params."
-            )
-        if enc_pulse_params is not None and gate_mode not in _ENC_PULSE_MODES:
-            raise ValueError(
-                f"enc_pulse_params were provided but gate_mode is not one of "
-                f"{list(_ENC_PULSE_MODES)}. Either switch gate_mode or do not "
-                "pass enc_pulse_params."
-            )
-        if gate_mode in _ENC_PULSE_MODES and not self._enc_pulse_capable:
-            raise ValueError(
-                f"gate_mode={gate_mode!r} requires an encoding whose gates have a "
-                "pulse parametrization (golomb and custom callables do not)."
-            )
+        gate_mode = self._resolve_gate_mode(gate_mode, pulse_params, enc_pulse_params)
 
         # TODO: add testing
         if data_reupload is not None:
@@ -2107,7 +2188,7 @@ class Model:
         # kwargs are broadcast (not vmapped over)
         exec_kwargs = dict(
             noise_params=self.noise_params,
-            gate_mode=self.gate_mode,
+            gate_mode=gate_mode,
         )
 
         # Build a shot key from the random_key if shots are requested
