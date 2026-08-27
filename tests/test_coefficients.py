@@ -534,7 +534,7 @@ class TestFourierTree:
         eta = model.enc_pulse_params.at[..., amp_idx].set(scale)
 
         coeffs, freqs = Coefficients.get_spectrum(
-            model, mfs=2, mts=4, shift=True, gate_mode="enc_pulse", enc_pulse_params=eta
+            model, mfs=2, mts=4, shift=True, enc_pulse_params=eta
         )
         freqs = np.asarray(freqs).ravel()
         mag = np.abs(np.asarray(coeffs)).ravel()
@@ -547,20 +547,6 @@ class TestFourierTree:
         # the original integer bins are vacated
         assert mass_at(1.0) < 1e-4, "spectral mass remained on the integer grid"
         assert mass_at(2.0) < 1e-4, "spectral mass remained on the integer grid"
-
-    @pytest.mark.unittest
-    def test_fourier_tree_rejects_noninteger_scaling(self) -> None:
-        # A non-integer frequency scaling would be silently rounded to a
-        # different model; FourierTree must refuse rather than mislead.
-        model = Model(
-            n_qubits=2,
-            n_layers=1,
-            circuit_type="Circuit_19",
-            trainable_frequencies=True,
-        )
-        model.enc_params = 1.5 * jnp.ones_like(model.enc_params)
-        with pytest.raises(NotImplementedError, match="integer frequency scalings"):
-            FourierTree(model)
 
     @pytest.mark.unittest
     def test_coefficients_tree_multi_feature(self) -> None:

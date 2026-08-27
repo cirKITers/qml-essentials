@@ -228,24 +228,24 @@ In the pulse representation, each gate is decomposed into Gaussian-shaped pulses
 By default, the framework provides optimized pulse parameters based on typical superconducting qubit frequencies ($\omega_q = 10\pi$, $\omega_c = 10\pi$).  
 The Gaussian envelope is the default; other shapes can be selected via the `pulse_shape` argument on model instantiation (see [*Pulses*](pulses.md#pulse_envelopes_and_solver) for the available envelopes).
 
-Switching between unitary-level and pulse-level execution is seamless and controlled via the `gate_mode` argument:
+Switching between unitary-level and pulse-level execution is seamless and controlled by which pulse parameters you pass:
 
 ```python
 # Default unitary-level simulation
 model(params, inputs)
 
 # Ansatz and state-preparation gates at pulse level
-model(params, inputs, gate_mode="ansatz_pulse")
+model(params, inputs, pulse_params=model.pulse_params)
 
 # Only the input-encoding gates at pulse level
-model(params, inputs, gate_mode="enc_pulse")
+model(params, inputs, enc_pulse_params=model.enc_pulse_params)
 
 # Everything at pulse level
-model(params, inputs, gate_mode="all_pulse")
+model(params, inputs, pulse_params=model.pulse_params, enc_pulse_params=model.enc_pulse_params)
 ```
 
-The four modes let you choose which group of gates is lowered to the pulse layer.
-`unitary` keeps every gate ideal, `ansatz_pulse` lowers the ansatz and state-preparation gates, `enc_pulse` lowers only the input-encoding gates, and `all_pulse` lowers both groups.
+The two parameter groups let you choose which group of gates is lowered to the pulse layer.
+`pulse_params` lowers the ansatz and state-preparation gates, `enc_pulse_params` lowers the input-encoding gates, and omitting both keeps every gate ideal.
 See [*Pulses*](pulses.md#pulse_level_encoding) for the parameters belonging to each group.
 
 Pulse-level gates can also be instantiated directly:

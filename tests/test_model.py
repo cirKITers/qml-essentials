@@ -971,7 +971,6 @@ def test_pulse_model() -> None:
             pulse_params=all_params[1],
             inputs=x,
             force_mean=True,
-            gate_mode="ansatz_pulse",
         )
         return jnp.mean((y_hat - y) ** 2)
 
@@ -1005,9 +1004,11 @@ def test_pulse_model_inference():
     inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
 
     # forward pass with initial pulse_params
-    y_hat_original = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
+    y_hat_original = model(
+        inputs=inputs, pulse_params=model.pulse_params, force_mean=True
+    )
 
-    y_hat_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
+    y_hat_unitary = model(inputs=inputs, force_mean=True)
 
     assert jnp.allclose(y_hat_unitary, y_hat_original, atol=1e-2), (
         "Unitary output did not match pulse output"
@@ -1018,7 +1019,9 @@ def test_pulse_model_inference():
     model.pulse_params += 0.1
 
     # forward pass with perturbed pulse_params
-    y_hat_perturbed = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
+    y_hat_perturbed = model(
+        inputs=inputs, pulse_params=model.pulse_params, force_mean=True
+    )
 
     assert y_hat_original.shape[0] == inputs.shape[0], "Output batch size mismatch"
 
@@ -1039,7 +1042,6 @@ def test_pulse_model_batching():
     # test pulse params batching
     res_b = model(
         pulse_params=jnp.repeat(model.pulse_params, 2, axis=0),
-        gate_mode="ansatz_pulse",
     )
 
     # two qubits -> two expvals with batch size 2
@@ -1049,8 +1051,8 @@ def test_pulse_model_batching():
     random_key, _ = random.split(random_key)
 
     # test pulse params & inputs batching
-    res_a = model(inputs=inputs, gate_mode="unitary")
-    res_b = model(inputs=inputs, gate_mode="ansatz_pulse")
+    res_a = model(inputs=inputs)
+    res_b = model(inputs=inputs, pulse_params=model.pulse_params)
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
     assert jnp.allclose(res_a, res_b, atol=1e-2), (
@@ -1060,8 +1062,8 @@ def test_pulse_model_batching():
     model.initialize_params(random_key, repeat=2)
 
     # test pulse params & params & inputs batching
-    res_a = model(inputs=inputs, gate_mode="unitary")
-    res_b = model(inputs=inputs, gate_mode="ansatz_pulse")
+    res_a = model(inputs=inputs)
+    res_b = model(inputs=inputs, pulse_params=model.pulse_params)
 
     assert np.allclose(res_a.shape, res_b.shape), "Batch shape mismatch"
     assert jnp.allclose(res_a, res_b, atol=1e-2), (
@@ -1092,9 +1094,16 @@ def test_pulse_encoding_equivalence() -> None:
     # nonzero inputs are required: zero inputs skip encoding entirely
     inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
 
-    y_unitary = model(inputs=inputs, gate_mode="unitary", force_mean=True)
-    y_all_pulse = model(inputs=inputs, gate_mode="all_pulse", force_mean=True)
-    y_enc_pulse = model(inputs=inputs, gate_mode="enc_pulse", force_mean=True)
+    y_unitary = model(inputs=inputs, force_mean=True)
+    y_all_pulse = model(
+        inputs=inputs,
+        pulse_params=model.pulse_params,
+        enc_pulse_params=model.enc_pulse_params,
+        force_mean=True,
+    )
+    y_enc_pulse = model(
+        inputs=inputs, enc_pulse_params=model.enc_pulse_params, force_mean=True
+    )
 
     assert jnp.allclose(y_unitary, y_all_pulse, atol=1e-2), (
         "all_pulse output with unit scalers did not match unitary output"
@@ -1119,12 +1128,9 @@ def test_pulse_encoding_frequency_scaling() -> None:
     eta = model.enc_pulse_params.at[..., amp_idx].set(scale)
 
     # enc_pulse leaves enc_params at its default (ones), so evaluate it first
-    y_enc_pulse = model(
-        inputs=inputs, gate_mode="enc_pulse", enc_pulse_params=eta, force_mean=True
-    )
+    y_enc_pulse = model(inputs=inputs, enc_pulse_params=eta, force_mean=True)
     y_unitary = model(
         inputs=inputs,
-        gate_mode="unitary",
         enc_params=scale * jnp.ones_like(model.enc_params),
         force_mean=True,
     )
@@ -1139,28 +1145,39 @@ def test_pulse_encoding_effect() -> None:
     model = Model(n_qubits=3, n_layers=1, circuit_type="Hardware_Efficient")
     inputs = jnp.linspace(-jnp.pi, jnp.pi, 10)
 
-    y_all_pulse = model(inputs=inputs, gate_mode="all_pulse", force_mean=True)
-    y_enc_pulse = model(inputs=inputs, gate_mode="enc_pulse", force_mean=True)
-    y_pulse = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
+    def all_pulse(m):
+        return m(
+            inputs=inputs,
+            pulse_params=m.pulse_params,
+            enc_pulse_params=m.enc_pulse_params,
+            force_mean=True,
+        )
+
+    def enc_pulse(m):
+        return m(inputs=inputs, enc_pulse_params=m.enc_pulse_params, force_mean=True)
+
+    def ansatz_pulse(m):
+        return m(inputs=inputs, pulse_params=m.pulse_params, force_mean=True)
+
+    y_all_pulse = all_pulse(model)
+    y_enc_pulse = enc_pulse(model)
+    y_pulse = ansatz_pulse(model)
 
     original = model.enc_pulse_params.copy()
     model.enc_pulse_params = model.enc_pulse_params + 0.1
 
     # perturbing enc_pulse_params changes all_pulse output ...
-    y_all_pulse_perturbed = model(inputs=inputs, gate_mode="all_pulse", force_mean=True)
-    assert not jnp.allclose(y_all_pulse, y_all_pulse_perturbed), (
+    assert not jnp.allclose(y_all_pulse, all_pulse(model)), (
         "all_pulse output did not change after perturbing enc_pulse_params"
     )
 
     # ... and equally the enc_pulse output ...
-    y_enc_pulse_perturbed = model(inputs=inputs, gate_mode="enc_pulse", force_mean=True)
-    assert not jnp.allclose(y_enc_pulse, y_enc_pulse_perturbed), (
+    assert not jnp.allclose(y_enc_pulse, enc_pulse(model)), (
         "enc_pulse output did not change after perturbing enc_pulse_params"
     )
 
     # ... but leaves the ansatz_pulse output (unitary encoding) untouched
-    y_pulse_after = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
-    assert jnp.allclose(y_pulse, y_pulse_after), (
+    assert jnp.allclose(y_pulse, ansatz_pulse(model)), (
         "ansatz_pulse output changed after perturbing enc_pulse_params"
     )
 
@@ -1179,8 +1196,8 @@ def test_pulse_encoding_gradient() -> None:
         y_hat = model(
             inputs=x,
             enc_pulse_params=enc_pp,
+            pulse_params=model.pulse_params,
             force_mean=True,
-            gate_mode="all_pulse",
         )
         return jnp.mean((y_hat - y) ** 2)
 
@@ -1219,36 +1236,76 @@ def test_pulse_encoding_batching() -> None:
 
     # batch enc_pulse_params along axis 0 (B_E = 2)
     batched = jnp.repeat(model.enc_pulse_params, 2, axis=0)
-    res = model(inputs=inputs, enc_pulse_params=batched, gate_mode="all_pulse")
+    res = model(inputs=inputs, enc_pulse_params=batched)
 
     # B_I = 3 inputs, B_E = 2 scaler sets, two qubits -> two expvals
     assert res.shape == (3, 2, 2), "enc_pulse_params batch shape mismatch"
 
 
 @pytest.mark.unittest
-def test_pulse_encoding_errors() -> None:
+def test_gate_mode_inference() -> None:
     model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+    inputs = jnp.linspace(-jnp.pi, jnp.pi, 5)
+
+    # which pulse parameters are passed selects the execution mode
+    cases = [
+        ({}, "unitary"),
+        ({"pulse_params": model.pulse_params}, "ansatz_pulse"),
+        ({"enc_pulse_params": model.enc_pulse_params}, "enc_pulse"),
+        (
+            {
+                "pulse_params": model.pulse_params,
+                "enc_pulse_params": model.enc_pulse_params,
+            },
+            "all_pulse",
+        ),
+    ]
+    for kwargs, mode in cases:
+        y_inferred = model(inputs=inputs, force_mean=True, **kwargs)
+        with pytest.warns(DeprecationWarning, match="gate_mode is deprecated"):
+            y_legacy = model(inputs=inputs, force_mean=True, gate_mode=mode, **kwargs)
+
+        assert jnp.allclose(y_inferred, y_legacy), (
+            f"inferred mode does not match explicit gate_mode={mode}"
+        )
+
+
+@pytest.mark.unittest
+def test_gate_mode_deprecated() -> None:
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+
+    # an explicit gate_mode still works, but warns
+    with pytest.warns(DeprecationWarning, match="gate_mode is deprecated"):
+        model(gate_mode="unitary")
 
     # enc_pulse_params only allowed in the encoding-pulse modes
     for mode in ("unitary", "ansatz_pulse"):
-        with pytest.raises(ValueError, match="enc_pulse_params were provided"):
-            model(enc_pulse_params=model.enc_pulse_params, gate_mode=mode)
+        with pytest.warns(DeprecationWarning):
+            with pytest.raises(ValueError, match="enc_pulse_params were provided"):
+                model(enc_pulse_params=model.enc_pulse_params, gate_mode=mode)
 
     # pulse_params only allowed in the ansatz-pulse modes
     for mode in ("unitary", "enc_pulse"):
-        with pytest.raises(ValueError, match="pulse_params were provided"):
-            model(pulse_params=model.pulse_params, gate_mode=mode)
+        with pytest.warns(DeprecationWarning):
+            with pytest.raises(ValueError, match="pulse_params were provided"):
+                model(pulse_params=model.pulse_params, gate_mode=mode)
 
     # unknown gate_mode
-    with pytest.raises(ValueError, match="Unknown gate_mode"):
-        model(gate_mode="foobar")
+    with pytest.warns(DeprecationWarning):
+        with pytest.raises(ValueError, match="Unknown gate_mode"):
+            model(gate_mode="foobar")
 
     # pulse_params remain valid alongside all_pulse
-    model(pulse_params=model.pulse_params, gate_mode="all_pulse")
+    with pytest.warns(DeprecationWarning):
+        model(pulse_params=model.pulse_params, gate_mode="all_pulse")
 
     # enc_pulse_params remain valid alongside enc_pulse
-    model(enc_pulse_params=model.enc_pulse_params, gate_mode="enc_pulse")
+    with pytest.warns(DeprecationWarning):
+        model(enc_pulse_params=model.enc_pulse_params, gate_mode="enc_pulse")
 
+
+@pytest.mark.unittest
+def test_pulse_encoding_errors() -> None:
     # golomb encoding has no pulse parametrization -> encoding pulses unsupported
     golomb_model = Model(
         n_qubits=2,
@@ -1256,9 +1313,6 @@ def test_pulse_encoding_errors() -> None:
         circuit_type="Hardware_Efficient",
         encoding=Encoding("golomb", None),
     )
-    for mode in ("enc_pulse", "all_pulse"):
-        with pytest.raises(ValueError, match="requires an encoding"):
-            golomb_model(gate_mode=mode)
 
     # a custom encoding callable has no pulse parametrization either
     def custom_enc(inputs, wires, **kwargs):
@@ -1270,9 +1324,44 @@ def test_pulse_encoding_errors() -> None:
         circuit_type="Hardware_Efficient",
         encoding=custom_enc,
     )
-    for mode in ("enc_pulse", "all_pulse"):
+
+    for incapable_model in (golomb_model, custom_model):
         with pytest.raises(ValueError, match="requires an encoding"):
-            custom_model(gate_mode=mode)
+            incapable_model(enc_pulse_params=incapable_model.enc_pulse_params)
+
+        for mode in ("enc_pulse", "all_pulse"):
+            with pytest.warns(DeprecationWarning):
+                with pytest.raises(ValueError, match="requires an encoding"):
+                    incapable_model(gate_mode=mode)
+
+
+@pytest.mark.unittest
+def test_draw_pulse() -> None:
+    import matplotlib.pyplot as plt
+
+    # nonzero inputs are required: zero inputs skip encoding entirely
+    inputs = jnp.array([0.5])
+
+    model = Model(n_qubits=2, n_layers=1, circuit_type="Hardware_Efficient")
+    fig, axes = model.draw_pulse(inputs=inputs)
+    assert fig is not None, "draw_pulse did not return a figure"
+    assert len(axes) == model.n_qubits, "one subplot per qubit expected"
+    plt.close(fig)
+
+    # an encoding without pulse parametrization falls back to the ansatz pulses
+    golomb_model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Hardware_Efficient",
+        encoding=Encoding("golomb", None),
+    )
+    fig, _ = golomb_model.draw_pulse(inputs=inputs)
+    plt.close(fig)
+
+    # the mode selector is gone: everything with a pulse form is drawn
+    with pytest.warns(DeprecationWarning, match="no longer takes gate_mode"):
+        fig, _ = model.draw_pulse(inputs=inputs, gate_mode="ansatz_pulse")
+    plt.close(fig)
 
 
 @pytest.mark.unittest
@@ -1287,8 +1376,8 @@ def test_pulse_encoding_backward_compat() -> None:
     inputs = jnp.linspace(-jnp.pi, jnp.pi, 5)
 
     # plain ansatz pulse mode is unaffected by the encoding-pulse extension
-    res_u = model(inputs=inputs, gate_mode="unitary", force_mean=True)
-    res_p = model(inputs=inputs, gate_mode="ansatz_pulse", force_mean=True)
+    res_u = model(inputs=inputs, force_mean=True)
+    res_p = model(inputs=inputs, pulse_params=model.pulse_params, force_mean=True)
     assert jnp.allclose(res_u, res_p, atol=1e-2), "pulse output drifted from unitary"
 
 
@@ -1924,7 +2013,6 @@ def test_pulse_mode_training() -> None:
             targets=fourier_samples,
             execution_type="expval",
             force_mean=True,
-            gate_mode="ansatz_pulse",
         )
         updates, opt_state = opt.update(grads, opt_state, params)
         params = optax.apply_updates(params, updates)
