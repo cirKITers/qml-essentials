@@ -41,8 +41,10 @@ class Model:
         self,
         n_qubits: int,
         n_layers: int,
-        circuit_type: Union[str, Circuit] = "No_Ansatz",
-        data_reupload: Union[bool, List[List[bool]], List[List[List[bool]]]] = True,
+        circuit_type: Union[str, type[Circuit]] = "No_Ansatz",
+        data_reupload: Union[
+            bool, List[List[bool]], List[List[List[bool]]], np.ndarray
+        ] = True,
         state_preparation: Union[
             str, Callable, List[Union[str, Callable]], None
         ] = None,
@@ -76,7 +78,8 @@ class Model:
             n_layers (int): The number of layers in the circuit.
             circuit_type (str, Circuit): The type of quantum circuit to use.
                 If None, defaults to "no_ansatz".
-            data_reupload (Union[bool, List[bool], List[List[bool]]], optional):
+            data_reupload (Union[bool, List[List[bool]], List[List[List[bool]]],
+                np.ndarray], optional):
                 Whether to reupload data to the quantum device on each
                 layer and qubit. Detailed re-uploading instructions can be given
                 as a list/array of 0/False and 1/True with shape (n_qubits,
@@ -312,6 +315,23 @@ class Model:
         Returns:
             None
         """
+        self._noise_params = self._normalize_noise_params(kvs)
+
+    @staticmethod
+    def _normalize_noise_params(
+        kvs: Optional[Dict[str, Union[float, Dict[str, float]]]],
+    ) -> Optional[Dict[str, Union[float, Dict[str, float]]]]:
+        """
+        Fill in defaults and validate a noise parameter dictionary.
+
+        Args:
+            kvs (Optional[Dict[str, Union[float, Dict[str, float]]]]): A
+            dictionary of noise parameters.
+
+        Returns:
+            Optional[Dict[str, Union[float, Dict[str, float]]]]: The normalized
+            dictionary, or None if all values are 0.0.
+        """
         # set to None if only zero values provided
         if kvs is not None and all(v == 0.0 for v in kvs.values()):
             kvs = None
@@ -363,7 +383,7 @@ class Model:
                     )
                     kvs["ThermalRelaxation"] = 0.0
 
-        self._noise_params = kvs
+        return kvs
 
     @property
     def output_qubit(self) -> List[int]:
@@ -452,31 +472,7 @@ class Model:
 
     @execution_type.setter
     def execution_type(self, value: str) -> None:
-        if value == "density":
-            self._result_shape = (
-                2 ** len(self._measured_wires),
-                2 ** len(self._measured_wires),
-            )
-        elif value == "expval":
-            # custom observables (if provided) fix the number of expectation
-            # values; otherwise one PauliZ (or Z-parity) per measured qubit.
-            if getattr(self, "_observables", None) is not None:
-                self._result_shape = (len(self._observables),)
-            else:
-                self._result_shape = (len(self._measured_wires),)
-        elif value == "probs":
-            # in case this is a list of parities,
-            # each pair has 2^len(qubits) probabilities
-            n_parity = (
-                (2,) * len(self._measured_wires)
-                if isinstance(self._measured_wires, (Tuple, List))
-                else (2,)
-            )
-            self._result_shape = n_parity
-        elif value == "state":
-            self._result_shape = (2 ** len(self._measured_wires),)
-        else:
-            raise ValueError(f"Invalid execution type: {value}.")
+        self._result_shape = self._compute_result_shape(value)
 
         if value == "state" and not self.all_qubit_measurement:
             warnings.warn(
@@ -501,6 +497,44 @@ class Model:
             raise ValueError("Setting execution_type to density with shots not None.")
 
         self._execution_type = value
+
+    def _compute_result_shape(self, execution_type: str) -> Tuple[int, ...]:
+        """
+        Derive the per-sample output shape for an execution type.
+
+        Args:
+            execution_type (str): One of "density", "expval", "probs", "state".
+
+        Returns:
+            Tuple[int, ...]: The output shape of a single sample.
+
+        Raises:
+            ValueError: If execution_type is not supported.
+        """
+        if execution_type == "density":
+            return (
+                2 ** len(self._measured_wires),
+                2 ** len(self._measured_wires),
+            )
+        elif execution_type == "expval":
+            # custom observables (if provided) fix the number of expectation
+            # values; otherwise one PauliZ (or Z-parity) per measured qubit.
+            if getattr(self, "_observables", None) is not None:
+                return (len(self._observables),)
+            else:
+                return (len(self._measured_wires),)
+        elif execution_type == "probs":
+            # in case this is a list of parities,
+            # each pair has 2^len(qubits) probabilities
+            return (
+                (2,) * len(self._measured_wires)
+                if isinstance(self._measured_wires, (Tuple, List))
+                else (2,)
+            )
+        elif execution_type == "state":
+            return (2 ** len(self._measured_wires),)
+        else:
+            raise ValueError(f"Invalid execution type: {execution_type}.")
 
     @property
     def shots(self) -> Optional[int]:
@@ -572,12 +606,15 @@ class Model:
         self._enc_pulse_params = value
 
     @property
-    def data_reupload(self) -> jnp.ndarray:
+    def data_reupload(self) -> np.ndarray:
         """Get the data reupload mask."""
         return self._data_reupload
 
     @data_reupload.setter
-    def data_reupload(self, value: jnp.ndarray) -> None:
+    def data_reupload(
+        self,
+        value: Union[bool, List[List[bool]], List[List[List[bool]]], np.ndarray],
+    ) -> None:
         """Set the data reupload mask.
 
         Always converts to a concrete NumPy boolean array so that
@@ -752,9 +789,20 @@ class Model:
         Returns:
             Tuple[int, ...]: Effective batch dimensions, excluding zeros.
         """
-        batch_shape = np.array(self.batch_shape) * self.repeat_batch_axis
-        batch_shape = batch_shape[batch_shape != 0]
-        return batch_shape
+        return self._eff_batch_shape_of(self.batch_shape)
+
+    def _eff_batch_shape_of(self, batch_shape: Tuple[int, ...]) -> Tuple[int, ...]:
+        """
+        Apply the repeat_batch_axis mask to a given batch shape.
+
+        Args:
+            batch_shape (Tuple[int, ...]): Batch shape (B_I, B_P, B_R).
+
+        Returns:
+            Tuple[int, ...]: Effective batch dimensions, excluding zeros.
+        """
+        batch_shape = np.array(batch_shape) * self.repeat_batch_axis
+        return batch_shape[batch_shape != 0]
 
     def initialize_params(
         self,
@@ -891,7 +939,7 @@ class Model:
     def _iec(
         self,
         inputs: jnp.ndarray,
-        data_reupload: jnp.ndarray,
+        data_reupload: np.ndarray,
         enc: Encoding,
         enc_params: jnp.ndarray,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
@@ -912,7 +960,7 @@ class Model:
         Args:
             inputs (jnp.ndarray): Input data of shape (n_input_feat,) or
                 (batch_size, n_input_feat).
-            data_reupload (jnp.ndarray): Boolean array of shape (n_qubits, n_input_feat)
+            data_reupload (np.ndarray): Boolean array of shape (n_qubits, n_input_feat)
                 indicating where to apply encoding gates.
             enc (Encoding): Encoding strategy containing the encoding gate functions.
             enc_params (jnp.ndarray): Encoding parameters of shape
@@ -1159,25 +1207,34 @@ class Model:
         if noise_params is not None:
             self._apply_general_noise(noise_params=noise_params)
 
-    def _build_obs(self) -> Tuple[str, List[op.Operation]]:
+    def _build_obs(
+        self, execution_type: Optional[str] = None
+    ) -> Tuple[str, List[op.Operation]]:
         """Build the jaqsi measurement type and observable list.
 
         Translates the model's ``execution_type`` and ``observables``
         settings into parameters suitable for
         :meth:`~qml_essentials.jaqsi.Script.execute`.
 
+        Args:
+            execution_type: Measurement type to build for.  If ``None``, the
+                model's current ``execution_type`` is used.
+
         Returns:
             Tuple ``(meas_type, obs)`` where *meas_type* is one of
             ``"expval"``, ``"probs"``, ``"density"``, ``"state"`` and *obs*
             is a (possibly empty) list of :class:`Operation` observables.
         """
-        if self.execution_type == "density":
+        if execution_type is None:
+            execution_type = self.execution_type
+
+        if execution_type == "density":
             return "density", []
 
-        if self.execution_type == "state":
+        if execution_type == "state":
             return "state", []
 
-        if self.execution_type == "expval":
+        if execution_type == "expval":
             if self._observables is not None:
                 return "expval", list(self._observables)
             obs: List[op.Operation] = []
@@ -1189,12 +1246,12 @@ class Model:
                     obs.append(js.build_parity_observable(list(qubit_spec)))
             return "expval", obs
 
-        if self.execution_type == "probs":
+        if execution_type == "probs":
             # probs are computed on the full system; subsystem
             # marginalisation is handled in _postprocess_res
             return "probs", []
 
-        raise ValueError(f"Invalid execution_type: {self.execution_type}.")
+        raise ValueError(f"Invalid execution_type: {execution_type}.")
 
     def _apply_state_prep_noise(
         self, noise_params: Dict[str, Union[float, Dict[str, float]]]
@@ -1441,7 +1498,9 @@ class Model:
         """Return string representation of the quantum circuit model."""
         return self.draw(figure="text")
 
-    def _params_validation(self, params: Optional[jnp.ndarray]) -> jnp.ndarray:
+    def _params_validation(
+        self, params: Optional[jnp.ndarray], stash: bool = True
+    ) -> jnp.ndarray:
         """
         Validate and normalize variational parameters.
 
@@ -1451,6 +1510,10 @@ class Model:
         Args:
             params (Optional[jnp.ndarray]): Variational parameters to validate.
                 If None, returns the model's current parameters.
+            stash (bool): Whether to store the validated parameters on the
+                model. Set to False on the pure :meth:`apply` path, where
+                stashing a JAX tracer would leak it across calls. Defaults
+                to True.
 
         Returns:
             jnp.ndarray: Validated parameters with shape
@@ -1468,9 +1531,9 @@ class Model:
             # once the transform returns, and a subsequent read of
             # ``self.params`` would feed a leaked tracer into the next
             # call (raising ``UnexpectedTracerError``).
-            if not isinstance(params, jax.core.Tracer):
+            if stash and not isinstance(params, jax.core.Tracer):
                 self.params = params
-            else:
+            elif stash:
                 log.debug(
                     "`params` is a JAX tracer; `self.params` is left at its "
                     "previous value. Anything reading model state afterwards "
@@ -1484,7 +1547,7 @@ class Model:
         return params
 
     def _pulse_params_validation(
-        self, pulse_params: Optional[jnp.ndarray]
+        self, pulse_params: Optional[jnp.ndarray], stash: bool = True
     ) -> jnp.ndarray:
         """
         Validate and normalize pulse parameters.
@@ -1494,6 +1557,8 @@ class Model:
         Args:
             pulse_params (Optional[jnp.ndarray]): Pulse parameter scalers.
                 If None, returns the model's current pulse parameters.
+            stash (bool): Whether to store the validated parameters on the
+                model. See :meth:`_params_validation`. Defaults to True.
 
         Returns:
             jnp.ndarray: Validated pulse parameters with shape
@@ -1507,9 +1572,9 @@ class Model:
                 pulse_params = jnp.expand_dims(pulse_params, axis=0)
             # See note in _params_validation: never stash JAX tracers on
             # ``self``.
-            if not isinstance(pulse_params, jax.core.Tracer):
+            if stash and not isinstance(pulse_params, jax.core.Tracer):
                 self.pulse_params = pulse_params
-            else:
+            elif stash:
                 log.debug(
                     "`pulse_params` is a JAX tracer; `self.pulse_params` is "
                     "left at its previous value."
@@ -1518,7 +1583,7 @@ class Model:
         return pulse_params
 
     def _enc_pulse_params_validation(
-        self, enc_pulse_params: Optional[jnp.ndarray]
+        self, enc_pulse_params: Optional[jnp.ndarray], stash: bool = True
     ) -> jnp.ndarray:
         """
         Validate and normalize encoding pulse parameters.
@@ -1552,7 +1617,8 @@ class Model:
                 )
             # See note in _params_validation: never stash JAX tracers on
             # ``self``.
-            self.enc_pulse_params = enc_pulse_params
+            if stash and not isinstance(enc_pulse_params, jax.core.Tracer):
+                self.enc_pulse_params = enc_pulse_params
 
         return enc_pulse_params
 
@@ -1561,6 +1627,7 @@ class Model:
         gate_mode: Optional[str],
         pulse_params: Optional[jnp.ndarray],
         enc_pulse_params: Optional[jnp.ndarray],
+        stacklevel: int = 3,
     ) -> str:
         """
         Determine which gate groups run at pulse level.
@@ -1576,6 +1643,9 @@ class Model:
             pulse_params (Optional[jnp.ndarray]): Ansatz pulse-parameter scalers.
             enc_pulse_params (Optional[jnp.ndarray]): Encoding pulse-parameter
                 scalers.
+            stacklevel (int): Frames between this method and the user call, so
+                that the deprecation warning points at the call site. Defaults
+                to 3, which is correct for a direct caller.
 
         Returns:
             str: One of the keys of ``GATE_MODES``.
@@ -1603,7 +1673,7 @@ class Model:
                 "encoding at pulse level, e.g. "
                 "model(pulse_params=model.pulse_params).",
                 DeprecationWarning,
-                stacklevel=4,
+                stacklevel=stacklevel,
             )
             # consistency checks, only reachable via the deprecated argument
             if gate_mode not in GATE_MODES:
@@ -1632,7 +1702,9 @@ class Model:
 
         return gate_mode
 
-    def _enc_params_validation(self, enc_params: Optional[jnp.ndarray]) -> jnp.ndarray:
+    def _enc_params_validation(
+        self, enc_params: Optional[jnp.ndarray], stash: bool = True
+    ) -> jnp.ndarray:
         """
         Validate and normalize encoding parameters.
 
@@ -1642,6 +1714,8 @@ class Model:
         Args:
             enc_params (Optional[jnp.ndarray]): Encoding parameters to validate.
                 If None, returns the model's current encoding parameters.
+            stash (bool): Whether to store the validated parameters on the
+                model. See :meth:`_params_validation`. Defaults to True.
 
         Returns:
             jnp.ndarray: Validated encoding parameters with shape
@@ -1655,12 +1729,12 @@ class Model:
         else:
             # See note in _params_validation: never stash JAX tracers on
             # ``self``.
-            if not isinstance(enc_params, jax.core.Tracer):
+            if stash and not isinstance(enc_params, jax.core.Tracer):
                 if self.trainable_frequencies:
                     self.enc_params = enc_params
                 else:
                     self.enc_params = jnp.array(enc_params)
-            else:
+            elif stash:
                 log.debug(
                     "`enc_params` is a JAX tracer; `self.enc_params` is left "
                     "at its previous value."
@@ -1762,13 +1836,13 @@ class Model:
         params: jnp.ndarray,
         pulse_params: jnp.ndarray,
         enc_pulse_params: jnp.ndarray,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, Tuple[int, ...]]:
         """
         Align batch dimensions across inputs, parameters, pulse parameters and
         encoding pulse parameters.
 
         Broadcasts and reshapes arrays to have compatible batch dimensions
-        for vectorized circuit execution. Sets the internal batch_shape.
+        for vectorized circuit execution.
 
         The batch layout is ``[B_I, B_P, B_R, B_E, <payload>]`` where each array
         "owns" one batch axis and is replicated across the others (subject to
@@ -1782,13 +1856,15 @@ class Model:
                 (B_E, n_layers, n_qubits, n_enc_pulse).
 
         Returns:
-            Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]: The four
-            arrays, each reshaped to leading dimension B = B_I * B_P * B_R * B_E
-            (subject to repeat_batch_axis).
+            Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray,
+            Tuple[int, ...]]: The four arrays, each reshaped to leading
+            dimension B = B_I * B_P * B_R * B_E (subject to
+            repeat_batch_axis), followed by the batch shape
+            (B_I, B_P, B_R, B_E).
 
         Note:
             The effective batch shape depends on repeat_batch_axis configuration.
-            This is the only method that sets self._batch_shape.
+            This is the only method that derives the batch shape.
         """
         B_I = inputs.shape[0]
         # we check for the product because there is a chance that
@@ -1797,9 +1873,9 @@ class Model:
         B_R = pulse_params.shape[0]
         B_E = enc_pulse_params.shape[0]
 
-        # THIS is the only place where we set the batch shape
-        self._batch_shape = (B_I, B_P, B_R, B_E)
-        B = np.prod(self.eff_batch_shape)
+        # THIS is the only place where we derive the batch shape
+        batch_shape = (B_I, B_P, B_R, B_E)
+        B = np.prod(self._eff_batch_shape_of(batch_shape))
 
         # [B_I, ...] -> [B_I, B_P, B_R, B_E, ...] -> [B, ...]
         if B_I > 1 and self.repeat_batch_axis[0]:
@@ -1847,7 +1923,7 @@ class Model:
                 enc_pulse_params = jnp.repeat(enc_pulse_params, B_R, axis=2)
             enc_pulse_params = enc_pulse_params.reshape(B, *enc_pulse_params.shape[4:])
 
-        return inputs, params, pulse_params, enc_pulse_params
+        return inputs, params, pulse_params, enc_pulse_params, batch_shape
 
     def _requires_density(self) -> bool:
         """
@@ -1969,19 +2045,26 @@ class Model:
         inputs: Optional[jnp.ndarray] = None,
         pulse_params: Optional[jnp.ndarray] = None,
         enc_params: Optional[jnp.ndarray] = None,
-        data_reupload: Union[bool, List[List[bool]], List[List[List[bool]]]] = None,
+        data_reupload: Union[
+            bool, List[List[bool]], List[List[List[bool]]], np.ndarray
+        ] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
         gate_mode: Optional[str] = None,
         enc_pulse_params: Optional[jnp.ndarray] = None,
         random_key: Optional[random.PRNGKey] = None,
+        keepdims: bool = False,
     ) -> jnp.ndarray:
         """
         Execute the quantum circuit (callable interface).
 
         Provides a convenient callable interface for circuit execution,
         delegating to the _forward method.
+
+        This method writes the arguments it receives onto the model, so it
+        cannot be wrapped in an outer ``jax.jit`` or ``jax.vmap``. Use
+        :meth:`apply` for that.
 
         Args:
             params (Optional[jnp.ndarray]): Variational parameters of shape
@@ -1994,7 +2077,8 @@ class Model:
                 gates at pulse level. If None, they stay unitary.
             enc_params (Optional[jnp.ndarray]): Encoding parameters of shape
                 (n_qubits, n_input_feat). If None, uses model's encoding parameters.
-            data_reupload (Union[bool, List[List[bool]], List[List[List[bool]]]]):
+            data_reupload (Union[bool, List[List[bool]], List[List[List[bool]]],
+                np.ndarray]):
                 Data reupload configuration. If None, uses previously set reupload
                 configuration.
             noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
@@ -2021,6 +2105,9 @@ class Model:
                 advanced from inside a trace. Use :meth:`next_key` to obtain
                 one. If None, the internal key is used and advanced (eager
                 calls only).
+            keepdims (bool): If True, the full
+                (B_I, B_P, B_R, B_E, O) shape is returned. If False (default),
+                all singleton axes are squeezed out.
 
         Returns:
             jnp.ndarray: Circuit output with shape depending on execution_type:
@@ -2061,6 +2148,124 @@ class Model:
             gate_mode=gate_mode,
             enc_pulse_params=enc_pulse_params,
             random_key=random_key,
+            keepdims=keepdims,
+        )
+
+    def apply(
+        self,
+        params: Optional[jnp.ndarray] = None,
+        inputs: Optional[jnp.ndarray] = None,
+        pulse_params: Optional[jnp.ndarray] = None,
+        enc_params: Optional[jnp.ndarray] = None,
+        noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
+        execution_type: Optional[str] = None,
+        force_mean: bool = False,
+        gate_mode: Optional[str] = None,
+        enc_pulse_params: Optional[jnp.ndarray] = None,
+        key: Optional[random.PRNGKey] = None,
+    ) -> jnp.ndarray:
+        """
+        Execute the quantum circuit without modifying the model.
+
+        Functional counterpart of :meth:`__call__`. No model state is written,
+        so the call can be wrapped in an outer ``jax.jit``, ``jax.vmap`` or a
+        whole jitted training step. The output always keeps the full
+        (B_I, B_P, B_R, O) shape, so its rank does not depend on the batch
+        sizes; call ``.squeeze()`` for the shape :meth:`__call__` returns.
+
+        Arguments left as None fall back to the current model state, which an
+        outer ``jax.jit`` bakes in at trace time. Anything that varies between
+        calls, such as the parameters during training or the key for shots,
+        has to be passed explicitly.
+
+        Unlike :meth:`__call__` this method takes no ``data_reupload``
+        argument, as that reconfigures the circuit; set
+        :attr:`data_reupload` on the model beforehand instead.
+
+        Args:
+            params (Optional[jnp.ndarray]): Variational parameters of shape
+                (n_layers, n_params_per_layer) or
+                (batch, n_layers, n_params_per_layer).
+                If None, uses model's internal parameters.
+            inputs (Optional[jnp.ndarray]): Input data of shape
+                (batch_size, n_input_feat). If None, uses zero inputs.
+            pulse_params (Optional[jnp.ndarray]): Pulse parameter scalers for
+                the ansatz and state-preparation gates. Passing them runs those
+                gates at pulse level. If None, they stay unitary.
+            enc_params (Optional[jnp.ndarray]): Encoding parameters of shape
+                (n_qubits, n_input_feat). If None, uses model's encoding parameters.
+            noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
+                Noise configuration. If None, uses the model's noise parameters.
+            execution_type (Optional[str]): Measurement type: "expval", "density",
+                "probs", or "state". If None, uses current execution_type setting.
+            force_mean (bool): If True, averages results over measurement qubits.
+                Defaults to False.
+            gate_mode (Optional[str]): Deprecated. If None (default), the mode
+                is inferred from the provided pulse parameters. See
+                :meth:`__call__`.
+            enc_pulse_params (Optional[jnp.ndarray]): Pulse parameter scalers
+                for the encoding gates. Passing them runs the encoding gates at
+                pulse level. If None, they stay unitary.
+            key (Optional[random.PRNGKey]): JAX random key for shots and
+                stochastic noise. If None, the model's random key is used
+                without advancing it.
+
+        Returns:
+            jnp.ndarray: Circuit output of shape (B_I, B_P, B_R, O), where O
+                is the per-sample output shape of the execution type.
+
+        Raises:
+            ValueError: If the encoding gates would run at pulse level but the
+                encoding has no pulse parametrization, or if shots are set for
+                a density measurement.
+        """
+        gate_mode = self._resolve_gate_mode(gate_mode, pulse_params, enc_pulse_params)
+
+        if execution_type is None:
+            execution_type = self.execution_type
+        if execution_type == "density" and self.shots is not None:
+            raise ValueError("Setting execution_type to density with shots not None.")
+        result_shape = self._compute_result_shape(execution_type)
+
+        if noise_params is None:
+            noise_params = self.noise_params
+        else:
+            noise_params = self._normalize_noise_params(noise_params)
+
+        enc_pulse_params = self._enc_pulse_params_validation(
+            enc_pulse_params, stash=False
+        )
+        params = self._params_validation(params, stash=False)
+        pulse_params = self._pulse_params_validation(pulse_params, stash=False)
+        inputs = self._inputs_validation(inputs)
+        enc_params = self._enc_params_validation(enc_params, stash=False)
+
+        inputs, params, pulse_params, enc_pulse_params, batch_shape = (
+            self._assimilate_batch(
+                inputs,
+                params,
+                pulse_params,
+                enc_pulse_params,
+            )
+        )
+
+        # derive a sub key as in _forward, but without advancing the model's key
+        _, sub_key = safe_random_split(key if key is not None else self.random_key)
+
+        return self._execute_forward(
+            params=params,
+            inputs=inputs,
+            pulse_params=pulse_params,
+            enc_params=enc_params,
+            batch_shape=batch_shape,
+            execution_type=execution_type,
+            result_shape=result_shape,
+            noise_params=noise_params,
+            gate_mode=gate_mode,
+            force_mean=force_mean,
+            key=sub_key,
+            enc_pulse_params=enc_pulse_params,
+            keepdims=True,
         )
 
     def _forward(
@@ -2069,13 +2274,16 @@ class Model:
         inputs: Optional[jnp.ndarray] = None,
         pulse_params: Optional[jnp.ndarray] = None,
         enc_params: Optional[jnp.ndarray] = None,
-        data_reupload: Union[bool, List[List[bool]], List[List[List[bool]]]] = None,
+        data_reupload: Union[
+            bool, List[List[bool]], List[List[List[bool]]], np.ndarray
+        ] = None,
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         execution_type: Optional[str] = None,
         force_mean: bool = False,
         gate_mode: Optional[str] = None,
         enc_pulse_params: Optional[jnp.ndarray] = None,
         random_key: Optional[random.PRNGKey] = None,
+        keepdims: bool = False,
     ) -> jnp.ndarray:
         """
         Execute the quantum circuit forward pass.
@@ -2095,7 +2303,8 @@ class Model:
                 pulse-mode gate execution.
             enc_params (Optional[jnp.ndarray]): Encoding parameters of shape
                 (n_qubits, n_input_feat). If None, uses model's encoding parameters.
-            data_reupload (Union[bool, List[List[bool]], List[List[List[bool]]]]):
+            data_reupload (Union[bool, List[List[bool]], List[List[List[bool]]],
+                np.ndarray]):
                 Data reupload configuration. If None, uses previously set reupload
                 configuration.
             noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
@@ -2108,10 +2317,16 @@ class Model:
                 is inferred from the provided pulse parameters. Passing
                 "unitary", "ansatz_pulse", "enc_pulse" or "all_pulse"
                 explicitly emits a DeprecationWarning.
+            enc_pulse_params (Optional[jnp.ndarray]): Pulse parameter scalers
+                for the encoding gates. Passing them runs the encoding gates at
+                pulse level. If None, they stay unitary.
             random_key (Optional[random.PRNGKey]): JAX random key for stochastic
                 execution. If provided, it is used instead of (and does not
                 modify) the model's internal ``random_key``. See
                 :meth:`__call__` for details.
+            keepdims (bool): If True, the full
+                (B_I, B_P, B_R, B_E, O) shape is returned. If False (default),
+                all singleton axes are squeezed out.
 
         Returns:
             jnp.ndarray: Circuit output with shape depending on execution_type:
@@ -2132,7 +2347,10 @@ class Model:
         if execution_type is not None:
             self.execution_type = execution_type
 
-        gate_mode = self._resolve_gate_mode(gate_mode, pulse_params, enc_pulse_params)
+        # one frame deeper than apply, as __call__ sits in between
+        gate_mode = self._resolve_gate_mode(
+            gate_mode, pulse_params, enc_pulse_params, stacklevel=4
+        )
 
         # TODO: add testing
         if data_reupload is not None:
@@ -2144,12 +2362,15 @@ class Model:
         enc_params = self._enc_params_validation(enc_params)
         enc_pulse_params = self._enc_pulse_params_validation(enc_pulse_params)
 
-        inputs, params, pulse_params, enc_pulse_params = self._assimilate_batch(
-            inputs,
-            params,
-            pulse_params,
-            enc_pulse_params,
+        inputs, params, pulse_params, enc_pulse_params, batch_shape = (
+            self._assimilate_batch(
+                inputs,
+                params,
+                pulse_params,
+                enc_pulse_params,
+            )
         )
+        self._batch_shape = batch_shape
 
         # split to generate a sub_key, required for actual execution.
         if random_key is not None:
@@ -2178,21 +2399,86 @@ class Model:
             if not isinstance(new_key, jax.core.Tracer):
                 self.random_key = new_key
 
+        return self._execute_forward(
+            params=params,
+            inputs=inputs,
+            pulse_params=pulse_params,
+            enc_params=enc_params,
+            batch_shape=batch_shape,
+            enc_pulse_params=enc_pulse_params,
+            execution_type=self.execution_type,
+            result_shape=self._result_shape,
+            noise_params=self.noise_params,
+            gate_mode=gate_mode,
+            force_mean=force_mean,
+            key=sub_key,
+            keepdims=keepdims,
+        )
+
+    def _execute_forward(
+        self,
+        params: jnp.ndarray,
+        inputs: jnp.ndarray,
+        pulse_params: jnp.ndarray,
+        enc_params: jnp.ndarray,
+        enc_pulse_params: jnp.ndarray,
+        batch_shape: Tuple[int, ...],
+        execution_type: str,
+        result_shape: Tuple[int, ...],
+        noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]],
+        gate_mode: str,
+        force_mean: bool,
+        key: random.PRNGKey,
+        keepdims: bool,
+    ) -> jnp.ndarray:
+        """
+        Run the simulation and post-process the result.
+
+        This is the shared core of :meth:`_forward` and :meth:`apply`. Every
+        value it needs is passed in explicitly and no model state is written,
+        so it is safe to call from within an outer JAX transform.
+
+        Args:
+            params (jnp.ndarray): Validated and batch-aligned parameters.
+            inputs (jnp.ndarray): Validated and batch-aligned inputs.
+            pulse_params (jnp.ndarray): Validated and batch-aligned pulse params.
+            enc_params (jnp.ndarray): Validated encoding parameters.
+            enc_pulse_params (jnp.ndarray): Validated and batch-aligned
+                encoding pulse parameters.
+            batch_shape (Tuple[int, ...]): Batch shape (B_I, B_P, B_R, B_E).
+            execution_type (str): Measurement type: "expval", "density",
+                "probs", or "state".
+            result_shape (Tuple[int, ...]): Per-sample output shape.
+            noise_params (Optional[Dict[str, Union[float, Dict[str, float]]]]):
+                Normalized noise configuration.
+            gate_mode (str): Gate execution backend, "unitary",
+                "ansatz_pulse", "enc_pulse" or "all_pulse".
+            force_mean (bool): If True, averages results over the output axis.
+            key (random.PRNGKey): JAX random key for this execution.
+            keepdims (bool): If True, the full (B_I, B_P, B_R, B_E, O) shape is
+                returned. If False, all singleton axes are squeezed out.
+
+        Returns:
+            jnp.ndarray: Circuit output.
+        """
         # Build measurement type & observables from execution_type / output_qubit
-        meas_type, obs = self._build_obs()
+        meas_type, obs = self._build_obs(execution_type)
+
+        eff_batch_shape = self._eff_batch_shape_of(batch_shape)
 
         # Jaqsi auto-routes between statevector and density-matrix simulation
         # based on whether noise channels appear on the tape, so a single
-        B = np.prod(self.eff_batch_shape)
+        B = np.prod(eff_batch_shape)
 
         # kwargs are broadcast (not vmapped over)
         exec_kwargs = dict(
-            noise_params=self.noise_params,
+            noise_params=noise_params,
             gate_mode=gate_mode,
         )
 
-        # Build a shot key from the random_key if shots are requested
+        # Build a shot key from the given key if shots are requested
         shot_key = None
+        sub_key = key
         if self.shots is not None:
             # overwrite subkey and split shot_key
             sub_key, shot_key = safe_random_split(sub_key)
@@ -2202,12 +2488,12 @@ class Model:
             random_keys = safe_random_split(sub_key, num=B)
 
             in_axes = (
-                0 if self.batch_shape[1] > 1 else None,  # params
-                0 if self.batch_shape[0] > 1 else None,  # inputs
-                0 if self.batch_shape[2] > 1 else None,  # pulse_params
+                0 if batch_shape[1] > 1 else None,  # params
+                0 if batch_shape[0] > 1 else None,  # inputs
+                0 if batch_shape[2] > 1 else None,  # pulse_params
                 0,  # random_keys
                 None,  # enc_params (broadcast, not batched)
-                0 if self.batch_shape[3] > 1 else None,  # enc_pulse_params
+                0 if batch_shape[3] > 1 else None,  # enc_pulse_params
             )
 
             result = self.script.execute(
@@ -2249,10 +2535,10 @@ class Model:
         result = self._postprocess_res(result)
 
         # --- Post-processing for partial-qubit measurements ---------------
-        if self.execution_type == "density" and not self.all_qubit_measurement:
+        if execution_type == "density" and not self.all_qubit_measurement:
             result = js.partial_trace(result, self.n_qubits, self._measured_wires)
 
-        if self.execution_type == "probs" and not self.all_qubit_measurement:
+        if execution_type == "probs" and not self.all_qubit_measurement:
             if isinstance(self._measured_wires[0], (list, tuple)):
                 # list of qubit groups - marginalize each independently
                 result = jnp.stack(
@@ -2267,14 +2553,16 @@ class Model:
                 )
 
         result = jnp.asarray(result)
-        result = result.reshape((*self.eff_batch_shape, *self._result_shape)).squeeze()
+        result = result.reshape((*eff_batch_shape, *result_shape))
+        if not keepdims:
+            result = result.squeeze()
 
         if (
-            self.execution_type in ("expval", "probs")
+            execution_type in ("expval", "probs")
             and force_mean
             and len(result.shape) > 0
-            and self._result_shape[0] > 1
+            and result_shape[0] > 1
         ):
-            result = result.mean(axis=-1)
+            result = result.mean(axis=-1, keepdims=keepdims)
 
         return result

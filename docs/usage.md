@@ -277,7 +277,13 @@ If all three, inputs, parameters and pulse parameters, are provided, with sizes 
 Internally, these combinations will be flattened during processing and then reshaped to the original shape afterwards, such that the output shape is `[B_I, B_P, B_R, O]`.
 Here, `O` is the general output shape depending on the execution type.
 This shape is also available as a property of the model: `model.batch_shape`.
-Note, that the output shape is always squeezed, i.e. batch axes will be suppressed if their dimension is 1.
+Note, that the output shape is squeezed by default, i.e. every axis of dimension 1 is suppressed.
+This includes the output axis `O`, so a single observable or a batch of one changes the rank of the result.
+Pass `keepdims=True` to get the full `[B_I, B_P, B_R, O]` shape instead:
+
+```python
+model(params, inputs, keepdims=True)
+```
 
 In addition to letting the model handle repeating the batch axes, it is also possible to disable this functionality by setting `repeat_batch_axis` upon model initialization.
 This parameter is an array of boolean values determining of the corresponding axis in the `batch_shape` (#Inputs, #Params, #PulseParams) should be repeated.
@@ -300,7 +306,30 @@ In this example, instead of a batch size of `100`, the output will have a batch 
 
 Calls with a batch dimension reuse a compiled execution plan whenever the shapes of the arguments match.
 Changes to the circuit structure, such as `data_reupload` or `observables`, are accounted for, but replacing the `encoding` after instantiation is not supported.
-When calling the model inside `jax.jit`, note that randomness has to be passed in explicitly, see [Noise](noise.md#randomness-under-jax-transformations).
+
+## Functional Execution
+
+Calling the model directly stores the arguments it receives on the model, which is convenient but means that such a call cannot be wrapped in an outer `jax.jit` or `jax.vmap`: the stashed tracer would escape the transform and invalidate the next call.
+
+For that purpose, the model provides `apply`, which is a pure counterpart of the regular call.
+It writes no model state, and the output always keeps the full `[B_I, B_P, B_R, B_E, O]` shape, so its rank does not depend on the batch sizes.
+
+```python
+import jax
+
+def cost(params):
+    y_hat = model.apply(params=params, inputs=inputs, force_mean=True)
+    return jnp.mean((y_hat.reshape(-1) - targets) ** 2)
+
+# the whole training step can be jitted
+loss, grads = jax.jit(jax.value_and_grad(cost))(model.params)
+```
+
+Arguments left as `None` fall back to the current model state, which an outer `jax.jit` bakes in at trace time.
+Anything that varies between calls, such as the parameters during training or the key for shots, has to be passed explicitly.
+In contrast to the regular call, `apply` takes no `data_reupload` argument, as that reconfigures the circuit; set `model.data_reupload` beforehand instead.
+Randomness is controlled through the `key` argument, which defaults to the model's random key without advancing it.
+The regular call accepts the equivalent `random_key` argument; in both cases a fresh key per step comes from `model.next_key()`, see [Noise](noise.md#randomness-under-jax-transformations).
 
 ## Quantikz Export
 
