@@ -251,14 +251,14 @@ See [*Pulses*](pulses.md#pulse_level_encoding) for the parameters belonging to e
 Pulse-level gates can also be instantiated directly:
 
 ```python
-from jaqsi.gates import Gates
+from jaqsi import Gates
 
 # RX gate represented by its microwave pulse
-Gates.RX(w, wires=0, gate_mode="pulse")
+Gates.RX(w, wires=0, pulse=True)
 
 # With custom pulse parameters [A, sigma, t]
 pulse_params = [0.5, 0.2, 1.0]
-Gates.RX(w, wires=0, pulse_params=pulse_params, gate_mode="pulse")
+Gates.RX(w, wires=0, pulse_params=pulse_params, pulse=True)
 ```
 and then used in [custom Ansaetze](ansaetze.md#custom_ansatz) or directly as [encoding gates](ansaetze.md#custom_encoding).
 See our documentation on [Quantum Optimal Control (QOC)](pulses.md#quantum_optimal_control_qoc) for more details on how to choose pulse parameters.
@@ -353,8 +353,11 @@ To create a document that can be compiled, simply pass `full_document=True` when
 In some cases you may not want to utilize the structure enforced by the `Model` class.
 Therefore, this section provides an example on how to use a custom circuit.
 
+Gates are applied through jaqsi's [`Gates`](https://cirkiters.github.io/jaqsi/usage/#gate-level) entry point, exactly as inside a `Model`.
+It records the gate, attaches any noise you request, and runs it as an ideal unitary or, with `pulse=True`, at pulse level.
+
 ```python
-from jaqsi.gates import Gates as g
+from jaqsi import Gates as g
 from qml_essentials.model import Model
 import jaqsi as js
 import jax.numpy as jnp

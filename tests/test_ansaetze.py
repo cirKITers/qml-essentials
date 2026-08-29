@@ -496,13 +496,13 @@ def test_invalid_pulse_params():
 
     for pp in invalid_type_pulse_params:
         with pytest.raises(TypeError):
-            Gates.RX(np.pi, 0, pulse_params=pp, gate_mode="pulse")
+            Gates.RX(np.pi, 0, pulse_params=pp, pulse=True)
 
     invalid_len_pulse_params = [jnp.array([10, 5, 1, 1]), [10, 10, 5, 5, 1, 1], (10,)]
 
     for pp in invalid_len_pulse_params:
         with pytest.raises(ValueError):
-            Gates.RX(np.pi, 0, pulse_params=pp, gate_mode="pulse")
+            Gates.RX(np.pi, 0, pulse_params=pp, pulse=True)
 
 
 @pytest.mark.unittest

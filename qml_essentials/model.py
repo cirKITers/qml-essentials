@@ -21,11 +21,12 @@ import logging
 
 log = logging.getLogger(__name__)
 
+# model mode -> (ansatz/state-prep gates at pulse level, encoding gates at pulse level)
 GATE_MODES = {
-    "unitary": ("unitary", "unitary"),
-    "ansatz_pulse": ("pulse", "unitary"),
-    "enc_pulse": ("unitary", "pulse"),
-    "all_pulse": ("pulse", "pulse"),
+    "unitary": (False, False),
+    "ansatz_pulse": (True, False),
+    "enc_pulse": (False, True),
+    "all_pulse": (True, True),
 }
 
 # the modes that run the respective gate group at pulse level. Both only serve
@@ -947,7 +948,7 @@ class Model:
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         random_key: Optional[random.PRNGKey] = None,
         enc_pulse_params: Optional[jnp.ndarray] = None,
-        gate_mode: str = "unitary",
+        pulse: bool = False,
     ) -> None:
         """
         Apply Input Encoding Circuit (IEC) with angle encoding.
@@ -976,11 +977,10 @@ class Model:
                 current layer. Used when the encoding gates run at pulse level,
                 i.e. the model-level mode is "enc_pulse" or "all_pulse".
                 Defaults to None.
-            gate_mode (str): Resolved per-gate encoding backend, "unitary"
-                (ideal) or "pulse". This is the backend selected for the
-                encoding group, distinct from the model-level modes
-                (unitary, ansatz_pulse, enc_pulse, all_pulse). Defaults to
-                "unitary".
+            pulse (bool): Whether the encoding gates run at pulse level.
+                This is the backend selected for the encoding group, distinct
+                from the model-level modes (unitary, ansatz_pulse, enc_pulse,
+                all_pulse). Defaults to False.
 
         Returns:
             None: Gates are applied in-place to the quantum circuit.
@@ -1011,7 +1011,7 @@ class Model:
                     random_key, sub_key = safe_random_split(random_key)
                     # TODO: consider merging this with the pulses.py manager
                     pulse_kwargs = {}
-                    if gate_mode == "pulse":
+                    if pulse:
                         # scale the calibrated pulse params by this gate's
                         # scalers, as the pulse manager does for the ansatz
                         off = self._enc_pulse_offsets[idx]
@@ -1019,7 +1019,7 @@ class Model:
                         base = pinfo.gate_by_name(enc._gates[idx]).params
                         pulse_kwargs = dict(
                             pulse_params=base * enc_pulse_params[q, off : off + size],
-                            gate_mode="pulse",
+                            pulse=True,
                         )
 
                     # use elipsis to index only the last dimension
@@ -1125,7 +1125,7 @@ class Model:
             that would normally be passed through the forward method.
         """
         # which backend the ansatz / state-prep gates and the encoding gates use
-        sub_mode, enc_gate_mode = GATE_MODES[gate_mode]
+        use_pulse, enc_use_pulse = GATE_MODES[gate_mode]
 
         # TODO: rework and double check params shape
         params = self._debatch(params, 2)
@@ -1137,13 +1137,11 @@ class Model:
             enc_params, "enc_params", self.trainable_frequencies
         )
 
-        pulse_params = self._self_fallback(
-            pulse_params, "pulse_params", sub_mode == "pulse"
-        )
+        pulse_params = self._self_fallback(pulse_params, "pulse_params", use_pulse)
         pulse_params = self._debatch(pulse_params, 2)
 
         enc_pulse_params = self._self_fallback(
-            enc_pulse_params, "enc_pulse_params", enc_gate_mode == "pulse"
+            enc_pulse_params, "enc_pulse_params", enc_use_pulse
         )
         enc_pulse_params = self._debatch(enc_pulse_params, 3)
 
@@ -1164,7 +1162,7 @@ class Model:
                     pulse_params=sp_pulse_params,
                     noise_params=noise_params,
                     random_key=sub_key,
-                    gate_mode=sub_mode,
+                    pulse=use_pulse,
                 )
 
         # circuit building
@@ -1177,7 +1175,7 @@ class Model:
                 pulse_params=pulse_params[layer],
                 noise_params=noise_params,
                 random_key=sub_key,
-                gate_mode=sub_mode,
+                pulse=use_pulse,
             )
 
             random_key, sub_key = safe_random_split(random_key)
@@ -1190,7 +1188,7 @@ class Model:
                 noise_params=noise_params,
                 random_key=sub_key,
                 enc_pulse_params=enc_pulse_params[layer],
-                gate_mode=enc_gate_mode,
+                pulse=enc_use_pulse,
             )
 
         # final ansatz layer
@@ -1202,7 +1200,7 @@ class Model:
                 pulse_params=pulse_params[-1],
                 noise_params=noise_params,
                 random_key=sub_key,
-                gate_mode=sub_mode,
+                pulse=use_pulse,
             )
 
         # channel noise

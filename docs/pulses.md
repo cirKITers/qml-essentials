@@ -20,7 +20,7 @@ Here, input and params are inferred from the `Model` instance, and we scale all 
 Currently there is no way to change the raw values of pulse parameter through the model api directly.
 
 Note that a `Model` selects the pulse level differently than an individual gate does.
-A gate takes `gate_mode`, which is either `"unitary"` or `"pulse"`, whereas a model infers this per gate group from the pulse parameters you pass: `pulse_params` lowers the ansatz and state-preparation gates, `enc_pulse_params` lowers the input-encoding gates.
+An individual gate takes `pulse=True` on the [`Gates`](https://cirkiters.github.io/jaqsi/usage/#gate-level) entry point, whereas a model infers the level per gate group from the pulse parameters you pass: `pulse_params` lowers the ansatz and state-preparation gates, `enc_pulse_params` lowers the input-encoding gates.
 Passing neither keeps the whole circuit unitary.
 The `gate_mode` argument of a model call is deprecated and only kept for backwards compatibility.
 

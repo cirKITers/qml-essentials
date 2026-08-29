@@ -107,9 +107,9 @@ class Circuit(ABC):
             w (np.ndarray): Parameter array for the current layer.
             n_qubits (int): Number of qubits in the circuit.
             **kwargs: Additional keyword arguments:
-                - gate_mode (str): "unitary" (default) or "pulse" for
-                  pulse-level simulation.
-                - pulse_params (np.ndarray): Pulse parameters if gate_mode="pulse".
+                - pulse (bool): Whether to run the gates at pulse level.
+                  Defaults to False.
+                - pulse_params (np.ndarray): Pulse parameters if pulse=True.
                 - noise_params (Dict): Noise parameters dictionary.
 
         Returns:
@@ -118,9 +118,9 @@ class Circuit(ABC):
         Raises:
             ValueError: If pulse_params length doesn't match expected count.
         """
-        gate_mode = kwargs.get("gate_mode", "unitary")
+        pulse = kwargs.get("pulse", False)
 
-        if gate_mode == "pulse" and "pulse_params" in kwargs:
+        if pulse and "pulse_params" in kwargs:
             pulse_params_per_layer = self.n_pulse_params_per_layer(n_qubits)
 
             if len(kwargs["pulse_params"]) != pulse_params_per_layer:
@@ -981,7 +981,7 @@ def GolombEncoding(
         NotImplementedError: If called in pulse mode, which the Golomb
             encoding has no pulse parametrization for.
     """
-    if kwargs.pop("gate_mode", "unitary") == "pulse":
+    if kwargs.pop("pulse", False):
         raise NotImplementedError("Golomb encoding has no pulse parametrization")
 
     wires_list = list(wires) if isinstance(wires, (list, tuple)) else [wires]

@@ -27,7 +27,7 @@ You can find a list of all the available topologies in the [references](https://
 To start implementing your own ansatz, you can inheriting from the `Circuit` class:
 ```python
 from qml_essentials.ansaetze import Circuit
-from jaqsi.gates import Gates
+from jaqsi import Gates
 from qml_essentials.topologies import Topology, Block
 
 class MyHardwareEfficient(Circuit):
@@ -133,7 +133,7 @@ A callable must take an input, the wire where it's acting on and an optional noi
 Let's look at an example, where we want to encode a two-dimensional input:
 ```python
 from qml_essentials.model import Model
-from jaqsi.gates import Gates
+from jaqsi import Gates
 
 def MyCustomEncoding(w, wires, **kwars):
     Gates.RX(w[0], wires, **kwargs)

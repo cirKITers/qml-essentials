@@ -73,12 +73,12 @@ The same statevectors can be evolved through a circuit by passing them as the in
 ```python
 from jaqsi import Script
 from qml_essentials.ansaetze import Ansaetze
-from jaqsi.operations import PauliZ
+import jaqsi
 
 def circ():
     Ansaetze.Permutation_Equivariant.build(np.array([0.7, 1.1, 0.5]), n)
 
 script = Script(circ, n_qubits=n)
-zs = script.execute(type="expval", obs=[PauliZ(q) for q in range(n)], initial_state=dicke_state(n, 2))
+zs = script.execute(type="expval", obs=[jaqsi.PauliZ(q) for q in range(n)], initial_state=dicke_state(n, 2))
 ```
 
