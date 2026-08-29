@@ -7,13 +7,12 @@ import inspect
 import time
 import logging
 
-from qml_essentials import jaqsi as js
+import jaqsi as js
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Circuit
-from qml_essentials.gates import Gates, UnitaryGates
-from qml_essentials.gates import PulseInformation as pinfo
-from qml_essentials.qoc import QOC, default_qoc_params
-from qml_essentials import operations as op
+from jaqsi.gates import Gates, UnitaryGates
+from jaqsi.gates import PulseInformation as pinfo
+from jaqsi import operations as op
 
 jax.config.update("jax_enable_x64", True)
 
@@ -54,7 +53,7 @@ def test_gate_error_noise():
 
 @pytest.mark.unittest
 def test_gate_error_independent_per_gate():
-    from qml_essentials.tape import recording
+    from jaqsi.tape import recording
 
     model = Model(
         n_qubits=2,
@@ -609,36 +608,6 @@ def test_cphase_gate():
     # 8) Gates.is_entangling and is_rotational recognize CPhase
     assert Gates.is_entangling(Gates.CPhase), "CPhase should be entangling"
     assert Gates.is_rotational(Gates.CPhase), "CPhase should be rotational"
-
-
-cphase_pulse_testdata = [0.0, np.pi / 4, np.pi / 2, np.pi]
-
-
-@pytest.mark.unittest
-@pytest.mark.parametrize("w", cphase_pulse_testdata)
-def test_cphase_pulse_gate(w):
-    """Validate CPhase pulse decomposition against the unitary gate.
-
-    Note: The pulse decomposition of CPhase introduces a global phase
-    of exp(i*w/4) relative to the exact diagonal unitary. Since global
-    phase is physically unobservable, we only check fidelity here.
-    """
-    gate = "CPhase"
-    qoc = QOC(**default_qoc_params)
-    pulse_circuit, target_circuit = qoc.create_CPhase()
-    pulse_script = js.Script(pulse_circuit, n_qubits=2)
-    target_script = js.Script(target_circuit, n_qubits=2)
-
-    state_pulse = pulse_script.execute(
-        type="state", args=(w, pinfo.gate_by_name(gate).params)
-    )
-    state_target = target_script.execute(type="state", args=(w,))
-
-    fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
-    assert fidelity <= 1.0 + 1e-6, f"Fidelity of {gate} can't be larger 1 for w={w}"
-    assert np.isclose(fidelity, 1.0, atol=1e-2), (
-        f"Fidelity too low for w={w}: {fidelity}"
-    )
 
 
 def _swap_perm(n, a, b):

@@ -15,7 +15,7 @@ from qml_essentials.algebra import (
     g_purity_from_basis,
 )
 from qml_essentials import trainability
-from qml_essentials import operations as op
+from jaqsi import operations as op
 from qml_essentials.model import Model
 
 
