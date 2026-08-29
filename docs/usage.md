@@ -272,21 +272,21 @@ For more details:
 ## Batching and Multithreading (using JAX)
 
 In our framework, JAX automatically handles the number and distribution of the workers depending on the batch sizes and available CPUs.
-Batching works for inputs, parameters and pulse parameters.
-If all three, inputs, parameters and pulse parameters, are provided, with sizes `B_I`, `B_P` and `B_R`, respectively, the effective batch dimension will multiply, i.e. resulting in `B_I * B_P * B_R` combinations.
-Internally, these combinations will be flattened during processing and then reshaped to the original shape afterwards, such that the output shape is `[B_I, B_P, B_R, O]`.
-Here, `O` is the general output shape depending on the execution type.
-This shape is also available as a property of the model: `model.batch_shape`.
+Batching works for inputs, parameters, pulse parameters and encoding pulse parameters.
+If all four are provided, with sizes `B_I`, `B_P`, `B_R` and `B_E`, respectively, the effective batch dimension will multiply, i.e. resulting in `B_I * B_P * B_R * B_E` combinations.
+Internally, these combinations will be flattened during processing and then reshaped to the original shape afterwards, such that the output shape is `[B_I, B_P, B_R, B_E, O]`.
+Here, `O` is the general output shape depending on the execution type, and may span more than one axis (e.g. for `density` and `probs`).
+The batch part of that shape is also available as a property of the model: `model.batch_shape`.
 Note, that the output shape is squeezed by default, i.e. every axis of dimension 1 is suppressed.
 This includes the output axis `O`, so a single observable or a batch of one changes the rank of the result.
-Pass `keepdims=True` to get the full `[B_I, B_P, B_R, O]` shape instead:
+Pass `keepdims=True` to get the full `[B_I, B_P, B_R, B_E, O]` shape instead:
 
 ```python
 model(params, inputs, keepdims=True)
 ```
 
 In addition to letting the model handle repeating the batch axes, it is also possible to disable this functionality by setting `repeat_batch_axis` upon model initialization.
-This parameter is an array of boolean values determining of the corresponding axis in the `batch_shape` (#Inputs, #Params, #PulseParams) should be repeated.
+This parameter is an array of four boolean values determining if the corresponding axis in the `batch_shape` (#Inputs, #Params, #PulseParams, #EncPulseParams) should be repeated.
 Of course, when providing the batch manually, the dimensions have to match.
 
 ```python

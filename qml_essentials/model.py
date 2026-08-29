@@ -799,7 +799,7 @@ class Model:
         Apply the repeat_batch_axis mask to a given batch shape.
 
         Args:
-            batch_shape (Tuple[int, ...]): Batch shape (B_I, B_P, B_R).
+            batch_shape (Tuple[int, ...]): Batch shape (B_I, B_P, B_R, B_E).
 
         Returns:
             Tuple[int, ...]: Effective batch dimensions, excluding zeros.
@@ -2170,7 +2170,7 @@ class Model:
         Functional counterpart of :meth:`__call__`. No model state is written,
         so the call can be wrapped in an outer ``jax.jit``, ``jax.vmap`` or a
         whole jitted training step. The output always keeps the full
-        (B_I, B_P, B_R, O) shape, so its rank does not depend on the batch
+        (B_I, B_P, B_R, B_E, O) shape, so its rank does not depend on the batch
         sizes; call ``.squeeze()`` for the shape :meth:`__call__` returns.
 
         Arguments left as None fall back to the current model state, which an
@@ -2211,8 +2211,9 @@ class Model:
                 without advancing it.
 
         Returns:
-            jnp.ndarray: Circuit output of shape (B_I, B_P, B_R, O), where O
-                is the per-sample output shape of the execution type.
+            jnp.ndarray: Circuit output of shape (B_I, B_P, B_R, B_E, O), where
+                O is the per-sample output shape of the execution type and may
+                span more than one axis (e.g. "density" and "probs").
 
         Raises:
             ValueError: If the encoding gates would run at pulse level but the
