@@ -251,7 +251,7 @@ See [*Pulses*](pulses.md#pulse_level_encoding) for the parameters belonging to e
 Pulse-level gates can also be instantiated directly:
 
 ```python
-from qml_essentials.gates import Gates
+from jaqsi.gates import Gates
 
 # RX gate represented by its microwave pulse
 Gates.RX(w, wires=0, gate_mode="pulse")
@@ -354,9 +354,9 @@ In some cases you may not want to utilize the structure enforced by the `Model` 
 Therefore, this section provides an example on how to use a custom circuit.
 
 ```python
-from qml_essentials.gates import Gates as g
+from jaqsi.gates import Gates as g
 from qml_essentials.model import Model
-import qml_essentials.jaqsi as js
+import jaqsi as js
 import jax.numpy as jnp
 
 def my_circuit(params, inputs, *args, **kwargs) -> None:

@@ -39,7 +39,7 @@ This can be particularly usefull in a scenario where one would like to apply noi
 An example of this is provided in the following code:
 
 ```python
-from qml_essentials.gates import UnitaryGates
+from jaqsi.gates import UnitaryGates
 
 UnitaryGates.batch_gate_error = False
 model(

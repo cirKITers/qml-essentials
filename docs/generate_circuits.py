@@ -3,9 +3,9 @@ import os
 import jax.numpy as jnp
 
 from qml_essentials.ansaetze import Ansaetze
-from qml_essentials.drawing import draw_mpl
-from qml_essentials.operations import Barrier
-from qml_essentials.tape import recording
+from jaqsi.drawing import draw_mpl
+from jaqsi.operations import Barrier
+from jaqsi.tape import recording
 
 edit_ansaetze_file = False
 ansaetze = Ansaetze.get_available()

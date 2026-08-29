@@ -23,6 +23,8 @@ or with the [uv package manager](https://github.com/astral-sh/uv):
 uv add qml-essentials
 ```
 
+Circuit simulation is provided by [jaqsi](https://cirkiters.github.io/jaqsi/), our gate- and pulse-level simulator, which is installed alongside this package.
+
 Once you have set things up, go ahead and checkout [how to use qml-essentials](usage.md).
 
 <p align="center">
