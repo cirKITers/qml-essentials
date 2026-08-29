@@ -26,18 +26,6 @@ uv run pre-commit install
 Currently the only purpose of the hook is to run Ruff on commit which will do some code formatting for you.
 However be aware, that this might reject your commit and you have to re-do the commit.
 
-### Working against an unreleased jaqsi
-
-Circuit simulation lives in [jaqsi](https://github.com/cirKITers/jaqsi), which is a regular
-PyPI dependency of this package.
-If you need to co-develop against an unreleased version of it, clone it next to this
-repository and install it in editable mode:
-```
-uv pip install -e ../jaqsi
-```
-Use `uv run --no-sync ...` afterwards so that `uv` does not replace your editable install
-with the pinned release.
-
 ## Testing
 
 We do our testing with Pytest.
