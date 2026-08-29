@@ -3,9 +3,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from qml_essentials import jaqsi as js
-from qml_essentials import operations as op
-from qml_essentials.math import logm_v
+import jaqsi as js
+from jaqsi import operations as op
+from jaqsi.math import logm_v
 from qml_essentials.model import Model
 import logging
 
@@ -144,7 +144,7 @@ class Entanglement:
 
         def _bell_circuit(params, inputs, pulse_params=None, random_key=None, **kw):
             """Bell measurement circuit on 2*n qubits."""
-            from qml_essentials.tape import copy_to_tape
+            from jaqsi.tape import copy_to_tape
 
             def vari():
                 model._variational(
@@ -182,7 +182,7 @@ class Entanglement:
 
         # Execute: vmap over batch dimension of params (axis 0)
         if n_samples > 1:
-            from qml_essentials.utils import safe_random_split
+            from jaqsi.utils import safe_random_split
 
             random_keys = safe_random_split(random_key, num=n_samples)
             result = bell_script.execute(
@@ -507,7 +507,7 @@ class Entanglement:
             params, inputs, pulse_params=None, random_key=None, **kw
         ):
             """Swap-test circuit on 3*n qubits."""
-            from qml_essentials.tape import copy_to_tape
+            from jaqsi.tape import copy_to_tape
 
             def vari():
                 model._variational(
@@ -550,7 +550,7 @@ class Entanglement:
         marg_probs = jax.jit(js.marginalize_probs, static_argnums=(1, 2))
 
         if n_batch > 1:
-            from qml_essentials.utils import safe_random_split
+            from jaqsi.utils import safe_random_split
 
             random_keys = safe_random_split(random_key, num=n_batch)
             probs = swap_script.execute(
@@ -615,7 +615,7 @@ class Entanglement:
             params, inputs, pulse_params=None, random_key=None, **kw
         ):
             """Bell-basis measurement circuit on 3*n qubits."""
-            from qml_essentials.tape import copy_to_tape
+            from jaqsi.tape import copy_to_tape
 
             def vari():
                 model._variational(
@@ -661,7 +661,7 @@ class Entanglement:
 
         expvals = []
         if n_batch > 1:
-            from qml_essentials.utils import safe_random_split
+            from jaqsi.utils import safe_random_split
 
             random_keys = safe_random_split(random_key, num=n_batch)
             expvals = bell_basis_script.execute(

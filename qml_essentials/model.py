@@ -6,14 +6,14 @@ import numpy as np
 import jax
 from jax import random
 
-from qml_essentials import jaqsi as js
-from qml_essentials import operations as op
-from qml_essentials.tape import recording
-from qml_essentials.operations import KrausChannel
+import jaqsi as js
+from jaqsi import operations as op
+from jaqsi.tape import recording
+from jaqsi.operations import KrausChannel
+from jaqsi.gates import Gates, PulseInformation as pinfo
+from jaqsi import make_hashable, safe_random_split
+
 from qml_essentials.ansaetze import Ansaetze, Circuit, Encoding
-from qml_essentials.gates import Gates, PulseInformation as pinfo
-from qml_essentials.script import _make_hashable
-from qml_essentials.utils import safe_random_split
 
 import logging
 
@@ -104,7 +104,7 @@ class Model:
                 indices, or a list of qubit groups (for $Z$-parity) selects the
                 measured subsystem with the default PauliZ readout.
                 Alternatively, a list of
-                :class:`~qml_essentials.operations.Operation` observables makes
+                :class:`~jaqsi.operations.Operation` observables makes
                 ``execution_type="expval"`` return one expectation value per
                 observable. When None all qubits are measured. Defaults to None.
             shots (Optional[int], optional): The number of shots to use for
@@ -406,7 +406,7 @@ class Model:
 
     @property
     def observables(self) -> List:
-        """The custom :class:`~qml_essentials.operations.Operation` observables,
+        """The custom :class:`~jaqsi.operations.Operation` observables,
         or the list of measured wires when using the default PauliZ readout.
 
         With a list of observables, ``__call__`` and ``execution_type="expval"``
@@ -1214,7 +1214,7 @@ class Model:
 
         Translates the model's ``execution_type`` and ``observables``
         settings into parameters suitable for
-        :meth:`~qml_essentials.jaqsi.Script.execute`.
+        :meth:`~jaqsi.Script.execute`.
 
         Args:
             execution_type: Measurement type to build for.  If ``None``, the
@@ -1452,7 +1452,7 @@ class Model:
         Args:
             inputs: Input data.  If ``None``, default zero inputs are used.
             **kwargs: Forwarded to
-                :func:`~qml_essentials.drawing.draw_pulse_schedule`
+                :func:`~jaqsi.drawing.draw_pulse_schedule`
                 (e.g. ``show_carrier=True``, ``n_samples=300``).
 
         Returns:
@@ -2019,7 +2019,7 @@ class Model:
 
         Returns:
             Tuple: Hashable structure summary, passed to
-                :meth:`~qml_essentials.jaqsi.Script.execute`.
+                :meth:`~jaqsi.Script.execute`.
         """
         if self._observables is None:
             obs_fingerprint = None
@@ -2033,7 +2033,7 @@ class Model:
             self._data_reupload.shape,
             # covers the derived degree, frequencies and has_dru as well
             self._data_reupload.tobytes(),
-            _make_hashable(self._measured_wires),
+            make_hashable(self._measured_wires),
             obs_fingerprint,
             # hashed by identity, which also covers a replaced ansatz callable
             self.pqc,

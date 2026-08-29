@@ -18,9 +18,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from qml_essentials.gates import Gates
-from qml_essentials import operations as op
-from qml_essentials import jaqsi as js
+from jaqsi.gates import Gates
+from jaqsi import operations as op
+import jaqsi as js
 from qml_essentials.ansaetze import Ansaetze
 
 

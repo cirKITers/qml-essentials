@@ -13,7 +13,7 @@ from typing import List, Tuple, Optional, Any, Dict, Union
 
 from qml_essentials.model import Model
 from qml_essentials.pauli import PauliCircuit
-from qml_essentials.operations import PauliWord
+from jaqsi.operations import PauliWord
 
 import logging
 
@@ -356,7 +356,7 @@ class FourierTree:
         """
         params = self._single_param_set(params)
         inputs = self.model._inputs_validation(inputs)
-        raw_tape = self.model.script._record(params=params, inputs=inputs)
+        raw_tape = self.model.script.record(params=params, inputs=inputs)
         _, obs_list = self.model._build_obs()
         return PauliCircuit.from_parameterised_circuit(
             raw_tape, observables=obs_list, n_qubits=self.n_qubits
