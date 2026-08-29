@@ -750,7 +750,7 @@ def test_golomb_diagonal_decompose() -> None:
     """
     from functools import reduce
     from qml_essentials.ansaetze import golomb_ruler
-    from jaqsi.operations import DiagonalQubitUnitary, PauliRot
+    from jaqsi.gateset import DiagonalQubitUnitary, PauliRot
 
     for n in [1, 2, 3]:
         d = 2**n

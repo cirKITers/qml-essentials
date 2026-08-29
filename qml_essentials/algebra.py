@@ -32,7 +32,7 @@ from typing import List, Optional, Sequence, Union
 
 import numpy as np
 
-from jaqsi.operations import PauliWord, state_expectation
+from jaqsi.paulis import PauliWord, state_expectation
 
 
 def lie_closure_paulis(

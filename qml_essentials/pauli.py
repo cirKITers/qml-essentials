@@ -24,14 +24,18 @@ import jax.numpy as jnp
 
 from jaqsi.operations import (
     Operation,
-    PauliWord,
     Hermitian,
+    cdtype,
+)
+from jaqsi.paulis import (
+    PauliWord,
+)
+from jaqsi.gateset import (
     RX,
     RY,
     RZ,
     PauliRot,
     Barrier,
-    cdtype,
 )
 
 

@@ -5,7 +5,7 @@ import logging
 import warnings
 
 from jaqsi.gates import Gates, PulseInformation
-from jaqsi.operations import DiagonalQubitUnitary
+from jaqsi.gateset import DiagonalQubitUnitary
 from jaqsi.unitary import UnitaryGates
 
 from qml_essentials.topologies import Topology

@@ -8,8 +8,10 @@ from jax import random
 
 import jaqsi as js
 from jaqsi import operations as op
+from jaqsi import gateset
 from jaqsi.tape import recording
-from jaqsi.operations import KrausChannel
+from jaqsi.noise import KrausChannel
+from jaqsi import noise
 from jaqsi.gates import Gates, PulseInformation as pinfo
 from jaqsi import make_hashable, safe_random_split
 
@@ -87,7 +89,7 @@ class Model:
                 for applying data re-uploading to the full circuit.
             encoding (Union[str, Callable, List[str], List[Callable]], optional):
                 The unitary to use for encoding the input data. Can be a string
-                (e.g. "RX") or a callable (e.g. op.RX). Defaults to op.RX.
+                (e.g. "RX") or a callable (e.g. gateset.RX). Defaults to gateset.RX.
                 If input is multidimensional it is assumed to be a list of
                 unitaries or a list of strings.
             trainable_frequencies (bool, optional):
@@ -1240,7 +1242,7 @@ class Model:
             obs: List[op.Operation] = []
             for qubit_spec in self._measured_wires:
                 if isinstance(qubit_spec, int):
-                    obs.append(op.PauliZ(wires=qubit_spec))
+                    obs.append(gateset.PauliZ(wires=qubit_spec))
                 else:
                     # parity: Z \\otimes Z \\otimes …
                     obs.append(js.build_parity_observable(list(qubit_spec)))
@@ -1273,7 +1275,7 @@ class Model:
         p = noise_params.get("StatePreparation", 0.0)
         if p > 0:
             for q in range(self.n_qubits):
-                op.BitFlip(p, wires=q)
+                noise.BitFlip(p, wires=q)
 
     def _apply_general_noise(
         self, noise_params: Dict[str, Union[float, Dict[str, float]]]
@@ -1306,18 +1308,18 @@ class Model:
         meas = noise_params.get("Measurement", 0.0)
         for q in range(self.n_qubits):
             if amp_damp > 0:
-                op.AmplitudeDamping(amp_damp, wires=q)
+                noise.AmplitudeDamping(amp_damp, wires=q)
             if phase_damp > 0:
-                op.PhaseDamping(phase_damp, wires=q)
+                noise.PhaseDamping(phase_damp, wires=q)
             if meas > 0:
-                op.BitFlip(meas, wires=q)
+                noise.BitFlip(meas, wires=q)
             if isinstance(thermal_relax, dict):
                 t1 = thermal_relax["t1"]
                 t2 = thermal_relax["t2"]
                 t_factor = thermal_relax["t_factor"]
                 circuit_depth = self._get_circuit_depth()
                 tg = circuit_depth * t_factor
-                op.ThermalRelaxationError(1.0, t1, t2, tg, q)
+                noise.ThermalRelaxationError(1.0, t1, t2, tg, q)
 
     def _get_circuit_depth(self, inputs: Optional[jnp.ndarray] = None) -> int:
         """

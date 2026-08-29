@@ -8,8 +8,10 @@ the simulator's own expectation values.
 import numpy as np
 import pytest
 
-from jaqsi.operations import (
+from jaqsi.paulis import (
     PauliWord,
+)
+from jaqsi.gateset import (
     H,
     CX,
     CZ,

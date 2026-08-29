@@ -5,6 +5,7 @@ import numpy as np
 
 import jaqsi as js
 from jaqsi import operations as op
+from jaqsi import gateset
 from jaqsi.math import logm_v
 from qml_essentials.model import Model
 import logging
@@ -162,8 +163,8 @@ class Entanglement:
 
             # Bell measurement: CNOT + H
             for q in range(n):
-                op.CX(wires=[q, q + n])
-                op.H(wires=q)
+                gateset.CX(wires=[q, q + n])
+                gateset.H(wires=q)
 
         bell_script = js.Script(f=_bell_circuit, n_qubits=2 * n)
 
@@ -525,13 +526,13 @@ class Entanglement:
 
             # Swap test: H on ancilla register (wires 0..n-1)
             for i in range(n):
-                op.H(wires=i)
+                gateset.H(wires=i)
 
             for i in range(n):
-                op.CSWAP(wires=[i, i + n, i + 2 * n])
+                gateset.CSWAP(wires=[i, i + n, i + 2 * n])
 
             for i in range(n):
-                op.H(wires=i)
+                gateset.H(wires=i)
 
         swap_script = js.Script(f=_swap_test_circuit, n_qubits=3 * n)
 
@@ -632,8 +633,8 @@ class Entanglement:
             copy_to_tape(vari, offset=n)
 
             for i in range(n):
-                op.CX(wires=[i, i + n])
-                op.H(wires=i)
+                gateset.CX(wires=[i, i + n])
+                gateset.H(wires=i)
 
         bell_basis_script = js.Script(f=_bell_basis_measurement, n_qubits=2 * n)
 
@@ -652,10 +653,10 @@ class Entanglement:
         # SWAP operator in Bell-basis
         SWAP = jnp.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1]])
         # Construct observable for measuring CE
-        CE_observable = op.Id([0, n]) + op.Operation([0, n], SWAP)
+        CE_observable = gateset.Id([0, n]) + op.Operation([0, n], SWAP)
         for i in range(1, n):
             CE_observable = CE_observable @ (
-                op.Id([i, i + n]) + op.Operation([i, i + n], SWAP)
+                gateset.Id([i, i + n]) + op.Operation([i, i + n], SWAP)
             )
         CE_observable = (1 / N) * CE_observable
 

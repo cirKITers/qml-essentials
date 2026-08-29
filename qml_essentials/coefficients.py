@@ -13,7 +13,7 @@ from typing import List, Tuple, Optional, Any, Dict, Union
 
 from qml_essentials.model import Model
 from qml_essentials.pauli import PauliCircuit
-from jaqsi.operations import PauliWord
+from jaqsi.paulis import PauliWord
 
 import logging
 
