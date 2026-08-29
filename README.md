@@ -37,21 +37,22 @@ You can find details on how to use it and further documentation on the correspon
 
 The following diagram provides an overview on how the different components within this package depend on each other.
 
+Circuit simulation is provided by [jaqsi](https://github.com/cirKITers/jaqsi), our gate- and pulse-level simulator, which this package builds upon.
+
 ```mermaid
 flowchart LR
     qmless([QML Essentials])
     qmless --> qmless.ansaetze([Ansaetze])
     qmless.ansaetze --> qmless.blocks([Blocks])
-    qmless.blocks --> qmless.gates([Gates])
     qmless.blocks --> qmless.topo([Topologies])
-    qmless.gates --> qmless.unitary([UnitaryGates])
-    qmless.gates --> qmless.pulse([PulseGates])
+    qmless.blocks --> jaqsi.gates([Gates])
     qmless --> qmless.coefficients([Coefficients])
     qmless.coefficients --> qmless.analytical([Analytical])
     qmless.coefficients --> qmless.numerical([Numerical])
     qmless.numerical --> qmless.fcc([Fourier Coefficient Correlation])
     qmless.numerical --> qmless.fingerprint([Fourier Fingerprints])
     qmless --> qmless.models([Models])
+    qmless.models --> jaqsi.script([Script])
     qmless --> qmless.expr([Expressibility])
     qmless --> qmless.ent([Entanglement])
     qmless.ent --> qmless.mw([Meyer Wallach])
@@ -59,6 +60,11 @@ flowchart LR
     qmless.ent --> qmless.bell([Bell Measurement])
     qmless.ent --> qmless.ef([Entanglement of Formation])
     qmless.ent --> qmless.ce([Concentratable Entanglement])
+
+    subgraph jaqsi [jaqsi]
+        jaqsi.gates
+        jaqsi.script
+    end
 
     classDef l1 fill:#1f8f5a,stroke:#1f8f5a,color:#d4f7e8
     classDef l2 fill:#2fb170,stroke:#2fb170,color:#d4f7e8
@@ -69,8 +75,8 @@ flowchart LR
 
     class qmless l1
     class qmless.ansaetze,qmless.coefficients,qmless.models,qmless.expr,qmless.ent l2
-    class qmless.blocks,qmless.gates,qmless.numerical,qmless.analytical,qmless.mw,qmless.bell,qmless.ef,qmless.re,qmless.ce l3
-    class qmless.unitary,qmless.pulse,qmless.topo,qmless.fcc,qmless.fingerprint l4
+    class qmless.blocks,qmless.numerical,qmless.analytical,qmless.mw,qmless.bell,qmless.ef,qmless.re,qmless.ce l3
+    class qmless.topo,qmless.fcc,qmless.fingerprint,jaqsi.gates,jaqsi.script l4
 ```
 
 ## 🚧 Contributing
