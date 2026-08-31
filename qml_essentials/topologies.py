@@ -1,4 +1,4 @@
-from typing import List, Callable, Union
+from typing import List, Callable, Sequence, Tuple, Union
 from itertools import combinations
 import logging
 
@@ -105,6 +105,46 @@ class Topology:
         kwargs.setdefault("stride", 2)
         kwargs.setdefault("modulo", False)
         return cls.stairs(n_qubits=n_qubits, **kwargs)
+
+    @classmethod
+    def graph(
+        cls, n_qubits: int, *, edges: Sequence[Sequence[int]]
+    ) -> List[Tuple[int, int]]:
+        """
+        Explicit edge list as a topology.
+
+        The given order and orientation are preserved, so the resulting
+        circuit is deterministic and directed gates act on the wires as
+        written. Both orientations of the same qubit pair are therefore
+        allowed; only a repeated ``(control, target)`` pair is rejected.
+
+        Parameters
+        ----------
+        n_qubits : int
+            Number of qubits.
+        edges : Sequence[Sequence[int]]
+            ``(control, target)`` qubit pairs.
+
+        Returns
+        -------
+        List[Tuple[int, int]]
+
+        Raises
+        ------
+        ValueError
+            If an edge leaves the qubit range, is a self-loop or repeats.
+        """
+        seen = set()
+        pairs = []
+        for q, r in edges:
+            if not (0 <= q < n_qubits and 0 <= r < n_qubits) or q == r:
+                raise ValueError(f"edge ({q}, {r}) invalid on {n_qubits} qubits")
+            if (q, r) in seen:
+                raise ValueError(f"duplicate edge ({q}, {r})")
+            seen.add((q, r))
+            pairs.append((q, r))
+
+        return pairs
 
     @classmethod
     def all_pairs(cls, n_qubits: int) -> List[List[int]]:
