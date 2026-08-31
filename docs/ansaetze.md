@@ -20,7 +20,7 @@ To get an overview of all the available Ansaetze, checkout the [references](http
 ## Custom Ansatz
 
 For building the different Ansatzes, we use topology patterns defined in `qml_essentials.topologies`.
-Four patterns are available: `Topology.stairs` (a configurable chain of entangling gates), `Topology.bricks` (a brick-wall pattern), `Topology.all_to_all` (every ordered qubit pair) and `Topology.all_pairs` (every unordered qubit pair).
+Five patterns are available: `Topology.stairs` (a configurable chain of entangling gates), `Topology.bricks` (a brick-wall pattern), `Topology.all_to_all` (every ordered qubit pair), `Topology.all_pairs` (every unordered qubit pair) and `Topology.graph` (an explicit edge list).
 Several built-in circuits rely on them, e.g. Circuit_5 uses `all_to_all` and Circuit_7 uses `bricks`.
 You can find a list of all the available topologies in the [references](https://cirkiters.github.io/qml-essentials/references/) as well.
 
