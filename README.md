@@ -17,10 +17,6 @@ Checkout our [Arxiv Paper](https://arxiv.org/abs/2506.06695) to learn more.
 ```
 pip install qml-essentials
 ```
-or with the [uv package manager](https://github.com/astral-sh/uv):
-```
-uv add qml-essentials
-```
 
 to install our package from [PyPI](https://pypi.org/project/qml-essentials/).
 
