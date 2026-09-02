@@ -8,11 +8,10 @@ nav:
   - entanglement.md
   - expressibility.md
   - training.md
-  - jaqsi.md
+  - algebra.md
   - pulses.md
   - noise.md
   - random_sampling.md
-  - math_utils.md
   - references.md
 theme:
   name: material

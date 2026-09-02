@@ -1,6 +1,6 @@
 import pytest
 
-from qml_essentials.pulses import PulseInformation
+from jaqsi.pulses import PulseInformation
 
 
 @pytest.fixture(autouse=True)

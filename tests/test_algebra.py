@@ -22,7 +22,7 @@ from qml_essentials.algebra import (
     sn_equivariant_generators,
     sn_equivariant_observable,
 )
-from qml_essentials.operations import PauliWord, state_expectation
+from jaqsi.paulis import PauliWord, state_expectation
 from qml_essentials.states import haar_state
 
 _X = np.array([[0, 1], [1, 0]], dtype=complex)

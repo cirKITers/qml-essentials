@@ -34,9 +34,9 @@ However, it's a good idea to run tests and linting (Ruff and Ty) locally before 
 ```
 uv run ruff format qml_essentials tests
 uv run ruff check --fix qml_essentials tests
-uv run pytest --dist load -m "not expensive" -n auto
+uv run pytest --dist load -m "not benchmark" -n auto
 ```
-Which will run all tests that are not marked as expensive.
+Which will run all tests that are not marked as benchmarks.
 See [Pytest](https://pytest.org/) for more details on how to run specific tests only.
 
 ## Packaging

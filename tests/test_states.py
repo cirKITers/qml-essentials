@@ -17,8 +17,8 @@ from qml_essentials.states import (
     path_edges,
     complete_edges,
 )
-from qml_essentials.jaqsi import Script
-from qml_essentials.gates import Gates
+from jaqsi import Script
+from jaqsi.gates import Gates
 
 jax.config.update("jax_enable_x64", True)
 

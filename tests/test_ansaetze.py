@@ -7,13 +7,12 @@ import inspect
 import time
 import logging
 
-from qml_essentials import jaqsi as js
+import jaqsi as js
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Circuit
-from qml_essentials.gates import Gates, UnitaryGates
-from qml_essentials.gates import PulseInformation as pinfo
-from qml_essentials.qoc import QOC, default_qoc_params
-from qml_essentials import operations as op
+from jaqsi.gates import Gates, UnitaryGates
+from jaqsi.gates import PulseInformation as pinfo
+from jaqsi import gateset
 
 jax.config.update("jax_enable_x64", True)
 
@@ -26,7 +25,7 @@ def test_gate_error_noise():
     def circuit(noise_params=None, random_key=None):
         Gates.RX(np.pi, wires=0, noise_params=noise_params, random_key=random_key)
 
-    obs = [op.PauliZ(wires=0)]
+    obs = [gateset.PauliZ(wires=0)]
 
     script = js.Script(circuit, n_qubits=1)
     no_noise = script.execute(type="expval", obs=obs, args=({}, jax.random.key(1000)))
@@ -54,7 +53,7 @@ def test_gate_error_noise():
 
 @pytest.mark.unittest
 def test_gate_error_independent_per_gate():
-    from qml_essentials.tape import recording
+    from jaqsi.tape import recording
 
     model = Model(
         n_qubits=2,
@@ -121,7 +120,7 @@ def test_gate_bitflip_noise():
     def circuit(noise_params=None):
         Gates.RX(np.pi, wires=0, noise_params=noise_params)
 
-    obs = [op.PauliZ(wires=0)]
+    obs = [gateset.PauliZ(wires=0)]
 
     script = js.Script(circuit, n_qubits=1)
     no_noise = script.execute(type="expval", obs=obs, args=({},))
@@ -140,7 +139,7 @@ def test_gate_phaseflip_noise():
     def circuit(noise_params=None):
         Gates.H(wires=0, noise_params=noise_params)
 
-    obs = [op.PauliX(wires=0)]
+    obs = [gateset.PauliX(wires=0)]
 
     script = js.Script(circuit, n_qubits=1)
     no_noise = script.execute(type="expval", obs=obs, args=({},))
@@ -159,7 +158,7 @@ def test_gate_depolarizing_noise():
     def circuit(noise_params=None):
         Gates.RX(np.pi, wires=0, noise_params=noise_params)
 
-    obs = [op.PauliZ(wires=0)]
+    obs = [gateset.PauliZ(wires=0)]
 
     script = js.Script(circuit, n_qubits=1)
     no_noise = script.execute(type="expval", obs=obs, args=({},))
@@ -179,7 +178,7 @@ def test_gate_nqubitdepolarizing_noise():
         Gates.RX(np.pi, wires=0)
         Gates.CRX(np.pi, wires=[0, 1], noise_params=noise_params)
 
-    obs_two = [op.PauliZ(wires=1)]
+    obs_two = [gateset.PauliZ(wires=1)]
 
     script_two = js.Script(circuit_two, n_qubits=2)
     no_noise_two = script_two.execute(type="expval", obs=obs_two, args=({},))
@@ -497,13 +496,13 @@ def test_invalid_pulse_params():
 
     for pp in invalid_type_pulse_params:
         with pytest.raises(TypeError):
-            Gates.RX(np.pi, 0, pulse_params=pp, gate_mode="pulse")
+            Gates.RX(np.pi, 0, pulse_params=pp, pulse=True)
 
     invalid_len_pulse_params = [jnp.array([10, 5, 1, 1]), [10, 10, 5, 5, 1, 1], (10,)]
 
     for pp in invalid_len_pulse_params:
         with pytest.raises(ValueError):
-            Gates.RX(np.pi, 0, pulse_params=pp, gate_mode="pulse")
+            Gates.RX(np.pi, 0, pulse_params=pp, pulse=True)
 
 
 @pytest.mark.unittest
@@ -511,21 +510,21 @@ def test_cphase_gate():
     """Validate the CPhase (ControlledPhaseShift) unitary gate."""
 
     # 1) CPhase(pi) must equal CZ up to numerical precision
-    cphase_pi = op.ControlledPhaseShift(np.pi, wires=[0, 1], record=False)
-    cz = op.CZ(wires=[0, 1], record=False)
+    cphase_pi = gateset.ControlledPhaseShift(np.pi, wires=[0, 1], record=False)
+    cz = gateset.CZ(wires=[0, 1], record=False)
     assert np.allclose(cphase_pi.matrix, cz.matrix, atol=1e-7), (
         "CPhase(pi) should equal CZ"
     )
 
     # 2) CPhase(0) must equal the 4x4 identity
-    cphase_zero = op.ControlledPhaseShift(0.0, wires=[0, 1], record=False)
+    cphase_zero = gateset.ControlledPhaseShift(0.0, wires=[0, 1], record=False)
     assert np.allclose(cphase_zero.matrix, jnp.eye(4), atol=1e-7), (
         "CPhase(0) should equal the identity"
     )
 
     # 3) CPhase has the expected diagonal structure diag(1, 1, 1, e^{i*phi})
     phi = 1.23
-    cphase = op.ControlledPhaseShift(phi, wires=[0, 1], record=False)
+    cphase = gateset.ControlledPhaseShift(phi, wires=[0, 1], record=False)
     expected = jnp.diag(jnp.array([1, 1, 1, jnp.exp(1j * phi)]))
     assert np.allclose(cphase.matrix, expected, atol=1e-7), (
         f"CPhase({phi}) should be diag(1, 1, 1, exp(i*{phi}))"
@@ -545,7 +544,7 @@ def test_cphase_gate():
         Gates.RX(np.pi, wires=1)  # |0> -> |1>
         Gates.CPhase(w, wires=[0, 1])  # apply controlled phase
 
-    obs = [op.PauliZ(wires=0), op.PauliZ(wires=1)]
+    obs = [gateset.PauliZ(wires=0), gateset.PauliZ(wires=1)]
     script = js.Script(circuit_cphase, n_qubits=2)
 
     # CPhase(0) should not change anything: both qubits still |1>
@@ -568,7 +567,7 @@ def test_cphase_gate():
         Gates.CPhase(w, wires=[0, 1])
         Gates.H(wires=0)  # convert phase to amplitude
 
-    obs_q0 = [op.PauliZ(wires=0)]
+    obs_q0 = [gateset.PauliZ(wires=0)]
     script_kb = js.Script(circuit_kickback, n_qubits=2)
 
     # CPhase(0): no phase -> H undoes H -> |0>, so <Z_0> = 1
@@ -594,7 +593,7 @@ def test_cphase_gate():
         Gates.RX(np.pi, wires=0)
         Gates.CPhase(np.pi / 4, wires=[0, 1], noise_params=noise_params)
 
-    obs_noisy = [op.PauliZ(wires=1)]
+    obs_noisy = [gateset.PauliZ(wires=1)]
     script_noisy = js.Script(circuit_noisy, n_qubits=2)
 
     res_clean = script_noisy.execute(type="expval", obs=obs_noisy, args=({},))
@@ -609,36 +608,6 @@ def test_cphase_gate():
     # 8) Gates.is_entangling and is_rotational recognize CPhase
     assert Gates.is_entangling(Gates.CPhase), "CPhase should be entangling"
     assert Gates.is_rotational(Gates.CPhase), "CPhase should be rotational"
-
-
-cphase_pulse_testdata = [0.0, np.pi / 4, np.pi / 2, np.pi]
-
-
-@pytest.mark.unittest
-@pytest.mark.parametrize("w", cphase_pulse_testdata)
-def test_cphase_pulse_gate(w):
-    """Validate CPhase pulse decomposition against the unitary gate.
-
-    Note: The pulse decomposition of CPhase introduces a global phase
-    of exp(i*w/4) relative to the exact diagonal unitary. Since global
-    phase is physically unobservable, we only check fidelity here.
-    """
-    gate = "CPhase"
-    qoc = QOC(**default_qoc_params)
-    pulse_circuit, target_circuit = qoc.create_CPhase()
-    pulse_script = js.Script(pulse_circuit, n_qubits=2)
-    target_script = js.Script(target_circuit, n_qubits=2)
-
-    state_pulse = pulse_script.execute(
-        type="state", args=(w, pinfo.gate_by_name(gate).params)
-    )
-    state_target = target_script.execute(type="state", args=(w,))
-
-    fidelity = jnp.abs(jnp.vdot(state_target, state_pulse)) ** 2
-    assert fidelity <= 1.0 + 1e-6, f"Fidelity of {gate} can't be larger 1 for w={w}"
-    assert np.isclose(fidelity, 1.0, atol=1e-2), (
-        f"Fidelity too low for w={w}: {fidelity}"
-    )
 
 
 def _swap_perm(n, a, b):
@@ -691,7 +660,7 @@ def test_sn_equivariant_permutation_invariant():
 
     script = js.Script(circ, n_qubits=n)
     zs = np.asarray(
-        script.execute(type="expval", obs=[op.PauliZ(wires=q) for q in range(n)])
+        script.execute(type="expval", obs=[gateset.PauliZ(wires=q) for q in range(n)])
     )
     # |0...0> is S_n-symmetric and the layer is equivariant -> equal per-qubit <Z>.
     assert np.allclose(zs, zs[0])

@@ -4,7 +4,10 @@ import jax.numpy as np
 import logging
 import warnings
 
-from qml_essentials.gates import Gates, PulseInformation
+from jaqsi.gates import Gates, PulseInformation
+from jaqsi.gateset import DiagonalQubitUnitary
+from jaqsi.unitary import UnitaryGates
+
 from qml_essentials.topologies import Topology
 
 log = logging.getLogger(__name__)
@@ -104,9 +107,9 @@ class Circuit(ABC):
             w (np.ndarray): Parameter array for the current layer.
             n_qubits (int): Number of qubits in the circuit.
             **kwargs: Additional keyword arguments:
-                - gate_mode (str): "unitary" (default) or "pulse" for
-                  pulse-level simulation.
-                - pulse_params (np.ndarray): Pulse parameters if gate_mode="pulse".
+                - pulse (bool): Whether to run the gates at pulse level.
+                  Defaults to False.
+                - pulse_params (np.ndarray): Pulse parameters if pulse=True.
                 - noise_params (Dict): Noise parameters dictionary.
 
         Returns:
@@ -115,9 +118,9 @@ class Circuit(ABC):
         Raises:
             ValueError: If pulse_params length doesn't match expected count.
         """
-        gate_mode = kwargs.get("gate_mode", "unitary")
+        pulse = kwargs.get("pulse", False)
 
-        if gate_mode == "pulse" and "pulse_params" in kwargs:
+        if pulse and "pulse_params" in kwargs:
             pulse_params_per_layer = self.n_pulse_params_per_layer(n_qubits)
 
             if len(kwargs["pulse_params"]) != pulse_params_per_layer:
@@ -870,6 +873,133 @@ class Ansaetze:
             )
 
 
+# Cache for computed rulers
+_GOLOMB_RULER_CACHE: dict = {}
+
+
+def _greedy_golomb(d: int) -> Tuple[int, ...]:
+    """Construct a valid Golomb ruler of order *d* using a greedy algorithm.
+
+    Starting from mark 0, each subsequent mark is the smallest integer
+    whose pairwise differences with all existing marks are distinct.
+    This always succeeds and produces a valid ruler, though it may not
+    be optimal (i.e. the max mark may not be minimal).
+
+    Args:
+        d: Order of the ruler (number of marks).
+
+    Returns:
+        Tuple of *d* non-negative integers forming a valid Golomb ruler.
+    """
+    if d <= 0:
+        return ()
+    marks = [0]
+    diffs: set = set()
+    candidate = 1
+    while len(marks) < d:
+        new_diffs: set = set()
+        valid = True
+        for existing in marks:
+            diff = candidate - existing
+            if diff in diffs or diff in new_diffs:
+                valid = False
+                break
+            new_diffs.add(diff)
+        if valid:
+            marks.append(candidate)
+            diffs |= new_diffs
+        candidate += 1
+    return tuple(marks)
+
+
+def golomb_ruler(d: int) -> Tuple[int, ...]:
+    """Return a valid Golomb ruler of order *d*.
+
+    A Golomb ruler is a set of *d* non-negative integers such that all
+    pairwise differences are distinct.  When used as the diagonal of a
+    data-encoding Hamiltonian ``H = diag(marks)``, the resulting Fourier
+    spectrum ``\\Omega`` has ``|\\Omega| = d(d-1) + 1`` distinct frequencies
+    with ``|R(k)| = 1`` for all ``k ≠ 0`` — the minimal possible degeneracy
+    for any *d*-dimensional Hamiltonian.
+
+    Uses a greedy construction that always produces a valid ruler.
+    Results are cached for efficiency.
+
+    Args:
+        d: Order of the ruler (number of marks, equal to the Hilbert
+            space dimension ``2^n_qubits``).
+
+    Returns:
+        Tuple of *d* non-negative integers forming a Golomb ruler.
+
+    Raises:
+        ValueError: If ``d <= 0``.
+
+    References:
+        Peters et al., "Generalization despite overfitting in quantum
+        machine learning models", arXiv:2209.05523, Appendix C.4.
+    """
+    if d <= 0:
+        raise ValueError(f"Golomb ruler order must be positive, got {d}")
+    if d not in _GOLOMB_RULER_CACHE:
+        _GOLOMB_RULER_CACHE[d] = _greedy_golomb(d)
+    return _GOLOMB_RULER_CACHE[d]
+
+
+def GolombEncoding(
+    w: Union[float, np.ndarray],
+    wires: Union[int, List[int]],
+    noise_params: Optional[dict] = None,
+    random_key: Optional[Any] = None,
+    **kwargs: Any,
+) -> None:
+    """Apply Golomb encoding as a diagonal unitary on all given wires.
+
+    Implements ``S(x) = exp(-i H x)`` where
+    ``H = diag(g_0, g_1, ..., g_{d-1})`` and the ``g_j`` are the marks
+    of a Golomb ruler of order ``d = 2^len(wires)``.  This produces a
+    maximally non-degenerate Fourier spectrum with
+    ``|\\Omega| = d(d-1) + 1`` distinct frequencies, each with degeneracy
+    ``|R(k)| = 1``.
+
+    See Peters et al., arXiv:2209.05523, Sec. 3.1 and Appendix C.4.
+
+    Args:
+        w: Scalar input value (the data point *x* to encode).
+        wires: Qubit indices this encoding acts on.  All qubits are
+            acted upon simultaneously via a single multi-qubit diagonal
+            gate.
+        noise_params: Optional noise parameters dictionary.
+        random_key: JAX random key for stochastic noise.
+        **kwargs: Ignored; accepted so that the callable matches the
+            signature of the per-qubit encoding gates.
+
+    Returns:
+        None: Gate and noise are applied in-place to the circuit.
+
+    Raises:
+        NotImplementedError: If called in pulse mode, which the Golomb
+            encoding has no pulse parametrization for.
+    """
+    if kwargs.pop("pulse", False):
+        raise NotImplementedError("Golomb encoding has no pulse parametrization")
+
+    wires_list = list(wires) if isinstance(wires, (list, tuple)) else [wires]
+    d = 2 ** len(wires_list)
+    marks = np.array(golomb_ruler(d), dtype=float)
+
+    # Apply gate error to the input angle
+    w, random_key = UnitaryGates.GateError(w, noise_params, random_key)
+
+    # Build diagonal: exp(-i * mark_j * x)
+    diag = np.exp(-1j * marks * w)
+
+    # Pass the real generator (marks) and scalar (w) so the analytical
+    # Fourier tree can decompose the gate into commuting Pauli-Z rotations.
+    DiagonalQubitUnitary(diag, wires=wires_list, generator=marks, scale=w)
+    UnitaryGates.Noise(wires_list, noise_params)
+
+
 class Encoding:
     def __init__(
         self, strategy: str, gates: Union[str, Callable, List[Union[str, Callable]]]
@@ -974,8 +1104,6 @@ class Encoding:
         if self._strategy not in ("hamming", "binary", "ternary", "golomb"):
             raise NotImplementedError
         if self._strategy == "golomb":
-            from qml_essentials.unitary import golomb_ruler
-
             n_qubits = getattr(self, "_n_qubits", None)
             if n_qubits is None:
                 raise ValueError("Golomb encoding requires n_qubits to be set")
@@ -1131,11 +1259,11 @@ class Encoding:
         -------
         Callable
             A callable with the same signature as per-qubit encoding
-            functions but that applies ``Gates.GolombEncoding``.
+            functions but that applies :func:`GolombEncoding`.
         """
 
         def _enc(inputs, wires, **kwargs):
             # `wires` here is a list of all qubit indices, set by _iec
-            Gates.GolombEncoding(w=inputs, wires=wires, **kwargs)
+            GolombEncoding(w=inputs, wires=wires, **kwargs)
 
         return _enc

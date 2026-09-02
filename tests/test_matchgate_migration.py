@@ -15,7 +15,7 @@ from qml_essentials.algebra import (
     g_purity_from_basis,
 )
 from qml_essentials import trainability
-from qml_essentials import operations as op
+from jaqsi import gateset
 from qml_essentials.model import Model
 
 
@@ -88,8 +88,8 @@ def test_model_observables_hook() -> None:
         return r
 
     XXm, YYm = kron(Id, X, X, Id), kron(Id, Y, Y, Id)
-    XX = op.PauliX(wires=1) @ op.PauliX(wires=2)
-    YY = op.PauliY(wires=1) @ op.PauliY(wires=2)
+    XX = gateset.PauliX(wires=1) @ gateset.PauliX(wires=2)
+    YY = gateset.PauliY(wires=1) @ gateset.PauliY(wires=2)
     inp = jnp.array([[0.5]])
 
     m_def = Model(n_qubits=n, n_layers=1, circuit_type="Matchgate", data_reupload=False)
@@ -119,8 +119,8 @@ def test_model_observables_hook() -> None:
 def test_model_expval_differentiable_under_jit() -> None:
     """value_and_grad + jit through Model.__call__ (the angle-encoded training path)."""
     n, depth = 4, 3
-    XX = op.PauliX(wires=1) @ op.PauliX(wires=2)
-    YY = op.PauliY(wires=1) @ op.PauliY(wires=2)
+    XX = gateset.PauliX(wires=1) @ gateset.PauliX(wires=2)
+    YY = gateset.PauliY(wires=1) @ gateset.PauliY(wires=2)
     dmask = np.broadcast_to(np.eye(n, dtype=bool), (depth, n, n)).copy()
     model = Model(
         n_qubits=n,

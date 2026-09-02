@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 from typing import Optional
-from qml_essentials.operations import _cdtype
+from jaqsi.operations import cdtype
 
 _DEFAULT_SEED = 1000
 
@@ -12,7 +12,7 @@ def _ginibre(key: jax.random.PRNGKey, rows: int, cols: int) -> jnp.ndarray:
     Each entry is :math:`G_{jk} = a_{jk} + i\,b_{jk}` with
     :math:`a_{jk}, b_{jk} \sim \mathcal{N}(0, 1)` i.i.d. standard normal (the
     Ginibre ensemble). The result is cast to the active complex dtype via
-    :func:`qml_essentials.operations._cdtype`.
+    :func:`jaqsi.operations.cdtype`.
 
     Args:
         key (jax.random.PRNGKey): JAX random key, split internally into a real
@@ -26,7 +26,7 @@ def _ginibre(key: jax.random.PRNGKey, rows: int, cols: int) -> jnp.ndarray:
     key_re, key_im = jax.random.split(key)
     real = jax.random.normal(key_re, shape=(rows, cols))
     imag = jax.random.normal(key_im, shape=(rows, cols))
-    return (real + 1j * imag).astype(_cdtype())
+    return (real + 1j * imag).astype(cdtype())
 
 
 def _haar_unitary(key: jax.random.PRNGKey, dim: int) -> jnp.ndarray:
@@ -206,7 +206,7 @@ class DensityMatrix:
         if random_key is None:
             random_key = jax.random.key(_DEFAULT_SEED)
 
-        eye = jnp.eye(d, dtype=_cdtype())
+        eye = jnp.eye(d, dtype=cdtype())
 
         def _sample(key: jax.random.PRNGKey) -> jnp.ndarray:
             key_g, key_u = jax.random.split(key)
@@ -277,7 +277,7 @@ class DensityMatrix:
                 lam = jax.random.dirichlet(key_lam, alpha * jnp.ones(d))
             else:
                 lam = fixed_eigs
-            rho = (u * lam[None, :].astype(_cdtype())) @ jnp.conj(u).T
+            rho = (u * lam[None, :].astype(cdtype())) @ jnp.conj(u).T
             return _normalize_density(rho)
 
         keys = jax.random.split(random_key, n_samples)

@@ -5,14 +5,14 @@ This module hosts :class:`PauliCircuit`, which transpiles a circuit into the
 Clifford gates are commuted to the end and absorbed into the observable, leaving
 a sequence of Pauli rotations.  A circuit is represented throughout as a plain
 ``List[Operation]`` tape (the same type produced by
-:func:`qml_essentials.tape.recording`); the transform returns the rotated
+:func:`jaqsi.tape.recording`); the transform returns the rotated
 operations together with the Clifford-evolved observables.
 
 The Clifford conjugation that drives this transform is done **symbolically** via
-:class:`~qml_essentials.operations.PauliWord` (stabilizer-tableau updates, O(n)),
+:class:`~jaqsi.operations.PauliWord` (stabilizer-tableau updates, O(n)),
 replacing the previous matrix-based path
-(:func:`~qml_essentials.operations.evolve_pauli_with_clifford` +
-:func:`~qml_essentials.operations.pauli_decompose`, which was O(2^n)+O(4^n)).
+(:func:`~jaqsi.operations.evolve_pauli_with_clifford` +
+:func:`~jaqsi.operations.pauli_decompose`, which was O(2^n)+O(4^n)).
 """
 
 from __future__ import annotations
@@ -22,16 +22,20 @@ from typing import List, Optional, Tuple
 import numpy as np
 import jax.numpy as jnp
 
-from qml_essentials.operations import (
+from jaqsi.operations import (
     Operation,
-    PauliWord,
     Hermitian,
+    cdtype,
+)
+from jaqsi.paulis import (
+    PauliWord,
+)
+from jaqsi.gateset import (
     RX,
     RY,
     RZ,
     PauliRot,
     Barrier,
-    _cdtype,
 )
 
 
@@ -321,7 +325,7 @@ class PauliCircuit:
 
         if not reduced_str:
             obs = Hermitian(
-                matrix=phase * jnp.eye(2, dtype=_cdtype()), wires=[0], record=False
+                matrix=phase * jnp.eye(2, dtype=cdtype()), wires=[0], record=False
             )
             obs._pauli_label = "I"
         else:

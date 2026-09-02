@@ -1,12 +1,12 @@
 [project]
 name = "qml-essentials"
-version = "0.2.3"
+version = "0.3.0"
 description = "A toolbox to make working with QML models easier."
 authors = [
     { name = "Melvin Strobl", email = "melvin.strobl@kit.edu" },
     { name = "Maja Franz", email = "maja.franz@oth-regensburg.de" },
 ]
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.12,<3.13"
 readme = "README.md"
 license = "MIT"
 maintainers = [{ name = "Melvin Strobl", email = "melvin.strobl@kit.edu" }]
@@ -16,12 +16,10 @@ keywords = [
     "qml",
 ]   
 dependencies = [
-    "diffrax>=0.7.2",
-    "equinox>=0.13.4",
+    "jaqsi>=0.1.0",
     "jax>=0.9.0.1",
     "jaxlib>=0.9.0.1",
-    "optax>=0.2.7",
-    "psutil>=7.2.2",
+    "numpy>=2.0.0",
     "scipy>=1.17.0",
 ]
 classifiers = [
@@ -30,7 +28,6 @@ classifiers = [
     "Natural Language :: English",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3 :: Only",

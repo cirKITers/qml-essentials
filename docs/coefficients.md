@@ -169,10 +169,10 @@ The implementation is also inspired by the corresponding [code](https://github.c
 In Nemkov et al.'s algorithm the first step is to separate Clifford and non-Clifford gates, such that all Clifford gates can be regarded as part of the observable, and the actual circuit only consists of Pauli rotations (cf. `qml_essentials.pauli.PauliCircuit`).
 The main idea is then to split each Pauli rotation into sine and cosine product terms to obtain the coefficients, which are only dependent on the parameters of the circuit.
 
-The Clifford commutation and Pauli bookkeeping are implemented symbolically on a stabilizer-tableau Pauli representation (`qml_essentials.operations.PauliWord`), and the parameter-dependent coefficients are evaluated with vectorized operations.
+The Clifford commutation and Pauli bookkeeping are implemented symbolically on a stabilizer-tableau Pauli representation (`jaqsi.paulis.PauliWord`), and the parameter-dependent coefficients are evaluated with vectorized operations.
 This makes the tree fast to build and evaluate, and it supports multiple input features: in that case `get_spectrum` returns, per observable, the multi-dimensional frequency vectors (shape `(n_freqs, n_features)`) and their coefficients.
 
-The symbolic core is gate-set agnostic and lives in `qml_essentials.operations`:
+The symbolic core is gate-set agnostic and lives in `jaqsi.paulis`:
 
 - `PauliWord` — an n-qubit Pauli in the symplectic $i^{\text{phase}}\,X^x Z^z$ representation, with `compose`, `commutes_with`, `conjugate_by_clifford` (Clifford tableau evolution), and a `to_matrix`/`from_matrix` bridge to dense operators.
 - `Operation.is_clifford` — a class flag marking the standard Clifford gates ($I, X, Y, Z, H, S, \text{CX}, \text{CY}, \text{CZ}, \text{SWAP}$); `conjugate_by_clifford` uses fast symbolic rules for the common ones and an exact matrix fallback for the rest.
@@ -183,8 +183,8 @@ The symbolic core is gate-set agnostic and lives in `qml_essentials.operations`:
 The `FourierTree` operates on whatever circuit the model's `script` records, so a custom variational circuit can be analysed by replacing `model.script`:
 
 ```python
-import qml_essentials.jaqsi as js
-from qml_essentials.gates import Gates as g
+import jaqsi as js
+from jaqsi import Gates as g
 
 def variational(params, inputs, *args, **kwargs):
     params = params.squeeze()

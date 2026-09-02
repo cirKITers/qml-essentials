@@ -593,8 +593,8 @@ class TestFourierTree:
         Fourier frequencies (not unit counts), match the FFT spectrum, and
         reproduce the circuit output.  The encodings carry no tags: feature and
         scaling are auto-detected from the tape."""
-        from qml_essentials.gates import Gates as g
-        import qml_essentials.jaqsi as js
+        from jaqsi.gates import Gates as g
+        import jaqsi as js
 
         def variational(params, inputs, *args, **kwargs):
             params = params.squeeze()
@@ -655,7 +655,7 @@ class TestFourierTree:
         analytical series must match both the FFT spectrum and the circuit
         output, and must not warn about non-integer scalings."""
         import warnings
-        from qml_essentials.unitary import golomb_ruler
+        from qml_essentials.ansaetze import golomb_ruler
 
         model = Model(
             n_qubits=2,
@@ -716,8 +716,8 @@ class TestFourierTree:
     def test_coefficients_tree_multi_feature_per_gate_rejected(self) -> None:
         """Auto-detection requires each encoding rotation to be linear in a
         single feature; a rotation mixing two features is rejected."""
-        from qml_essentials.gates import Gates as g
-        import qml_essentials.jaqsi as js
+        from jaqsi.gates import Gates as g
+        import jaqsi as js
 
         def variational(params, inputs, *args, **kwargs):
             params = params.squeeze()
