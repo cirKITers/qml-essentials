@@ -3,9 +3,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from qml_essentials import jaqsi as js
-from qml_essentials import operations as op
-from qml_essentials.math import logm_v
+import jaqsi as js
+from jaqsi import operations as op
+from jaqsi import gateset
+from jaqsi.math import logm_v
 from qml_essentials.model import Model
 import logging
 
@@ -144,7 +145,7 @@ class Entanglement:
 
         def _bell_circuit(params, inputs, pulse_params=None, random_key=None, **kw):
             """Bell measurement circuit on 2*n qubits."""
-            from qml_essentials.tape import copy_to_tape
+            from jaqsi.tape import copy_to_tape
 
             def vari():
                 model._variational(
@@ -162,8 +163,8 @@ class Entanglement:
 
             # Bell measurement: CNOT + H
             for q in range(n):
-                op.CX(wires=[q, q + n])
-                op.H(wires=q)
+                gateset.CX(wires=[q, q + n])
+                gateset.H(wires=q)
 
         bell_script = js.Script(f=_bell_circuit, n_qubits=2 * n)
 
@@ -182,7 +183,7 @@ class Entanglement:
 
         # Execute: vmap over batch dimension of params (axis 0)
         if n_samples > 1:
-            from qml_essentials.utils import safe_random_split
+            from jaqsi.utils import safe_random_split
 
             random_keys = safe_random_split(random_key, num=n_samples)
             result = bell_script.execute(
@@ -507,7 +508,7 @@ class Entanglement:
             params, inputs, pulse_params=None, random_key=None, **kw
         ):
             """Swap-test circuit on 3*n qubits."""
-            from qml_essentials.tape import copy_to_tape
+            from jaqsi.tape import copy_to_tape
 
             def vari():
                 model._variational(
@@ -525,13 +526,13 @@ class Entanglement:
 
             # Swap test: H on ancilla register (wires 0..n-1)
             for i in range(n):
-                op.H(wires=i)
+                gateset.H(wires=i)
 
             for i in range(n):
-                op.CSWAP(wires=[i, i + n, i + 2 * n])
+                gateset.CSWAP(wires=[i, i + n, i + 2 * n])
 
             for i in range(n):
-                op.H(wires=i)
+                gateset.H(wires=i)
 
         swap_script = js.Script(f=_swap_test_circuit, n_qubits=3 * n)
 
@@ -550,7 +551,7 @@ class Entanglement:
         marg_probs = jax.jit(js.marginalize_probs, static_argnums=(1, 2))
 
         if n_batch > 1:
-            from qml_essentials.utils import safe_random_split
+            from jaqsi.utils import safe_random_split
 
             random_keys = safe_random_split(random_key, num=n_batch)
             probs = swap_script.execute(
@@ -615,7 +616,7 @@ class Entanglement:
             params, inputs, pulse_params=None, random_key=None, **kw
         ):
             """Bell-basis measurement circuit on 3*n qubits."""
-            from qml_essentials.tape import copy_to_tape
+            from jaqsi.tape import copy_to_tape
 
             def vari():
                 model._variational(
@@ -632,8 +633,8 @@ class Entanglement:
             copy_to_tape(vari, offset=n)
 
             for i in range(n):
-                op.CX(wires=[i, i + n])
-                op.H(wires=i)
+                gateset.CX(wires=[i, i + n])
+                gateset.H(wires=i)
 
         bell_basis_script = js.Script(f=_bell_basis_measurement, n_qubits=2 * n)
 
@@ -652,16 +653,16 @@ class Entanglement:
         # SWAP operator in Bell-basis
         SWAP = jnp.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1]])
         # Construct observable for measuring CE
-        CE_observable = op.Id([0, n]) + op.Operation([0, n], SWAP)
+        CE_observable = gateset.Id([0, n]) + op.Operation([0, n], SWAP)
         for i in range(1, n):
             CE_observable = CE_observable @ (
-                op.Id([i, i + n]) + op.Operation([i, i + n], SWAP)
+                gateset.Id([i, i + n]) + op.Operation([i, i + n], SWAP)
             )
         CE_observable = (1 / N) * CE_observable
 
         expvals = []
         if n_batch > 1:
-            from qml_essentials.utils import safe_random_split
+            from jaqsi.utils import safe_random_split
 
             random_keys = safe_random_split(random_key, num=n_batch)
             expvals = bell_basis_script.execute(

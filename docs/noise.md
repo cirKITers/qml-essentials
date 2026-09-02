@@ -34,12 +34,12 @@ model(
 
 In addition to these decoherent errors, we can also apply a `GateError` which affects each parameterized gate as $w = w + \mathcal{N}(0, \epsilon)$, where $\sqrt{\epsilon}$ is the standard deviation of the noise, specified by the `GateError` key in the `noise_params` argument.
 Each gate draws its own error, independently of the other gates in the circuit.
-It's important to note that, depending on the flag set in `Ansaetze.UnitaryGates.batch_gate_error`, the error of a given gate will be applied to the entire batch of parameters (all batch elements are affected in the same way) or drawn for each batch element individually (default).
+It's important to note that, depending on the flag set in `UnitaryGates.batch_gate_error`, the error of a given gate will be applied to the entire batch of parameters (all batch elements are affected in the same way) or drawn for each batch element individually (default).
 This can be particularly usefull in a scenario where one would like to apply noise e.g. only on the encoding gates but wants to change them all uniformly.
 An example of this is provided in the following code:
 
 ```python
-from qml_essentials.gates import UnitaryGates
+from jaqsi.gates import UnitaryGates
 
 UnitaryGates.batch_gate_error = False
 model(

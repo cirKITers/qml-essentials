@@ -27,7 +27,7 @@ You can find a list of all the available topologies in the [references](https://
 To start implementing your own ansatz, you can inheriting from the `Circuit` class:
 ```python
 from qml_essentials.ansaetze import Circuit
-from qml_essentials.gates import Gates
+from jaqsi import Gates
 from qml_essentials.topologies import Topology, Block
 
 class MyHardwareEfficient(Circuit):
@@ -67,7 +67,7 @@ model = Model(
 If you don't want to use the provided blocks and topologies, you can build your own Ansatz from scratch but have to implement all the required methods shown in the example below:
 ```python
 import pennylane.numpy as np
-from qml_essentials.gates import PulseInformation as pinfo
+from jaqsi.gates import PulseInformation as pinfo
 from typing import Optional
 
 class MyHardwareEfficient(Circuit):
@@ -133,7 +133,7 @@ A callable must take an input, the wire where it's acting on and an optional noi
 Let's look at an example, where we want to encode a two-dimensional input:
 ```python
 from qml_essentials.model import Model
-from qml_essentials.gates import Gates
+from jaqsi import Gates
 
 def MyCustomEncoding(w, wires, **kwars):
     Gates.RX(w[0], wires, **kwargs)

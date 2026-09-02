@@ -6,24 +6,27 @@ import numpy as np
 import jax
 from jax import random
 
-from qml_essentials import jaqsi as js
-from qml_essentials import operations as op
-from qml_essentials.tape import recording
-from qml_essentials.operations import KrausChannel
+import jaqsi as js
+from jaqsi import operations as op
+from jaqsi import gateset
+from jaqsi.tape import recording
+from jaqsi.noise import KrausChannel
+from jaqsi import noise
+from jaqsi.gates import Gates, PulseInformation as pinfo
+from jaqsi import make_hashable, safe_random_split
+
 from qml_essentials.ansaetze import Ansaetze, Circuit, Encoding
-from qml_essentials.gates import Gates, PulseInformation as pinfo
-from qml_essentials.script import _make_hashable
-from qml_essentials.utils import safe_random_split
 
 import logging
 
 log = logging.getLogger(__name__)
 
+# model mode -> (ansatz/state-prep gates at pulse level, encoding gates at pulse level)
 GATE_MODES = {
-    "unitary": ("unitary", "unitary"),
-    "ansatz_pulse": ("pulse", "unitary"),
-    "enc_pulse": ("unitary", "pulse"),
-    "all_pulse": ("pulse", "pulse"),
+    "unitary": (False, False),
+    "ansatz_pulse": (True, False),
+    "enc_pulse": (False, True),
+    "all_pulse": (True, True),
 }
 
 # the modes that run the respective gate group at pulse level. Both only serve
@@ -87,7 +90,7 @@ class Model:
                 for applying data re-uploading to the full circuit.
             encoding (Union[str, Callable, List[str], List[Callable]], optional):
                 The unitary to use for encoding the input data. Can be a string
-                (e.g. "RX") or a callable (e.g. op.RX). Defaults to op.RX.
+                (e.g. "RX") or a callable (e.g. gateset.RX). Defaults to gateset.RX.
                 If input is multidimensional it is assumed to be a list of
                 unitaries or a list of strings.
             trainable_frequencies (bool, optional):
@@ -104,7 +107,7 @@ class Model:
                 indices, or a list of qubit groups (for $Z$-parity) selects the
                 measured subsystem with the default PauliZ readout.
                 Alternatively, a list of
-                :class:`~qml_essentials.operations.Operation` observables makes
+                :class:`~jaqsi.operations.Operation` observables makes
                 ``execution_type="expval"`` return one expectation value per
                 observable. When None all qubits are measured. Defaults to None.
             shots (Optional[int], optional): The number of shots to use for
@@ -406,7 +409,7 @@ class Model:
 
     @property
     def observables(self) -> List:
-        """The custom :class:`~qml_essentials.operations.Operation` observables,
+        """The custom :class:`~jaqsi.operations.Operation` observables,
         or the list of measured wires when using the default PauliZ readout.
 
         With a list of observables, ``__call__`` and ``execution_type="expval"``
@@ -796,7 +799,7 @@ class Model:
         Apply the repeat_batch_axis mask to a given batch shape.
 
         Args:
-            batch_shape (Tuple[int, ...]): Batch shape (B_I, B_P, B_R).
+            batch_shape (Tuple[int, ...]): Batch shape (B_I, B_P, B_R, B_E).
 
         Returns:
             Tuple[int, ...]: Effective batch dimensions, excluding zeros.
@@ -945,7 +948,7 @@ class Model:
         noise_params: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
         random_key: Optional[random.PRNGKey] = None,
         enc_pulse_params: Optional[jnp.ndarray] = None,
-        gate_mode: str = "unitary",
+        pulse: bool = False,
     ) -> None:
         """
         Apply Input Encoding Circuit (IEC) with angle encoding.
@@ -974,11 +977,10 @@ class Model:
                 current layer. Used when the encoding gates run at pulse level,
                 i.e. the model-level mode is "enc_pulse" or "all_pulse".
                 Defaults to None.
-            gate_mode (str): Resolved per-gate encoding backend, "unitary"
-                (ideal) or "pulse". This is the backend selected for the
-                encoding group, distinct from the model-level modes
-                (unitary, ansatz_pulse, enc_pulse, all_pulse). Defaults to
-                "unitary".
+            pulse (bool): Whether the encoding gates run at pulse level.
+                This is the backend selected for the encoding group, distinct
+                from the model-level modes (unitary, ansatz_pulse, enc_pulse,
+                all_pulse). Defaults to False.
 
         Returns:
             None: Gates are applied in-place to the quantum circuit.
@@ -1009,7 +1011,7 @@ class Model:
                     random_key, sub_key = safe_random_split(random_key)
                     # TODO: consider merging this with the pulses.py manager
                     pulse_kwargs = {}
-                    if gate_mode == "pulse":
+                    if pulse:
                         # scale the calibrated pulse params by this gate's
                         # scalers, as the pulse manager does for the ansatz
                         off = self._enc_pulse_offsets[idx]
@@ -1017,7 +1019,7 @@ class Model:
                         base = pinfo.gate_by_name(enc._gates[idx]).params
                         pulse_kwargs = dict(
                             pulse_params=base * enc_pulse_params[q, off : off + size],
-                            gate_mode="pulse",
+                            pulse=True,
                         )
 
                     # use elipsis to index only the last dimension
@@ -1123,7 +1125,7 @@ class Model:
             that would normally be passed through the forward method.
         """
         # which backend the ansatz / state-prep gates and the encoding gates use
-        sub_mode, enc_gate_mode = GATE_MODES[gate_mode]
+        use_pulse, enc_use_pulse = GATE_MODES[gate_mode]
 
         # TODO: rework and double check params shape
         params = self._debatch(params, 2)
@@ -1135,13 +1137,11 @@ class Model:
             enc_params, "enc_params", self.trainable_frequencies
         )
 
-        pulse_params = self._self_fallback(
-            pulse_params, "pulse_params", sub_mode == "pulse"
-        )
+        pulse_params = self._self_fallback(pulse_params, "pulse_params", use_pulse)
         pulse_params = self._debatch(pulse_params, 2)
 
         enc_pulse_params = self._self_fallback(
-            enc_pulse_params, "enc_pulse_params", enc_gate_mode == "pulse"
+            enc_pulse_params, "enc_pulse_params", enc_use_pulse
         )
         enc_pulse_params = self._debatch(enc_pulse_params, 3)
 
@@ -1162,7 +1162,7 @@ class Model:
                     pulse_params=sp_pulse_params,
                     noise_params=noise_params,
                     random_key=sub_key,
-                    gate_mode=sub_mode,
+                    pulse=use_pulse,
                 )
 
         # circuit building
@@ -1175,7 +1175,7 @@ class Model:
                 pulse_params=pulse_params[layer],
                 noise_params=noise_params,
                 random_key=sub_key,
-                gate_mode=sub_mode,
+                pulse=use_pulse,
             )
 
             random_key, sub_key = safe_random_split(random_key)
@@ -1188,7 +1188,7 @@ class Model:
                 noise_params=noise_params,
                 random_key=sub_key,
                 enc_pulse_params=enc_pulse_params[layer],
-                gate_mode=enc_gate_mode,
+                pulse=enc_use_pulse,
             )
 
         # final ansatz layer
@@ -1200,7 +1200,7 @@ class Model:
                 pulse_params=pulse_params[-1],
                 noise_params=noise_params,
                 random_key=sub_key,
-                gate_mode=sub_mode,
+                pulse=use_pulse,
             )
 
         # channel noise
@@ -1214,7 +1214,7 @@ class Model:
 
         Translates the model's ``execution_type`` and ``observables``
         settings into parameters suitable for
-        :meth:`~qml_essentials.jaqsi.Script.execute`.
+        :meth:`~jaqsi.Script.execute`.
 
         Args:
             execution_type: Measurement type to build for.  If ``None``, the
@@ -1240,7 +1240,7 @@ class Model:
             obs: List[op.Operation] = []
             for qubit_spec in self._measured_wires:
                 if isinstance(qubit_spec, int):
-                    obs.append(op.PauliZ(wires=qubit_spec))
+                    obs.append(gateset.PauliZ(wires=qubit_spec))
                 else:
                     # parity: Z \\otimes Z \\otimes …
                     obs.append(js.build_parity_observable(list(qubit_spec)))
@@ -1273,7 +1273,7 @@ class Model:
         p = noise_params.get("StatePreparation", 0.0)
         if p > 0:
             for q in range(self.n_qubits):
-                op.BitFlip(p, wires=q)
+                noise.BitFlip(p, wires=q)
 
     def _apply_general_noise(
         self, noise_params: Dict[str, Union[float, Dict[str, float]]]
@@ -1306,18 +1306,18 @@ class Model:
         meas = noise_params.get("Measurement", 0.0)
         for q in range(self.n_qubits):
             if amp_damp > 0:
-                op.AmplitudeDamping(amp_damp, wires=q)
+                noise.AmplitudeDamping(amp_damp, wires=q)
             if phase_damp > 0:
-                op.PhaseDamping(phase_damp, wires=q)
+                noise.PhaseDamping(phase_damp, wires=q)
             if meas > 0:
-                op.BitFlip(meas, wires=q)
+                noise.BitFlip(meas, wires=q)
             if isinstance(thermal_relax, dict):
                 t1 = thermal_relax["t1"]
                 t2 = thermal_relax["t2"]
                 t_factor = thermal_relax["t_factor"]
                 circuit_depth = self._get_circuit_depth()
                 tg = circuit_depth * t_factor
-                op.ThermalRelaxationError(1.0, t1, t2, tg, q)
+                noise.ThermalRelaxationError(1.0, t1, t2, tg, q)
 
     def _get_circuit_depth(self, inputs: Optional[jnp.ndarray] = None) -> int:
         """
@@ -1452,7 +1452,7 @@ class Model:
         Args:
             inputs: Input data.  If ``None``, default zero inputs are used.
             **kwargs: Forwarded to
-                :func:`~qml_essentials.drawing.draw_pulse_schedule`
+                :func:`~jaqsi.drawing.draw_pulse_schedule`
                 (e.g. ``show_carrier=True``, ``n_samples=300``).
 
         Returns:
@@ -2019,7 +2019,7 @@ class Model:
 
         Returns:
             Tuple: Hashable structure summary, passed to
-                :meth:`~qml_essentials.jaqsi.Script.execute`.
+                :meth:`~jaqsi.Script.execute`.
         """
         if self._observables is None:
             obs_fingerprint = None
@@ -2033,7 +2033,7 @@ class Model:
             self._data_reupload.shape,
             # covers the derived degree, frequencies and has_dru as well
             self._data_reupload.tobytes(),
-            _make_hashable(self._measured_wires),
+            make_hashable(self._measured_wires),
             obs_fingerprint,
             # hashed by identity, which also covers a replaced ansatz callable
             self.pqc,
@@ -2170,7 +2170,7 @@ class Model:
         Functional counterpart of :meth:`__call__`. No model state is written,
         so the call can be wrapped in an outer ``jax.jit``, ``jax.vmap`` or a
         whole jitted training step. The output always keeps the full
-        (B_I, B_P, B_R, O) shape, so its rank does not depend on the batch
+        (B_I, B_P, B_R, B_E, O) shape, so its rank does not depend on the batch
         sizes; call ``.squeeze()`` for the shape :meth:`__call__` returns.
 
         Arguments left as None fall back to the current model state, which an
@@ -2211,8 +2211,9 @@ class Model:
                 without advancing it.
 
         Returns:
-            jnp.ndarray: Circuit output of shape (B_I, B_P, B_R, O), where O
-                is the per-sample output shape of the execution type.
+            jnp.ndarray: Circuit output of shape (B_I, B_P, B_R, B_E, O), where
+                O is the per-sample output shape of the execution type and may
+                span more than one axis (e.g. "density" and "probs").
 
         Raises:
             ValueError: If the encoding gates would run at pulse level but the

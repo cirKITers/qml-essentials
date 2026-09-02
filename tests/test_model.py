@@ -8,9 +8,9 @@ import sys
 import optax
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Gates, Encoding
-from qml_essentials.utils import PauliCircuit
-from qml_essentials import simulation
-from qml_essentials.pulses import PulseInformation
+from qml_essentials.pauli import PauliCircuit
+from jaqsi import simulation
+from jaqsi.pulses import PulseInformation
 from qml_essentials.coefficients import Datasets
 import pytest
 import logging
@@ -587,7 +587,7 @@ def test_encoding_spectrum_reference(strategy, n_qubits) -> None:
     For golomb, Omega is the sparse set of mark differences with
     |Omega| = d(d-1)+1; model.frequencies is its contiguous superset."""
     from qml_essentials.coefficients import Coefficients
-    from qml_essentials.unitary import golomb_ruler
+    from qml_essentials.ansaetze import golomb_ruler
 
     n = n_qubits
     if strategy == "golomb":
@@ -638,7 +638,7 @@ def test_golomb_encoding() -> None:
 
     Reference: Peters et al., arXiv:2209.05523, Sec. 3.1 and Appendix C.4.
     """
-    from qml_essentials.unitary import golomb_ruler
+    from qml_essentials.ansaetze import golomb_ruler
 
     # --- Golomb ruler validity ---
     for n_qubits in [1, 2, 3, 4]:
@@ -749,8 +749,8 @@ def test_golomb_diagonal_decompose() -> None:
     when x * max(mark) exceeds pi (n=3 has marks up to 44).
     """
     from functools import reduce
-    from qml_essentials.unitary import golomb_ruler
-    from qml_essentials.operations import DiagonalQubitUnitary, PauliRot
+    from qml_essentials.ansaetze import golomb_ruler
+    from jaqsi.gateset import DiagonalQubitUnitary, PauliRot
 
     for n in [1, 2, 3]:
         d = 2**n
@@ -1823,7 +1823,7 @@ def test_pauli_circuit_model() -> None:
         inputs = model._inputs_validation(test_case["inputs"])
 
         # Record the tape using jaqsi with a single input sample
-        model_tape = model.script._record(
+        model_tape = model.script.record(
             params=model.params,
             inputs=inputs,
         )

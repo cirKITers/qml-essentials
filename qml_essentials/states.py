@@ -5,7 +5,7 @@ analysis.  All functions return a dense statevector of shape :math:`(2^n,)`
 with qubit 0 leftmost (most significant), consistent with
 :mod:`qml_essentials.algebra` and ``g_purity_from_basis``.  The arrays are plain
 numpy and auto-convert to the jnp ``initial_state`` accepted by
-:meth:`qml_essentials.script.Script.execute`.
+:meth:`jaqsi.script.Script.execute`.
 
 - :func:`dicke_state` builds the permutation-symmetric Dicke state
   :math:`|D_{n,k}\rangle`.

@@ -18,9 +18,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from qml_essentials.gates import Gates
-from qml_essentials import operations as op
-from qml_essentials import jaqsi as js
+from jaqsi.gates import Gates
+from jaqsi import gateset
+import jaqsi as js
 from qml_essentials.ansaetze import Ansaetze
 
 
@@ -81,7 +81,7 @@ def loss_variance(
         n = int(theta.shape[0])
     i_out = n // 2 if out_qubit is None else out_qubit
     if obs is None:
-        obs = [op.PauliZ(wires=i_out)]
+        obs = [gateset.PauliZ(wires=i_out)]
 
     # Separate streams for the parameter draws and the shot noise, so the two
     # sources of randomness stay independent.
