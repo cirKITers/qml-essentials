@@ -9,7 +9,13 @@ import logging
 
 import jaqsi as js
 from qml_essentials.model import Model
-from qml_essentials.ansaetze import Ansaetze, Circuit
+from qml_essentials.ansaetze import (
+    Ansaetze,
+    Block,
+    Circuit,
+    Topology,
+    DeclarativeCircuit,
+)
 from jaqsi.gates import Gates, UnitaryGates
 from jaqsi.gates import PulseInformation as pinfo
 from jaqsi import gateset
@@ -780,3 +786,94 @@ def test_declarative_migration_statevector(name):
             js.Script(lambda: ref_build(w, n), n_qubits=n).execute(type="state")
         )
         assert np.allclose(psi_new, psi_ref), (name, n)
+
+
+# --- Explicit-edge-list topology --------------------------------------------
+
+
+@pytest.mark.unittest
+def test_topology_graph() -> None:
+    # order and orientation are preserved, both orientations are allowed
+    assert Topology.graph(n_qubits=5, edges=((3, 4), (0, 1), (1, 0))) == [
+        (3, 4),
+        (0, 1),
+        (1, 0),
+    ]
+
+    invalid = (
+        ((0, 5),),  # out of range
+        ((-1, 0),),  # out of range
+        ((2, 2),),  # self-loop
+        ((0, 1), (0, 1)),  # repeated edge
+    )
+    for edges in invalid:
+        with pytest.raises(ValueError):
+            Topology.graph(n_qubits=5, edges=edges)
+
+
+# The 3-rung XY ladder on 6 qubits: one block pair per pi-orbit, tied where the
+# orbit has two edges. Not expressible through bricks/stairs/all_pairs, which is
+# why Topology.graph exists.
+_LADDER_ORBITS = (
+    (((0, 1), (3, 4)), True),  # chain link 1
+    (((1, 2), (4, 5)), True),  # chain link 2
+    ((((0, 3),)), False),  # rungs, each its own angle
+    ((((1, 4),)), False),
+    ((((2, 5),)), False),
+)
+
+
+def _xy_graph(edges, shared=False):
+    return tuple(
+        Block(gate=gate, topology=Topology.graph, edges=edges, shared=shared)
+        for gate in (Gates.RXX, Gates.RYY)
+    )
+
+
+class _XY_Ladder(DeclarativeCircuit):
+    @classmethod
+    def structure(cls):
+        return tuple(
+            block
+            for edges, shared in _LADDER_ORBITS
+            for block in _xy_graph(edges, shared=shared)
+        )
+
+
+def _ref_xy_ladder_build(w, n_qubits, **kwargs):
+    idx = 0
+    for edges, shared in _LADDER_ORBITS:
+        for gate in (Gates.RXX, Gates.RYY):
+            for edge in edges:
+                gate(w[idx], wires=list(edge), **kwargs)
+                if not shared:
+                    idx += 1
+            if shared:
+                idx += 1
+
+
+@pytest.mark.unittest
+def test_graph_topology_ansatz() -> None:
+    # 2 tied orbits + 3 rungs, each with an RXX and an RYY block
+    assert _XY_Ladder.n_params_per_layer(6) == 2 * 2 + 3 * 2
+    assert _XY_Ladder.n_pulse_params_per_layer(6) == 7 * (
+        pinfo.num_params("RXX") + pinfo.num_params("RYY")
+    )
+    assert _XY_Ladder.get_control_indices(6) is None
+
+    w = jnp.asarray(
+        np.random.default_rng(0).uniform(0, 2 * np.pi, _XY_Ladder.n_params_per_layer(6))
+    )
+    psi = np.asarray(
+        js.Script(lambda: _XY_Ladder.build(w, 6), n_qubits=6).execute(type="state")
+    )
+    psi_ref = np.asarray(
+        js.Script(lambda: _ref_xy_ladder_build(w, 6), n_qubits=6).execute(type="state")
+    )
+    assert np.allclose(psi, psi_ref)
+
+
+@pytest.mark.unittest
+def test_graph_topology_qubit_mismatch() -> None:
+    with pytest.raises(ValueError):
+        Model(n_qubits=4, n_layers=1, circuit_type=_XY_Ladder)

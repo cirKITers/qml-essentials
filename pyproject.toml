@@ -6,7 +6,7 @@ authors = [
     { name = "Melvin Strobl", email = "melvin.strobl@kit.edu" },
     { name = "Maja Franz", email = "maja.franz@oth-regensburg.de" },
 ]
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.15"
 readme = "README.md"
 license = "MIT"
 maintainers = [{ name = "Melvin Strobl", email = "melvin.strobl@kit.edu" }]
@@ -30,6 +30,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: 3 :: Only",
     "Topic :: Scientific/Engineering :: Physics",
 ]
