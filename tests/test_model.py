@@ -2,6 +2,7 @@ import jax
 from jax import random, grad, numpy as jnp
 from typing import Any, Dict
 import numpy as np
+import pickle
 import random as pyrandom
 import subprocess
 import sys
@@ -2293,3 +2294,20 @@ def test_call_keepdims() -> None:
     )
     out = model(model.params, inputs=jnp.array([0.1, 0.2, 0.3]))
     assert out.shape == (3, 2)
+
+
+@pytest.mark.unittest
+@pytest.mark.parametrize("strategy", ["hamming", "binary", "ternary"])
+def test_model_pickles(strategy) -> None:
+    """A model that has been called survives pickling and predicts the same."""
+    model = Model(
+        n_qubits=2,
+        n_layers=1,
+        circuit_type="Circuit_19",
+        encoding=Encoding(strategy=strategy, gates=["RY"]),
+    )
+    inputs = jnp.linspace(0.0, 1.0, 5)
+    expected = model(params=model.params, inputs=inputs)
+
+    reopened = pickle.loads(pickle.dumps(model))
+    assert jnp.allclose(reopened(params=reopened.params, inputs=inputs), expected)

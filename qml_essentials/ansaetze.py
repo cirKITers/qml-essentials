@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import functools
 from typing import Any, Optional, List, Union, Callable, Tuple
 import jax.numpy as np
 import logging
@@ -1000,6 +1001,18 @@ def GolombEncoding(
     UnitaryGates.Noise(wires_list, noise_params)
 
 
+# Encoding wrappers live at module level (not as closures in `Encoding`), so
+# that a model holding them can be pickled.
+def _scaled_encoding(inputs, wires, *, enc, base, **kwargs):
+    """Apply `enc` with the input scaled by ``base**wires``."""
+    return enc(inputs * (base**wires), wires, **kwargs)
+
+
+def _golomb_encoding(inputs, wires, **kwargs):
+    # `wires` here is a list of all qubit indices, set by _iec
+    GolombEncoding(w=inputs, wires=wires, **kwargs)
+
+
 class Encoding:
     def __init__(
         self, strategy: str, gates: Union[str, Callable, List[Union[str, Callable]]]
@@ -1199,10 +1212,7 @@ class Encoding:
             The wrapped encoding function.
         """
 
-        def _enc(inputs, wires, **kwargs):
-            return enc(inputs * (2**wires), wires, **kwargs)
-
-        return _enc
+        return functools.partial(_scaled_encoding, enc=enc, base=2)
 
     def ternary(self, enc):
         """
@@ -1224,10 +1234,7 @@ class Encoding:
             The wrapped encoding function.
         """
 
-        def _enc(inputs, wires, **kwargs):
-            return enc(inputs * (3**wires), wires, **kwargs)
-
-        return _enc
+        return functools.partial(_scaled_encoding, enc=enc, base=3)
 
     @property
     def is_golomb(self):
@@ -1262,8 +1269,4 @@ class Encoding:
             functions but that applies :func:`GolombEncoding`.
         """
 
-        def _enc(inputs, wires, **kwargs):
-            # `wires` here is a list of all qubit indices, set by _iec
-            GolombEncoding(w=inputs, wires=wires, **kwargs)
-
-        return _enc
+        return _golomb_encoding
