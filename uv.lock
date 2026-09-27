@@ -761,7 +761,7 @@ wheels = [
 [[package]]
 name = "jaqsi"
 version = "0.1.0"
-source = { git = "https://github.com/cirKITers/jaqsi?rev=7b4d548213fb1e06022abc4f839929cf9ad864d9#7b4d548213fb1e06022abc4f839929cf9ad864d9" }
+source = { git = "https://github.com/cirKITers/jaqsi?rev=8d703e697e3144fea09c83a9bbbf5294737fadd5#8d703e697e3144fea09c83a9bbbf5294737fadd5" }
 dependencies = [
     { name = "diffrax" },
     { name = "equinox" },
@@ -2056,7 +2056,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "jaqsi", git = "https://github.com/cirKITers/jaqsi?rev=7b4d548213fb1e06022abc4f839929cf9ad864d9" },
+    { name = "jaqsi", git = "https://github.com/cirKITers/jaqsi?rev=8d703e697e3144fea09c83a9bbbf5294737fadd5" },
     { name = "jax", specifier = ">=0.9.0.1" },
     { name = "jaxlib", specifier = ">=0.9.0.1" },
     { name = "numpy", specifier = ">=2.0.0" },
