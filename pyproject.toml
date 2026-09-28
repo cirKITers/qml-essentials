@@ -36,7 +36,7 @@ classifiers = [
 ]
 
 [tool.uv.sources]
-jaqsi = { git = "https://github.com/cirKITers/jaqsi", rev = "6dff0eca76cd5e2c9d7a240dce13d2d4634ef87d" }
+jaqsi = { git = "https://github.com/cirKITers/jaqsi", rev = "99ebc1406eff447d0247ea2f0e12895658569d75" }
 
 
 [project.urls]
