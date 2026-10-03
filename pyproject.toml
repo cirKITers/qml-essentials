@@ -16,7 +16,7 @@ keywords = [
     "qml",
 ]
 dependencies = [
-    "jaqsi",
+    "jaqsi>=0.1.1",
     "jax>=0.9.0.1",
     "jaxlib>=0.9.0.1",
     "numpy>=2.0.0",
@@ -34,10 +34,6 @@ classifiers = [
     "Programming Language :: Python :: 3 :: Only",
     "Topic :: Scientific/Engineering :: Physics",
 ]
-
-[tool.uv.sources]
-jaqsi = { git = "https://github.com/cirKITers/jaqsi", rev = "99ebc1406eff447d0247ea2f0e12895658569d75" }
-
 
 [project.urls]
 Homepage = "https://cirkiters.github.io/qml-essentials/"
