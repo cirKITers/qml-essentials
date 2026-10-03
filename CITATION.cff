@@ -29,3 +29,5 @@ license: MIT
 identifiers:
   - type: doi
     value: 10.1109/QSW67625.2025.00035
+  - type: doi
+    value: 10.1109/QSW72780.2026.00017
