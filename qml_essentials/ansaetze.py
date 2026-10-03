@@ -1001,8 +1001,8 @@ def GolombEncoding(
     UnitaryGates.Noise(wires_list, noise_params)
 
 
-# Encoding wrappers live at module level (not as closures in `Encoding`), so
-# that a model holding them can be pickled.
+# Encoding wrappers live at module level,
+# so that a model holding them can be pickled.
 def _scaled_encoding(inputs, wires, *, enc, base, **kwargs):
     """Apply `enc` with the input scaled by ``base**wires``."""
     return enc(inputs * (base**wires), wires, **kwargs)
