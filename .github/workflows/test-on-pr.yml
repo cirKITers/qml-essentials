@@ -9,19 +9,18 @@ permissions:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+env:
+  UV_PYTHON: "3.13"
 jobs:
   test-all:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v7
-      - name: Set up Python 3.13
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-          # cache: "uv"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
       - name: Install dependencies
-        run: pipx run uv sync --group dev
+        run: uv sync --group dev
       - name: Test with pytest (no benchmark)
-        run: pipx run uv run pytest --cov=qml_essentials --dist load -n 2 -m "not benchmark" -v
+        run: uv run pytest --cov=qml_essentials --dist load -n 2 -m "not benchmark" -v
       - name: Test with pytest (benchmark)
-        run: pipx run uv run pytest --cov=qml_essentials -m "benchmark"
+        run: uv run pytest --cov=qml_essentials -m "benchmark"

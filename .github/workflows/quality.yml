@@ -4,22 +4,21 @@ on:
     branches: ["main"]
 permissions:
   contents: read
+env:
+  UV_PYTHON: "3.13"
 jobs:
   quality:
     runs-on: self-hosted
     if: ${{ (github.actor != 'dependabot[bot]') }}
     steps:
       - uses: actions/checkout@v7
-      - name: Set up Python 3.13
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-          # cache: "uv"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
       - name: Install dependencies
-        run: pipx run uv sync --group dev
+        run: uv sync --group dev
       - name: Lint with ruff
         run: |
-          pipx run uv run ruff check qml_essentials
-          pipx run uv run ruff check tests
+          uv run ruff check qml_essentials
+          uv run ruff check tests
       - name: Running license check
-        run: pipx run uv run licensecheck --zero --license mit
+        run: uv run licensecheck --zero --license mit
