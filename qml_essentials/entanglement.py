@@ -115,7 +115,7 @@ class Entanglement:
     ) -> float:
         r"""
         Average normalized or logarithmic negativity over qubit-versus-rest partitions,
-        following [Vidal and Werner](https://arxiv.org/abs/quant-ph/0102117).
+        following [Vidal and Werner](https://doi.org/10.1103/PhysRevA.65.032314).
 
         For pure or mixed states, this computes
         :math:`\frac{2}{n}\sum_k \mathcal{N}_k(\rho)`, where
