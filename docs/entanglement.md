@@ -44,6 +44,33 @@ ent_cap = Entanglement.bell_measurements(
 )
 ```
 
+## Mean Negativity
+
+For pure and mixed states, `mean_negativity` averages the negativity across each qubit-versus-rest partition and normalizes the result to $[0,1]$:
+
+$$
+\overline{\mathcal{N}}(\rho)=\frac{2}{n}\sum_{k=0}^{n-1}\mathcal{N}_k(\rho),
+\qquad
+\mathcal{N}_k(\rho)=\frac{\|\rho^{T_k}\|_1-1}{2}.
+$$
+
+Here $T_k$ denotes the partial transpose on qubit $k$. Each negativity is the sum of the absolute values of the negative eigenvalues of $\rho^{T_k}$, following [Vidal and Werner](https://arxiv.org/abs/quant-ph/0102117).
+
+```python
+ent_cap = Entanglement.mean_negativity(
+    model, n_samples=1000, random_key=jax.random.key(1000), noise_params={"BitFlip": 0.1}
+)
+```
+
+The method averages the metric over the output states, rather than evaluating their averaged density matrix.
+Set `n_samples=None` or a nonpositive value to use the current parameters.
+If `scale` is set to `True`, the sample count is multiplied by $2^n$.
+
+Fully separable states give zero, while Bell and GHZ states give one.
+Note that, this metric differs from Meyer-Wallach even for pure states as zero does not exclude entanglement with positive partial transpose (PPT), according to the [Separability Criterion for Density Matrices](https://doi.org/10.1103/PhysRevLett.77.1413).
+In contrast, a positive value, does not establish genuine multipartite entanglement.
+
+This metric allows to be used in a noisy and noiseless setting.
 ## Relative Entropy
 
 While calculating entanglement using the Meyer-Wallach or Bell-Measurements method works great for noiseless circuits, it won't result in the correct values when being used together with incoherent noise.
