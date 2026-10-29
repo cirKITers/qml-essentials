@@ -110,15 +110,18 @@ class Entanglement:
         n_samples: Optional[int],
         random_key: Optional[jax.Array] = None,
         scale: bool = False,
+        log: bool = False,
         **kwargs: Any,
     ) -> float:
         r"""
-        Average normalized negativity over each qubit-versus-rest partition,
+        Average normalized or logarithmic negativity over qubit-versus-rest partitions,
         following [Vidal and Werner](https://arxiv.org/abs/quant-ph/0102117).
 
         For pure or mixed states, this computes
         :math:`\frac{2}{n}\sum_k \mathcal{N}_k(\rho)`, where
         :math:`\mathcal{N}_k(\rho)=(\|\rho^{T_k}\|_1-1)/2`.
+        With log=True, average :math:`\log_2(1+2\mathcal{N}_k(\rho))`
+        over partitions and output states instead.
         Zero does not exclude PPT entanglement, and a positive value does not
         certify genuine multipartite entanglement.
 
@@ -129,10 +132,11 @@ class Entanglement:
             random_key (Optional[jax.Array]): JAX key for parameter sampling.
                 If None, use the model's internal random key.
             scale (bool): Multiply a positive sample count by 2**n_qubits.
+            log (bool): Use base-2 logarithmic negativity. Defaults to False.
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
-            float: Mean normalized negativity in [0, 1].
+            float: Mean normalized or logarithmic negativity in [0, 1].
         """
         if n_samples is not None and n_samples > 0:
             if scale:
@@ -143,21 +147,24 @@ class Entanglement:
         rhos = model(execution_type="density", **kwargs).reshape(
             -1, 2**model.n_qubits, 2**model.n_qubits
         )
-        ent = cls._compute_mean_negativity(rhos, model.n_qubits)
-        log.debug(f"Variance of measure: {ent.var()}")
+        ent = cls._compute_mean_negativity(rhos, model.n_qubits, log=log)
+        logging.getLogger(__name__).debug(f"Variance of measure: {ent.var()}")
         return float(ent.mean())
 
     @classmethod
-    def _compute_mean_negativity(cls, rhos: jnp.ndarray, n_qubits: int) -> jnp.ndarray:
+    def _compute_mean_negativity(
+        cls, rhos: jnp.ndarray, n_qubits: int, log: bool = False
+    ) -> jnp.ndarray:
         """
-        Compute normalized mean negativity for a batch of density matrices.
+        Compute mean normalized or logarithmic negativity for density matrices.
 
         Args:
             rhos (jnp.ndarray): Density matrices with shape (B, 2**n, 2**n).
             n_qubits (int): Number of qubits.
+            log (bool): Apply the base-2 logarithm before averaging partitions.
 
         Returns:
-            jnp.ndarray: Normalized mean negativity with shape (B,).
+            jnp.ndarray: Mean negativity with shape (B,).
         """
         tensor = rhos.reshape((-1,) + (2,) * (2 * n_qubits))
         negativity = jnp.zeros(rhos.shape[0])
@@ -165,8 +172,9 @@ class Entanglement:
             # Transpose only qubit k's row and column indices.
             partial_transpose = jnp.swapaxes(tensor, k + 1, n_qubits + k + 1)
             eigenvalues = jnp.linalg.eigvalsh(partial_transpose.reshape(rhos.shape))
-            negativity += jnp.maximum(-eigenvalues, 0).sum(axis=-1)
-        return 2 * negativity / n_qubits
+            value = 2 * jnp.maximum(-eigenvalues, 0).sum(axis=-1)
+            negativity += jnp.log1p(value) / jnp.log(2.0) if log else value
+        return negativity / n_qubits
 
     @classmethod
     def bell_measurements(

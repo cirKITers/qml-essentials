@@ -62,6 +62,19 @@ ent_cap = Entanglement.mean_negativity(
 )
 ```
 
+You can compute the mean logarithmic negativity instead by setting `log=True`:
+
+```python
+ent_cap = Entanglement.mean_negativity(model, n_samples=None, log=True)
+```
+
+$$
+\overline{E}_{\mathcal{N}}(\rho)=\frac{1}{n}\sum_{k=0}^{n-1}\log_2(1+2\mathcal{N}_k(\rho)).
+$$
+
+The logarithm is applied to each partition of each output state before averaging.
+Note that this generally differs from taking $\log_2(1+\overline{\mathcal{N}})$ after averaging (hence this flag).
+
 The method averages the metric over the output states, rather than evaluating their averaged density matrix.
 Set `n_samples=None` or a nonpositive value to use the current parameters.
 If `scale` is set to `True`, the sample count is multiplied by $2^n$.
