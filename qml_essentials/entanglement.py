@@ -461,7 +461,7 @@ class Entanglement:
         if not always_decompose and jnp.isclose(eigenvalues, 1.0).any(axis=-1).all():
             return cls._compute_meyer_wallach_meas(rhos, n_qubits)
 
-        rhos = np.einsum("sij,sik->sijk", eigenvectors, eigenvectors.conjugate())
+        rhos = np.einsum("sji,ski->sijk", eigenvectors, eigenvectors.conjugate())
         measures = cls._compute_meyer_wallach_meas(
             rhos.reshape(-1, 2**n_qubits, 2**n_qubits), n_qubits
         )
