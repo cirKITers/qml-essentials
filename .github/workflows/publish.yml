@@ -36,11 +36,11 @@ jobs:
       - name: Compare tag and version
         run: |
           git fetch --tags
-          if [ "$(git tag | sort -g | tail -1)" = "$(uv version --short)" ]; then
+          if [ "$(git tag | sort -V | tail -1)" = "$(uv version --short)" ]; then
             echo "The tag and the version are the same, nothing to do."
             echo "DORELEASE=false" >> $GITHUB_ENV
           else
-            echo "The tag ($(git tag | sort -g | tail -1)) and the version ($(uv version --short)) differ, trigging a release."
+            echo "The tag ($(git tag | sort -V | tail -1)) and the version ($(uv version --short)) differ, trigging a release."
             echo "DORELEASE=true" >> $GITHUB_ENV
           fi
       - name: Update Citation
@@ -51,6 +51,7 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git commit -am "Update Citation"
+          git pull --rebase
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
