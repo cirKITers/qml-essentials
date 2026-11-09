@@ -44,7 +44,7 @@ class Entanglement:
         if "noise_params" in kwargs:
             log.warning(
                 "Meyer-Wallach measure not suitable for noisy circuits. "
-                "Consider 'concentratable entanglement' instead."
+                "Consider 'mean_negativity' instead."
             )
 
         if scale:
@@ -104,6 +104,79 @@ class Entanglement:
         return jax.vmap(_f)(rhos)
 
     @classmethod
+    def mean_negativity(
+        cls,
+        model: Model,
+        n_samples: Optional[int],
+        random_key: Optional[jax.Array] = None,
+        scale: bool = False,
+        log: bool = False,
+        **kwargs: Any,
+    ) -> float:
+        r"""
+        Average normalized or logarithmic negativity over qubit-versus-rest partitions,
+        following [Vidal and Werner](https://doi.org/10.1103/PhysRevA.65.032314).
+
+        For pure or mixed states, this computes
+        :math:`\frac{2}{n}\sum_k \mathcal{N}_k(\rho)`, where
+        :math:`\mathcal{N}_k(\rho)=(\|\rho^{T_k}\|_1-1)/2`.
+        With log=True, average :math:`\log_2(1+2\mathcal{N}_k(\rho))`
+        over partitions and output states instead.
+        Zero does not exclude PPT entanglement, and a positive value does not
+        certify genuine multipartite entanglement.
+
+        Args:
+            model (Model): The quantum circuit model.
+            n_samples (Optional[int]): Number of parameter samples. If None or
+                nonpositive, use the current parameters without resampling.
+            random_key (Optional[jax.Array]): JAX key for parameter sampling.
+                If None, use the model's internal random key.
+            scale (bool): Multiply a positive sample count by 2**n_qubits.
+            log (bool): Use base-2 logarithmic negativity. Defaults to False.
+            kwargs (Any): Additional keyword arguments for the model function.
+
+        Returns:
+            float: Mean normalized or logarithmic negativity in [0, 1].
+        """
+        if n_samples is not None and n_samples > 0:
+            if scale:
+                n_samples *= 2**model.n_qubits
+            model.initialize_params(random_key, repeat=n_samples)
+
+        kwargs.setdefault("inputs", None)
+        rhos = model(execution_type="density", **kwargs).reshape(
+            -1, 2**model.n_qubits, 2**model.n_qubits
+        )
+        ent = cls._compute_mean_negativity(rhos, model.n_qubits, log=log)
+        logging.getLogger(__name__).debug(f"Variance of measure: {ent.var()}")
+        return float(ent.mean())
+
+    @classmethod
+    def _compute_mean_negativity(
+        cls, rhos: jnp.ndarray, n_qubits: int, log: bool = False
+    ) -> jnp.ndarray:
+        """
+        Compute mean normalized or logarithmic negativity for density matrices.
+
+        Args:
+            rhos (jnp.ndarray): Density matrices with shape (B, 2**n, 2**n).
+            n_qubits (int): Number of qubits.
+            log (bool): Apply the base-2 logarithm before averaging partitions.
+
+        Returns:
+            jnp.ndarray: Mean negativity with shape (B,).
+        """
+        tensor = rhos.reshape((-1,) + (2,) * (2 * n_qubits))
+        negativity = jnp.zeros(rhos.shape[0])
+        for k in range(n_qubits):
+            # Transpose only qubit k's row and column indices.
+            partial_transpose = jnp.swapaxes(tensor, k + 1, n_qubits + k + 1)
+            eigenvalues = jnp.linalg.eigvalsh(partial_transpose.reshape(rhos.shape))
+            value = 2 * jnp.maximum(-eigenvalues, 0).sum(axis=-1)
+            negativity += jnp.log1p(value) / jnp.log(2.0) if log else value
+        return negativity / n_qubits
+
+    @classmethod
     def bell_measurements(
         cls,
         model: Model,
@@ -135,7 +208,7 @@ class Entanglement:
         if "noise_params" in kwargs:
             log.warning(
                 "Bell Measurements not suitable for noisy circuits. "
-                "Consider 'concentratable entanglement' instead."
+                "Consider 'mean_negativity' instead."
             )
 
         if scale:
@@ -461,7 +534,7 @@ class Entanglement:
         if not always_decompose and jnp.isclose(eigenvalues, 1.0).any(axis=-1).all():
             return cls._compute_meyer_wallach_meas(rhos, n_qubits)
 
-        rhos = np.einsum("sij,sik->sijk", eigenvectors, eigenvectors.conjugate())
+        rhos = np.einsum("sji,ski->sijk", eigenvectors, eigenvectors.conjugate())
         measures = cls._compute_meyer_wallach_meas(
             rhos.reshape(-1, 2**n_qubits, 2**n_qubits), n_qubits
         )
