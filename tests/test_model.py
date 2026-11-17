@@ -10,7 +10,7 @@ import optax
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Ansaetze, Gates, Encoding
 from qml_essentials.pauli import PauliCircuit
-from jaqsi import simulation
+from jaqsi import gateset, simulation
 from jaqsi.pulses import PulseInformation
 from qml_essentials.coefficients import Datasets
 import pytest
@@ -2123,6 +2123,29 @@ def test_apply_pure_under_jit() -> None:
 
     # a subsequent eager call is where a leaked tracer would raise
     assert model(inputs=jnp.array([0.4, 0.5, 0.6])).shape == (3, 2)
+
+
+@pytest.mark.unittest
+def test_gate_observable_under_jit() -> None:
+    """A fresh model with a gate observable is differentiable under jit.
+
+    The observable is fingerprinted while the call is traced, so this is the
+    first point where its matrix is read.
+    """
+    model = Model(
+        n_qubits=1,
+        n_layers=1,
+        circuit_type="Circuit_1",
+        observables=[gateset.PauliX(wires=0)],
+    )
+    inputs = jnp.linspace(0.0, jnp.pi, 4)
+
+    def cost(params):
+        return jnp.mean(model(params=params, inputs=inputs) ** 2)
+
+    value, gradient = jax.jit(jax.value_and_grad(cost))(model.params)
+    assert jnp.isfinite(value)
+    assert jnp.all(jnp.isfinite(gradient))
 
 
 @pytest.mark.unittest

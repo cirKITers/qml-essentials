@@ -67,6 +67,9 @@ docs = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.uv.sources]
+jaqsi = { git = "https://github.com/cirKITers/jaqsi", rev = "d36db27f08903c845a6d658ea870823973d6a857" }
+
 [tool.ruff]
 line-length = 88
 

@@ -1,6 +1,9 @@
+import jax
 import pytest
 
-from jaqsi.pulses import PulseInformation
+jax.config.update("jax_enable_x64", True)
+
+from jaqsi.pulses import PulseInformation  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
