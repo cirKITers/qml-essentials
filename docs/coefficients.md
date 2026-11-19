@@ -87,7 +87,7 @@ You might have noticed that we choose our sampling frequency `fs` in such a way,
 Also the number of samples `x` are just enough to sufficiently represent our function.
 In such a simplified scenario, this is fine, but there are cases, where we want to have more information both in the time and frequency domain.
 Therefore, two additional arguments exist in the `get_spectrum` method:
-- `mfs`: The multiplier for the highest frequency. Increasing this will increase the width of the spectrum
+- `mfs`: The multiplier for the highest frequency. Increasing this will increase the width of the spectrum, either globally or per input feature (see below)
 - `mts`: The multiplier for the number of time samples. Increasing this will increase the resolution of the time domain and therefore "add" frequencies in between our original frequencies.
 - `trim`: Whether to remove the Nyquist frequency if spectrum is even. This will result in a symmetric spectrum
 
@@ -287,6 +287,42 @@ Note that "X1" refers to the "RX" encoding and "X2" to the "RY" encoding.
 
 In the multidimensional case, the `freqs` variable now contains the frequency indices for each dimension.
 This is an important detail, as due to the `data_reupload` argument, it is possible to have a different number of frequencies for each input dimension.
+
+### Ragged frequency grids
+
+In the multidimensional case, the per-axis degrees, and therefore the per-axis frequency grids, do not have to match: due to the `data_reupload` argument, each input feature can be encoded on a different number of wires, which is the generic case rather than an edge case.
+
+The full pipeline, i.e. `Coefficients.get_spectrum` as well as `FCC.get_fcc` and `FCC.get_fourier_fingerprint`, supports these *ragged* frequency grids:
+
+```python
+model = Model(
+    n_qubits=2,
+    n_layers=2,
+    circuit_type="Circuit_19",
+    encoding=["RX", "RY"],
+    data_reupload=[
+        [[True, True], [False, True]],
+        [[False, True], [True, True]],
+    ],
+)
+# model.degree == (5, 9)
+
+coeffs, freqs = Coefficients.get_spectrum(model)
+# coeffs reshapes to one axis per input feature; freqs holds one
+# frequency vector per axis with different lengths
+```
+
+The coefficients follow the ij/C-order convention: one axis per input feature with the first feature being the slowest, and the per-coefficient frequency tuples use the same order.
+
+Oversampling can also be applied per axis, by passing `mfs` either as a single factor (applied to every feature) or as one factor per feature:
+
+```python
+coeffs, freqs = Coefficients.get_spectrum(model, mfs=[1, 2])
+# grid of shape (5, 18)
+```
+
+A list with the wrong length raises a `ValueError`.
+Similarly, `trim` removes the Nyquist entry of each even-length axis at that axis's own position.
 
 ## Fourier Coefficient Correlation (FCC)
 
