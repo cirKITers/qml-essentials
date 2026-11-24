@@ -285,7 +285,7 @@ Using a logarithmic color bar, one obtains the following 2D-spectrum:
 
 Note that "X1" refers to the "RX" encoding and "X2" to the "RY" encoding.
 
-In the multidimensional case, the `freqs` variable now contains the frequency indices for each dimension.
+In the multidimensional case, `freqs` is a list with one frequency vector per input feature, independent of `shift`.
 This is an important detail, as due to the `data_reupload` argument, it is possible to have a different number of frequencies for each input dimension.
 
 ### Ragged frequency grids
