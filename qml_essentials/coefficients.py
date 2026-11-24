@@ -1465,14 +1465,10 @@ class FCC:
         """
         assert len(mat.shape) >= 2, "Input matrix must have at least 2 dimensions"
 
-        # Note that for the general n-D case, we have to flatten along
-        # the first axis (last one is batch).
-        # Note that the order here is important so we can easily filter out
-        # negative coefficients later.
-        # Consider the following example: [[1,2,3],[4,5,6],[7,8,9]]
-        # we want to get [1, 4, 7, 2, 5, 8, 3, 6, 9]
-        # such that after correlation, all positive indexed coefficients
-        # will be in the bottom right quadrant
+        # The first axis is the sample axis; any remaining axes are flattened
+        # in C order. Callers pass coefficients already flattened in C order
+        # (first input feature slowest), the order that `_calculate_mask`
+        # and `_flat_frequencies` index into.
         if method == "pearson":
             result = cls._pearson(mat.reshape(mat.shape[0], -1))
             # result = cls._pearson(mat.reshape(mat.shape[-1], -1, order="F"))
