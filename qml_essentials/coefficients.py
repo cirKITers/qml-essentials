@@ -135,14 +135,16 @@ class Coefficients:
     ) -> Tuple[jnp.ndarray, List]:
         # Per-axis oversampling: mfs may be a single integer factor (applied to
         # every axis) or one per input feature.
-            mfs_axis = list(mfs)
-            if len(mfs_axis) != model.n_input_feat:
-                raise ValueError(
-                    f"mfs must be an int or one factor per input feature "
-                    f"({model.n_input_feat}), got {mfs}"
-                )
-            if not all(isinstance(factor, int) for factor in mfs_axis):
-                raise TypeError(f"mfs factors must be integers, got {mfs}")
+        mfs_axis = np.asarray(mfs)
+        if not np.issubdtype(mfs_axis.dtype, np.integer):
+            raise TypeError(f"mfs factors must be integers, got {mfs}")
+        if mfs_axis.ndim == 0:
+            mfs_axis = np.full(model.n_input_feat, mfs_axis)
+        elif mfs_axis.shape != (model.n_input_feat,):
+            raise ValueError(
+                f"mfs must be an int or one factor per input feature "
+                f"({model.n_input_feat}), got {mfs}"
+            )
 
         # Create a frequency vector with as many frequencies as model degrees,
         # oversampled by mfs
