@@ -31,7 +31,7 @@ class Coefficients:
         trim=False,
         numerical_cap: Optional[float] = -1,
         **kwargs,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> Tuple[jnp.ndarray, Union[jnp.ndarray, List[jnp.ndarray]]]:
         """
         Extracts the coefficients of a given model using a FFT (jnp-fft).
 
@@ -58,8 +58,11 @@ class Coefficients:
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
-            Tuple[jnp.ndarray, jnp.ndarray]: Tuple containing the coefficients
-            and frequencies.
+            Tuple[jnp.ndarray, Union[jnp.ndarray, List[jnp.ndarray]]]: The
+            coefficients, with one leading axis per input feature, and the
+            frequencies. For multiple input features, the frequencies are a
+            list with one vector per input feature, independent of `shift`;
+            for a single input feature, they are a single vector.
 
         Note:
             The FFT grid is built from the nominal `model.degree`, which does
@@ -129,12 +132,9 @@ class Coefficients:
     @classmethod
     def _fourier_transform(
         cls, model: Model, mfs: Union[int, List[int]], mts: int, **kwargs: Any
-    ) -> jnp.ndarray:
-        # Per-axis oversampling: mfs may be a single factor (applied to every
-        # axis) or one factor per input feature.
-        if isinstance(mfs, int):
-            mfs_axis: List[int] = [mfs] * model.n_input_feat
-        else:
+    ) -> Tuple[jnp.ndarray, List]:
+        # Per-axis oversampling: mfs may be a single integer factor (applied to
+        # every axis) or one per input feature.
             mfs_axis = list(mfs)
             if len(mfs_axis) != model.n_input_feat:
                 raise ValueError(
@@ -1194,8 +1194,10 @@ class FCC:
             frequencies are returned as a `(row_freqs, col_freqs)` tuple that
             labels the two (redundancy-trimmed) matrix axes and the
             coefficients as a matching `(row_coeffs, col_coeffs)` tuple whose
-            rows align with those frequencies; otherwise the full frequency
-            vector and full coefficient array are returned.
+            rows align with those frequencies; otherwise the frequencies as
+            given by `Coefficients.get_spectrum` (a 1-D vector for one input
+            feature, a list of per-axis vectors otherwise) and the full
+            coefficient array are returned.
         """
         _, coeffs, freqs = cls._calculate_coefficients(
             model, n_samples, random_key, scale, **kwargs
@@ -1297,18 +1299,21 @@ class FCC:
         return jnp.nanmean(jnp.abs(fourier_fingerprint))
 
     @staticmethod
-    def _per_axis_frequencies(freqs: Any) -> List[jnp.ndarray]:
+    def _per_axis_frequencies(
+        freqs: Union[jnp.ndarray, List[jnp.ndarray]],
+    ) -> List[jnp.ndarray]:
         """
         Normalize a frequency container into a list of per-axis frequency
         vectors.
 
         Accepts a ragged list/tuple of per-axis vectors (the generic
         multi-feature case, where axis lengths differ), a 1-D vector
-        (single input feature), or a ``(n_input_feat, K)`` stack of equal
-        length vectors.
+        (single input feature, also as a plain list of scalars), or a
+        ``(n_input_feat, K)`` stack of equal length vectors.
 
         Args:
-            freqs (Any): Frequency container as described above.
+            freqs (Union[jnp.ndarray, List[jnp.ndarray]]): Frequency
+                container as described above.
 
         Returns:
             List[jnp.ndarray]: One frequency vector per input feature.
@@ -1323,7 +1328,9 @@ class FCC:
         return [fa[i] for i in range(fa.shape[0])]
 
     @classmethod
-    def _calculate_mask(cls, freqs: Any) -> jnp.ndarray:
+    def _calculate_mask(
+        cls, freqs: Union[jnp.ndarray, List[jnp.ndarray]]
+    ) -> jnp.ndarray:
         """
         Determine the flat indices of the Fourier correlation matrix
         that lie on a non-negative-frequency row/column. Together with
@@ -1341,10 +1348,10 @@ class FCC:
           self-correlations).
 
         Args:
-            freqs (jnp.ndarray): Frequencies. Either a 1-D vector
-                (single input feature), a ``(n_input_feat, K)`` stack or a
-                ragged list whose rows are the per-axis frequency vectors
-                (multi-dim input).
+            freqs (Union[jnp.ndarray, List[jnp.ndarray]]): Frequencies.
+                Either a 1-D vector (single input feature), a
+                ``(n_input_feat, K)`` stack or a ragged list whose rows are
+                the per-axis frequency vectors (multi-dim input).
 
         Returns:
             jnp.ndarray: 1-D int array of flat indices selecting the
@@ -1366,16 +1373,19 @@ class FCC:
         return jnp.where(pos_flat)[0]
 
     @classmethod
-    def _flat_frequencies(cls, freqs: Any) -> jnp.ndarray:
+    def _flat_frequencies(
+        cls, freqs: Union[jnp.ndarray, List[jnp.ndarray]]
+    ) -> jnp.ndarray:
         """
         Build the per-coefficient flat frequency labels in the same
         C-order used to flatten the coefficient/correlation pipeline, so
         they can be indexed by the flat indices from `_calculate_mask`.
 
         Args:
-            freqs (jnp.ndarray): Either a 1-D vector (single input feature)
-                or a ``(n_input_feat, K)`` stack / ragged list of per-axis
-                frequency vectors (multi-dim input).
+            freqs (Union[jnp.ndarray, List[jnp.ndarray]]): Either a 1-D
+                vector (single input feature) or a ``(n_input_feat, K)``
+                stack / ragged list of per-axis frequency vectors
+                (multi-dim input).
 
         Returns:
             jnp.ndarray: 1-D frequency vector (single input feature) or a
