@@ -86,8 +86,10 @@ class Coefficients:
         coeffs, freqs = cls._fourier_transform(model, mfs=mfs, mts=mts, **kwargs)
 
         if not jnp.isclose(jnp.sum(coeffs).imag, 0.0, atol=1.0e-6):
-            raise ValueError(f"Spectrum is not real. Imaginary part of coefficients is:\
-                {jnp.sum(coeffs).imag}")
+            raise ValueError(
+                f"Spectrum is not real. Imaginary part of coefficients is:\
+                {jnp.sum(coeffs).imag}"
+            )
 
         if trim:
             # Per-axis Nyquist removal: each frequency axis is trimmed at
@@ -170,15 +172,14 @@ class Coefficients:
 
         # Output vector is not necessarily the same length as input.
         # The leading axes are the flattened frequency grid: reshape to the
-        # per-axis sizes. Trailing singleton axes (e.g. a size-1 observable
-        # axis) are squeezed, but never below the frequency-grid dimensions
-        # (a bare .squeeze() would also collapse size-1 frequency axes and
-        # misalign the FFT axes for degree-1 features).
+        # per-axis sizes and drop the trailing axis if it has size 1 (e.g. a
+        # single observable). A bare .squeeze() would also collapse size-1
+        # frequency axes and misalign the FFT axes for degree-1 features.
         outputs = model(inputs=nd_inputs, **kwargs)
         outputs = outputs.reshape(
             *[inputs[i].shape[0] for i in range(model.n_input_feat)], -1
         )
-        while outputs.ndim > model.n_input_feat and outputs.shape[-1] == 1:
+        if outputs.shape[-1] == 1:
             outputs = outputs.squeeze(axis=-1)
 
         coeffs = jnp.fft.fftn(outputs, axes=list(range(model.n_input_feat)))
@@ -1239,7 +1240,11 @@ class FCC:
                 (coeffs_sub[row_mask], coeffs_sub[col_mask]),
             )
 
-        fourier_fingerprint = cls._correlate(coeffs.transpose(), method=method)
+        # Flatten in C order, like the fast path, so `_calculate_mask` indices
+        # address the matching rows/cols.
+        fourier_fingerprint = cls._correlate(
+            coeffs.reshape(-1, coeffs.shape[-1]).transpose(), method=method
+        )
 
         if nan_to_one:
             # set nan to 1
@@ -1320,9 +1325,10 @@ class FCC:
         Returns:
             List[jnp.ndarray]: One frequency vector per input feature.
         """
-        if isinstance(freqs, (list, tuple)):
+        if isinstance(freqs, (list, tuple)) and np.ndim(freqs[0]) > 0:
             # Ragged per-axis frequency vectors: a global jnp.asarray fails
             # on unequal axis lengths, so consume the per-axis list directly.
+            # A plain list of scalars is a single axis and falls through.
             return [jnp.asarray(f) for f in freqs]
         fa = jnp.asarray(freqs)
         if fa.ndim == 1:
@@ -1733,11 +1739,13 @@ class FCC:
         assert (
             fourier_fingerprint.shape[0] % 2 != 0
             and fourier_fingerprint.shape[1] % 2 != 0
-        ), "Correlation matrix must have odd dimensions. \
+        ), (
+            "Correlation matrix must have odd dimensions. \
             Hint: use `trim` argument when calling `get_spectrum`."
-        assert (
-            fourier_fingerprint.shape[0] == fourier_fingerprint.shape[1]
-        ), "Correlation matrix must be square."
+        )
+        assert fourier_fingerprint.shape[0] == fourier_fingerprint.shape[1], (
+            "Correlation matrix must be square."
+        )
 
         # The weight matrix produced by the previous quadrant-mirror
         # construction has a closed form: it is a "tent" sum along the
@@ -1767,19 +1775,20 @@ class FCC:
             fourier_fingerprint (jnp.ndarray): Correlation matrix
             coeffs (jnp.ndarray): Fourier coefficients
         """
-        assert (
-            fourier_fingerprint.shape[0] == fourier_fingerprint.shape[1]
-        ), "Correlation matrix must be square."
-        assert (
-            len(coeffs.shape) >= 2
-        ), "Coefficient matrix must contain coefficient axes and a sample axis."
+        assert fourier_fingerprint.shape[0] == fourier_fingerprint.shape[1], (
+            "Correlation matrix must be square."
+        )
+        assert len(coeffs.shape) >= 2, (
+            "Coefficient matrix must contain coefficient axes and a sample axis."
+        )
 
         coefficient_means = jnp.abs(jnp.mean(coeffs, axis=-1))
-        coefficient_means = coefficient_means.T.reshape(-1)
+        # C order, matching the flattening of the correlated coefficients
+        coefficient_means = coefficient_means.reshape(-1)
 
-        assert (
-            fourier_fingerprint.shape[0] == coefficient_means.shape[0]
-        ), "Correlation matrix size must match the number of Fourier coefficients."
+        assert fourier_fingerprint.shape[0] == coefficient_means.shape[0], (
+            "Correlation matrix size must match the number of Fourier coefficients."
+        )
 
         # Apply the rank-1 weight w[i] * w[j] via broadcasting instead
         # of materialising an explicit `jnp.outer` N x N intermediate.
@@ -1888,9 +1897,11 @@ class Datasets:
                 *[
                     jnp.arange(0, 2 * mts * jnp.pi, 2 * jnp.pi / (mfs * d))
                     for d in model.degree
-                ]
-            )
-        ).T.reshape(-1, model.n_input_feat)
+                ],
+                indexing="ij",
+            ),
+            axis=-1,
+        ).reshape(-1, model.n_input_feat)
 
     @classmethod
     def construct_frequencies(
@@ -1966,7 +1977,9 @@ class Datasets:
                     displace(model, i, sub_key, offgrid_prob, offgrid_resolution)
                 )
 
-        return jnp.stack(jnp.meshgrid(*frequencies)).T.reshape(-1, model.n_input_feat)
+        return jnp.stack(jnp.meshgrid(*frequencies, indexing="ij"), axis=-1).reshape(
+            -1, model.n_input_feat
+        )
 
     @classmethod
     def _offsets(
