@@ -6,7 +6,6 @@ JAQSI H + CZ simulation.
 """
 
 import numpy as np
-import jax
 import pytest
 
 from qml_essentials.states import (
@@ -19,8 +18,6 @@ from qml_essentials.states import (
 )
 from jaqsi import Script
 from jaqsi.gates import Gates
-
-jax.config.update("jax_enable_x64", True)
 
 
 class TestDickeState:

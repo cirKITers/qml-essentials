@@ -5,8 +5,6 @@ import pytest
 
 from qml_essentials.random_sampling import DensityMatrix
 
-jax.config.update("jax_enable_x64", True)
-
 KEY = jax.random.key(1000)
 
 # The four samplers share the common (n_qubits, n_samples, random_key) signature

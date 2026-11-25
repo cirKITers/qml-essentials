@@ -4,14 +4,11 @@ The metrics themselves are tested in jaqsi; these tests cover differentiating
 them through a full qml-essentials Model.
 """
 
-import jax
 import jax.numpy as jnp
 
 from jaqsi.math import quantum_fisher_information, fubini_study_metric
 
 from qml_essentials.model import Model
-
-jax.config.update("jax_enable_x64", True)
 
 
 def test_qfi_model_state():

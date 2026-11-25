@@ -16,8 +16,6 @@ from functools import partial
 
 logger = logging.getLogger(__name__)
 
-jax.config.update("jax_enable_x64", True)
-
 
 def ragged_two_feature_model():
     """4-qubit model with features [0, 1, 0, 1] and bands 1..4, giving the
