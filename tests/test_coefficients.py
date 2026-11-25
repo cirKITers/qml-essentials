@@ -14,10 +14,29 @@ from scipy.stats import pearsonr, spearmanr
 
 from functools import partial
 
-
 logger = logging.getLogger(__name__)
 
 jax.config.update("jax_enable_x64", True)
+
+
+def ragged_two_feature_model():
+    """4-qubit model with features [0, 1, 0, 1] and bands 1..4, giving the
+    ragged per-axis degrees (9, 13) (per-axis degrees differ, which is the
+    generic multi-feature case)."""
+    n_qubits, features = 4, [0, 1, 0, 1]
+    mask = np.zeros((n_qubits, n_qubits, 2), dtype=bool)
+    for j, k in enumerate(range(1, n_qubits + 1)):
+        mask[:k, j, features[j]] = True
+
+    return Model(
+        n_qubits=n_qubits,
+        n_layers=n_qubits,
+        circuit_type="Circuit_19",
+        data_reupload=mask,
+        encoding=["RZ", "RZ"],
+        state_preparation="H",
+        observables=-1,
+    )
 
 
 class TestCoefficients:
@@ -155,6 +174,204 @@ class TestCoefficients:
         )
 
         assert jnp.isclose(exp_model, exp_fourier, atol=1.0e-5).all(), (
+            "Fourier series does not match model expectation"
+        )
+
+    @pytest.mark.unittest
+    def test_multi_feature_ragged_spectrum(self) -> None:
+        """Ragged per-axis frequency grids (d=2, degree (9, 13)) must yield a
+        spectrum matching a direct ij-ordered FFT of the model output, and the
+        shifted spectrum must reproduce the model off the sampling grid."""
+        model = ragged_two_feature_model()
+        assert model.degree == (9, 13)
+
+        coeffs, freqs = Coefficients.get_spectrum(model)
+        assert np.asarray(coeffs).shape == model.degree, (
+            "Wrong shape of ragged multi-feature coefficients"
+        )
+
+        # independent reference: ij-ordered grid (first feature slowest)
+        inputs = [np.arange(0, 2 * np.pi, 2 * np.pi / d) for d in model.degree]
+        grid = np.stack(np.meshgrid(*inputs, indexing="ij"), axis=-1).reshape(-1, 2)
+        out = np.asarray(model(inputs=grid, force_mean=True, execution_type="expval"))
+        ref = np.fft.fftn(out.reshape(*model.degree), axes=(0, 1))
+        ref = ref / math.prod(model.degree)
+
+        assert np.allclose(np.asarray(coeffs), ref, atol=1e-10), (
+            "Ragged multi-feature coefficients don't match a direct FFT"
+        )
+        for ax in range(model.n_input_feat):
+            assert np.allclose(
+                np.asarray(freqs[ax]),
+                np.fft.fftfreq(model.degree[ax], 1 / model.degree[ax]),
+            ), "Ragged multi-feature frequencies don't match the per-axis grid"
+
+        coeffs_shift, freqs_shift = Coefficients.get_spectrum(model, shift=True)
+        x = jnp.array([0.3, 2.0])
+        exp_fourier = Coefficients.evaluate_Fourier_series(
+            coefficients=coeffs_shift, frequencies=freqs_shift, inputs=x
+        )
+        exp_model = model(inputs=x[jnp.newaxis, :], force_mean=True)
+        assert jnp.isclose(exp_model, exp_fourier, atol=1e-10), (
+            "Shifted ragged spectrum does not reproduce the model"
+        )
+
+    @pytest.mark.smoketest
+    def test_multi_feature_ragged_batch(self) -> None:
+        """Batched parameters ride as the trailing axis of the ragged
+        multi-feature spectrum in the shifted and trimmed configuration that
+        FCC uses; per-sample results must match single runs."""
+        n_samples = 2
+        model = ragged_two_feature_model()
+        model.initialize_params(jax.random.key(1000), repeat=n_samples)
+        params = model.params
+
+        coeffs_parallel, _ = Coefficients.get_spectrum(model, shift=True, trim=True)
+        assert np.asarray(coeffs_parallel).shape == (
+            *model.degree,
+            n_samples,
+        ), "Batched ragged coefficients must carry a trailing sample axis"
+
+        for i in range(n_samples):
+            coeffs_single, _ = Coefficients.get_spectrum(
+                model, params=params[i], shift=True, trim=True
+            )
+            assert jnp.allclose(coeffs_parallel[:, :, i], coeffs_single, rtol=1.0e-5), (
+                "Batched and single ragged coefficients don't match"
+            )
+
+    @pytest.mark.unittest
+    def test_trim_multi_feature_ragged(self) -> None:
+        """With `mfs=2` the ragged axes (18, 26) are even; `trim` must remove
+        each axis's Nyquist entry at that axis's own position."""
+        model = ragged_two_feature_model()
+
+        coeffs, _ = Coefficients.get_spectrum(model, mfs=2)
+        assert np.asarray(coeffs).shape == (18, 26)
+
+        coeffs_trim, freqs_trim = Coefficients.get_spectrum(model, mfs=2, trim=True)
+
+        expected = np.delete(np.delete(np.asarray(coeffs), 9, axis=0), 13, axis=1)
+        assert np.asarray(coeffs_trim).shape == (
+            17,
+            25,
+        ), "Wrong shape of trimmed ragged coefficients"
+        assert jnp.allclose(np.asarray(coeffs_trim), expected, atol=1.0e-12), (
+            "Per-axis trim must delete each axis's own Nyquist entry"
+        )
+        assert (len(freqs_trim[0]) * len(freqs_trim[1])) == np.asarray(
+            coeffs_trim
+        ).size, "Trimmed frequencies and coefficients must stay consistent"
+
+    @pytest.mark.unittest
+    def test_oversampling_frequency_per_axis(self) -> None:
+        """`mfs` accepts a single integer factor or one per input feature,
+        as Python, numpy or jax integers; a wrong-length sequence raises a
+        ValueError and non-integer factors a TypeError."""
+        model = ragged_two_feature_model()
+
+        for mfs in ([1, 2], (1, 2), np.array([1, 2]), [1, np.int64(2)]):
+            coeffs, freqs = Coefficients.get_spectrum(model, mfs=mfs)
+            assert np.asarray(coeffs).shape == (
+                9,
+                26,
+            ), "Per-axis mfs must scale each axis independently"
+            assert len(freqs[0]) == 9 and len(freqs[1]) == 26, (
+                "Per-axis frequencies must follow the per-axis oversampling"
+            )
+
+        for mfs in (2, np.int64(2), np.array(2), jnp.array(2)):
+            coeffs, _ = Coefficients.get_spectrum(model, mfs=mfs)
+            assert np.asarray(coeffs).shape == (18, 26), (
+                "A single mfs factor must apply to every input feature"
+            )
+
+        with pytest.raises(ValueError, match="one factor per input feature"):
+            Coefficients.get_spectrum(model, mfs=[1, 2, 3])
+        for mfs in (1.5, 2.0, [1, 1.5]):
+            with pytest.raises(TypeError, match="integers"):
+                Coefficients.get_spectrum(model, mfs=mfs)
+
+    @pytest.mark.unittest
+    def test_degenerate_frequency_axis_shape(self) -> None:
+        """A size-1 (degree-1) frequency axis must survive the output reshape
+        so the FFT axes stay aligned with the frequency labels; a bare
+        `.squeeze()` used to collapse it."""
+
+        class Model_Fct2D:
+            # f(x1, x2) = 1 + 2 cos(x1): constant in x2 -> degree (3, 1)
+            def __init__(self):
+                self.degree = (3, 1)
+                self.frequencies = [(-1, 0), (0, 0), (1, 0)]
+                self.n_input_feat = 2
+
+            def __call__(self, inputs, **kwargs):
+                return 1 + 2 * jnp.cos(jnp.asarray(inputs)[..., 0])
+
+        model = Model_Fct2D()
+
+        coeffs, freqs = Coefficients.get_spectrum(model)
+
+        assert np.asarray(coeffs).shape == (
+            3,
+            1,
+        ), "The size-1 frequency axis must not be squeezed away"
+        assert np.allclose(np.asarray(freqs[0]), [0.0, 1.0, -1.0])
+        assert np.allclose(np.asarray(freqs[1]), [0.0])
+
+        x = jnp.array([0.3, 2.0])
+        exp_fourier = Coefficients.evaluate_Fourier_series(
+            coefficients=coeffs, frequencies=freqs, inputs=x
+        )
+        assert jnp.isclose(model(inputs=x[jnp.newaxis, :]), exp_fourier, atol=1e-10), (
+            "Fourier series does not match model expectation"
+        )
+
+    @pytest.mark.unittest
+    def test_three_feature_spectrum(self) -> None:
+        """With three input features of distinct degrees, coefficient axis k
+        must belong to feature k: every coefficient sits at its expected
+        frequency tuple and the series reproduces the function off the grid."""
+
+        class Model_Fct3D:
+            # f = 1 + 2 cos(x0) + 4 cos(2 x1) + 6 cos(x0 + x2)
+            def __init__(self):
+                self.degree = (3, 5, 7)
+                self.n_input_feat = 3
+
+            def __call__(self, inputs, **kwargs):
+                x = jnp.asarray(inputs)
+                return (
+                    1
+                    + 2 * jnp.cos(x[..., 0])
+                    + 4 * jnp.cos(2 * x[..., 1])
+                    + 6 * jnp.cos(x[..., 0] + x[..., 2])
+                )
+
+        model = Model_Fct3D()
+        coeffs, freqs = Coefficients.get_spectrum(model)
+        assert np.asarray(coeffs).shape == model.degree
+
+        expected = {
+            (0, 0, 0): 1,
+            (1, 0, 0): 1,
+            (-1, 0, 0): 1,
+            (0, 2, 0): 2,
+            (0, -2, 0): 2,
+            (1, 0, 1): 3,
+            (-1, 0, -1): 3,
+        }
+        for idx in np.ndindex(model.degree):
+            label = tuple(int(freqs[k][i]) for k, i in enumerate(idx))
+            assert np.isclose(coeffs[idx], expected.get(label, 0), atol=1e-10), (
+                f"Wrong coefficient at frequency {label}"
+            )
+
+        x = jnp.array([0.3, 2.0, 1.1])
+        exp_fourier = Coefficients.evaluate_Fourier_series(
+            coefficients=coeffs, frequencies=freqs, inputs=x
+        )
+        assert jnp.isclose(model(inputs=x[jnp.newaxis, :]), exp_fourier, atol=1e-10), (
             "Fourier series does not match model expectation"
         )
 
@@ -313,6 +530,11 @@ class TestCoefficients:
         assert (freqs[0].size * freqs[1].size) == coeffs.size, (
             f"(2D) Frequencies ({freqs.shape}) and \
             coefficients ({coeffs.shape}) must add up to the same length."
+        )
+
+        _, freqs = Coefficients.get_spectrum(model, shift=True)
+        assert isinstance(freqs, list) and len(freqs) == 2, (
+            "(2D) Frequencies must be one vector per input feature, also shifted"
         )
 
         # uneven 2d
@@ -1071,7 +1293,8 @@ class TestFCC:
 
     @pytest.mark.unittest
     def test_weighting_mean(self) -> None:
-        """Mean weighting should match the coefficient order used by correlation."""
+        """Mean weighting should follow the C-order coefficient flattening
+        (first input feature slowest) used by the correlation."""
         fourier_fingerprint = jnp.arange(16, dtype=float).reshape(4, 4)
         coeffs = jnp.array(
             [
@@ -1080,7 +1303,8 @@ class TestFCC:
             ]
         )
 
-        coefficient_means = jnp.abs(jnp.mean(coeffs, axis=-1)).T.reshape(-1)
+        # |mean| per grid cell is [[2, 1], [6, 9]], flattened in C order
+        coefficient_means = jnp.array([2.0, 1.0, 6.0, 9.0])
         expected = fourier_fingerprint * jnp.outer(coefficient_means, coefficient_means)
 
         assert jnp.allclose(FCC._weighting_mean(fourier_fingerprint, coeffs), expected)
@@ -1316,6 +1540,147 @@ class TestFCC:
         assert col_coeffs.shape[0] == col_freqs.shape[0]
 
     @pytest.mark.unittest
+    def test_fingerprint_freqs_match_matrix_ragged(self) -> None:
+        """The matrix-axis frequency alignment also holds for ragged
+        multi-dimensional input."""
+        model = ragged_two_feature_model()
+        matrix, freqs, coeffs = FCC.get_fourier_fingerprint(
+            model=model,
+            n_samples=3,
+            random_key=jax.random.key(1000),
+            numerical_cap=1e-10,
+        )
+
+        assert isinstance(freqs, tuple) and len(freqs) == 2
+        row_freqs, col_freqs = freqs
+        assert row_freqs.shape[0] == matrix.shape[0]
+        assert col_freqs.shape[0] == matrix.shape[1]
+        # each axis label is a (f_x, f_y) frequency tuple
+        assert row_freqs.shape[1] == model.n_input_feat
+        assert col_freqs.shape[1] == model.n_input_feat
+
+        assert isinstance(coeffs, tuple) and len(coeffs) == 2
+        row_coeffs, col_coeffs = coeffs
+        assert row_coeffs.shape[0] == row_freqs.shape[0]
+        assert col_coeffs.shape[0] == col_freqs.shape[0]
+
+    @pytest.mark.unittest
+    @pytest.mark.parametrize("weight", [False, True], ids=["fast", "weighted"])
+    @pytest.mark.parametrize(
+        "make_model",
+        [
+            partial(
+                Model,
+                n_qubits=2,
+                n_layers=2,
+                circuit_type="Circuit_19",
+                encoding=["RX", "RY"],
+            ),
+            ragged_two_feature_model,
+        ],
+        ids=["equal", "ragged"],
+    )
+    def test_fingerprint_values_match_labels(self, make_model, weight) -> None:
+        """Each trimmed fingerprint entry must be the correlation of the
+        coefficients labelling its row and column (times their mean
+        magnitudes if weighted), and all labels must be non-negative."""
+        matrix, (row_freqs, col_freqs), (row_coeffs, col_coeffs) = (
+            FCC.get_fourier_fingerprint(
+                model=make_model(),
+                n_samples=5,
+                random_key=jax.random.key(1000),
+                weight=weight,
+            )
+        )
+
+        n_rows = row_coeffs.shape[0]
+        joint = FCC._correlate(jnp.concatenate([row_coeffs, col_coeffs]).T)
+        expected = joint[:n_rows, n_rows:]
+        if weight:
+            expected = expected * jnp.outer(
+                jnp.abs(row_coeffs.mean(-1)), jnp.abs(col_coeffs.mean(-1))
+            )
+
+        # weighted entries are tiny, so compare relatively
+        finite = jnp.isfinite(matrix)
+        assert jnp.allclose(matrix[finite], expected[finite], rtol=1e-6, atol=1e-12), (
+            "Fingerprint entries must belong to their row/col coefficients."
+        )
+        assert jnp.all(row_freqs >= 0) and jnp.all(col_freqs >= 0), (
+            "Trimmed fingerprint must only be labelled by non-negative frequencies."
+        )
+
+    @pytest.mark.unittest
+    def test_untrimmed_fingerprint_matches_flat_order(self) -> None:
+        """Without trimming, entry [i, j] belongs to the flat C-order
+        coefficients i and j (first input feature slowest)."""
+        matrix, freqs, coeffs = FCC.get_fourier_fingerprint(
+            model=ragged_two_feature_model(),
+            n_samples=5,
+            random_key=jax.random.key(1000),
+            trim_redundant=False,
+        )
+
+        coeffs_flat = coeffs.reshape(-1, coeffs.shape[-1])
+        assert FCC._flat_frequencies(freqs).shape[0] == matrix.shape[0]
+        assert jnp.allclose(matrix, FCC._correlate(coeffs_flat.T), equal_nan=True), (
+            "Untrimmed fingerprint must follow the C-order coefficient flattening."
+        )
+
+    @pytest.mark.unittest
+    def test_fcc_multi_feature_ragged(self) -> None:
+        """FCC computation must work on the generic ragged multi-feature
+        model (previously crashed with an inhomogeneous-shape error) and
+        stay bounded in [0, 1]."""
+        model = ragged_two_feature_model()
+
+        fcc = FCC.get_fcc(model=model, n_samples=5)
+
+        assert jnp.isfinite(fcc), "FCC must be finite for ragged input."
+        assert 0.0 <= float(fcc) <= 1.0, f"FCC out of [0, 1]: {float(fcc)}"
+
+    @pytest.mark.unittest
+    def test_mask_and_flat_frequencies_ragged(self) -> None:
+        """`_calculate_mask` and `_flat_frequencies` must accept ragged
+        per-axis frequency lists (unequal axis lengths) and keep the
+        C-order convention (first feature slowest)."""
+        freqs = [
+            jnp.array([-2.0, -1.0, 0.0, 1.0, 2.0]),
+            jnp.array([-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0]),
+        ]
+
+        labels = FCC._flat_frequencies(freqs)
+        assert labels.shape == (
+            5 * 7,
+            2,
+        ), "Flat frequency labels must form the (N, d) tuple grid"
+        assert labels[0].tolist() == [
+            -2.0,
+            -3.0,
+        ], "First label must pair the first entry of each axis (C order)"
+        assert labels[-1].tolist() == [
+            2.0,
+            3.0,
+        ], "Last label must pair the last entry of each axis (C order)"
+
+        mask = FCC._calculate_mask(freqs)
+        selected = labels[mask]
+        assert mask.shape[0] == 3 * 4, (
+            "Mask must select all-axes non-negative frequency tuples"
+        )
+        assert jnp.all(selected >= 0), (
+            "Mask must only select non-negative frequency components"
+        )
+
+    @pytest.mark.unittest
+    def test_mask_and_flat_frequencies_scalar_list(self) -> None:
+        """A plain list of scalar frequencies is a single frequency axis."""
+        freqs = [-1.0, 0.0, 1.0]
+
+        assert FCC._calculate_mask(freqs).tolist() == [1, 2]
+        assert FCC._flat_frequencies(freqs).shape == (3,)
+
+    @pytest.mark.unittest
     def test_weighting(self) -> None:
         """
         This test replicates the results obtained for the FCC
@@ -1506,6 +1871,41 @@ class TestDatasets:
         assert jnp.allclose(domain_samples.reshape(*model.degree, -1), ref_domain)
         assert jnp.allclose(values.reshape(model.degree), ref_values)
         assert jnp.allclose(coefficients.reshape(model.degree), ref_coeffs)
+
+    @pytest.mark.unittest
+    def test_fourier_series_dataset_distinct_degrees(self) -> None:
+        """
+        With three input features of distinct degrees, axis k of the returned
+        arrays must belong to input feature k, so the n-D FFT of the values
+        recovers the coefficients at the frequencies of `model.frequencies`.
+        """
+        model = Model(
+            n_qubits=3,
+            n_layers=1,
+            circuit_type="Circuit_19",
+            encoding=["RX", "RY", "RZ"],
+            data_reupload=[[[1, 1, 1], [0, 1, 1], [0, 0, 1]]],
+        )
+        assert model.degree == (3, 5, 7)
+
+        domain_samples, values, coefficients = Datasets.generate_fourier_series(
+            jax.random.key(1000), model
+        )
+
+        for k, n in enumerate(model.degree):
+            # axis k steps through feature k, and its shifted FFT bin labels
+            # are the frequencies of feature k
+            steps = jnp.diff(domain_samples[..., k], axis=k)
+            assert jnp.allclose(steps, 2 * jnp.pi / n), (
+                "Domain sample axis k must step along input feature k"
+            )
+            labels = jnp.fft.fftshift(jnp.fft.fftfreq(n, 1 / n))
+            assert jnp.allclose(labels, jnp.asarray(model.frequencies[k]))
+        # values carry the 1/N normalisation, so the plain FFT gives the
+        # coefficients
+        assert jnp.allclose(
+            jnp.fft.fftshift(jnp.fft.fftn(values)), coefficients, atol=1e-10
+        ), "FFT of the values does not recover the coefficients"
 
     @pytest.mark.unittest
     @pytest.mark.parametrize("mts, mfs", [(1, 1), (4, 1), (1, 2), (2, 3)])
