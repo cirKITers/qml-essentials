@@ -25,13 +25,13 @@ class Coefficients:
     def get_spectrum(
         cls,
         model: Model,
-        mfs: int = 1,
+        mfs: Union[int, List[int]] = 1,
         mts: int = 1,
         shift=False,
         trim=False,
         numerical_cap: Optional[float] = -1,
         **kwargs,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> Tuple[jnp.ndarray, Union[jnp.ndarray, List[jnp.ndarray]]]:
         """
         Extracts the coefficients of a given model using a FFT (jnp-fft).
 
@@ -44,7 +44,9 @@ class Coefficients:
 
         Args:
             model (Model): The model to sample.
-            mfs (int): Multiplicator for the highest frequency. Default is 1.
+            mfs (Union[int, List[int]]): Multiplicator for the highest
+                frequency. Either a single factor applied to every input
+                feature, or one factor per input feature. Default is 1.
             mts (int): Multiplicator for the number of time samples. Default is 1.
             shift (bool): Whether to apply jnp-fftshift. Default is False.
             trim (bool): Whether to remove the Nyquist frequency if spectrum is even.
@@ -56,8 +58,11 @@ class Coefficients:
             kwargs (Any): Additional keyword arguments for the model function.
 
         Returns:
-            Tuple[jnp.ndarray, jnp.ndarray]: Tuple containing the coefficients
-            and frequencies.
+            Tuple[jnp.ndarray, Union[jnp.ndarray, List[jnp.ndarray]]]: The
+            coefficients, with one leading axis per input feature, and the
+            frequencies. For multiple input features, the frequencies are a
+            list with one vector per input feature, independent of `shift`;
+            for a single input feature, they are a single vector.
 
         Note:
             The FFT grid is built from the nominal `model.degree`, which does
@@ -66,6 +71,14 @@ class Coefficients:
             the nominal degree by a factor $s > 1$, choose `mfs` at least
             $\\lceil s \\rceil$ (e.g. `mfs=2` covers scalings up to 2),
             otherwise the scaled components alias.
+
+            Multi-feature input (d >= 2) is supported for per-axis frequency
+            vectors of different lengths (the generic case, since per-axis
+            degrees need not coincide). The grid and the returned frequency
+            labels follow the ij/C-order convention (meshgrid
+            ``indexing="ij"``, flattened row-major, first input feature
+            slowest). `trim` removes the Nyquist entry of each even-length axis
+            at that axis's own position.
         """
         kwargs.setdefault("force_mean", True)
         kwargs.setdefault("execution_type", "expval")
@@ -79,14 +92,19 @@ class Coefficients:
             )
 
         if trim:
+            # Per-axis Nyquist removal: each frequency axis is trimmed at
+            # its own length.
             for ax in range(model.n_input_feat):
                 if coeffs.shape[ax] % 2 == 0:
-                    coeffs = np.delete(coeffs, len(coeffs) // 2, axis=ax)
-                    freqs = [np.delete(freq, len(freq) // 2, axis=ax) for freq in freqs]
+                    nyquist = coeffs.shape[ax] // 2
+                    coeffs = np.delete(coeffs, nyquist, axis=ax)
+                    freqs[ax] = np.delete(freqs[ax], nyquist)
 
         if shift:
             coeffs = jnp.fft.fftshift(coeffs, axes=list(range(model.n_input_feat)))
-            freqs = np.fft.fftshift(freqs)
+            # per-axis shift: a global fftshift on the ragged list of
+            # per-axis frequency vectors fails for multi-dim input
+            freqs = [np.fft.fftshift(f) for f in freqs]
 
         if numerical_cap > 0:
             # set coeffs below threshold to zero
@@ -115,12 +133,25 @@ class Coefficients:
 
     @classmethod
     def _fourier_transform(
-        cls, model: Model, mfs: int, mts: int, **kwargs: Any
-    ) -> jnp.ndarray:
+        cls, model: Model, mfs: Union[int, List[int]], mts: int, **kwargs: Any
+    ) -> Tuple[jnp.ndarray, List]:
+        # Per-axis oversampling: mfs may be a single integer factor (applied to
+        # every axis) or one per input feature.
+        mfs_axis = np.asarray(mfs)
+        if not np.issubdtype(mfs_axis.dtype, np.integer):
+            raise TypeError(f"mfs factors must be integers, got {mfs}")
+        if mfs_axis.ndim == 0:
+            mfs_axis = np.full(model.n_input_feat, mfs_axis)
+        elif mfs_axis.shape != (model.n_input_feat,):
+            raise ValueError(
+                f"mfs must be an int or one factor per input feature "
+                f"({model.n_input_feat}), got {mfs}"
+            )
+
         # Create a frequency vector with as many frequencies as model degrees,
         # oversampled by mfs
         n_freqs: jnp.ndarray = jnp.array(
-            [mfs * model.degree[i] for i in range(model.n_input_feat)]
+            [mfs_axis[i] * model.degree[i] for i in range(model.n_input_feat)]
         )
 
         start, stop, step = 0, 2 * mts * jnp.pi, 2 * jnp.pi / n_freqs
@@ -129,16 +160,27 @@ class Coefficients:
             jnp.arange(start, stop, step[i]) for i in range(model.n_input_feat)
         ]
 
-        # permute with input dimensionality
-        nd_inputs = jnp.array(
-            jnp.meshgrid(*[inputs[i] for i in range(model.n_input_feat)])
-        ).T.reshape(-1, model.n_input_feat)
+        # Grid in ij/C order: meshgrid(indexing="ij") stacked on the last axis
+        # and flattened row-major, so the first input feature is the slowest
+        # and the last the fastest. This keeps the flat ordering aligned with
+        # the coefficient reshape, the frequency labels and the FFT axes, and
+        # supports per-axis vectors of different lengths (the generic
+        # multi-feature case).
+        nd_inputs = jnp.stack(jnp.meshgrid(*inputs, indexing="ij"), axis=-1).reshape(
+            -1, model.n_input_feat
+        )
 
-        # Output vector is not necessarily the same length as input
+        # Output vector is not necessarily the same length as input.
+        # The leading axes are the flattened frequency grid: reshape to the
+        # per-axis sizes and drop the trailing axis if it has size 1 (e.g. a
+        # single observable). A bare .squeeze() would also collapse size-1
+        # frequency axes and misalign the FFT axes for degree-1 features.
         outputs = model(inputs=nd_inputs, **kwargs)
         outputs = outputs.reshape(
             *[inputs[i].shape[0] for i in range(model.n_input_feat)], -1
-        ).squeeze()
+        )
+        if outputs.shape[-1] == 1:
+            outputs = outputs.squeeze(axis=-1)
 
         coeffs = jnp.fft.fftn(outputs, axes=list(range(model.n_input_feat)))
 
@@ -146,12 +188,9 @@ class Coefficients:
             jnp.fft.fftfreq(int(mts * n_freqs[i]), 1 / n_freqs[i])
             for i in range(model.n_input_feat)
         ]
-        # freqs = jnp.fft.fftfreq(mts * n_freqs, 1 / n_freqs)
 
-        # TODO: this could cause issues with multidim input
-        # FIXME: account for different frequencies in multidim input scenarios
-        # Run the fft and rearrange +
-        # normalize the output (using product if multidim)
+        # Normalize by the frequency-grid size (the batch axis, if any, is
+        # not part of the grid).
         return (
             coeffs / math.prod(outputs.shape[0 : model.n_input_feat]),
             freqs,
@@ -1158,8 +1197,10 @@ class FCC:
             frequencies are returned as a `(row_freqs, col_freqs)` tuple that
             labels the two (redundancy-trimmed) matrix axes and the
             coefficients as a matching `(row_coeffs, col_coeffs)` tuple whose
-            rows align with those frequencies; otherwise the full frequency
-            vector and full coefficient array are returned.
+            rows align with those frequencies; otherwise the frequencies as
+            given by `Coefficients.get_spectrum` (a 1-D vector for one input
+            feature, a list of per-axis vectors otherwise) and the full
+            coefficient array are returned.
         """
         _, coeffs, freqs = cls._calculate_coefficients(
             model, n_samples, random_key, scale, **kwargs
@@ -1199,7 +1240,11 @@ class FCC:
                 (coeffs_sub[row_mask], coeffs_sub[col_mask]),
             )
 
-        fourier_fingerprint = cls._correlate(coeffs.transpose(), method=method)
+        # Flatten in C order, like the fast path, so `_calculate_mask` indices
+        # address the matching rows/cols.
+        fourier_fingerprint = cls._correlate(
+            coeffs.reshape(-1, coeffs.shape[-1]).transpose(), method=method
+        )
 
         if nan_to_one:
             # set nan to 1
@@ -1260,8 +1305,40 @@ class FCC:
         # apply the mask on the fingerprint
         return jnp.nanmean(jnp.abs(fourier_fingerprint))
 
+    @staticmethod
+    def _per_axis_frequencies(
+        freqs: Union[jnp.ndarray, List[jnp.ndarray]],
+    ) -> List[jnp.ndarray]:
+        """
+        Normalize a frequency container into a list of per-axis frequency
+        vectors.
+
+        Accepts a ragged list/tuple of per-axis vectors (the generic
+        multi-feature case, where axis lengths differ), a 1-D vector
+        (single input feature, also as a plain list of scalars), or a
+        ``(n_input_feat, K)`` stack of equal length vectors.
+
+        Args:
+            freqs (Union[jnp.ndarray, List[jnp.ndarray]]): Frequency
+                container as described above.
+
+        Returns:
+            List[jnp.ndarray]: One frequency vector per input feature.
+        """
+        if isinstance(freqs, (list, tuple)) and np.ndim(freqs[0]) > 0:
+            # Ragged per-axis frequency vectors: a global jnp.asarray fails
+            # on unequal axis lengths, so consume the per-axis list directly.
+            # A plain list of scalars is a single axis and falls through.
+            return [jnp.asarray(f) for f in freqs]
+        fa = jnp.asarray(freqs)
+        if fa.ndim == 1:
+            return [fa]
+        return [fa[i] for i in range(fa.shape[0])]
+
     @classmethod
-    def _calculate_mask(cls, freqs: jnp.ndarray) -> jnp.ndarray:
+    def _calculate_mask(
+        cls, freqs: Union[jnp.ndarray, List[jnp.ndarray]]
+    ) -> jnp.ndarray:
         """
         Determine the flat indices of the Fourier correlation matrix
         that lie on a non-negative-frequency row/column. Together with
@@ -1279,60 +1356,57 @@ class FCC:
           self-correlations).
 
         Args:
-            freqs (jnp.ndarray): Array of frequencies. Either a 1-D
-                vector (single input feature) or a 2-D array of shape
-                ``(n_input_feat, K)`` whose rows are the per-axis
-                frequency vectors.
+            freqs (Union[jnp.ndarray, List[jnp.ndarray]]): Frequencies.
+                Either a 1-D vector (single input feature), a
+                ``(n_input_feat, K)`` stack or a ragged list whose rows are
+                the per-axis frequency vectors (multi-dim input).
 
         Returns:
             jnp.ndarray: 1-D int array of flat indices selecting the
                 non-negative-frequency rows/cols of the fingerprint.
         """
-        freqs_arr = jnp.asarray(freqs)
+        axes = cls._per_axis_frequencies(freqs)
 
-        if freqs_arr.ndim == 1:
-            pos_flat = freqs_arr >= 0
+        if len(axes) == 1:
+            pos_flat = axes[0] >= 0
         else:
-            # N-D case: build the per-axis non-negativity masks and
-            # combine them via broadcasting (no float `jnp.outer`!),
-            # then flatten to match the row-major flattening used by
-            # the upstream coefficient/correlation pipeline.
-            axes_pos = [freqs_arr[i] >= 0 for i in range(freqs_arr.shape[0])]
-            expanded = []
-            n_axes = len(axes_pos)
-            for i, p in enumerate(axes_pos):
-                shape = [1] * n_axes
-                shape[i] = p.shape[0]
-                expanded.append(p.reshape(shape))
-            nd_pos = reduce(jnp.logical_and, expanded)
+            # Multi-axis case: build the per-axis non-negativity masks and
+            # combine them via meshgrid (no float `jnp.outer`!), then
+            # flatten row-major to match the C-order flattening used by
+            # the coefficient/correlation pipeline.
+            grids = jnp.meshgrid(*[axis >= 0 for axis in axes], indexing="ij")
+            nd_pos = reduce(jnp.logical_and, grids)
             pos_flat = nd_pos.flatten()
 
         return jnp.where(pos_flat)[0]
 
     @classmethod
-    def _flat_frequencies(cls, freqs: jnp.ndarray) -> jnp.ndarray:
+    def _flat_frequencies(
+        cls, freqs: Union[jnp.ndarray, List[jnp.ndarray]]
+    ) -> jnp.ndarray:
         """
         Build the per-coefficient flat frequency labels in the same
         C-order used to flatten the coefficient/correlation pipeline, so
         they can be indexed by the flat indices from `_calculate_mask`.
 
         Args:
-            freqs (jnp.ndarray): Either a 1-D vector (single input feature)
-                or a ``(n_input_feat, K)`` stack / list of per-axis frequency
-                vectors (multi-dim input).
+            freqs (Union[jnp.ndarray, List[jnp.ndarray]]): Either a 1-D
+                vector (single input feature) or a ``(n_input_feat, K)``
+                stack / ragged list of per-axis frequency vectors
+                (multi-dim input).
 
         Returns:
             jnp.ndarray: 1-D frequency vector (single input feature) or a
                 ``(N, n_input_feat)`` array of per-coefficient frequency
                 tuples (multi-dim input).
         """
-        fa = jnp.asarray(freqs)
-        if fa.ndim == 1:
-            return fa
+        axes = cls._per_axis_frequencies(freqs)
+        if len(axes) == 1:
+            return axes[0]
         # Multi-dim: per-axis vectors -> flat grid of frequency tuples in the
         # same C-order used by `_calculate_mask` and the coefficient reshape.
-        grids = jnp.meshgrid(*[fa[i] for i in range(fa.shape[0])], indexing="ij")
-        return jnp.stack(grids, axis=-1).reshape(-1, fa.shape[0])
+        grids = jnp.meshgrid(*axes, indexing="ij")
+        return jnp.stack(grids, axis=-1).reshape(-1, len(axes))
 
     @classmethod
     def _calculate_coefficients(
@@ -1397,14 +1471,10 @@ class FCC:
         """
         assert len(mat.shape) >= 2, "Input matrix must have at least 2 dimensions"
 
-        # Note that for the general n-D case, we have to flatten along
-        # the first axis (last one is batch).
-        # Note that the order here is important so we can easily filter out
-        # negative coefficients later.
-        # Consider the following example: [[1,2,3],[4,5,6],[7,8,9]]
-        # we want to get [1, 4, 7, 2, 5, 8, 3, 6, 9]
-        # such that after correlation, all positive indexed coefficients
-        # will be in the bottom right quadrant
+        # The first axis is the sample axis; any remaining axes are flattened
+        # in C order. Callers pass coefficients already flattened in C order
+        # (first input feature slowest), the order that `_calculate_mask`
+        # and `_flat_frequencies` index into.
         if method == "pearson":
             result = cls._pearson(mat.reshape(mat.shape[0], -1))
             # result = cls._pearson(mat.reshape(mat.shape[-1], -1, order="F"))
@@ -1713,7 +1783,8 @@ class FCC:
         )
 
         coefficient_means = jnp.abs(jnp.mean(coeffs, axis=-1))
-        coefficient_means = coefficient_means.T.reshape(-1)
+        # C order, matching the flattening of the correlated coefficients
+        coefficient_means = coefficient_means.reshape(-1)
 
         assert fourier_fingerprint.shape[0] == coefficient_means.shape[0], (
             "Correlation matrix size must match the number of Fourier coefficients."
@@ -1826,9 +1897,11 @@ class Datasets:
                 *[
                     jnp.arange(0, 2 * mts * jnp.pi, 2 * jnp.pi / (mfs * d))
                     for d in model.degree
-                ]
-            )
-        ).T.reshape(-1, model.n_input_feat)
+                ],
+                indexing="ij",
+            ),
+            axis=-1,
+        ).reshape(-1, model.n_input_feat)
 
     @classmethod
     def construct_frequencies(
@@ -1904,7 +1977,9 @@ class Datasets:
                     displace(model, i, sub_key, offgrid_prob, offgrid_resolution)
                 )
 
-        return jnp.stack(jnp.meshgrid(*frequencies)).T.reshape(-1, model.n_input_feat)
+        return jnp.stack(jnp.meshgrid(*frequencies, indexing="ij"), axis=-1).reshape(
+            -1, model.n_input_feat
+        )
 
     @classmethod
     def _offsets(
