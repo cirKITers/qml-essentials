@@ -1,6 +1,6 @@
 [project]
 name = "qml-essentials"
-version = "0.3.2"
+version = "0.3.3"
 description = "A toolbox to make working with QML models easier."
 authors = [
     { name = "Melvin Strobl", email = "melvin.strobl@kit.edu" },
@@ -16,7 +16,7 @@ keywords = [
     "qml",
 ]
 dependencies = [
-    "jaqsi>=0.1.1",
+    "jaqsi>=0.1.2",
     "jax>=0.9.0.1",
     "jaxlib>=0.9.0.1",
     "numpy>=2.0.0",

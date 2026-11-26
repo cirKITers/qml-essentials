@@ -20,8 +20,6 @@ from jaqsi.gates import Gates, UnitaryGates
 from jaqsi.gates import PulseInformation as pinfo
 from jaqsi import gateset
 
-jax.config.update("jax_enable_x64", True)
-
 
 logger = logging.getLogger(__name__)
 

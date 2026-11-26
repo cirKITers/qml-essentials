@@ -1987,7 +1987,8 @@ class Model:
 
         Uses the Pauli label where available and otherwise a hash of the
         matrix, memoized on the instance because reading the bytes copies the
-        full $2^n \\times 2^n$ array. Mutating a matrix in place is not
+        full $2^n \\times 2^n$ array. The matrix is read at compile time, as
+        this runs while a call is traced. Mutating a matrix in place is not
         detected.
 
         Args:
@@ -2000,7 +2001,8 @@ class Model:
         if label is not None:
             return label
         if getattr(obs, "_fingerprint_hash", None) is None:
-            obs._fingerprint_hash = hash(np.asarray(obs.matrix).tobytes())
+            with jax.ensure_compile_time_eval():
+                obs._fingerprint_hash = hash(np.asarray(obs.matrix).tobytes())
         return obs._fingerprint_hash
 
     def _structural_fingerprint(self) -> Tuple:

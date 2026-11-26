@@ -10,8 +10,6 @@ from copy import deepcopy
 
 logger = logging.getLogger(__name__)
 
-jax.config.update("jax_enable_x64", True)
-
 
 def get_test_cases():
     # Results taken from: https://doi.org/10.1002/qute.201900070

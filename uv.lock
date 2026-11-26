@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12, <3.15"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -760,7 +760,7 @@ wheels = [
 
 [[package]]
 name = "jaqsi"
-version = "0.1.1"
+version = "0.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "diffrax" },
@@ -771,9 +771,9 @@ dependencies = [
     { name = "psutil" },
     { name = "scipy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3f/e6/509ea78059396d323eab996814d46bfacf71b398e4725f29dbba6b418355/jaqsi-0.1.1.tar.gz", hash = "sha256:51ad6cf68f490c8c06253392eb79b121940d81004efa37fa39a47015e444ad61", size = 4144887, upload-time = "2026-10-01T17:01:36.147Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5b/8a/fb57f494193b2fd58145ded87256ac28429470b0752386d9d24e630daac5/jaqsi-0.1.2.tar.gz", hash = "sha256:6c1872a1da3894ec86e09f8b5dcb04c66fae1e5b01858640ed2e018fde89902e", size = 4148368, upload-time = "2026-11-25T21:51:18.639Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/93/7e/d168ec2c7a29b5e232b4fd6b28d03f1017ddb298e44600a597a6e4b217cc/jaqsi-0.1.1-py3-none-any.whl", hash = "sha256:072b693728706d3f8045c3a919b975ba8206d6ec93693c329aed10fdac422d10", size = 141230, upload-time = "2026-10-01T17:01:34.549Z" },
+    { url = "https://files.pythonhosted.org/packages/6e/28/da1606e593eb2e3b036f3fa375ab78e4f6c6f6d7a5cf81efe0d0e657382c/jaqsi-0.1.2-py3-none-any.whl", hash = "sha256:f04cc00b843f606cf2679af36b3c4a4b53e64a4035447ff47955b95aad120cc2", size = 141577, upload-time = "2026-11-25T21:51:17.395Z" },
 ]
 
 [[package]]
@@ -2042,7 +2042,7 @@ wheels = [
 
 [[package]]
 name = "qml-essentials"
-version = "0.3.2"
+version = "0.3.3"
 source = { editable = "." }
 dependencies = [
     { name = "jaqsi" },
@@ -2077,7 +2077,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "jaqsi", specifier = ">=0.1.1" },
+    { name = "jaqsi", specifier = ">=0.1.2" },
     { name = "jax", specifier = ">=0.9.0.1" },
     { name = "jaxlib", specifier = ">=0.9.0.1" },
     { name = "numpy", specifier = ">=2.0.0" },
