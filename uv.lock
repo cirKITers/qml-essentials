@@ -760,8 +760,8 @@ wheels = [
 
 [[package]]
 name = "jaqsi"
-version = "0.1.1"
-source = { git = "https://github.com/cirKITers/jaqsi?rev=d36db27f08903c845a6d658ea870823973d6a857#d36db27f08903c845a6d658ea870823973d6a857" }
+version = "0.1.2"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "diffrax" },
     { name = "equinox" },
@@ -770,6 +770,10 @@ dependencies = [
     { name = "optax" },
     { name = "psutil" },
     { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5b/8a/fb57f494193b2fd58145ded87256ac28429470b0752386d9d24e630daac5/jaqsi-0.1.2.tar.gz", hash = "sha256:6c1872a1da3894ec86e09f8b5dcb04c66fae1e5b01858640ed2e018fde89902e", size = 4148368, upload-time = "2026-11-25T21:51:18.639Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6e/28/da1606e593eb2e3b036f3fa375ab78e4f6c6f6d7a5cf81efe0d0e657382c/jaqsi-0.1.2-py3-none-any.whl", hash = "sha256:f04cc00b843f606cf2679af36b3c4a4b53e64a4035447ff47955b95aad120cc2", size = 141577, upload-time = "2026-11-25T21:51:17.395Z" },
 ]
 
 [[package]]
@@ -2038,7 +2042,7 @@ wheels = [
 
 [[package]]
 name = "qml-essentials"
-version = "0.3.2"
+version = "0.3.3"
 source = { editable = "." }
 dependencies = [
     { name = "jaqsi" },
@@ -2073,7 +2077,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "jaqsi", git = "https://github.com/cirKITers/jaqsi?rev=d36db27f08903c845a6d658ea870823973d6a857" },
+    { name = "jaqsi", specifier = ">=0.1.2" },
     { name = "jax", specifier = ">=0.9.0.1" },
     { name = "jaxlib", specifier = ">=0.9.0.1" },
     { name = "numpy", specifier = ">=2.0.0" },
